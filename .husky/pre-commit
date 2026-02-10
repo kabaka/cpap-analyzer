@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+
+# Pre-commit hook: runs formatting, linting, and tests
+# If this hook passes, CI should be green.
+
+echo "🔍 Running pre-commit checks..."
+
+# Check formatting
+echo "  → Checking formatting (Prettier)..."
+npx prettier --check . || {
+  echo "❌ Formatting check failed. Run 'npx prettier --write .' to fix."
+  exit 1
+}
+
+# Lint
+echo "  → Running linter (ESLint)..."
+npx eslint . || {
+  echo "❌ Lint check failed."
+  exit 1
+}
+
+# Type check (if applicable)
+if [ -f "tsconfig.json" ]; then
+  echo "  → Running type check..."
+  npx tsc --noEmit || {
+    echo "❌ Type check failed."
+    exit 1
+  }
+fi
+
+# Unit tests
+echo "  → Running unit tests..."
+npx vitest run --reporter=dot || {
+  echo "❌ Tests failed."
+  exit 1
+}
+
+echo "✅ All pre-commit checks passed."
