@@ -304,6 +304,299 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 - High contrast text for visibility
 - Respects prefers-reduced-motion for animations
 
+**UI Components and Implementation**:
+
+All contextual help elements use **Radix UI** primitives for accessibility and consistency:
+
+**Layer 1: Tooltips** (Brief definitions)
+- **Component**: `@radix-ui/react-tooltip`
+- **Pattern**: Info icon (`<InfoCircledIcon />`) with hover/focus trigger
+- **Timing**: 200ms delay on open, instant on close
+- **Max Width**: 300px
+- **Example**:
+  ```tsx
+  import * as Tooltip from '@radix-ui/react-tooltip';
+  import { InfoCircledIcon } from '@radix-ui/react-icons';
+  
+  <Tooltip.Provider delayDuration={200}>
+    <Tooltip.Root>
+      <Tooltip.Trigger asChild>
+        <button 
+          className="help-icon" 
+          aria-label="Help for AHI metric"
+        >
+          <InfoCircledIcon />
+        </button>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content 
+          className="tooltip-content" 
+          sideOffset={5}
+          aria-live="polite"
+        >
+          AHI (Apnea-Hypopnea Index): Number of breathing interruptions per hour.
+          <Tooltip.Arrow className="tooltip-arrow" />
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  </Tooltip.Provider>
+  ```
+
+**Layer 2: Popovers** (Detailed explanations)
+- **Component**: `@radix-ui/react-popover`
+- **Pattern**: "Learn more" link or question mark button
+- **Size**: 400px width, up to 600px height (scrollable)
+- **Content**: Multiple paragraphs, small diagrams, formulas
+- **Example**:
+  ```tsx
+  import * as Popover from '@radix-ui/react-popover';
+  
+  <Popover.Root>
+    <Popover.Trigger asChild>
+      <button className="learn-more-link">
+        Learn more about AHI calculation →
+      </button>
+    </Popover.Trigger>
+    <Popover.Portal>
+      <Popover.Content 
+        className="popover-content" 
+        sideOffset={5}
+        align="start"
+      >
+        <h3>AHI Calculation Details</h3>
+        <p>
+          AHI is calculated by dividing the total number of apnea and hypopnea 
+          events by total sleep time in hours.
+        </p>
+        <p>
+          <strong>Formula:</strong> <code>AHI = (Total Events) / (Sleep Hours)</code>
+        </p>
+        <p>
+          <strong>Event Definitions (AASM 2012):</strong>
+        </p>
+        <ul>
+          <li><strong>Apnea:</strong> ≥90% airflow reduction for ≥10 seconds</li>
+          <li><strong>Hypopnea:</strong> ≥30% airflow reduction for ≥10 seconds with 
+              ≥3% SpO₂ drop or arousal</li>
+        </ul>
+        <Popover.Close className="popover-close" aria-label="Close">
+          ×
+        </Popover.Close>
+        <Popover.Arrow className="popover-arrow" />
+      </Popover.Content>
+    </Popover.Portal>
+  </Popover.Root>
+  ```
+
+**Layer 3: Help Panel** (Contextual documentation drawer)
+- **Component**: `@radix-ui/react-dialog` (used as a side panel)
+- **Pattern**: Keyboard shortcut (F1) or Help button in header
+- **Size**: 400px width (desktop), full-screen (mobile)
+- **Position**: Right side of screen, overlay with backdrop
+- **Features**: 
+  - Context-aware content (updates based on current view)
+  - Search within help content
+  - Table of contents navigation
+  - Pin/unpin (stays open while working)
+  - History (recently viewed topics)
+- **Example**:
+  ```tsx
+  import * as Dialog from '@radix-ui/react-dialog';
+  
+  const HelpPanel: React.FC = () => {
+    const [open, setOpen] = useState(false);
+    const currentView = useCurrentView(); // Hook to detect current page
+    
+    // Open on F1 key
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => {
+        if (e.key === 'F1') {
+          e.preventDefault();
+          setOpen(true);
+        }
+      };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, []);
+    
+    return (
+      <Dialog.Root open={open} onOpenChange={setOpen}>
+        <Dialog.Trigger asChild>
+          <button className="help-button" aria-label="Open help panel">
+            <QuestionMarkCircledIcon /> Help
+          </button>
+        </Dialog.Trigger>
+        <Dialog.Portal>
+          <Dialog.Overlay className="help-overlay" />
+          <Dialog.Content className="help-panel" aria-describedby="help-description">
+            <Dialog.Title>Help: {currentView.title}</Dialog.Title>
+            <Dialog.Description id="help-description">
+              Contextual help and documentation for the current view.
+            </Dialog.Description>
+            
+            <HelpSearch />
+            <HelpContent view={currentView} />
+            <HelpTableOfContents />
+            
+            <Dialog.Close asChild>
+              <button className="help-close" aria-label="Close help panel">
+                ×
+              </button>
+            </Dialog.Close>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    );
+  };
+  ```
+
+**Layer 4: Guided Tours** (Interactive walkthroughs)
+- **Component**: Custom implementation using `@radix-ui/react-popover` with spotlight overlay
+- **Pattern**: Step-by-step overlay with "Next", "Previous", "Skip" buttons
+- **Features**:
+  - Focus ring around highlighted element
+  - Dimmed background (rest of UI)
+  - Progress indicator (Step 3 of 7)
+  - Can be dismissed and resumed later
+- **Example**:
+  ```tsx
+  import * as Popover from '@radix-ui/react-popover';
+  
+  interface TourStep {
+    target: string; // CSS selector
+    title: string;
+    content: string;
+    placement: 'top' | 'bottom' | 'left' | 'right';
+  }
+  
+  const GuidedTour: React.FC<{ steps: TourStep[] }> = ({ steps }) => {
+    const [currentStep, setCurrentStep] = useState(0);
+    const [isActive, setIsActive] = useState(false);
+    
+    const step = steps[currentStep];
+    const targetElement = document.querySelector(step.target);
+    
+    return (
+      <>
+        {/* Spotlight overlay */}
+        {isActive && (
+          <div className="tour-overlay" aria-hidden="true">
+            <div 
+              className="tour-spotlight" 
+              style={{
+                top: targetElement?.getBoundingClientRect().top,
+                left: targetElement?.getBoundingClientRect().left,
+                width: targetElement?.getBoundingClientRect().width,
+                height: targetElement?.getBoundingClientRect().height,
+              }}
+            />
+          </div>
+        )}
+        
+        {/* Tour popover */}
+        {isActive && targetElement && (
+          <Popover.Root open={isActive}>
+            <Popover.Anchor
+              style={{
+                position: 'absolute',
+                top: targetElement.getBoundingClientRect().top,
+                left: targetElement.getBoundingClientRect().left,
+              }}
+            />
+            <Popover.Content 
+              className="tour-content"
+              side={step.placement}
+              align="center"
+            >
+              <div className="tour-header">
+                <span className="tour-progress">
+                  Step {currentStep + 1} of {steps.length}
+                </span>
+              </div>
+              <h3>{step.title}</h3>
+              <p>{step.content}</p>
+              <div className="tour-actions">
+                <button onClick={() => setIsActive(false)}>Skip Tour</button>
+                {currentStep > 0 && (
+                  <button onClick={() => setCurrentStep(currentStep - 1)}>
+                    Previous
+                  </button>
+                )}
+                {currentStep < steps.length - 1 ? (
+                  <button onClick={() => setCurrentStep(currentStep + 1)}>
+                    Next
+                  </button>
+                ) : (
+                  <button onClick={() => setIsActive(false)}>Finish</button>
+                )}
+              </div>
+            </Popover.Content>
+          </Popover.Root>
+        )}
+      </>
+    );
+  };
+  ```
+
+**Documentation Drawers** (Alternative to popovers for dense content):
+- **Component**: `@radix-ui/react-collapsible` for inline expansion
+- **Pattern**: "Show details" / "Hide details" toggle
+- **Use Case**: Inline documentation within forms or settings panels
+- **Example**:
+  ```tsx
+  import * as Collapsible from '@radix-ui/react-collapsible';
+  
+  <Collapsible.Root>
+    <Collapsible.Trigger asChild>
+      <button className="details-toggle">
+        <ChevronDownIcon /> What does "pressure optimization" mean?
+      </button>
+    </Collapsible.Trigger>
+    <Collapsible.Content className="details-content">
+      <p>
+        Pressure optimization analyzes your therapy data to find the lowest 
+        effective pressure that maintains good AHI control. This can improve 
+        comfort while maintaining efficacy.
+      </p>
+      <p>
+        <strong>How it works:</strong> The algorithm identifies the 5th 
+        percentile pressure on nights with excellent AHI (<1) and recommends 
+        this as your minimum pressure setting.
+      </p>
+    </Collapsible.Content>
+  </Collapsible.Root>
+  ```
+
+**Styling Consistency**:
+
+All help UI components share a common visual language:
+- **Colors**: Use semantic tokens from design system
+  - `--color-help-background`: Light blue/gray
+  - `--color-help-border`: Subtle border
+  - `--color-help-text`: High contrast text
+- **Typography**: Clear hierarchy (h3 for titles, body text 14–16px)
+- **Spacing**: Consistent padding (16px standard, 24px for panels)
+- **Shadows**: Subtle elevation (`box-shadow: 0 4px 12px rgba(0,0,0,0.1)`)
+- **Animations**: Respect `prefers-reduced-motion`
+  ```css
+  @media (prefers-reduced-motion: reduce) {
+    .tooltip-content, .popover-content {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+  ```
+
+**When to Use Each Component**:
+
+| Component | When to Use | Max Content Length | Dismissal |
+|-----------|-------------|-------------------|----------|
+| **Tooltip** | Term definitions, brief explanations | 1-2 sentences | Auto on mouseout/blur |
+| **Popover** | Detailed explanations, formulas, short guides | 2-5 paragraphs | Click outside or Escape |
+| **Help Panel** | Full feature documentation, troubleshooting | Unlimited (scrollable) | Explicit close or F1 toggle |
+| **Guided Tour** | Onboarding, new feature introduction | 1-2 paragraphs per step | Skip button or complete |
+| **Collapsible** | Inline documentation, optional details | 1-3 paragraphs | Toggle open/closed |
+
 #### 2.1.4 Glossary
 
 **Purpose**: Comprehensive reference for all medical, statistical, and technical terms used in the application.

@@ -1460,76 +1460,76 @@ pluginRegistry.register(new ResMedPlugin());
 
 **Worker Script** (`edf-parser.worker.ts`):
 ```typescript
+import { expose } from 'comlink';
 import { EDFParser, ResMedInterpreter, SessionBuilder, Validator } from './parsers';
 import { StorageWriter } from './storage';
 
-self.addEventListener('message', async (event) => {
-  const { type, files } = event.data;
-  
-  if (type === 'PARSE_FILES') {
-    try {
-      const parser = new EDFParser();
-      const interpreter = new ResMedInterpreter();
-      const builder = new SessionBuilder();
-      const validator = new Validator();
-      const writer = new StorageWriter();
+const edfParserWorker = {
+  async parseFiles(
+    files: File[],
+    onProgress?: (progress: number, total: number) => void,
+    onWarnings?: (warnings: string[]) => void
+  ): Promise<MergedSession[]> {
+    const parser = new EDFParser();
+    const interpreter = new ResMedInterpreter();
+    const builder = new SessionBuilder();
+    const validator = new Validator();
+    const writer = new StorageWriter();
+    
+    const parsed: ResMedSession[] = [];
+    let progress = 0;
+    
+    for (const file of files) {
+      const buffer = await file.arrayBuffer();
+      const edfFile = parser.parse(buffer);
+      const session = interpreter.interpret(edfFile);
+      parsed.push(session);
       
-      const parsed: ResMedSession[] = [];
-      let progress = 0;
-      
-      for (const file of files) {
-        const buffer = await file.arrayBuffer();
-        const edfFile = parser.parse(buffer);
-        const session = interpreter.interpret(edfFile);
-        parsed.push(session);
-        
-        progress++;
-        self.postMessage({ type: 'PROGRESS', progress, total: files.length });
-      }
-      
-      const sessions = builder.detectSessionBoundaries(parsed);
-      
-      for (const session of sessions) {
-        const validation = validator.validate(session);
-        if (validation.warnings.length > 0) {
-          self.postMessage({ type: 'WARNINGS', warnings: validation.warnings });
-        }
-        
-        await writer.writeSession(session);
-      }
-      
-      self.postMessage({ type: 'COMPLETE', sessions });
-    } catch (error) {
-      self.postMessage({ type: 'ERROR', error: error.message });
+      progress++;
+      onProgress?.(progress, files.length);
     }
-  }
-});
+    
+    const sessions = builder.detectSessionBoundaries(parsed);
+    
+    for (const session of sessions) {
+      const validation = validator.validate(session);
+      if (validation.warnings.length > 0) {
+        onWarnings?.(validation.warnings);
+      }
+      
+      await writer.writeSession(session);
+    }
+    
+    return sessions;
+  },
+};
+
+expose(edfParserWorker);
+
+export type EDFParserWorker = typeof edfParserWorker;
 ```
 
-**Main Thread**:
+**Usage from Main Thread**:
+
 ```typescript
-const worker = new Worker(new URL('./edf-parser.worker.ts', import.meta.url), { type: 'module' });
+import { wrap } from 'comlink';
+import type { EDFParserWorker } from './edf-parser.worker';
 
-worker.addEventListener('message', (event) => {
-  const { type, progress, total, warnings, sessions, error } = event.data;
+const worker = wrap<EDFParserWorker>(
+  new Worker(new URL('./edf-parser.worker.ts', import.meta.url), { type: 'module' })
+);
+
+try {
+  const sessions = await worker.parseFiles(
+    selectedFiles,
+    (progress, total) => updateProgressBar(progress, total),
+    (warnings) => displayWarnings(warnings)
+  );
   
-  switch (type) {
-    case 'PROGRESS':
-      updateProgressBar(progress, total);
-      break;
-    case 'WARNINGS':
-      displayWarnings(warnings);
-      break;
-    case 'COMPLETE':
-      navigateToDashboard(sessions);
-      break;
-    case 'ERROR':
-      displayError(error);
-      break;
-  }
-});
-
-worker.postMessage({ type: 'PARSE_FILES', files: selectedFiles });
+  navigateToDashboard(sessions);
+} catch (error) {
+  displayError(error);
+}
 ```
 
 ### 7.3 Incremental Import

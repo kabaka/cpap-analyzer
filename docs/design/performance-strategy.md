@@ -93,19 +93,25 @@ Performance is a **first-class architectural concern**, not an afterthought. Eve
 
 | Metric | Target | Acceptable | Notes |
 |--------|--------|------------|-------|
-| **Bundle size (initial, gzipped)** | < 150 KB | < 250 KB | Main app bundle without code-split chunks |
-| **Total JavaScript (all chunks, gzipped)** | < 500 KB | < 1 MB | Including all code-split routes |
-| **Total assets (fonts, images, CSS)** | < 100 KB | < 200 KB | Compressed |
+| **Bundle size (initial, gzipped)** | ≤150 KB | ≤200 KB | Main app bundle without code-split chunks |
+| **Route bundles (per route, gzipped)** | ≤75 KB | ≤100 KB | Code-split route chunks |
+| **Worker bundles (per worker, gzipped)** | ≤50 KB | ≤75 KB | ResMed parser and other workers |
+| **Vendor chunks (gzipped)** | ≤120 KB | ≤150 KB | React, Radix UI, shared dependencies |
+| **Total JavaScript (all chunks, gzipped)** | ≤500 KB | ≤1 MB | All bundles combined |
+| **CSS (total, gzipped)** | ≤30 KB | ≤50 KB | All stylesheets |
+| **Fonts (gzipped)** | ≤40 KB | ≤60 KB | Subsetted fonts (if any) |
 | **Time to Interactive (TTI)** | < 2s | < 3.5s | On 3G connection (1.6 Mbps) |
 | **Service Worker cache priming** | < 5s | < 10s | Background, non-blocking |
 | **IndexedDB schema initialization** | < 100ms | < 300ms | First launch only |
+
+**Note**: Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops-architecture.md) for detailed target breakdown and monitoring strategy.
 
 **Testing Methodology**: Lighthouse audit in lab environment with throttled 3G connection (1.6 Mbps, 150ms RTT). Clear cache between tests.
 
 ### 1.3 Memory Budgets
 
 | Component | Budget | Critical Threshold | Recovery Strategy |
-|-----------|--------|-------------------|-------------------|
+| --------- | ------ | ------------------ | ----------------- |
 | **React component tree** | < 50 MB | < 100 MB | Virtualization, unmount off-screen |
 | **Chart rendering (active)** | < 100 MB | < 200 MB | LOD downsampling, Canvas reuse |
 | **Analysis computation (Worker)** | < 200 MB | < 500 MB | Streaming algorithms, chunked processing |
@@ -116,6 +122,7 @@ Performance is a **first-class architectural concern**, not an afterthought. Eve
 **Monitoring**: Continuous heap snapshots during automated test runs. Critical threshold triggers warning in development console and telemetry flag.
 
 **Recovery Strategies**:
+
 - **Component unmounting**: Virtualized lists, route-based code splitting
 - **Cache eviction**: LRU with size-based limits
 - **Worker termination**: Terminate idle Workers after 30s
@@ -123,22 +130,33 @@ Performance is a **first-class architectural concern**, not an afterthought. Eve
 
 ### 1.4 Performance Budgets (Bundle Size)
 
-| Category | Budget (gzipped) | Budget (uncompressed) | Notes |
-|----------|-----------------|---------------------|-------|
-| **Core framework** | 50 KB | 150 KB | React, React-DOM, Router |
-| **State management** | 5 KB | 15 KB | Zustand |
-| **UI components** | 40 KB | 120 KB | Radix primitives + custom components |
-| **Charting libraries** | 80 KB | 250 KB | Recharts + D3 subset |
-| **Analysis engine** | 50 KB | 150 KB | Statistical algorithms, without Workers |
-| **Storage layer** | 20 KB | 60 KB | IndexedDB wrapper, OPFS utilities |
-| **Utilities & helpers** | 30 KB | 90 KB | Date formatting, validation, etc. |
-| **Machine plugins (initial)** | 40 KB | 120 KB | ResMed EDF parser |
-| **Service Worker** | 10 KB | 30 KB | Workbox runtime |
-| **Main bundle total** | **150 KB** | **450 KB** | Target initial load |
-| **Code-split chunks** | 350 KB | 1050 KB | Lazy-loaded routes/features |
-| **Grand total** | **500 KB** | **1500 KB** | All bundles combined |
+**Canonical Bundle Size Targets** (enforced in CI):
 
-**Enforcement**: CI checks fail if gzipped bundle exceeds budget by >10%. Monthly review and re-budgeting process.
+| Bundle Type | Target (gzipped) | Threshold (Fail CI) | Notes |
+| ----------- | ---------------- | ------------------- | ----- |
+| **Initial (main entry)** | ≤150 KB | ≤200 KB | Main app bundle with core framework |
+| **Route bundles (per route)** | ≤75 KB | ≤100 KB | Dashboard, Analysis, Settings, Help routes |
+| **Worker bundles (per worker)** | ≤50 KB | ≤75 KB | ResMed parser, analysis workers |
+| **Vendor chunks** | ≤120 KB | ≤150 KB | React, Radix UI, Zustand, shared deps |
+| **Total application** | ≤500 KB | ≤1 MB | All JavaScript bundles combined |
+| **CSS (total)** | ≤30 KB | ≤50 KB | All stylesheets |
+| **Fonts** | ≤40 KB | ≤60 KB | Subsetted fonts (if any) |
+
+**Component Budget Breakdown** (for planning and monitoring):
+
+| Component | Budget (gzipped) | Budget (uncompressed) | Notes |
+| --------- | ---------------- | --------------------- | ----- |
+| Core framework | ~45 KB | ~130 KB | React, React-DOM, Router |
+| State management | ~3 KB | ~10 KB | Zustand |
+| UI components | ~20 KB | ~60 KB | Radix primitives + custom components |
+| Charting libraries | ~80 KB | ~240 KB | Recharts + D3 subset (lazy-loaded) |
+| Analysis engine | ~50 KB | ~150 KB | Statistical algorithms |
+| Storage layer | ~15 KB | ~45 KB | IndexedDB wrapper, OPFS utilities |
+| Utilities & helpers | ~20 KB | ~60 KB | Date formatting, validation, etc. |
+| Machine plugins | ~40-50 KB | ~120-150 KB | ResMed EDF parser (per worker) |
+| Service Worker | ~10 KB | ~30 KB | Workbox runtime |
+
+**Enforcement**: Bundle size targets are enforced in CI/CD using `size-limit`. Builds fail if any bundle exceeds its threshold. See [devops-architecture.md](./devops-architecture.md) for detailed monitoring strategy and PR comment integration.
 
 ---
 
@@ -206,11 +224,15 @@ IndexedDB Open → Load Recent Sessions → Fetch Aggregates → Render Charts
 
 **Current Measurement (Target)**:
 - HTML: 5 KB gzipped → 2 KB target (inline critical CSS + shell)
-- Main JS bundle: 180 KB gzipped → **150 KB target**
-- CSS: 15 KB gzipped → 10 KB target
-- Fonts: 0 (system fonts) → 0 (no custom fonts)
+- Main JS bundle: Must be ≤150 KB target / ≤200 KB threshold (enforced in CI)
+- Route bundles: Must be ≤75 KB target / ≤100 KB threshold per route
+- Worker bundles: Must be ≤50 KB target / ≤75 KB threshold per worker
+- Vendor chunks: Must be ≤120 KB target / ≤150 KB threshold
+- Total JS: Must be ≤500 KB target / ≤1 MB threshold
+- CSS: Must be ≤30 KB target / ≤50 KB threshold
+- Fonts: ≤40 KB target / ≤60 KB threshold (system fonts preferred)
 
-**Monitoring**: Lighthouse CI on every PR. LCP regression > 200ms fails CI.
+**Monitoring**: Lighthouse CI on every PR. LCP regression > 200ms fails CI. Bundle size targets are enforced via `size-limit` (see [devops-architecture.md](./devops-architecture.md)).
 
 ### 2.3 Path: Import & Parsing Workflow
 
@@ -256,7 +278,7 @@ Update UI Progress → (Next session)
 
 3. **Zero-copy transfers**:
    - Transfer `ArrayBuffer` ownership to Worker (not structured clone)
-   - Use `postMessage(buffer, [buffer])` with transferable
+   - Use Comlink's `transfer()` helper for transferable objects
    - Worker transfers result buffers back to main thread
 
 4. **Batched storage writes**:
@@ -785,14 +807,18 @@ class ManagedWorker {
 **Transferable Objects**:
 
 ```typescript
-// ❌ Bad: Structured clone (slow, duplicates memory)
-worker.postMessage(largeArrayBuffer);
+import { transfer } from 'comlink';
 
-// ✅ Good: Transfer ownership (zero-copy, fast)
-worker.postMessage(largeArrayBuffer, [largeArrayBuffer]);
+// ❌ Bad: No transfer specified (Comlink will structured clone)
+await worker.processData(largeArrayBuffer);
+
+// ✅ Good: Transfer ownership using Comlink's transfer() (zero-copy, fast)
+await worker.processData(transfer(largeArrayBuffer, [largeArrayBuffer]));
 
 // After transfer, largeArrayBuffer is neutered (no longer usable in main thread)
 ```
+
+**Note**: Comlink automatically handles the underlying `postMessage` with transferable list.
 
 **Expected Impact**:
 - EDF parsing: **5s → 1s** (5× faster with parallel Workers)
@@ -2008,30 +2034,28 @@ export async function executePlugin(plugin: AnalysisPlugin, input: AnalysisInput
 }
 
 // Memory monitoring
-function executeInWorker(plugin: AnalysisPlugin, input: AnalysisInput): Promise<AnalysisOutput> {
-  const worker = new Worker(plugin.workerUrl);
+async function executeInWorker(plugin: AnalysisPlugin, input: AnalysisInput): Promise<AnalysisOutput> {
+  const workerInstance = new Worker(plugin.workerUrl, { type: 'module' });
+  const worker = wrap<PluginWorkerAPI>(workerInstance);
   
   // Monitor memory usage
   const memoryCheck = setInterval(() => {
     if (performance.memory && performance.memory.usedJSHeapSize > MEMORY_LIMIT) {
-      worker.terminate();
+      workerInstance.terminate();
       throw new Error('Plugin exceeded memory limit');
     }
   }, 1000);
   
-  return new Promise((resolve, reject) => {
-    worker.postMessage(input);
-    worker.onmessage = (e) => {
-      clearInterval(memoryCheck);
-      worker.terminate();
-      resolve(e.data);
-    };
-    worker.onerror = (e) => {
-      clearInterval(memoryCheck);
-      worker.terminate();
-      reject(e);
-    };
-  });
+  try {
+    const result = await worker.execute(input);
+    clearInterval(memoryCheck);
+    workerInstance.terminate();
+    return result;
+  } catch (error) {
+    clearInterval(memoryCheck);
+    workerInstance.terminate();
+    throw error;
+  }
 }
 ```
 

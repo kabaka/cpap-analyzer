@@ -368,9 +368,1708 @@ interface WeatherDayData {
 
 ---
 
-## 3. OPFS Signal Storage
+## 3. Schema Versioning and Migration Strategy
 
-### 3.1 Directory Structure
+### 3.1 Overview
+
+The CPAP Analyzer storage layer must support schema evolution as new features are added, data structures are optimized, and storage formats change. This section defines the complete migration strategy from version detection through execution, testing, and user communication.
+
+**Design Principles**:
+
+- **Zero data loss**: Migrations must never delete or corrupt user data
+- **Fail-safe**: Failed migrations must be detectable and recoverable
+- **Resumable**: Long-running migrations must support pause/resume
+- **Transparent**: Users must understand what's happening and why
+- **Performance-aware**: Migrations should not block app usage when possible
+
+### 3.2 Version Detection and Startup Flow
+
+**On Application Startup**:
+
+```typescript
+async function initializeStorage(): Promise<void> {
+  // 1. Open IndexedDB to detect schema version
+  const db = await openDatabase();
+  const currentSchemaVersion = await getCurrentSchemaVersion(db);
+  const appSchemaVersion = APP_SCHEMA_VERSION; // Current app version
+  
+  // 2. Determine if migration is required
+  if (currentSchemaVersion === appSchemaVersion) {
+    // No migration needed
+    return;
+  } else if (currentSchemaVersion > appSchemaVersion) {
+    // Data is from newer app version - incompatible
+    throw new IncompatibleVersionError(
+      `Data schema version ${currentSchemaVersion} is newer than app version ${appSchemaVersion}. ` +
+      `Please update the application.`
+    );
+  } else {
+    // Migration required
+    await runMigrationPipeline(currentSchemaVersion, appSchemaVersion);
+  }
+  
+  // 3. Verify post-migration integrity
+  await verifyDataIntegrity();
+}
+
+async function getCurrentSchemaVersion(db: IDBDatabase): Promise<number> {
+  const tx = db.transaction('settings', 'readonly');
+  const settings = tx.objectStore('settings');
+  const versionRecord = await settings.get('schema_version');
+  return versionRecord?.value ?? 1; // Default to version 1
+}
+```
+
+### 3.3 Migration Execution Framework
+
+**Migration Runner Architecture**:
+
+```typescript
+interface Migration {
+  version: number;              // Target version this migration produces
+  description: string;          // Human-readable description
+  estimatedDurationMs: number;  // For progress calculation
+  dependencies: number[];       // Must run after these versions
+  up: MigrationFunction;        // Forward migration
+  down: MigrationFunction;      // Rollback (optional, best-effort)
+  verify: VerificationFunction; // Post-migration integrity check
+}
+
+type MigrationFunction = (
+  context: MigrationContext
+) => Promise<void>;
+
+type VerificationFunction = (
+  context: MigrationContext
+) => Promise<MigrationVerificationResult>;
+
+interface MigrationContext {
+  db: IDBDatabase;              // IndexedDB connection
+  opfsRoot: FileSystemDirectoryHandle; // OPFS root directory
+  progress: MigrationProgressReporter;
+  signal: AbortSignal;          // For cancellation
+  storage: Map<string, unknown>; // Pass data between migrations
+}
+
+interface MigrationProgressReporter {
+  setTotal(items: number): void;
+  setProgress(items: number): void;
+  setMessage(message: string): void;
+}
+
+interface MigrationVerificationResult {
+  success: boolean;
+  errors: string[];
+  warnings: string[];
+}
+```
+
+**Migration Registry**:
+
+```typescript
+// src/storage/migrations/registry.ts
+const MIGRATIONS: Migration[] = [
+  migration_001_add_tags_to_sessions,
+  migration_002_add_oximetry_indices,
+  migration_003_compressed_signal_chunks,
+  migration_004_add_integration_store,
+  migration_005_expand_event_types,
+  // ... future migrations
+];
+
+function getMigrationsToRun(
+  fromVersion: number,
+  toVersion: number
+): Migration[] {
+  // Get all migrations between versions
+  const migrations = MIGRATIONS.filter(
+    m => m.version > fromVersion && m.version <= toVersion
+  );
+  
+  // Sort by version (and dependency order)
+  return topologicalSort(migrations);
+}
+
+function topologicalSort(migrations: Migration[]): Migration[] {
+  const sorted: Migration[] = [];
+  const visited = new Set<number>();
+  
+  function visit(migration: Migration) {
+    if (visited.has(migration.version)) return;
+    
+    // Visit dependencies first
+    for (const depVersion of migration.dependencies) {
+      const dep = migrations.find(m => m.version === depVersion);
+      if (dep) visit(dep);
+    }
+    
+    visited.add(migration.version);
+    sorted.push(migration);
+  }
+  
+  migrations.forEach(visit);
+  return sorted;
+}
+```
+
+**Migration Execution Pipeline**:
+
+```typescript
+async function runMigrationPipeline(
+  fromVersion: number,
+  toVersion: number
+): Promise<void> {
+  const migrations = getMigrationsToRun(fromVersion, toVersion);
+  
+  if (migrations.length === 0) {
+    return; // No migrations needed
+  }
+  
+  // Show migration UI
+  const ui = await showMigrationUI(migrations);
+  const abortController = new AbortController();
+  
+  try {
+    // Create migration context
+    const db = await openDatabase();
+    const opfsRoot = await navigator.storage.getDirectory();
+    const context: MigrationContext = {
+      db,
+      opfsRoot,
+      progress: ui.progressReporter,
+      signal: abortController.signal,
+      storage: new Map(),
+    };
+    
+    // Execute migrations in order
+    for (const migration of migrations) {
+      ui.setCurrentMigration(migration);
+      
+      // Create savepoint (logical, not database-level)
+      const savepoint = await createSavepoint(context);
+      
+      try {
+        // Run migration
+        await migration.up(context);
+        
+        // Verify migration
+        const verification = await migration.verify(context);
+        if (!verification.success) {
+          throw new MigrationError(
+            `Migration ${migration.version} verification failed: ${verification.errors.join(', ')}`
+          );
+        }
+        
+        // Update schema version
+        await updateSchemaVersion(db, migration.version);
+        
+        // Commit savepoint
+        await commitSavepoint(savepoint);
+        
+      } catch (error) {
+        // Rollback to savepoint
+        ui.showError(migration, error);
+        if (migration.down) {
+          await migration.down(context);
+        }
+        await rollbackToSavepoint(savepoint);
+        throw new MigrationError(
+          `Migration ${migration.version} failed: ${error.message}`,
+          { cause: error }
+        );
+      }
+    }
+    
+    ui.showSuccess();
+    
+  } finally {
+    ui.close();
+  }
+}
+
+async function updateSchemaVersion(
+  db: IDBDatabase,
+  version: number
+): Promise<void> {
+  const tx = db.transaction('settings', 'readwrite');
+  const settings = tx.objectStore('settings');
+  await settings.put({
+    key: 'schema_version',
+    value: version,
+    updatedAt: new Date().toISOString(),
+  });
+  await tx.complete;
+}
+```
+
+### 3.4 Migration Types
+
+#### 3.4.1 IndexedDB Schema Migrations
+
+**Adding a New Object Store**:
+
+```typescript
+const migration_004_add_integration_store: Migration = {
+  version: 4,
+  description: 'Add integration_data store for external data sources',
+  estimatedDurationMs: 100,
+  dependencies: [],
+  
+  async up(context) {
+    const { db } = context;
+    
+    // Note: IndexedDB schema changes require version upgrade
+    // This is handled in the onupgradeneeded handler
+    // Here we just ensure the store exists
+    if (!db.objectStoreNames.contains('integration_data')) {
+      // This should not happen if version upgrade is handled correctly
+      throw new Error('integration_data store was not created during version upgrade');
+    }
+    
+    context.progress.setMessage('Integration data store created');
+  },
+  
+  async down(context) {
+    // Cannot delete object stores after database is opened
+    // Must be done in version upgrade handler
+    throw new Error('Cannot rollback IndexedDB schema changes');
+  },
+  
+  async verify(context) {
+    const { db } = context;
+    const exists = db.objectStoreNames.contains('integration_data');
+    return {
+      success: exists,
+      errors: exists ? [] : ['integration_data store does not exist'],
+      warnings: [],
+    };
+  },
+};
+
+// Companion onupgradeneeded handler:
+function onUpgradeNeeded(event: IDBVersionChangeEvent) {
+  const db = (event.target as IDBOpenDBRequest).result;
+  const oldVersion = event.oldVersion;
+  
+  if (oldVersion < 4) {
+    const store = db.createObjectStore('integration_data', { keyPath: 'id' });
+    store.createIndex('source', 'source', { unique: false });
+    store.createIndex('date', 'date', { unique: false });
+    store.createIndex('source+date', ['source', 'date'], { unique: true });
+  }
+}
+```
+
+**Adding a New Index**:
+
+```typescript
+const migration_001_add_tags_to_sessions: Migration = {
+  version: 2,
+  description: 'Add tags array to sessions for user categorization',
+  estimatedDurationMs: 5000,
+  dependencies: [],
+  
+  async up(context) {
+    const { db, progress } = context;
+    
+    // Add tags field to all existing sessions
+    const tx = db.transaction('sessions', 'readwrite');
+    const store = tx.objectStore('sessions');
+    const sessions = await store.getAll();
+    
+    progress.setTotal(sessions.length);
+    progress.setMessage('Adding tags field to sessions');
+    
+    for (let i = 0; i < sessions.length; i++) {
+      const session = sessions[i];
+      session.tags = session.tags || [];
+      await store.put(session);
+      progress.setProgress(i + 1);
+    }
+    
+    await tx.complete;
+  },
+  
+  async down(context) {
+    const { db } = context;
+    
+    // Remove tags field from all sessions
+    const tx = db.transaction('sessions', 'readwrite');
+    const store = tx.objectStore('sessions');
+    const sessions = await store.getAll();
+    
+    for (const session of sessions) {
+      delete session.tags;
+      await store.put(session);
+    }
+    
+    await tx.complete;
+  },
+  
+  async verify(context) {
+    const { db } = context;
+    
+    const tx = db.transaction('sessions', 'readonly');
+    const store = tx.objectStore('sessions');
+    const sessions = await store.getAll();
+    
+    const errors: string[] = [];
+    sessions.forEach((session, i) => {
+      if (!Array.isArray(session.tags)) {
+        errors.push(`Session ${i} missing tags array`);
+      }
+    });
+    
+    return {
+      success: errors.length === 0,
+      errors,
+      warnings: [],
+    };
+  },
+};
+```
+
+#### 3.4.2 OPFS File Format Migrations
+
+**Changing Signal Chunk Format**:
+
+```typescript
+const migration_003_compressed_signal_chunks: Migration = {
+  version: 3,
+  description: 'Compress signal chunks using zstd for 60% storage reduction',
+  estimatedDurationMs: 300000, // 5 minutes for typical dataset
+  dependencies: [],
+  
+  async up(context) {
+    const { db, opfsRoot, progress, signal } = context;
+    
+    // Get all sessions with signal data
+    const tx = db.transaction('sessions', 'readonly');
+    const sessions = await tx.objectStore('sessions').getAll();
+    const sessionsWithSignals = sessions.filter(s => s.signalChunkIds.length > 0);
+    
+    progress.setTotal(sessionsWithSignals.length);
+    progress.setMessage('Compressing signal chunks');
+    
+    const signalsDir = await opfsRoot.getDirectoryHandle('signals');
+    
+    for (let i = 0; i < sessionsWithSignals.length; i++) {
+      if (signal.aborted) throw new Error('Migration cancelled');
+      
+      const session = sessionsWithSignals[i];
+      const sessionDir = await signalsDir.getDirectoryHandle(session.id);
+      
+      // Read manifest
+      const manifestFile = await sessionDir.getFileHandle('manifest.json');
+      const manifestData = await (await manifestFile.getFile()).text();
+      const manifest = JSON.parse(manifestData);
+      
+      // Check if already compressed
+      if (manifest.compression === 'zstd') {
+        progress.setProgress(i + 1);
+        continue;
+      }
+      
+      // Compress each chunk
+      for (const chunkFile of manifest.chunks) {
+        const handle = await sessionDir.getFileHandle(chunkFile.filename);
+        const file = await handle.getFile();
+        const arrayBuffer = await file.arrayBuffer();
+        
+        // Compress using zstd
+        const compressed = await compressZstd(arrayBuffer);
+        
+        // Write compressed version
+        const writable = await handle.createWritable();
+        await writable.write(compressed);
+        await writable.close();
+        
+        // Update chunk metadata
+        chunkFile.compressedSize = compressed.byteLength;
+      }
+      
+      // Update manifest
+      manifest.compression = 'zstd';
+      manifest.version = 3;
+      const manifestWritable = await manifestFile.createWritable();
+      await manifestWritable.write(JSON.stringify(manifest, null, 2));
+      await manifestWritable.close();
+      
+      progress.setProgress(i + 1);
+    }
+  },
+  
+  async down(context) {
+    const { db, opfsRoot, progress } = context;
+    
+    // Decompress all chunks back to raw format
+    const tx = db.transaction('sessions', 'readonly');
+    const sessions = await tx.objectStore('sessions').getAll();
+    const sessionsWithSignals = sessions.filter(s => s.signalChunkIds.length > 0);
+    
+    progress.setTotal(sessionsWithSignals.length);
+    const signalsDir = await opfsRoot.getDirectoryHandle('signals');
+    
+    for (const session of sessionsWithSignals) {
+      const sessionDir = await signalsDir.getDirectoryHandle(session.id);
+      const manifestFile = await sessionDir.getFileHandle('manifest.json');
+      const manifestData = await (await manifestFile.getFile()).text();
+      const manifest = JSON.parse(manifestData);
+      
+      if (manifest.compression !== 'zstd') continue;
+      
+      for (const chunkFile of manifest.chunks) {
+        const handle = await sessionDir.getFileHandle(chunkFile.filename);
+        const file = await handle.getFile();
+        const compressed = await file.arrayBuffer();
+        const decompressed = await decompressZstd(compressed);
+        
+        const writable = await handle.createWritable();
+        await writable.write(decompressed);
+        await writable.close();
+      }
+      
+      manifest.compression = 'none';
+      manifest.version = 2;
+      const manifestWritable = await manifestFile.createWritable();
+      await manifestWritable.write(JSON.stringify(manifest, null, 2));
+      await manifestWritable.close();
+    }
+  },
+  
+  async verify(context) {
+    const { db, opfsRoot } = context;
+    
+    const tx = db.transaction('sessions', 'readonly');
+    const sessions = await tx.objectStore('sessions').getAll();
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    
+    const signalsDir = await opfsRoot.getDirectoryHandle('signals');
+    
+    for (const session of sessions) {
+      if (session.signalChunkIds.length === 0) continue;
+      
+      try {
+        const sessionDir = await signalsDir.getDirectoryHandle(session.id);
+        const manifestFile = await sessionDir.getFileHandle('manifest.json');
+        const manifestData = await (await manifestFile.getFile()).text();
+        const manifest = JSON.parse(manifestData);
+        
+        if (manifest.compression !== 'zstd') {
+          warnings.push(`Session ${session.id} not compressed`);
+        }
+        
+        if (manifest.version !== 3) {
+          errors.push(`Session ${session.id} manifest version mismatch`);
+        }
+      } catch (error) {
+        errors.push(`Session ${session.id} verification failed: ${error.message}`);
+      }
+    }
+    
+    return {
+      success: errors.length === 0,
+      errors,
+      warnings,
+    };
+  },
+};
+```
+
+#### 3.4.3 Metadata Structure Migrations
+
+Handled similarly to IndexedDB migrations - update field structures, add/remove fields, transform data shapes.
+
+#### 3.4.4 Backwards Compatibility Windows
+
+**Policy**:
+
+- **Current version (N)**: Reads data from versions N, N-1, N-2
+- **Grace period**: 6 months (approximately 6 releases on monthly cadence)
+- **After grace period**: Force migration on app startup
+
+**Implementation**:
+
+```typescript
+const BACKWARDS_COMPATIBILITY_VERSIONS = 3;
+
+function isDataCompatible(dataVersion: number, appVersion: number): boolean {
+  return (
+    dataVersion >= appVersion - BACKWARDS_COMPATIBILITY_VERSIONS &&
+    dataVersion <= appVersion
+  );
+}
+
+function shouldForceMigration(dataVersion: number, appVersion: number): boolean {
+  return dataVersion < appVersion - BACKWARDS_COMPATIBILITY_VERSIONS;
+}
+```
+
+### 3.5 Progressive Migration Strategies
+
+#### 3.5.1 Lazy Migration (Migrate-on-Access)
+
+For non-critical structure changes, migrate data only when accessed:
+
+```typescript
+async function getSession(id: string): Promise<Session> {
+  const raw = await getRawSession(id);
+  
+  // Check if session needs migration
+  if (raw._version < CURRENT_SESSION_VERSION) {
+    const migrated = await migrateSession(raw);
+    await saveSession(migrated);
+    return migrated;
+  }
+  
+  return raw;
+}
+```
+
+**Use cases**:
+
+- Adding optional fields
+- Changing display formats
+- Non-indexed field transformations
+
+#### 3.5.2 Background Migration (Non-Blocking)
+
+For large migrations that don't affect immediate app usage:
+
+```typescript
+async function startBackgroundMigration(
+  migration: Migration,
+  context: MigrationContext
+): Promise<BackgroundMigrationHandle> {
+  const worker = new Worker('/workers/migrator.js');
+  const handle = new BackgroundMigrationHandle(worker);
+  
+  worker.postMessage({
+    type: 'START_MIGRATION',
+    migration: migration,
+    context: serializeContext(context),
+  });
+  
+  // App continues running
+  // Migration progresses in background
+  // User can check status via handle
+  
+  return handle;
+}
+
+class BackgroundMigrationHandle {
+  constructor(private worker: Worker) {}
+  
+  async getProgress(): Promise<MigrationProgress> {
+    return new Promise((resolve) => {
+      this.worker.postMessage({ type: 'GET_PROGRESS' });
+      this.worker.addEventListener('message', (event) => {
+        if (event.data.type === 'PROGRESS') {
+          resolve(event.data.progress);
+        }
+      }, { once: true });
+    });
+  }
+  
+  async pause(): Promise<void> {
+    this.worker.postMessage({ type: 'PAUSE' });
+  }
+  
+  async resume(): Promise<void> {
+    this.worker.postMessage({ type: 'RESUME' });
+  }
+  
+  async cancel(): Promise<void> {
+    this.worker.postMessage({ type: 'CANCEL' });
+    this.worker.terminate();
+  }
+}
+```
+
+**Use cases**:
+
+- Signal format optimization (compression)
+- Index rebuilding
+- Cache regeneration
+
+#### 3.5.3 Batch Migration with Pause/Resume
+
+For migrations that process large numbers of items:
+
+```typescript
+interface MigrationCheckpoint {
+  migrationVersion: number;
+  lastProcessedId: string | null;
+  itemsProcessed: number;
+  itemsTotal: number;
+  startedAt: string;
+  state: 'running' | 'paused' | 'failed';
+}
+
+async function batchMigration(
+  migration: Migration,
+  context: MigrationContext,
+  batchSize: number = 100
+): Promise<void> {
+  // Load checkpoint if exists
+  let checkpoint = await loadCheckpoint(migration.version);
+  
+  if (!checkpoint) {
+    checkpoint = {
+      migrationVersion: migration.version,
+      lastProcessedId: null,
+      itemsProcessed: 0,
+      itemsTotal: await countItems(context),
+      startedAt: new Date().toISOString(),
+      state: 'running',
+    };
+  }
+  
+  // Process in batches
+  while (checkpoint.itemsProcessed < checkpoint.itemsTotal) {
+    if (context.signal.aborted) {
+      checkpoint.state = 'paused';
+      await saveCheckpoint(checkpoint);
+      throw new Error('Migration paused');
+    }
+    
+    // Process next batch
+    const items = await getNextBatch(
+      context,
+      checkpoint.lastProcessedId,
+      batchSize
+    );
+    
+    for (const item of items) {
+      await migration.up(context, item);
+      checkpoint.lastProcessedId = item.id;
+      checkpoint.itemsProcessed++;
+    }
+    
+    // Save progress
+    await saveCheckpoint(checkpoint);
+    context.progress.setProgress(checkpoint.itemsProcessed);
+    
+    // Yield to prevent blocking
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  
+  // Complete
+  await deleteCheckpoint(migration.version);
+}
+```
+
+### 3.6 Version Compatibility Matrix
+
+| App Version     | Can Read Data Versions | Must Migrate Versions | Grace Period Ends |
+| --------------- | ---------------------- | --------------------- | ----------------- |
+| 2026.02.1 (v1)  | 1                      | —                     | —                 |
+| 2026.03.1 (v2)  | 1-2                    | —                     | 2026.09.1         |
+| 2026.04.1 (v3)  | 1-3                    | —                     | 2026.10.1         |
+| 2026.05.1 (v4)  | 2-4                    | 1                     | 2026.11.1         |
+| 2026.06.1 (v5)  | 3-5                    | 1-2                   | 2026.12.1         |
+
+**Breaking Change Policy**:
+
+- Breaking changes require major version increment
+- Minimum 6 months notice via in-app warnings
+- Clear migration path documented
+- Export/import tool provided for manual migration
+
+**Example Warning**:
+
+```typescript
+async function checkVersionDeprecation(): Promise<void> {
+  const dataVersion = await getCurrentSchemaVersion();
+  const appVersion = APP_SCHEMA_VERSION;
+  
+  if (dataVersion < appVersion - 2) {
+    showWarning(
+      'Your data will require migration soon',
+      `You are using data version ${dataVersion}, but the app is on version ${appVersion}. ` +
+      `Support for version ${dataVersion} will end on ${getGracePeriodEnd(dataVersion)}. ` +
+      `Please run the migration tool in Settings > Storage > Migrate Data.`
+    );
+  }
+}
+```
+
+### 3.7 User Communication
+
+#### 3.7.1 Migration UI Components
+
+**Migration Dialog**:
+
+```typescript
+interface MigrationUIProps {
+  migrations: Migration[];
+  onStart: () => void;
+  onCancel: () => void;
+}
+
+function MigrationDialog({ migrations, onStart, onCancel }: MigrationUIProps) {
+  const totalEstimatedMs = migrations.reduce(
+    (sum, m) => sum + m.estimatedDurationMs,
+    0
+  );
+  const estimatedMinutes = Math.ceil(totalEstimatedMs / 60000);
+  
+  return (
+    <Dialog>
+      <DialogTitle>Data Migration Required</DialogTitle>
+      <DialogContent>
+        <Typography>
+          The application needs to update your data storage format to support new features.
+        </Typography>
+        
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle2">Changes:</Typography>
+          <List>
+            {migrations.map(m => (
+              <ListItem key={m.version}>
+                <ListItemText primary={m.description} />
+              </ListItem>
+            ))}
+          </List>
+        </Box>
+        
+        <Alert severity="info">
+          <Typography>
+            Estimated time: {estimatedMinutes} minute{estimatedMinutes !== 1 ? 's' : ''}
+          </Typography>
+          <Typography variant="body2">
+            Do not close the browser during migration. Your data will not be deleted.
+          </Typography>
+        </Alert>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onCancel}>Cancel</Button>
+        <Button onClick={onStart} variant="contained">Start Migration</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+```
+
+**Progress Indicator**:
+
+```typescript
+interface MigrationProgressProps {
+  currentMigration: Migration;
+  progress: number; // 0-1
+  message: string;
+  itemsProcessed: number;
+  itemsTotal: number;
+  timeElapsed: number; // seconds
+  timeRemaining: number | null; // seconds
+}
+
+function MigrationProgress(props: MigrationProgressProps) {
+  return (
+    <Box>
+      <Typography variant="h6">
+        Migrating: {props.currentMigration.description}
+      </Typography>
+      
+      <LinearProgress
+        variant="determinate"
+        value={props.progress * 100}
+        sx={{ my: 2 }}
+      />
+      
+      <Typography variant="body2" color="text.secondary">
+        {props.message}
+      </Typography>
+      
+      <Typography variant="body2" color="text.secondary">
+        {props.itemsProcessed} / {props.itemsTotal} items
+      </Typography>
+      
+      {props.timeRemaining !== null && (
+        <Typography variant="body2" color="text.secondary">
+          Time remaining: {formatDuration(props.timeRemaining)}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+```
+
+#### 3.7.2 App Usage During Migration
+
+**Policy by Migration Type**:
+
+| Migration Type          | App Blocking | Reason                                      |
+| ----------------------- | ------------ | ------------------------------------------- |
+| IndexedDB schema change | ✅ Block     | Cannot open database during version upgrade |
+| Add field to sessions   | ✅ Block     | Ensure consistency across all records       |
+| Signal compression      | ❌ Allow     | Background process, signals still readable  |
+| Index rebuild           | ❌ Allow     | Queries still work (slower)                 |
+| Cache regeneration      | ❌ Allow     | Optional performance optimization           |
+
+**Implementation**:
+
+```typescript
+function shouldBlockApp(migration: Migration): boolean {
+  return migration.blocking ?? true; // Default to blocking for safety
+}
+
+async function runMigrationWithAppState(
+  migration: Migration,
+  context: MigrationContext
+): Promise<void> {
+  if (shouldBlockApp(migration)) {
+    // Show full-screen migration overlay
+    showMigrationOverlay(migration, context);
+    await migration.up(context);
+    hideMigrationOverlay();
+  } else {
+    // Show non-intrusive notification
+    showMigrationNotification(migration);
+    await startBackgroundMigration(migration, context);
+  }
+}
+```
+
+#### 3.7.3 Migration Failure Recovery
+
+**User-Facing Error Message**:
+
+```typescript
+interface MigrationErrorDialogProps {
+  migration: Migration;
+  error: Error;
+  canRetry: boolean;
+  canRollback: boolean;
+  onRetry: () => void;
+  onRollback: () => void;
+  onContactSupport: () => void;
+}
+
+function MigrationErrorDialog(props: MigrationErrorDialogProps) {
+  return (
+    <Dialog>
+      <DialogTitle>Migration Failed</DialogTitle>
+      <DialogContent>
+        <Alert severity="error">
+          <Typography>
+            The data migration could not be completed.
+          </Typography>
+        </Alert>
+        
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle2">
+            Migration: {props.migration.description}
+          </Typography>
+          <Typography variant="body2" color="error">
+            Error: {props.error.message}
+          </Typography>
+        </Box>
+        
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Your data has not been modified. You can:
+          <ul>
+            {props.canRetry && <li>Retry the migration</li>}
+            {props.canRollback && <li>Rollback to the previous version</li>}
+            <li>Export your data and report the issue</li>
+          </ul>
+        </Alert>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={props.onContactSupport}>Export & Report</Button>
+        {props.canRollback && (
+          <Button onClick={props.onRollback}>Rollback</Button>
+        )}
+        {props.canRetry && (
+          <Button onClick={props.onRetry} variant="contained">Retry</Button>
+        )}
+      </DialogActions>
+    </Dialog>
+  );
+}
+```
+
+### 3.8 Migration Testing Strategy
+
+#### 3.8.1 Test Data Generation
+
+Generate realistic data sets for each schema version:
+
+```typescript
+// test/fixtures/migrations/generate-v1-data.ts
+export async function generateV1TestData(): Promise<void> {
+  const db = await openDatabase(); // Force version 1
+  
+  // Create sample sessions with v1 schema
+  const sessions: SessionV1[] = [
+    {
+      id: uuid(),
+      machineId: 'TEST-001',
+      date: '2026-01-01',
+      // ... v1 fields only
+    },
+    // ... more sessions
+  ];
+  
+  const tx = db.transaction('sessions', 'readwrite');
+  for (const session of sessions) {
+    await tx.objectStore('sessions').add(session);
+  }
+  await tx.complete;
+  
+  // Set schema version to 1
+  await setSchemaVersion(db, 1);
+}
+```
+
+#### 3.8.2 Automated Migration Tests
+
+```typescript
+// test/storage/migrations/migration-001.test.ts
+describe('Migration 001: Add tags to sessions', () => {
+  beforeEach(async () => {
+    await clearDatabase();
+    await generateV1TestData();
+  });
+  
+  it('should add empty tags array to all sessions', async () => {
+    const db = await openDatabase();
+    const context = createTestContext(db);
+    
+    await migration_001_add_tags_to_sessions.up(context);
+    
+    const tx = db.transaction('sessions', 'readonly');
+    const sessions = await tx.objectStore('sessions').getAll();
+    
+    sessions.forEach(session => {
+      expect(session.tags).toBeDefined();
+      expect(Array.isArray(session.tags)).toBe(true);
+    });
+  });
+  
+  it('should preserve existing session data', async () => {
+    const db = await openDatabase();
+    const context = createTestContext(db);
+    
+    // Get original data
+    const originalSessions = await getAllSessions(db);
+    
+    await migration_001_add_tags_to_sessions.up(context);
+    
+    // Get migrated data
+    const migratedSessions = await getAllSessions(db);
+    
+    // Verify all fields except tags are unchanged
+    migratedSessions.forEach((migrated, i) => {
+      const original = originalSessions[i];
+      expect(migrated.id).toBe(original.id);
+      expect(migrated.machineId).toBe(original.machineId);
+      expect(migrated.date).toBe(original.date);
+      // ... check all fields
+    });
+  });
+  
+  it('should pass verification after migration', async () => {
+    const db = await openDatabase();
+    const context = createTestContext(db);
+    
+    await migration_001_add_tags_to_sessions.up(context);
+    
+    const result = await migration_001_add_tags_to_sessions.verify(context);
+    
+    expect(result.success).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+  
+  it('should be idempotent', async () => {
+    const db = await openDatabase();
+    const context = createTestContext(db);
+    
+    // Run migration twice
+    await migration_001_add_tags_to_sessions.up(context);
+    const firstResult = await getAllSessions(db);
+    
+    await migration_001_add_tags_to_sessions.up(context);
+    const secondResult = await getAllSessions(db);
+    
+    // Results should be identical
+    expect(secondResult).toEqual(firstResult);
+  });
+});
+```
+
+#### 3.8.3 Rollback Testing
+
+```typescript
+describe('Migration 001: Rollback', () => {
+  it('should successfully rollback migration', async () => {
+    const db = await openDatabase();
+    const context = createTestContext(db);
+    
+    // Run migration
+    await migration_001_add_tags_to_sessions.up(context);
+    
+    // Verify tags exist
+    let sessions = await getAllSessions(db);
+    sessions.forEach(s => expect(s.tags).toBeDefined());
+    
+    // Rollback
+    await migration_001_add_tags_to_sessions.down(context);
+    
+    // Verify tags removed
+    sessions = await getAllSessions(db);
+    sessions.forEach(s => expect(s.tags).toBeUndefined());
+  });
+});
+```
+
+#### 3.8.4 Data Integrity Verification
+
+```typescript
+describe('Migration Pipeline: Data Integrity', () => {
+  it('should maintain referential integrity across migrations', async () => {
+    await generateV1TestData();
+    
+    // Run all migrations from v1 to current
+    await runMigrationPipeline(1, CURRENT_VERSION);
+    
+    const db = await openDatabase();
+    
+    // Verify all sessions have corresponding aggregates
+    const sessions = await getAllSessions(db);
+    const aggregates = await getAllAggregates(db);
+    
+    sessions.forEach(session => {
+      const aggregate = aggregates.find(a => a.sessionId === session.id);
+      expect(aggregate).toBeDefined();
+    });
+    
+    // Verify all signal references are valid
+    for (const session of sessions) {
+      for (const chunkId of session.signalChunkIds) {
+        const exists = await signalChunkExists(chunkId);
+        expect(exists).toBe(true);
+      }
+    }
+  });
+  
+  it('should preserve all user data through migration chain', async () => {
+    await generateV1TestData();
+    
+    // Export all data before migration
+    const exportBefore = await exportAllData();
+    
+    // Run migrations
+    await runMigrationPipeline(1, CURRENT_VERSION);
+    
+    // Export all data after migration
+    const exportAfter = await exportAllData();
+    
+    // Compare critical data (adjusted for schema changes)
+    expect(exportAfter.sessions.length).toBe(exportBefore.sessions.length);
+    expect(exportAfter.events.length).toBe(exportBefore.events.length);
+    
+    // Verify signal data integrity
+    for (let i = 0; i < exportBefore.sessions.length; i++) {
+      const beforeSignals = await loadSignals(exportBefore.sessions[i].id);
+      const afterSignals = await loadSignals(exportAfter.sessions[i].id);
+      
+      // Signals should be identical (or losslessly transformed)
+      expect(afterSignals.flow).toBeCloseTo(beforeSignals.flow, 5);
+      expect(afterSignals.pressure).toBeCloseTo(beforeSignals.pressure, 5);
+    }
+  });
+});
+```
+
+#### 3.8.5 Performance Testing
+
+```typescript
+describe('Migration Performance', () => {
+  it('should complete large dataset migration within SLA', async () => {
+    // Generate 5 years of data
+    await generateLargeTestDataset({
+      years: 5,
+      nightsPerYear: 365,
+      avgEventsPerNight: 30,
+    });
+    
+    const startTime = performance.now();
+    await runMigrationPipeline(1, CURRENT_VERSION);
+    const duration = performance.now() - startTime;
+    
+    // Should complete in under 5 minutes for 5 years of data
+    expect(duration).toBeLessThan(300000);
+  });
+  
+  it('should provide accurate progress estimates', async () => {
+    await generateV1TestData();
+    
+    const progressReports: MigrationProgress[] = [];
+    const context = createTestContext(db, {
+      onProgress: (progress) => progressReports.push(progress),
+    });
+    
+    await migration_003_compressed_signal_chunks.up(context);
+    
+    // Verify progress goes from 0 to 100
+    expect(progressReports[0].progress).toBe(0);
+    expect(progressReports[progressReports.length - 1].progress).toBe(1);
+    
+    // Verify estimated time remaining decreases
+    for (let i = 1; i < progressReports.length - 1; i++) {
+      expect(progressReports[i].timeRemaining).toBeLessThan(
+        progressReports[i - 1].timeRemaining
+      );
+    }
+  });
+});
+```
+
+### 3.9 Example Migrations (Complete)
+
+#### 3.9.1 Example: Adding Index to Sessions Store
+
+This example demonstrates adding a new index to support filtering sessions by tags.
+
+**Migration Definition**:
+
+```typescript
+// src/storage/migrations/005-add-tags-index.ts
+export const migration_005_add_tags_index: Migration = {
+  version: 5,
+  description: 'Add tags index for efficient tag-based queries',
+  estimatedDurationMs: 100,
+  dependencies: [2], // Requires v2 which added tags field
+  blocking: true,
+  
+  async up(context) {
+    // Note: Index creation must happen in onupgradeneeded
+    // This migration verifies the index was created
+    const { db, progress } = context;
+    
+    progress.setMessage('Verifying tags index creation');
+    
+    // Verify index exists
+    const tx = db.transaction('sessions', 'readonly');
+    const store = tx.objectStore('sessions');
+    
+    if (!store.indexNames.contains('tags')) {
+      throw new Error('tags index was not created during version upgrade');
+    }
+    
+    // Test index functionality
+    const index = store.index('tags');
+    const testResults = await index.getAll('test');
+    
+    progress.setMessage('Tags index verified');
+  },
+  
+  async down(context) {
+    throw new Error('Cannot drop index after database is opened');
+  },
+  
+  async verify(context) {
+    const { db } = context;
+    
+    const tx = db.transaction('sessions', 'readonly');
+    const store = tx.objectStore('sessions');
+    const hasIndex = store.indexNames.contains('tags');
+    
+    return {
+      success: hasIndex,
+      errors: hasIndex ? [] : ['tags index does not exist'],
+      warnings: [],
+    };
+  },
+};
+
+// Companion IndexedDB upgrade handler
+export function upgradeToVersion5(db: IDBDatabase): void {
+  if (db.version >= 5) return;
+  
+  const tx = (db as any).transaction as IDBTransaction;
+  const store = tx.objectStore('sessions');
+  
+  // Create multiEntry index for tags array
+  store.createIndex('tags', 'tags', { 
+    unique: false, 
+    multiEntry: true // Allows querying by individual tag values
+  });
+}
+```
+
+**Test Suite**:
+
+```typescript
+// test/storage/migrations/005-add-tags-index.test.ts
+import { describe, it, expect, beforeEach } from 'vitest';
+
+describe('Migration 005: Add tags index', () => {
+  beforeEach(async () => {
+    await clearDatabase();
+    await generateV2TestData(); // v2 includes tags field
+  });
+  
+  it('should create tags index during upgrade', async () => {
+    // Open database with version 5
+    const db = await openDatabase(5);
+    
+    const tx = db.transaction('sessions', 'readonly');
+    const store = tx.objectStore('sessions');
+    
+    expect(store.indexNames.contains('tags')).toBe(true);
+  });
+  
+  it('should allow querying sessions by tag', async () => {
+    // Create test sessions with tags
+    const db = await openDatabase(5);
+    
+    const sessions: Session[] = [
+      {
+        id: uuid(),
+        tags: ['vacation', 'poor-sleep'],
+        // ... other fields
+      },
+      {
+        id: uuid(),
+        tags: ['vacation', 'good-sleep'],
+        // ... other fields
+      },
+      {
+        id: uuid(),
+        tags: ['work-night'],
+        // ... other fields
+      },
+    ];
+    
+    const tx = db.transaction('sessions', 'readwrite');
+    for (const session of sessions) {
+      await tx.objectStore('sessions').add(session);
+    }
+    await tx.complete;
+    
+    // Query by tag
+    const vacationTx = db.transaction('sessions', 'readonly');
+    const index = vacationTx.objectStore('sessions').index('tags');
+    const vacationSessions = await index.getAll('vacation');
+    
+    expect(vacationSessions).toHaveLength(2);
+    expect(vacationSessions.every(s => s.tags.includes('vacation'))).toBe(true);
+  });
+  
+  it('should support multiEntry index behavior', async () => {
+    const db = await openDatabase(5);
+    
+    // Add session with multiple tags
+    const session: Session = {
+      id: uuid(),
+      tags: ['tag1', 'tag2', 'tag3'],
+      // ... other fields
+    };
+    
+    const tx = db.transaction('sessions', 'readwrite');
+    await tx.objectStore('sessions').add(session);
+    await tx.complete;
+    
+    // Should find by any tag
+    const index = db.transaction('sessions', 'readonly')
+      .objectStore('sessions')
+      .index('tags');
+    
+    for (const tag of session.tags) {
+      const results = await index.getAll(tag);
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe(session.id);
+    }
+  });
+});
+```
+
+#### 3.9.2 Example: Changing Signal Chunk Format (Compression)
+
+This example shows a complete migration that transforms large binary data stored in OPFS.
+
+**Migration Definition**:
+
+```typescript
+// src/storage/migrations/008-signal-compression.ts
+import { compress, decompress } from '../compression/zstd';
+
+export const migration_008_signal_compression: Migration = {
+  version: 8,
+  description: 'Enable zstd compression for signal chunks (60% storage reduction)',
+  estimatedDurationMs: 180000, // 3 minutes for typical dataset
+  dependencies: [],
+  blocking: false, // Can run in background
+  
+  async up(context) {
+    const { db, opfsRoot, progress, signal } = context;
+    
+    progress.setMessage('Scanning sessions with signal data');
+    
+    // Get all sessions
+    const tx = db.transaction('sessions', 'readonly');
+    const allSessions = await tx.objectStore('sessions').getAll();
+    const sessionsWithSignals = allSessions.filter(
+      s => !s.deleted && s.signalChunkIds.length > 0
+    );
+    
+    progress.setTotal(sessionsWithSignals.length);
+    progress.setMessage(`Compressing ${sessionsWithSignals.length} sessions`);
+    
+    const signalsDir = await opfsRoot.getDirectoryHandle('signals');
+    let processed = 0;
+    
+    for (const session of sessionsWithSignals) {
+      if (signal.aborted) {
+        throw new Error('Migration cancelled by user');
+      }
+      
+      try {
+        await compressSessionSignals(session.id, signalsDir, progress);
+        processed++;
+        progress.setProgress(processed);
+      } catch (error) {
+        console.error(`Failed to compress session ${session.id}:`, error);
+        // Continue with other sessions
+      }
+    }
+    
+    progress.setMessage('Compression complete');
+  },
+  
+  async down(context) {
+    const { db, opfsRoot, progress } = context;
+    
+    progress.setMessage('Decompressing signal chunks');
+    
+    const tx = db.transaction('sessions', 'readonly');
+    const allSessions = await tx.objectStore('sessions').getAll();
+    const sessionsWithSignals = allSessions.filter(
+      s => !s.deleted && s.signalChunkIds.length > 0
+    );
+    
+    progress.setTotal(sessionsWithSignals.length);
+    
+    const signalsDir = await opfsRoot.getDirectoryHandle('signals');
+    let processed = 0;
+    
+    for (const session of sessionsWithSignals) {
+      await decompressSessionSignals(session.id, signalsDir);
+      processed++;
+      progress.setProgress(processed);
+    }
+  },
+  
+  async verify(context) {
+    const { db, opfsRoot } = context;
+    
+    const tx = db.transaction('sessions', 'readonly');
+    const allSessions = await tx.objectStore('sessions').getAll();
+    
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    
+    const signalsDir = await opfsRoot.getDirectoryHandle('signals');
+    
+    for (const session of allSessions) {
+      if (session.deleted || session.signalChunkIds.length === 0) {
+        continue;
+      }
+      
+      try {
+        const sessionDir = await signalsDir.getDirectoryHandle(session.id);
+        const manifestFile = await sessionDir.getFileHandle('manifest.json');
+        const manifestBlob = await manifestFile.getFile();
+        const manifestText = await manifestBlob.text();
+        const manifest = JSON.parse(manifestText);
+        
+        // Verify compression is enabled
+        if (manifest.compression !== 'zstd') {
+          warnings.push(
+            `Session ${session.id} manifest indicates no compression ` +
+            `(expected "zstd", got "${manifest.compression}")`
+          );
+        }
+        
+        // Verify all chunks are compressed
+        for (const chunk of manifest.chunks) {
+          if (!chunk.compressedSize || chunk.compressedSize === chunk.uncompressedSize) {
+            warnings.push(
+              `Session ${session.id} chunk ${chunk.filename} may not be compressed`
+            );
+          }
+        }
+        
+        // Verify manifest version
+        if (manifest.version < 8) {
+          errors.push(`Session ${session.id} manifest version outdated`);
+        }
+        
+      } catch (error) {
+        errors.push(`Session ${session.id}: ${error.message}`);
+      }
+    }
+    
+    return {
+      success: errors.length === 0,
+      errors,
+      warnings,
+    };
+  },
+};
+
+// Helper functions
+
+async function compressSessionSignals(
+  sessionId: string,
+  signalsDir: FileSystemDirectoryHandle,
+  progress: MigrationProgressReporter
+): Promise<void> {
+  const sessionDir = await signalsDir.getDirectoryHandle(sessionId);
+  
+  // Read manifest
+  const manifestHandle = await sessionDir.getFileHandle('manifest.json');
+  const manifestFile = await manifestHandle.getFile();
+  const manifestText = await manifestFile.text();
+  const manifest = JSON.parse(manifestText);
+  
+  // Check if already compressed
+  if (manifest.compression === 'zstd' && manifest.version >= 8) {
+    return; // Already migrated
+  }
+  
+  progress.setMessage(`Compressing ${sessionId}`);
+  
+  // Compress each chunk
+  for (let i = 0; i < manifest.chunks.length; i++) {
+    const chunkInfo = manifest.chunks[i];
+    const chunkHandle = await sessionDir.getFileHandle(chunkInfo.filename);
+    const chunkFile = await chunkHandle.getFile();
+    const uncompressed = await chunkFile.arrayBuffer();
+    
+    // Compress with zstd (level 3 is good balance of compression/speed)
+    const compressed = await compress(uncompressed, { level: 3 });
+    
+    // Write compressed data
+    const writable = await chunkHandle.createWritable();
+    await writable.write(compressed);
+    await writable.close();
+    
+    // Update chunk info
+    chunkInfo.compressedSize = compressed.byteLength;
+    chunkInfo.uncompressedSize = uncompressed.byteLength;
+    chunkInfo.compressionRatio = compressed.byteLength / uncompressed.byteLength;
+  }
+  
+  // Update manifest
+  manifest.compression = 'zstd';
+  manifest.compressionLevel = 3;
+  manifest.version = 8;
+  
+  const manifestWritable = await manifestHandle.createWritable();
+  await manifestWritable.write(JSON.stringify(manifest, null, 2));
+  await manifestWritable.close();
+}
+
+async function decompressSessionSignals(
+  sessionId: string,
+  signalsDir: FileSystemDirectoryHandle
+): Promise<void> {
+  const sessionDir = await signalsDir.getDirectoryHandle(sessionId);
+  
+  const manifestHandle = await sessionDir.getFileHandle('manifest.json');
+  const manifestFile = await manifestHandle.getFile();
+  const manifestText = await manifestFile.text();
+  const manifest = JSON.parse(manifestText);
+  
+  if (manifest.compression !== 'zstd') {
+    return; // Already uncompressed
+  }
+  
+  // Decompress each chunk
+  for (const chunkInfo of manifest.chunks) {
+    const chunkHandle = await sessionDir.getFileHandle(chunkInfo.filename);
+    const chunkFile = await chunkHandle.getFile();
+    const compressed = await chunkFile.arrayBuffer();
+    
+    const uncompressed = await decompress(compressed);
+    
+    const writable = await chunkHandle.createWritable();
+    await writable.write(uncompressed);
+    await writable.close();
+    
+    delete chunkInfo.compressedSize;
+    delete chunkInfo.compressionRatio;
+  }
+  
+  manifest.compression = 'none';
+  delete manifest.compressionLevel;
+  manifest.version = 7; // Revert to pre-compression version
+  
+  const manifestWritable = await manifestHandle.createWritable();
+  await manifestWritable.write(JSON.stringify(manifest, null, 2));
+  await manifestWritable.close();
+}
+```
+
+**Test Suite**:
+
+```typescript
+// test/storage/migrations/008-signal-compression.test.ts
+describe('Migration 008: Signal compression', () => {
+  beforeEach(async () => {
+    await clearDatabase();
+    await clearOPFS();
+    await generateV7TestDataWithSignals(); // Includes OPFS signal data
+  });
+  
+  it('should compress all signal chunks', async () => {
+    const context = await createTestContext();
+    
+    // Get sizes before compression
+    const sizesBefore = await getSessionSignalSizes();
+    
+    await migration_008_signal_compression.up(context);
+    
+    // Get sizes after compression
+    const sizesAfter = await getSessionSignalSizes();
+    
+    // Verify compression ratio
+    sizesAfter.forEach((sizeAfter, sessionId) => {
+      const sizeBefore = sizesBefore.get(sessionId)!;
+      const ratio = sizeAfter / sizeBefore;
+      
+      // Expect at least 40% reduction (ratio <= 0.6)
+      expect(ratio).toBeLessThanOrEqual(0.6);
+    });
+  });
+  
+  it('should maintain signal data integrity after compression', async () => {
+    const context = await createTestContext();
+    const { db, opfsRoot } = context;
+    
+    // Read original signal data
+    const session = (await getAllSessions(db))[0];
+    const signalsBefore = await readSessionSignals(session.id, opfsRoot);
+    
+    // Run migration
+    await migration_008_signal_compression.up(context);
+    
+    // Read compressed signal data
+    const signalsAfter = await readSessionSignals(session.id, opfsRoot);
+    
+    // Verify data is identical
+    expect(signalsAfter.flow.length).toBe(signalsBefore.flow.length);
+    expect(signalsAfter.pressure.length).toBe(signalsBefore.pressure.length);
+    
+    // Verify signal values (lossless compression)
+    for (let i = 0; i < signalsAfter.flow.length; i++) {
+      expect(signalsAfter.flow[i]).toBeCloseTo(signalsBefore.flow[i], 10);
+    }
+  });
+  
+  it('should update manifest with compression metadata', async () => {
+    const context = await createTestContext();
+    const { opfsRoot } = context;
+    
+    await migration_008_signal_compression.up(context);
+    
+    const signalsDir = await opfsRoot.getDirectoryHandle('signals');
+    const sessions = await signalsDir.keys();
+    
+    for await (const sessionId of sessions) {
+      const sessionDir = await signalsDir.getDirectoryHandle(sessionId);
+      const manifestFile = await sessionDir.getFileHandle('manifest.json');
+      const manifestBlob = await manifestFile.getFile();
+      const manifest = JSON.parse(await manifestBlob.text());
+      
+      expect(manifest.compression).toBe('zstd');
+      expect(manifest.compressionLevel).toBe(3);
+      expect(manifest.version).toBe(8);
+      
+      manifest.chunks.forEach(chunk => {
+        expect(chunk.compressedSize).toBeDefined();
+        expect(chunk.uncompressedSize).toBeDefined();
+        expect(chunk.compressionRatio).toBeLessThan(1);
+      });
+    }
+  });
+  
+  it('should be idempotent', async () => {
+    const context = await createTestContext();
+    
+    // Run twice
+    await migration_008_signal_compression.up(context);
+    const sizesFirstRun = await getSessionSignalSizes();
+    
+    await migration_008_signal_compression.up(context);
+    const sizesSecondRun = await getSessionSignalSizes();
+    
+    // Sizes should be identical
+    expect(sizesSecondRun).toEqual(sizesFirstRun);
+  });
+  
+  it('should support rollback', async () => {
+    const context = await createTestContext();
+    const { opfsRoot } = context;
+    
+    // Get original data
+    const session = (await getAllSessions(context.db))[0];
+    const signalsBefore = await readSessionSignals(session.id, opfsRoot);
+    const sizesBefore = await getSessionSignalSizes();
+    
+    // Compress
+    await migration_008_signal_compression.up(context);
+    
+    // Decompress
+    await migration_008_signal_compression.down(context);
+    
+    // Verify back to original
+    const signalsAfter = await readSessionSignals(session.id, opfsRoot);
+    const sizesAfter = await getSessionSignalSizes();
+    
+    expect(sizesAfter).toEqual(sizesBefore);
+    expect(signalsAfter).toEqual(signalsBefore);
+  });
+  
+  it('should handle partial migration (some sessions fail)', async () => {
+    const context = await createTestContext();
+    
+    // Corrupt one session's signal data
+    await corruptSessionSignals('session-2', context.opfsRoot);
+    
+    // Migration should continue for other sessions
+    await expect(
+      migration_008_signal_compression.up(context)
+    ).resolves.not.toThrow();
+    
+    // Verify other sessions were compressed
+    const sessions = await getAllSessions(context.db);
+    const signalsDir = await context.opfsRoot.getDirectoryHandle('signals');
+    
+    for (const session of sessions) {
+      if (session.id === 'session-2') continue;
+      
+      const sessionDir = await signalsDir.getDirectoryHandle(session.id);
+      const manifestFile = await sessionDir.getFileHandle('manifest.json');
+      const manifest = JSON.parse(
+        await (await manifestFile.getFile()).text()
+      );
+      
+      expect(manifest.compression).toBe('zstd');
+    }
+  });
+});
+```
+
+---
+
+## 4. OPFS Signal Storage
+
+### 4.1 Directory Structure
 
 ```
 /cpap-analyzer/
@@ -398,7 +2097,7 @@ interface WeatherDayData {
 
 **Cache**: `/cpap-analyzer/cache/` (optional downsampled data for faster rendering)
 
-### 3.2 Manifest File Format
+### 4.2 Manifest File Format
 
 Each session directory contains a `manifest.json` file:
 
@@ -486,7 +2185,7 @@ interface ChunkDescriptor {
 }
 ```
 
-### 3.3 Binary Chunk Format
+### 4.3 Binary Chunk Format
 
 **File format**: Raw binary, no header
 
@@ -536,7 +2235,7 @@ async function readChunk(
 }
 ```
 
-### 3.4 Chunk Sizing Strategy
+### 4.4 Chunk Sizing Strategy
 
 **Fixed duration**: 5 minutes (300 seconds)
 
@@ -564,7 +2263,7 @@ Additional: 2 channels × 1 Hz × 300s × 4 bytes = 2,400 bytes
 Total: ~65 KB per chunk
 ```
 
-### 3.5 Chunk Index for Fast Lookup
+### 4.5 Chunk Index for Fast Lookup
 
 The manifest provides O(1) lookup from time range to chunk IDs:
 
@@ -610,9 +2309,9 @@ function binarySearchChunks(
 
 ---
 
-## 4. Data Models (TypeScript Interfaces)
+## 5. Data Models (TypeScript Interfaces)
 
-### 4.1 Core Data Models
+### 5.1 Core Data Models
 
 All interfaces from Section 2 (IndexedDB Schema) serve as the canonical data models. Additional models for business logic:
 
@@ -856,9 +2555,9 @@ interface WeatherSyncRequest {
 
 ---
 
-## 5. Query Patterns
+## 6. Query Patterns
 
-### 5.1 Common Query: Date Range Summary
+### 6.1 Common Query: Date Range Summary
 
 **Use case**: Dashboard, trend analysis, date range comparisons
 
@@ -888,7 +2587,7 @@ async function getNightlyAggregates(
 
 **Performance**: O(log N + K) where N = total records, K = results in range. Typically < 100ms for any range.
 
-### 5.2 Common Query: Single Session Detail
+### 6.2 Common Query: Single Session Detail
 
 **Use case**: Session detail view, event drill-down
 
@@ -924,7 +2623,7 @@ async function getSessionDetail(
 
 **Performance**: < 50ms for typical session (< 100 events)
 
-### 5.3 Common Query: Signal Data for Time Range
+### 6.3 Common Query: Signal Data for Time Range
 
 **Use case**: Signal explorer, chart rendering
 
@@ -985,7 +2684,7 @@ async function getSignalData(
 - Downsampled hour-level view: < 200ms
 - Downsampled full-night view: < 300ms
 
-### 5.4 Filtering and Aggregation
+### 6.4 Filtering and Aggregation
 
 **Use case**: "Show all nights with AHI > 10", "Average AHI by month"
 
@@ -1032,7 +2731,7 @@ type Filter = {
 
 **Performance**: O(K) where K = records in date range. Typically < 200ms.
 
-### 5.5 Handling Data Gaps
+### 6.5 Handling Data Gaps
 
 **Challenge**: Users may have missing nights (didn't use CPAP, forgot to import, data corruption).
 
@@ -1070,9 +2769,9 @@ function rollingMean(
 
 ---
 
-## 6. Import Pipeline
+## 7. Import Pipeline
 
-### 6.1 Pipeline Architecture
+### 7.1 Pipeline Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -1126,7 +2825,7 @@ function rollingMean(
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 6.2 Import Flow (Step-by-Step)
+### 7.2 Import Flow (Step-by-Step)
 
 **Phase 1: Initiation**
 1. User selects SD card directory via File System Access API (or file input fallback)
@@ -1176,7 +2875,7 @@ function rollingMean(
 37. Notifies main thread of completion
 38. Main thread navigates to dashboard or session detail view
 
-### 6.3 Error Handling
+### 7.3 Error Handling
 
 **Non-fatal errors** (log and continue):
 - Malformed EDF file (skip file, log error)
@@ -1194,7 +2893,7 @@ function rollingMean(
 - Mark import as failed in import_history
 - Display error to user with actionable guidance (e.g., "Free up storage")
 
-### 6.4 Incremental Import
+### 7.4 Incremental Import
 
 **Goal**: On subsequent imports, skip already-imported sessions.
 
@@ -1226,9 +2925,9 @@ async function shouldImportFile(
 
 ---
 
-## 7. Data Access Layer
+## 8. Data Access Layer
 
-### 7.1 API Design Principles
+### 8.1 API Design Principles
 
 - **Async-first**: All data access returns Promises
 - **Type-safe**: Full TypeScript typing across all operations
@@ -1236,7 +2935,7 @@ async function shouldImportFile(
 - **Streaming-capable**: Signal data can be streamed to avoid loading entire sessions
 - **Error-first**: All operations catch and handle errors gracefully
 
-### 7.2 Database Connection Management
+### 8.2 Database Connection Management
 
 ```typescript
 class DatabaseConnection {
@@ -1271,7 +2970,7 @@ class DatabaseConnection {
 }
 ```
 
-### 7.3 Repository Pattern
+### 8.3 Repository Pattern
 
 **Session Repository**:
 ```typescript
@@ -1382,7 +3081,7 @@ class SignalRepository {
 }
 ```
 
-### 7.4 Query Builder
+### 8.4 Query Builder
 
 ```typescript
 class AggregateQueryBuilder {
@@ -1424,7 +3123,7 @@ const aggregates = await new AggregateQueryBuilder()
   .execute();
 ```
 
-### 7.5 Transaction Handling
+### 8.5 Transaction Handling
 
 **Best practices**:
 - Use `'readonly'` transactions when possible (allows concurrent access)
@@ -1452,9 +3151,9 @@ async function batchInsertEvents(
 
 ---
 
-## 8. Performance Optimization
+## 9. Performance Optimization
 
-### 8.1 Caching Strategy
+### 9.1 Caching Strategy
 
 **Three-tier cache**:
 
@@ -1670,9 +3369,9 @@ function downsampleAverage(
 
 ---
 
-## 9. Storage Management
+## 10. Storage Management
 
-### 9.1 Quota Detection and Monitoring
+### 10.1 Quota Detection and Monitoring
 
 ```typescript
 async function getStorageInfo(): Promise<{
@@ -1885,9 +3584,9 @@ async function importFromExport(file: File): Promise<void> {
 
 ---
 
-## 10. Browser Compatibility
+## 11. Browser Compatibility
 
-### 10.1 Feature Detection
+### 11.1 Feature Detection
 
 ```typescript
 function detectFeatureSupport(): FeatureSupport {
@@ -1962,7 +3661,7 @@ class SignalStorage {
 }
 ```
 
-### 10.3 Safari-Specific Considerations
+### 11.3 Safari-Specific Considerations
 
 **Issue**: Safari 15.2–16.0 had incomplete OPFS support (no `FileSystemSyncAccessHandle`).
 
@@ -1996,7 +3695,7 @@ if (granted) {
 }
 ```
 
-### 10.4 Firefox-Specific Considerations
+### 11.4 Firefox-Specific Considerations
 
 **Issue**: Firefox 111+ supports OPFS, but older versions do not.
 
@@ -2006,7 +3705,7 @@ if (granted) {
 
 **Mitigation**: Monitor quota actively, prompt user to clear data if needed.
 
-### 10.5 Minimum Browser Versions
+### 11.5 Minimum Browser Versions
 
 **Full feature support**:
 - Chrome/Edge 86+
@@ -2019,6 +3718,374 @@ if (granted) {
 - Firefox 16+
 
 **Unsupported**: Internet Explorer, older mobile browsers.
+
+---
+
+## 12. Security and Data Integrity
+
+### 12.1 Defense Against Quota Exhaustion
+
+**Threat Model**: Malicious or corrupted data could exhaust browser storage quota, preventing legitimate data from being stored or causing application failure.
+
+**Attack Vectors**:
+1. **Malicious EDF Files**: Attacker crafts EDF files with inflated data records
+2. **Corrupted Import**: Hardware failure or transmission error creates invalid/infinite data
+3. **Accidental Overload**: User imports decades of data at once without understanding quota limits
+4. **Duplicate Imports**: Same data imported repeatedly, consuming quota
+
+#### 12.1.1 Validation and Limits
+
+**Pre-Import Validation**:
+
+```typescript
+interface ImportValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  estimatedSize: number; // bytes
+}
+
+async function validateImport(files: File[]): Promise<ImportValidationResult> {
+  const result: ImportValidationResult = {
+    valid: true,
+    errors: [],
+    warnings: [],
+    estimatedSize: 0,
+  };
+  
+  // 1. Check file count
+  if (files.length > 1000) {
+    result.errors.push(`Too many files: ${files.length} (max: 1000)`);
+    result.valid = false;
+    return result;
+  }
+  
+  // 2. Check individual file sizes
+  const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB per file
+  for (const file of files) {
+    if (file.size > MAX_FILE_SIZE) {
+      result.errors.push(
+        `File ${file.name} exceeds maximum size: ${file.size} bytes (max: ${MAX_FILE_SIZE})`
+      );
+      result.valid = false;
+    }
+    result.estimatedSize += file.size;
+  }
+  
+  // 3. Check total import size
+  const MAX_IMPORT_SIZE = 5 * 1024 * 1024 * 1024; // 5 GB per import batch
+  if (result.estimatedSize > MAX_IMPORT_SIZE) {
+    result.errors.push(
+      `Total import size exceeds limit: ${result.estimatedSize} bytes (max: ${MAX_IMPORT_SIZE})`
+    );
+    result.valid = false;
+  }
+  
+  // 4. Check available quota
+  const quota = await navigator.storage.estimate();
+  const available = (quota.quota ?? 0) - (quota.usage ?? 0);
+  const estimatedAfterImport = result.estimatedSize * 1.5; // 1.5x for overhead
+  
+  if (estimatedAfterImport > available) {
+    result.errors.push(
+      `Insufficient storage: need ${estimatedAfterImport} bytes, have ${available} bytes`
+    );
+    result.valid = false;
+  } else if (estimatedAfterImport > available * 0.8) {
+    result.warnings.push(
+      `Import will use >80% of available storage. Consider clearing old data first.`
+    );
+  }
+  
+  return result;
+}
+```
+
+**EDF Header Validation**:
+
+```typescript
+interface EDFValidationResult {
+  valid: boolean;
+  errors: string[];
+  header: EDFHeader;
+}
+
+function validateEDFHeader(buffer: ArrayBuffer): EDFValidationResult {
+  const result: EDFValidationResult = {
+    valid: true,
+    errors: [],
+    header: {} as EDFHeader,
+  };
+  
+  const view = new DataView(buffer);
+  const decoder = new TextDecoder('ascii');
+  
+  // Parse header (first 256 bytes)
+  const version = decoder.decode(buffer.slice(0, 8)).trim();
+  if (version !== '0') {
+    result.errors.push(`Unsupported EDF version: ${version}`);
+    result.valid = false;
+    return result;
+  }
+  
+  // Number of data records
+  const numDataRecords = parseInt(
+    decoder.decode(buffer.slice(236, 244)).trim()
+  );
+  if (isNaN(numDataRecords) || numDataRecords < 0) {
+    result.errors.push(`Invalid number of data records: ${numDataRecords}`);
+    result.valid = false;
+  }
+  
+  // Sanity check: reject absurdly large record counts
+  const MAX_DATA_RECORDS = 100000; // ~11 hours at 1-second epochs
+  if (numDataRecords > MAX_DATA_RECORDS) {
+    result.errors.push(
+      `Data record count exceeds maximum: ${numDataRecords} (max: ${MAX_DATA_RECORDS})`
+    );
+    result.valid = false;
+  }
+  
+  // Duration of data record
+  const recordDuration = parseFloat(
+    decoder.decode(buffer.slice(244, 252)).trim()
+  );
+  if (isNaN(recordDuration) || recordDuration <= 0 || recordDuration > 60) {
+    result.errors.push(
+      `Invalid data record duration: ${recordDuration} seconds (expected 0-60)`
+    );
+    result.valid = false;
+  }
+  
+  // Number of signals
+  const numSignals = parseInt(
+    decoder.decode(buffer.slice(252, 256)).trim()
+  );
+  if (isNaN(numSignals) || numSignals < 1 || numSignals > 256) {
+    result.errors.push(
+      `Invalid number of signals: ${numSignals} (expected 1-256)`
+    );
+    result.valid = false;
+  }
+  
+  // ... additional header validation
+  
+  return result;
+}
+```
+
+**Rate Limiting**:
+
+Prevent rapid repeated imports that could be malicious or accidental:
+
+```typescript
+class ImportRateLimiter {
+  private importTimestamps: number[] = [];
+  private readonly MAX_IMPORTS_PER_HOUR = 50;
+  private readonly MAX_IMPORTS_PER_MINUTE = 10;
+  
+  canImport(): { allowed: boolean; retryAfter?: number } {
+    const now = Date.now();
+    const oneHourAgo = now - 60 * 60 * 1000;
+    const oneMinuteAgo = now - 60 * 1000;
+    
+    // Clean old timestamps
+    this.importTimestamps = this.importTimestamps.filter(
+      (ts) => ts > oneHourAgo
+    );
+    
+    // Check hourly limit
+    if (this.importTimestamps.length >= this.MAX_IMPORTS_PER_HOUR) {
+      const oldestImport = Math.min(...this.importTimestamps);
+      const retryAfter = oldestImport + 60 * 60 * 1000 - now;
+      return { allowed: false, retryAfter };
+    }
+    
+    // Check per-minute limit
+    const recentImports = this.importTimestamps.filter(
+      (ts) => ts > oneMinuteAgo
+    );
+    if (recentImports.length >= this.MAX_IMPORTS_PER_MINUTE) {
+      const oldestRecent = Math.min(...recentImports);
+      const retryAfter = oldestRecent + 60 * 1000 - now;
+      return { allowed: false, retryAfter };
+    }
+    
+    return { allowed: true };
+  }
+  
+  recordImport(): void {
+    this.importTimestamps.push(Date.now());
+  }
+}
+```
+
+#### 12.1.2 Corruption Detection
+
+**Integrity Checks**:
+
+1. **Checksums**: Store SHA-256 hash of source EDF files
+   ```typescript
+   async function computeFileHash(file: File): Promise<string> {
+     const buffer = await file.arrayBuffer();
+     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+     const hashArray = Array.from(new Uint8Array(hashBuffer));
+     return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+   }
+   
+   // Store in session metadata
+   session.sourceHash = await computeFileHash(edfFile);
+   ```
+
+2. **Signal Data Validation**: Verify physiological ranges
+   ```typescript
+   const PHYSIOLOGICAL_RANGES = {
+     Flow: { min: -200, max: 200 }, // L/min
+     MaskPress: { min: 0, max: 30 }, // cmH2O
+     Leak: { min: 0, max: 200 }, // L/min
+     SpO2: { min: 50, max: 100 }, // %
+   };
+   
+   function validateSignalData(
+     channelName: string,
+     data: Float32Array
+   ): { valid: boolean; issues: string[] } {
+     const range = PHYSIOLOGICAL_RANGES[channelName];
+     if (!range) return { valid: true, issues: [] };
+     
+     const issues: string[] = [];
+     let outlierCount = 0;
+     
+     for (let i = 0; i < data.length; i++) {
+       if (data[i] < range.min || data[i] > range.max) {
+         outlierCount++;
+       }
+     }
+     
+     const outlierPercent = (outlierCount / data.length) * 100;
+     
+     if (outlierPercent > 10) {
+       issues.push(
+         `${channelName}: ${outlierPercent.toFixed(1)}% of values out of range`
+       );
+       return { valid: false, issues };
+     } else if (outlierPercent > 1) {
+       issues.push(
+         `${channelName}: ${outlierPercent.toFixed(1)}% of values out of range (warning)`
+       );
+     }
+     
+     return { valid: true, issues };
+   }
+   ```
+
+3. **Database Consistency Checks**: Periodic validation
+   ```typescript
+   async function validateDatabaseConsistency(): Promise<ValidationReport> {
+     const db = await DatabaseConnection.open();
+     const report: ValidationReport = {
+       valid: true,
+       errors: [],
+       warnings: [],
+     };
+     
+     // Check for orphaned records
+     const sessions = await db.getAll('sessions');
+     const sessionIds = new Set(sessions.map((s) => s.id));
+     
+     const nightlyAggs = await db.getAll('nightly_aggregates');
+     for (const agg of nightlyAggs) {
+       if (!sessionIds.has(agg.sessionId)) {
+         report.warnings.push(
+           `Orphaned aggregate: ${agg.id} references non-existent session ${agg.sessionId}`
+         );
+       }
+     }
+     
+     // Check for duplicate sessions
+     const duplicates = findDuplicates(sessions, (s) => `${s.machineId}:${s.date}`);
+     if (duplicates.length > 0) {
+       report.errors.push(
+         `Found ${duplicates.length} duplicate sessions`
+       );
+       report.valid = false;
+     }
+     
+     return report;
+   }
+   ```
+
+#### 12.1.3 Quota Monitoring and Alerts
+
+**Real-Time Monitoring**:
+
+```typescript
+class QuotaMonitor {
+  private readonly WARNING_THRESHOLD = 0.8; // 80%
+  private readonly CRITICAL_THRESHOLD = 0.95; // 95%
+  
+  async checkQuota(): Promise<QuotaStatus> {
+    const estimate = await navigator.storage.estimate();
+    const usage = estimate.usage ?? 0;
+    const quota = estimate.quota ?? 0;
+    const percentUsed = quota > 0 ? usage / quota : 0;
+    
+    return {
+      usage,
+      quota,
+      percentUsed,
+      status: this.getStatus(percentUsed),
+    };
+  }
+  
+  private getStatus(percentUsed: number): 'ok' | 'warning' | 'critical' {
+    if (percentUsed >= this.CRITICAL_THRESHOLD) return 'critical';
+    if (percentUsed >= this.WARNING_THRESHOLD) return 'warning';
+    return 'ok';
+  }
+  
+  async shouldBlockImport(): Promise<boolean> {
+    const status = await this.checkQuota();
+    return status.status === 'critical';
+  }
+}
+```
+
+**User Notifications**:
+
+- **80% quota**: Show warning banner, suggest clearing old data
+- **95% quota**: Block new imports, require user action
+- **Provide tools**: One-click delete old sessions, selective deletion UI
+
+#### 12.1.4 Recovery Mechanisms
+
+**Automatic Cleanup**:
+
+```typescript
+async function emergencyCleanup(): Promise<void> {
+  const db = await DatabaseConnection.open();
+  
+  // 1. Clear all cached analyses (safe to delete, can recompute)
+  await db.clear('analysis_results');
+  
+  // 2. Clear import history (metadata only, not critical)
+  await db.clear('import_history');
+  
+  // 3. If still critical, prompt user to delete old sessions
+  const quotaStatus = await new QuotaMonitor().checkQuota();
+  if (quotaStatus.status === 'critical') {
+    // Show UI: "Delete sessions older than..." with date picker
+  }
+}
+```
+
+**Graceful Degradation**:
+
+If quota is exhausted during import:
+1. **Stop immediately**: Don't write partial data
+2. **Rollback transaction**: Delete incomplete session
+3. **Notify user**: Show error message with recovery options
+4. **Offer solutions**: Delete old data, export and reimport, use different browser
 
 ---
 

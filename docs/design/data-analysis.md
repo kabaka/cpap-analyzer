@@ -1410,20 +1410,33 @@ async function computeMeanFlow(sessionId: string): Promise<number> {
 
 **Example**:
 ```typescript
-// Main thread
-const worker = new Worker('analysis-worker.js');
-const signal = new Float32Array(720000); // 8 hrs × 25 Hz
-worker.postMessage({ type: 'computeFFT', signal: signal.buffer }, [signal.buffer]);
-// signal is now neutered (transferred)
+// Worker thread (analysis.worker.ts)
+import { expose, transfer } from 'comlink';
 
-// Worker thread
-self.onmessage = (e) => {
-  if (e.data.type === 'computeFFT') {
-    const signal = new Float32Array(e.data.signal);
+const analysisWorker = {
+  async computeFFT(signal: Float32Array): Promise<Float32Array> {
     const fft = computeFFT(signal);
-    self.postMessage({ type: 'fftResult', fft: fft.buffer }, [fft.buffer]);
-  }
+    // Use Comlink's transfer() for zero-copy transfers
+    return transfer(fft, [fft.buffer]);
+  },
 };
+
+expose(analysisWorker);
+
+export type AnalysisWorker = typeof analysisWorker;
+
+// Main thread
+import { wrap, transfer } from 'comlink';
+import type { AnalysisWorker } from './analysis.worker';
+
+const worker = wrap<AnalysisWorker>(
+  new Worker(new URL('./analysis.worker.ts', import.meta.url), { type: 'module' })
+);
+
+const signal = new Float32Array(720000); // 8 hrs × 25 Hz
+// Transfer ownership with Comlink's transfer()
+const fft = await worker.computeFFT(transfer(signal, [signal.buffer]));
+// signal is now neutered (transferred), fft is transferred back
 ```
 
 **Worker Pool**:
@@ -1725,6 +1738,197 @@ type CustomResult = Record<string, unknown>;
 **Numerical Methods**:
 - Beasley, J. D., & Springer, S. G. (1977). "Algorithm AS 111: The Percentage Points of the Normal Distribution." *Applied Statistics*.
 - Press, W. H., et al. (2007). *Numerical Recipes: The Art of Scientific Computing* (3rd ed.). Cambridge University Press.
+
+### 7.3 Clinical Validation and References
+
+**Purpose**: Ensure all clinical algorithms and metrics are grounded in peer-reviewed literature and validated clinical standards.
+
+#### 7.3.1 Primary Clinical Standards
+
+**AASM Scoring Manual**:
+
+The **AASM Manual for the Scoring of Sleep and Associated Events** is the authoritative reference for all respiratory event detection and classification algorithms in CPAP Analyzer.
+
+- **Current Version**: Version 3.0 (2023)
+- **Publisher**: American Academy of Sleep Medicine (AASM)
+- **Website**: https://aasm.org/clinical-resources/scoring-manual/
+- **Key Sections**:
+  - **Section 4**: Scoring Respiratory Events (apnea, hypopnea, RERA definitions)
+  - **Section 5**: Scoring Cardiac Events
+  - **Section 6**: Scoring Movement Events
+  - **Section 7**: Scoring Arousal Events
+
+**Applicable Algorithms**:
+
+| Algorithm | AASM Reference | Implementation Notes |
+|-----------|---------------|---------------------|
+| **AHI Calculation** | Section 4.1 | Apnea + hypopnea events per hour of sleep |
+| **Apnea Detection** | Section 4.1.1 | ≥90% drop in airflow for ≥10 seconds |
+| **Hypopnea Detection** | Section 4.1.2 | ≥30% drop in airflow for ≥10 seconds with ≥3% SpO₂ desaturation or arousal |
+| **RERA Detection** | Section 4.1.3 | Respiratory effort-related arousal (flow limitation + arousal) |
+| **Central Apnea** | Section 4.1.4 | Absence of respiratory effort |
+| **Obstructive Apnea** | Section 4.1.5 | Continued respiratory effort with airflow obstruction |
+| **Mixed Apnea** | Section 4.1.6 | Initially central, then obstructive characteristics |
+
+**Version Tracking**:
+
+When AASM updates scoring guidelines, document changes in ADRs and update algorithms accordingly:
+
+```typescript
+interface AAASMVersionTracking {
+  currentVersion: '3.0';
+  implementedGuidelines: {
+    apneaDetection: { version: '3.0', section: '4.1.1' };
+    hypopneaDetection: { version: '3.0', section: '4.1.2' };
+    // ... other algorithms
+  };
+}
+```
+
+#### 7.3.2 Peer-Reviewed Literature
+
+**Flow Limitation Detection**:
+
+- Hosselet, J. J., et al. (1998). "Detection of flow limitation with a nasal cannula/pressure transducer system." *American Journal of Respiratory and Critical Care Medicine*, 157(5), 1461-1467.
+  - **Application**: Flow limitation grading algorithm (0–1 scale)
+  - **Method**: Flattening of inspiratory flow curve analysis
+
+- Ayappa, I., et al. (2000). "Relative occurrence of flow limitation and snoring during continuous positive airway pressure therapy." *Chest*, 118(4), 1018-1024.
+  - **Application**: Pressure titration guidance based on flow limitation
+
+**AHI as Diagnostic Metric**:
+
+- Gottlieb, D. J., & Punjabi, N. M. (2020). "Diagnosis and Management of Obstructive Sleep Apnea: A Review." *JAMA*, 323(14), 1389-1400.
+  - **Application**: Clinical interpretation thresholds (mild: 5–15, moderate: 15–30, severe: ≥30)
+  - **Context**: AHI limitations and complementary metrics
+
+**Oxygen Desaturation Index (ODI)**:
+
+- Punjabi, N. M., et al. (2008). "Sleep-disordered breathing and mortality: A prospective cohort study." *PLoS Medicine*, 5(8), e141.
+  - **Application**: ODI calculation (≥3% or ≥4% thresholds)
+  - **Clinical significance**: Cardiovascular risk stratification
+
+**Leak Detection and Thresholds**:
+
+- Bachour, A., & Maasilta, P. (2004). "Mouth breathing compromises adherence to nasal continuous positive airway pressure therapy." *Chest*, 126(4), 1248-1254.
+  - **Application**: Leak rate thresholds (>24 L/min = significant leak)
+  - **Clinical impact**: Adherence and efficacy
+
+**Pressure Optimization**:
+
+- Masa, J. F., et al. (2004). "Effectiveness of three different pressure optimization strategies in OSA patients." *Sleep Medicine*, 5(5), 431-438.
+  - **Application**: Auto-titration algorithm validation
+  - **Method**: P95 vs. mean pressure for optimal settings
+
+#### 7.3.3 Statistical Methods Validation
+
+**Time-Series Decomposition (STL)**:
+
+- Cleveland, R. B., et al. (1990). "STL: A Seasonal-Trend Decomposition Procedure Based on Loess." *Journal of Official Statistics*, 6(1), 3-73.
+  - **Application**: Trend and seasonality analysis in nightly AHI data
+  - **Validation**: Method proven for non-stationary time series
+
+**Change-Point Detection (PELT)**:
+
+- Killick, R., Fearnhead, P., & Eckley, I. A. (2012). "Optimal detection of changepoints with a linear computational cost." *Journal of the American Statistical Association*, 107(500), 1590-1598.
+  - **Application**: Detecting therapy changes or compliance shifts
+  - **Validation**: Optimal for multiple changepoints with penalty tuning
+
+**Cluster Analysis (K-Means++)**:
+
+- Arthur, D., & Vassilvitskii, S. (2007). "k-means++: The advantages of careful seeding." *SODA '07: Proceedings of the Eighteenth Annual ACM-SIAM Symposium on Discrete Algorithms*, 1027-1035.
+  - **Application**: Event clustering (apnea clusters)
+  - **Validation**: Improved convergence over standard k-means
+
+#### 7.3.4 Validation Requirements for New Algorithms
+
+When adding new clinical algorithms to CPAP Analyzer:
+
+**Required Documentation**:
+
+1. **Clinical Justification**:
+   - Why is this metric/algorithm clinically relevant?
+   - What patient outcomes does it inform?
+   - References to peer-reviewed studies supporting its use
+
+2. **Implementation Fidelity**:
+   - How closely does the implementation match published methods?
+   - Any deviations from published algorithms (with justification)
+   - Edge case handling
+
+3. **Validation Dataset**:
+   - Test against known-good datasets (e.g., published benchmark data)
+   - Compare outputs to clinical polysomnography scoring (if available)
+   - Document accuracy, sensitivity, specificity
+
+4. **Limitations and Disclaimers**:
+   - Clearly state what the algorithm does NOT do
+   - Warn users about appropriate clinical context
+   - Emphasize that results should be discussed with healthcare providers
+
+**Example Documentation (in code)**:
+
+```typescript
+/**
+ * Detects hypopnea events per AASM 2012 guidelines (v2.0).
+ * 
+ * **Clinical Definition** (AASM Section 4.1.2):
+ * - ≥30% reduction in nasal pressure signal for ≥10 seconds
+ * - Associated with ≥3% oxygen desaturation OR arousal
+ * 
+ * **Implementation Notes**:
+ * - Airflow measured via nasal pressure transducer
+ * - Baseline calculated as mean flow over 120 seconds preceding event
+ * - Our implementation uses ≥3% SpO₂ drop (AASM recommended criterion)
+ * - Arousal detection not implemented (requires EEG, not available in CPAP data)
+ * 
+ * **Limitations**:
+ * - Without EEG arousal data, may undercount hypopneas compared to full PSG
+ * - Sensitive to leak artifacts (pre-filtered for leak >24 L/min)
+ * 
+ * **References**:
+ * - Berry, R. B., et al. (2012). "Rules for Scoring Respiratory Events in Sleep." 
+ *   Journal of Clinical Sleep Medicine, 8(5), 597-619.
+ * 
+ * @param flowSignal - Flow rate signal (L/min, 25 Hz)
+ * @param spo2Signal - SpO₂ signal (%, 1 Hz)
+ * @param leakSignal - Leak rate signal (L/min, 2 Hz)
+ * @returns Array of detected hypopnea events
+ */
+function detectHypopneas(
+  flowSignal: Float32Array,
+  spo2Signal: Float32Array,
+  leakSignal: Float32Array
+): HypopneaEvent[] {
+  // Implementation...
+}
+```
+
+#### 7.3.5 Keeping Clinical References Current
+
+**Update Schedule**:
+
+- **AASM Manual**: Review annually (AASM typically updates every 2–3 years)
+- **Peer-Reviewed Literature**: Review quarterly for major clinical journals:
+  - *Sleep*
+  - *Journal of Clinical Sleep Medicine*
+  - *Sleep Medicine*
+  - *American Journal of Respiratory and Critical Care Medicine*
+  - *Chest*
+
+**Process**:
+
+1. **Data Science Agent**: Monitor literature for relevant algorithm updates
+2. **Documentation Agent**: Update references in code and design docs
+3. **ADR Author**: Document any algorithm changes in ADRs
+4. **QA Agent**: Verify updated algorithms against validation datasets
+
+**User Communication**:
+
+When clinical guidelines change significantly:
+- Add in-app notification: "AHI calculation updated to AASM v3.1 guidelines"
+- Provide migration guide if results differ from previous version
+- Offer option to recompute historical analyses with new algorithms
 
 ---
 

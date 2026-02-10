@@ -400,8 +400,14 @@ const CanvasTimeSeriesChart: React.FC<CanvasTimeSeriesChartProps> = (props) => {
 
   // Initialize Web Worker for downsampling
   useEffect(() => {
-    workerRef.current = new Worker(new URL('./downsample.worker.ts', import.meta.url));
-    return () => workerRef.current?.terminate();
+    const worker = wrap<DownsampleWorker>(
+      new Worker(new URL('./downsample.worker.ts', import.meta.url), { type: 'module' })
+    );
+    workerRef.current = worker;
+    return () => {
+      // Terminate the underlying Worker
+      (worker as any)[Symbol.dispose]?.();
+    };
   }, []);
 
   // Render logic
@@ -417,19 +423,16 @@ const CanvasTimeSeriesChart: React.FC<CanvasTimeSeriesChartProps> = (props) => {
     canvas.height = props.height * dpr;
     ctx.scale(dpr, dpr);
 
-    // Request downsampled data from worker
-    workerRef.current?.postMessage({
+    // Request downsampled data from worker using Comlink
+    workerRef.current?.downsample({
       data: props.data,
       xDomain: props.xDomain,
       width: props.width,
       method: props.downsamplingMethod,
       targetPoints: props.width * (props.targetPointsPerPixel ?? 2),
-    });
-
-    workerRef.current!.onmessage = (e) => {
-      const downsampledData = e.data;
+    }).then((downsampledData) => {
       renderCanvas(ctx, downsampledData, props);
-    };
+    });
   }, [props.data, props.xDomain, props.width, props.height]);
 
   // Interaction handlers (zoom, pan, hover)
@@ -499,27 +502,40 @@ function renderCanvas(
 
 ```typescript
 // downsample.worker.ts
+import { expose } from 'comlink';
 import { lttb, minMaxDownsample } from './downsampling';
 
-self.onmessage = (e) => {
-  const { data, xDomain, width, method, targetPoints } = e.data;
+interface DownsampleRequest {
+  data: Array<{ x: number; y: number }>;
+  xDomain: [number, number];
+  width: number;
+  method: 'lttb' | 'minmax';
+  targetPoints: number;
+}
 
-  // Filter to visible domain
-  const visibleData = data.filter(
-    (point) => point.x >= xDomain[0] && point.x <= xDomain[1]
-  );
+const downsampleWorker = {
+  async downsample(request: DownsampleRequest): Promise<Array<{ x: number; y: number }>> {
+    const { data, xDomain, method, targetPoints } = request;
 
-  // Downsample if needed
-  let downsampledData = visibleData;
-  if (visibleData.length > targetPoints) {
-    downsampledData =
-      method === 'lttb'
-        ? lttb(visibleData, targetPoints)
-        : minMaxDownsample(visibleData, targetPoints);
-  }
+    // Filter to visible domain
+    const visibleData = data.filter(
+      (point) => point.x >= xDomain[0] && point.x <= xDomain[1]
+    );
 
-  self.postMessage(downsampledData);
+    // Downsample if needed
+    if (visibleData.length <= targetPoints) {
+      return visibleData;
+    }
+
+    return method === 'lttb'
+      ? lttb(visibleData, targetPoints)
+      : minMaxDownsample(visibleData, targetPoints);
+  },
 };
+
+expose(downsampleWorker);
+
+export type DownsampleWorker = typeof downsampleWorker;
 ```
 
 **Bundle Impact**: ~5KB (custom code only)
@@ -2580,6 +2596,244 @@ visualizationPluginManager.register(myCustomVisualizationPlugin);
 4. **Plugin Marketplace**: Online directory of community plugins (long-term vision).
 
 **Initial Focus**: Built-in plugins only (custom analyses by the core team).
+
+### 8.5 React Component Performance
+
+#### 8.5.1 Component Render Budget Guidance
+
+**Performance Budgets for React Chart Components**:
+
+| Component Type | Initial Render Budget | Re-render Budget | Notes |
+|----------------|----------------------|------------------|-------|
+| **Simple Chart** (Recharts <1k points) | <100ms | <16ms (60 FPS) | Standard time-series, scatter plots |
+| **Complex Chart** (Recharts 1k–10k points) | <200ms | <33ms (30 FPS) | Multi-series, stacked areas |
+| **Canvas Chart** (10k–100k points) | <300ms | <16ms (60 FPS) | High-frequency signals with downsampling |
+| **Heavy Canvas** (100k–1M points) | <500ms | <33ms (30 FPS) | Full-resolution signals, LOD rendering |
+| **Dashboard Grid** (multiple charts) | <1000ms | <100ms | 4–6 charts total load time |
+| **Chart Container** | <10ms | <5ms | Wrapper, loading states, error boundaries |
+
+**Monitoring Strategy**:
+
+```typescript
+import { useEffect } from 'react';
+
+// Development-only performance monitoring
+function useRenderPerformance(componentName: string) {
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return;
+    
+    const mountTime = performance.now();
+    return () => {
+      const unmountTime = performance.now();
+      const renderDuration = unmountTime - mountTime;
+      
+      if (renderDuration > 16) {
+        console.warn(
+          `[Performance] ${componentName} took ${renderDuration.toFixed(2)}ms (budget: 16ms for 60 FPS)`
+        );
+      }
+    };
+  });
+}
+
+// Usage in chart components
+const TimeSeriesChart: React.FC<Props> = (props) => {
+  useRenderPerformance('TimeSeriesChart');
+  // ... component logic
+};
+```
+
+**Optimization Techniques**:
+
+1. **Memoization**: Use `React.memo()` for expensive chart components
+   ```typescript
+   export const TimeSeriesChart = React.memo<TimeSeriesChartProps>(
+     ({ data, ...props }) => {
+       // Component implementation
+     },
+     (prev, next) => {
+       // Custom comparison: only re-render if data actually changed
+       return prev.data === next.data && prev.width === next.width;
+     }
+   );
+   ```
+
+2. **Lazy Data Processing**: Use `useMemo()` for data transformations
+   ```typescript
+   const processedData = useMemo(() => {
+     return downsampleData(rawData, targetPoints);
+   }, [rawData, targetPoints]);
+   ```
+
+3. **Debounced Interactions**: Debounce zoom/pan to reduce re-renders
+   ```typescript
+   const debouncedZoom = useMemo(
+     () => debounce((domain) => setZoomDomain(domain), 100),
+     []
+   );
+   ```
+
+4. **Canvas Over SVG**: For >10k points, use Canvas rendering exclusively
+   - Recharts default: SVG (slower for large datasets)
+   - Custom renderer: Canvas (faster, but less accessible)
+   - Trade-off: Performance vs. accessibility (mitigate with text alternatives)
+
+5. **Progressive Rendering**: Show low-resolution preview first, then refine
+   ```typescript
+   const [resolution, setResolution] = useState<'low' | 'high'>('low');
+   
+   useEffect(() => {
+     // Render low-res immediately
+     const timer = setTimeout(() => setResolution('high'), 100);
+     return () => clearTimeout(timer);
+   }, [data]);
+   
+   const displayData = resolution === 'low' 
+     ? downsample(data, 500) 
+     : downsample(data, 2000);
+   ```
+
+**When to Optimize**:
+- **Always**: Dashboard components (users see them first)
+- **High Priority**: Time-series charts (most common use case)
+- **Medium Priority**: Distribution plots (less frequent, tolerate 200ms)
+- **Low Priority**: One-time exports (performance less critical)
+
+#### 8.5.2 Virtualization Guidance
+
+**When to Use Virtualization**:
+
+Virtualization renders only visible items in long lists, dramatically reducing DOM nodes and improving performance. Use virtualization when:
+
+1. **Session Lists**: >50 sessions (nightly summaries)
+2. **Event Lists**: >100 events (apnea/hypopnea tables)
+3. **Analysis Results**: >30 rows (statistical tables)
+4. **Dashboard Cards**: Never (typically <10 items, not worth complexity)
+5. **Chart Legends**: >20 series (rare, but possible in multi-machine views)
+
+**Recommended Libraries**:
+
+| Library | Use Case | Pros | Cons |
+|---------|----------|------|------|
+| **TanStack Virtual** | General-purpose lists, grids | Modern, actively maintained, TypeScript-first | Newer, less battle-tested |
+| **react-window** | Simple fixed-size lists | Lightweight (3 KB), stable, popular | Less flexible for variable heights |
+| **react-virtualized** | Complex grids, tables | Feature-rich, mature | Large bundle (27 KB), older API |
+
+**Recommendation**: Use **TanStack Virtual** for new components (aligned with TanStack Query for data fetching). Fallback to **react-window** for simple lists if bundle size is critical.
+
+**Implementation Example: Session List**
+
+```typescript
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useRef } from 'react';
+
+interface Session {
+  id: string;
+  date: string;
+  ahi: number;
+  usageHours: number;
+}
+
+const SessionList: React.FC<{ sessions: Session[] }> = ({ sessions }) => {
+  const parentRef = useRef<HTMLDivElement>(null);
+  
+  const virtualizer = useVirtualizer({
+    count: sessions.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 80, // Estimated row height in pixels
+    overscan: 5, // Render 5 extra items above/below viewport for smoothness
+  });
+  
+  return (
+    <div
+      ref={parentRef}
+      style={{ height: '600px', overflow: 'auto' }}
+      role="list"
+      aria-label="CPAP therapy sessions"
+    >
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative',
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const session = sessions[virtualItem.index];
+          return (
+            <div
+              key={session.id}
+              data-index={virtualItem.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualItem.start}px)`,
+              }}
+              role="listitem"
+            >
+              <SessionCard session={session} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+```
+
+**Variable Height Support**:
+
+For items with variable heights (e.g., session cards with expandable notes):
+
+```typescript
+const virtualizer = useVirtualizer({
+  count: sessions.length,
+  getScrollElement: () => parentRef.current,
+  estimateSize: (index) => {
+    // Provide better estimates based on content
+    const session = sessions[index];
+    return session.notes ? 120 : 80; // Taller if notes present
+  },
+  overscan: 10,
+  // Enable dynamic measurement
+  measureElement: (element) => element.getBoundingClientRect().height,
+});
+```
+
+**When NOT to Virtualize**:
+
+1. **Small Lists** (<50 items): Overhead outweighs benefit
+2. **Print Views**: Virtualization breaks pagination (use CSS `print` media query to disable)
+3. **Export to PDF**: Must render all items
+4. **Accessibility Critical Sections**: Screen readers may struggle with dynamic DOM (provide alternative non-virtualized view)
+
+**Accessibility Considerations**:
+
+- Always use semantic HTML (`role="list"`, `role="listitem"`)
+- Provide total count to screen readers: `aria-label="CPAP sessions list, ${sessions.length} total"`
+- Use `aria-setsize` and `aria-posinset` for item position announcements:
+  ```typescript
+  <div
+    role="listitem"
+    aria-setsize={sessions.length}
+    aria-posinset={virtualItem.index + 1}
+  >
+  ```
+- Ensure keyboard navigation works (arrow keys, Page Up/Down, Home/End)
+- Consider "Show All" option for users who prefer non-virtualized view
+
+**Performance Targets with Virtualization**:
+
+| List Size | Initial Render | Scroll Performance | Memory Usage |
+|-----------|----------------|-------------------|-------------|
+| 100 sessions | <50ms | 60 FPS | ~5 MB |
+| 1,000 sessions | <100ms | 60 FPS | ~15 MB |
+| 10,000 sessions | <200ms | 60 FPS | ~30 MB |
+
+Without virtualization, 10,000 sessions would consume >500 MB and take >5 seconds to render.
 
 ---
 

@@ -149,26 +149,812 @@ build:
 - Preload critical font files with `<link rel="preload">`
 - Self-hosted (no CDN dependencies per privacy architecture)
 
-### 2.4 Bundle Size Monitoring
+### 2.4 Bundle Size Monitoring & Enforcement
 
-**Tool**: `vite-bundle-visualizer`
+**Status**: REQUIRED — Addresses QA GAP-8 (IMPORTANT)
 
-**Process**:
-1. Generate visualization after each build
-2. Upload `stats.html` as CI artifact (30-day retention)
-3. Manual review for regressions before releases
-4. Future: Automated size regression checks with bundlesize or similar
+This section defines the complete bundle size monitoring, enforcement, and optimization strategy to ensure CPAP Analyzer maintains optimal performance characteristics. Bundle size directly impacts Largest Contentful Paint (LCP) and Time to Interactive (TTI), which are critical performance metrics per [performance-strategy.md](performance-strategy.md).
 
-**Actionable Thresholds**:
-- **Warning**: Initial bundle > 200 KB gzipped
-- **Blocking**: Initial bundle > 250 KB gzipped (must be resolved before merge)
+#### 2.4.1 Tool Selection
+
+**Primary Tool**: **`size-limit`**
+
+**Rationale**:
+
+- **Performance Budget Integration**: size-limit calculates actual download, parse, and execution time on defined network conditions (3G by default), not just file size
+- **Granular Control**: Per-entry point limits for main bundle, route chunks, worker bundles, and vendor code
+- **CI-First Design**: Purpose-built for automated enforcement in CI pipelines
+- **PR Comments**: Native GitHub Action integration with automatic PR feedback
+- **Fast Execution**: ~5-10 seconds for size checks (does not require full build)
+- **Why Not bundlesize**: Deprecated and no longer maintained
+- **Why Not bundle-analyzer Alone**: Visualization tool only, no enforcement
+
+**Secondary Tool**: **`rollup-plugin-visualizer`** (Vite-compatible fork of webpack-bundle-analyzer)
+
+**Purpose**:
+
+- Visual bundle composition analysis
+- Identify largest dependencies for optimization
+- Compare bundle changes across commits
+- Developer-facing debugging tool
+
+**Installation**:
+
+```bash
+npm install --save-dev @size-limit/preset-app @size-limit/file rollup-plugin-visualizer
+```
+
+#### 2.4.2 Bundle Size Targets
+
+Bundle size targets are derived from performance budgets in [performance-strategy.md](performance-strategy.md) and calibrated for **Slow 3G network conditions** (400 Kbps, 400ms RTT) to ensure accessibility for users with limited connectivity.
+
+| Bundle                       | Target (gzipped) | Threshold (Fail CI) | Rationale                                              |
+| ---------------------------- | ---------------- | ------------------- | ------------------------------------------------------ |
+| **Initial (main entry)** | ≤150 KB | ≤200 KB | LCP budget: 2.5s @ 400 Kbps = 125 KB max transfer |
+| **Route bundle (per route)** | ≤75 KB | ≤100 KB | Route transitions < 1s; parallel download with main |
+| **Worker bundle (ResMed parser)** | ≤50 KB | ≤75 KB | Background thread; non-blocking but monitored |
+| **Vendor chunks (React + deps)** | ≤120 KB | ≤150 KB | Shared chunk cached across routes |
+| **Total application** | ≤500 KB | ≤1 MB | Full app download budget (all routes + vendor) |
+| **CSS (total)** | ≤30 KB | ≤50 KB | Render-blocking; must be minimal |
+| **Fonts** | ≤40 KB | ≤60 KB | Subsetted Latin only; preloaded |
+
+**Network Assumptions**:
+
+- **Baseline**: Slow 3G (400 Kbps downlink, 400ms RTT) per [WebPageTest mobile profile](https://www.webpagetest.org/)
+- **Parse/Execute Budget**: ~50ms per 100 KB of JavaScript on low-end mobile (adds to LCP)
+- **Target LCP**: ≤2.5s (includes network transfer, parse, execute, first render)
+
+**Calculation Example** (Initial Bundle):
+
+```text
+Target transfer time: 2.5s - 400ms (RTT) - 200ms (parse) - 300ms (render) = 1600ms
+Bytes transferable: 1600ms × (400 Kbps / 8) / 1000 = ~80 KB raw
+With gzip compression (typical 3x): ~240 KB source → ~80 KB gzipped
+Safe target with margin: 150 KB gzipped → ~50 KB transferred
+```
+
+#### 2.4.3 size-limit Configuration
+
+**File**: `.size-limit.json`
+
+```json
+[
+  {
+    "name": "Main entry (initial load)",
+    "path": "dist/assets/index-*.js",
+    "limit": "200 KB",
+    "gzip": true,
+    "running": false,
+    "webpack": false
+  },
+  {
+    "name": "Dashboard route",
+    "path": "dist/assets/Dashboard-*.js",
+    "limit": "100 KB",
+    "gzip": true,
+    "running": false
+  },
+  {
+    "name": "Analysis route",
+    "path": "dist/assets/Analysis-*.js",
+    "limit": "100 KB",
+    "gzip": true,
+    "running": false
+  },
+  {
+    "name": "Settings route",
+    "path": "dist/assets/Settings-*.js",
+    "limit": "50 KB",
+    "gzip": true,
+    "running": false
+  },
+  {
+    "name": "Vendor chunks (React + Radix UI)",
+    "path": "dist/assets/vendor-*.js",
+    "limit": "150 KB",
+    "gzip": true,
+    "running": false
+  },
+  {
+    "name": "ResMed parser worker",
+    "path": "dist/workers/resmed-parser-*.js",
+    "limit": "75 KB",
+    "gzip": true,
+    "running": false
+  },
+  {
+    "name": "Total CSS",
+    "path": "dist/assets/*.css",
+    "limit": "50 KB",
+    "gzip": true,
+    "running": false
+  },
+  {
+    "name": "Total JavaScript (all chunks)",
+    "path": "dist/assets/*.js",
+    "limit": "1 MB",
+    "gzip": true,
+    "running": false
+  }
+]
+```
+
+**Configuration Notes**:
+
+- `"running": false`: Disables time-based checks (file size only); time checks require full browser execution
+- `"webpack": false`: Uses file system paths (build output), not webpack imports
+- `"gzip": true`: All limits are post-gzip compression
+- Glob patterns (`*`) match Vite's content-hashed output (e.g., `index-a83f9d27.js`)
+
+**NPM Scripts** (`package.json`):
+
+```json
+{
+  "scripts": {
+    "size": "size-limit",
+    "size:why": "size-limit --why",
+    "size:json": "size-limit --json > size-limit-report.json"
+  }
+}
+```
+
+#### 2.4.4 CI Integration
+
+**GitHub Actions Workflow**: `.github/workflows/ci.yml`
+
+Add to `build` job (runs after quality checks pass):
+
+```yaml
+build:
+  name: Build
+  runs-on: ubuntu-latest
+  needs: [audit, lint, test-unit, test-e2e]
+  steps:
+    - uses: actions/checkout@v4
+    
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: npm
+    
+    - run: npm ci
+    
+    - run: npm run build
+    
+    # Bundle Size Enforcement
+    - name: Check Bundle Size
+      run: npm run size
+    
+    # Bundle Size PR Comment (PRs only)
+    - uses: andresz1/size-limit-action@v1
+      if: github.event_name == 'pull_request'
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        skip_step: build  # We already built above
+    
+    # Visual Bundle Analysis
+    - name: Generate Bundle Visualization
+      run: npm run build:analyze
+    
+    - name: Upload Bundle Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: bundle-report
+        path: bundle-report.html
+        retention-days: 30
+    
+    # Upload build artifacts for deployment
+    - name: Upload Build Artifacts
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: dist/
+```
+
+**Behavior**:
+
+1. **size-limit runs**: If any bundle exceeds its limit, CI fails with detailed error
+2. **PR Comment**: `size-limit-action` posts a comment on PRs showing size delta vs base branch
+3. **Bundle Visualization**: Generates interactive treemap of bundle composition
+4. **All or Nothing**: CI is blocked until bundle sizes are within limits
+
+**Example PR Comment Format**:
+
+```text
+📦 Bundle Size — 2 changes
+
+Path                      | Size      | Change
+--------------------------|-----------|----------
+Main entry (initial load) | 187 KB ⚠️ | +12 KB (+6.8%)
+Dashboard route           | 94 KB ✅  | -3 KB (-3.1%)
+
+⚠️ Warning: Main entry is at 93.5% of limit (200 KB)
+```
+
+#### 2.4.5 Bundle Analysis Workflow
+
+**Tool**: `rollup-plugin-visualizer`
+
+**Vite Configuration**: `vite.config.ts`
+
+```typescript
+import { defineConfig } from 'vite';
+import { visualizer } from 'rollup-plugin-visualizer';
+
+export default defineConfig({
+  plugins: [
+    // ... other plugins
+  ],
+  build: {
+    rollupOptions: {
+      plugins: [
+        visualizer({
+          filename: 'bundle-report.html',
+          open: false,  // Don't auto-open in CI
+          gzipSize: true,
+          brotliSize: true,
+          template: 'treemap'  // Options: treemap, sunburst, network
+        })
+      ]
+    }
+  }
+});
+```
+
+**NPM Script**:
+
+```json
+{
+  "scripts": {
+    "build:analyze": "vite build --mode production"
+  }
+}
+```
+
+**Generated Output**: `bundle-report.html`
+
+- **Treemap Visualization**: Interactive chart showing relative size of each module
+- **Gzip Sizes**: Post-compression sizes (realistic browser download)
+- **Brotli Sizes**: Alternative compression for supporting browsers
+- **Drill-Down**: Click packages to see internal module composition
+
+**Developer Workflow**:
+
+1. Run `npm run build:analyze` locally after adding dependencies
+2. Open `bundle-report.html` in browser
+3. Identify unexpectedly large dependencies
+4. Investigate alternatives or lazy-load non-critical code
+5. In CI: Download `bundle-report` artifact from Actions tab
+
+**CI Artifact Access**:
+
+1. Navigate to failed/passing CI run in GitHub Actions
+2. Scroll to "Artifacts" section
+3. Download `bundle-report.zip`
+4. Extract and open `bundle-report.html` locally
+
+#### 2.4.6 Tracking Bundle Size Over Time
+
+**Strategy**: GitHub Actions artifact storage + JSON exports
+
+**Historical Data Collection**:
+
+```yaml
+# Add to build job in .github/workflows/ci.yml
+- name: Export Size Limit Report
+  run: npm run size:json
+
+- name: Upload Size History
+  uses: actions/upload-artifact@v4
+  with:
+    name: size-limit-${{ github.sha }}
+    path: size-limit-report.json
+    retention-days: 90
+```
+
+**JSON Report Example**:
+
+```json
+[
+  {
+    "name": "Main entry (initial load)",
+    "size": 187243,
+    "limit": 204800,
+    "passed": true
+  },
+  {
+    "name": "Dashboard route",
+    "size": 96321,
+    "limit": 102400,
+    "passed": true
+  }
+]
+```
+
+**Trend Analysis** (Manual, Post-Release):
+
+1. Download JSON reports from last 10 releases
+2. Plot size trends in spreadsheet or [size-limit-dashboard](https://github.com/size-limit/size-limit-dashboard)
+3. Identify upward trends (e.g., vendor bundle growing 5% per month)
+4. Schedule optimization work before thresholds are hit
+
+**Future Enhancement**: Integrate with [size-limit-dashboard](https://github.com/size-limit-dashboard/size-limit-dashboard) for automated visualization (requires external service; must evaluate privacy implications per ADR-0015).
+
+#### 2.4.7 Developer Workflow
+
+**Pre-Commit** (Local Development):
+
+```bash
+# Before committing code that adds/modifies dependencies:
+npm run build          # Rebuild production bundle
+npm run size           # Check if size limits are exceeded
+npm run build:analyze  # (Optional) Review bundle composition
+```
+
+**Expected Output** (Passing):
+
+```text
+✔ Main entry (initial load): 187 KB (limit: 200 KB)
+✔ Dashboard route: 94 KB (limit: 100 KB)
+✔ Analysis route: 88 KB (limit: 100 KB)
+✔ Vendor chunks: 142 KB (limit: 150 KB)
+✔ Total JavaScript: 891 KB (limit: 1 MB)
+
+All size limits passed ✅
+```
+
+**Expected Output** (Failing):
+
+```text
+✖ Main entry (initial load): 215 KB (limit: 200 KB) — EXCEEDED by 15 KB
+✔ Dashboard route: 94 KB (limit: 100 KB)
+
+❌ Size limit check failed: 1 bundle exceeds limits
+```
+
+**When Size Check Fails**:
+
+1. **Identify Cause**: Run `npm run build:analyze` and review bundle report
+2. **Common Culprits**:
+   - Large new dependency (e.g., moment.js → use day.js instead)
+   - Importing entire library instead of specific functions (e.g., `import lodash` → `import debounce from 'lodash/debounce'`)
+   - Missing dynamic import for heavy feature (e.g., export functionality)
+3. **Fix Strategies**: See Section 2.4.9 (Optimization Recommendations)
+4. **Retest**: Run `npm run size` again
+5. **Exception Process**: If bundle increase is unavoidable, see Section 2.4.12
+
+**CI Failure Investigation**:
+
+1. Check PR comment for size delta (which bundle grew, by how much)
+2. Download `bundle-report` artifact from GitHub Actions
+3. Open `bundle-report.html` to see treemap visualization
+4. Identify which dependency caused the increase
+5. Apply optimization strategies or request size limit increase
+
+#### 2.4.8 Automated Alerts
+
+**PR Comment Integration**: `size-limit-action` (from Section 2.4.4)
+
+**Alert Thresholds**:
+
+| Status     | Condition                   | Action                     |
+| ---------- | --------------------------- | -------------------------- |
+| ✅ **Pass** | All bundles ≤ 80% of limit | No alert, CI passes |
+| ⚠️ **Warning** | Any bundle 80-100% of limit | PR comment warns, CI passes |
+| ❌ **Fail** | Any bundle > 100% of limit | PR comment fails, CI blocked |
+
+**PR Comment Format**:
+
+**Passing (< 80%)**:
+
+```text
+✅ Bundle Size Check Passed
+
+All bundles are within size limits.
+```
+
+**Warning (80-100%)**:
+
+```text
+⚠️ Bundle Size Warning
+
+Path                      | Size      | Limit   | Usage
+--------------------------|-----------|---------|-------
+Main entry (initial load) | 187 KB    | 200 KB  | 93.5% ⚠️
+
+This bundle is approaching its size limit. Consider:
+- Lazy-loading non-critical features
+- Using smaller alternative dependencies
+- Code splitting heavy components
+```
+
+**Failure (> 100%)**:
+
+```text
+❌ Bundle Size Limit Exceeded
+
+Path                      | Size      | Limit   | Over by
+--------------------------|-----------|---------|----------
+Main entry (initial load) | 215 KB    | 200 KB  | +15 KB ❌
+
+This PR exceeds the bundle size limit and cannot be merged.
+
+See devops-architecture.md Section 2.4.9 for optimization strategies.
+To request a size limit increase, see Section 2.4.12.
+```
+
+**PR Labeling** (GitHub Actions):
+
+Add to CI workflow:
+```yaml
+- name: Label Large Bundle Changes
+  if: github.event_name == 'pull_request'
+  uses: actions/github-script@v7
+  with:
+    script: |
+      const fs = require('fs');
+      const report = JSON.parse(fs.readFileSync('size-limit-report.json'));
+      const anyIncreased = report.some(r => r.size > r.limit * 0.9);
+      
+      if (anyIncreased) {
+        github.rest.issues.addLabels({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          issue_number: context.issue.number,
+          labels: ['⚠️ bundle-size']
+        });
+      }
+```
+
+**Labels**:
+
+- `⚠️ bundle-size`: Any bundle at 90%+ of limit (warning or failing)
+- Visible in PR list for easy identification during code review
+
+#### 2.4.9 Optimization Recommendations
+
+##### Strategy 1: Dynamic Imports for Heavy Features
+
+❌ **Before** (synchronous import):
+
+```typescript
+import { ExportDialog } from './components/ExportDialog';
+
+function App() {
+  return <ExportDialog />;
+}
+```
+
+✅ **After** (lazy-loaded):
+
+```typescript
+const ExportDialog = lazy(() => import('./components/ExportDialog'));
+
+function App() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <ExportDialog />
+    </Suspense>
+  );
+}
+```
+
+**Savings**: Export functionality (including CSV generation, chart export) moves from main bundle to separate chunk loaded on-demand.
+
+##### Strategy 2: Tree-Shaking Verification
+
+Ensure imports are tree-shakeable:
+
+❌ **Before** (imports entire library):
+
+```typescript
+import _ from 'lodash';
+const result = _.debounce(fn, 300);
+```
+
+✅ **After** (imports specific function):
+
+```typescript
+import debounce from 'lodash/debounce';
+const result = debounce(fn, 300);
+```
+
+**Savings**: ~70 KB (lodash full library) → ~2 KB (single function)
+
+##### Strategy 3: Package Size Alternatives
+
+Common bloated dependencies and lightweight alternatives:
+
+| Heavy Dependency     | Size (gzipped) | Lightweight Alternative     | Size (gzipped) | Savings |
+| -------------------- | -------------- | --------------------------- | -------------- | ------- |
+| `moment` | 71 KB | `day.js` | 7 KB | 64 KB |
+| `axios` | 13 KB | `fetch` (native) | 0 KB | 13 KB |
+| `lodash` (full) | 72 KB | `lodash-es` (tree-shakeable) | ~5-20 KB | 50+ KB |
+| `chart.js`           | 88 KB          | `recharts` (already used)   | 45 KB          | N/A     |
+
+##### Strategy 4: Code Splitting by Route
+
+Vite automatically splits routes, but verify Splitting is working:
+
+```bash
+npm run build
+ls -lh dist/assets/
+
+# Expected output (content hashes will vary):
+# index-a83f9d27.js       <- Main entry
+# Dashboard-f2e45b19.js   <- Dashboard route chunk
+# Analysis-c9d28a45.js    <- Analysis route chunk
+# vendor-7f8e2d31.js      <- Shared vendor chunk
+```
+
+If routes are bundled in main entry, configure manual chunks in `vite.config.ts`:
+
+```typescript
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', '@radix-ui/react-*'],
+          analysis: ['./src/features/analysis'],
+          dashboard: ['./src/features/dashboard']
+        }
+      }
+    }
+  }
+});
+```
+
+##### Strategy 5: Remove Unused Dependencies
+
+Audit `package.json` for unused packages:
+
+```bash
+npx depcheck
+
+# Output shows unused dependencies:
+# Unused dependencies: styled-components, framer-motion
+```
+
+Remove unused packages:
+```bash
+npm uninstall styled-components framer-motion
+```
+
+##### Strategy 6: Optimize Images and Fonts
+
+- **SVGs**: Optimize with SVGO (Vite plugin: `vite-plugin-svgo`)
+- **Fonts**: Subset to Latin character ranges only (removes CJK, Cyrillic)
+- **Images**: Convert PNGs to WebP with fallbacks
+
+##### Strategy 7: Analyze Bundle Report
+
+Generate and review treemap:
+
+```bash
+npm run build:analyze
+open bundle-report.html
+```
+
+Look for:
+
+- Unexpectedly large dependencies (e.g., entire UI library when only using 3 components)
+- Duplicate dependencies (multiple versions of same package)
+- Development-only code accidentally included in production
+
+#### 2.4.10 Split Points Monitoring
+
+**Goal**: Ensure route-based code splitting remains effective as application grows.
+
+**Metrics to Track**:
+
+| Split Point     | Target Size  | Monitor For                                 |
+| --------------- | ------------ | ------------------------------------------- |
+| Main entry | ≤150 KB | Growing vendor imports, app shell bloat |
+| Dashboard route | ≤75 KB | Heavy chart libraries, data processing logic |
+| Analysis route | ≤75 KB | Statistical libraries, visualization code |
+| Settings route | ≤50 KB | Minimal; mostly form components |
+| Worker bundles | ≤50 KB each | Parser libraries, compression codecs |
+
+**Monitoring Process**:
+
+1. Run `npm run size` locally before each commit
+2. Review size-limit output for per-route sizes
+3. If any route exceeds 80% of limit, investigate in bundle report
+4. Common causes:
+   - Importing shared utilities directly in route (should be in vendor chunk)
+   - Large component libraries not lazy-loaded
+   - Route importing other route's code (circular dependency)
+
+**Vendor Bundle Monitoring**:
+
+Vendor chunk should contain **ONLY**:
+
+- React & React-DOM
+- Radix UI primitives
+- Zustand (state management)
+- Small utilities (clsx, class-variance-authority)
+
+**Not in vendor chunk** (should be route chunks or lazy-loaded):
+
+- Recharts (heavy, only used in Analysis route)
+- D3 functions (only used in Analysis route)
+- Export utilities (CSV, PDF generation)
+
+**Verification**:
+
+```bash
+npm run build:analyze
+# In bundle-report.html:
+# - Expand vendor-*.js
+# - Verify recharts is NOT in vendor chunk
+# - Verify recharts IS in Analysis-*.js chunk
+```
+
+#### 2.4.11 Performance Budget Alignment
+
+Bundle size targets are **derived from** performance budgets in [performance-strategy.md](performance-strategy.md):
+
+**Performance Budget → Bundle Size Calculation**:
+
+| Performance Metric                 | Target  | Derives Bundle Size Limit                      |
+| ---------------------------------- | ------- | ---------------------------------------------- |
+| **LCP (Largest Contentful Paint)** | ≤2.5s | Initial bundle ≤200 KB (download + parse ≤2s) |
+| **FID (First Input Delay)** | ≤100ms | Main thread not blocked by parse/execute |
+| **CLS (Cumulative Layout Shift)** | ≤0.1 | CSS must load before render (≤50 KB) |
+| **TTI (Time to Interactive)** | ≤3.5s | Total JS ≤1 MB (includes all route chunks) |
+
+**Network Speed Baseline**: **Slow 3G** (400 Kbps downlink, 400ms RTT)
+
+**Why Slow 3G?**
+
+- Represents mobile users on poor connectivity
+- Corresponds to WebPageTest "Mobile - 3G" profile
+- Chrome DevTools throttling profile
+- Target: 75th percentile user experience (not average)
+
+**Parse/Execute Time Assumptions** (Low-End Mobile):
+
+| Operation                | Time per 100 KB | Impact on LCP                  |
+| ------------------------ | --------------- | ------------------------------ |
+| Download @ 400 Kbps | 2000ms | Direct |
+| Parse JS (V8 engine) | 50ms | Direct (main thread blocked) |
+| Execute JS (hydration) | 100ms | Direct (React render) |
+| First Paint | 200ms | Direct (browser layout) |
+
+**Example Budget Breakdown** (Main Entry Bundle):
+```
+LCP Target: 2.5s
+
+Time Budget Allocation:
+- DNS + SSL: 400ms (1 RTT)
+- Download 150 KB gzipped @ 400 Kbps: 3000ms ❌ (exceeds budget!)
+
+Revised:
+- Reduce to 80 KB gzipped: 1600ms
+- Parse: 50ms
+- Execute + hydrate: 300ms
+- First paint: 200ms
+- Reserve: 350ms (buffer for variability)
+────────────────────────
+Total: 2500ms ✅ (within LCP target)
+```
+
+**This is why initial bundle limit is 200 KB** (with 150 KB target): Network transfer dominates LCP on slow connections.
+
+**Tooling Alignment**:
+
+- `size-limit --why` shows estimated download + parse time (requires `@size-limit/preset-app`)
+- Add to `package.json`:
+
+  ```json
+  {
+    "size-limit": [
+      {
+        "name": "Main entry (initial load)",
+        "path": "dist/assets/index-*.js",
+        "limit": "200 KB",
+        "gzip": true,
+        "running": true  // Enable time-based checks
+      }
+    ]
+  }
+  ```
+
+- Running time check:
+
+  ```bash
+  npm run size:why
+  
+  # Output:
+  # Main entry (initial load)
+  #   Size: 187 KB (limit: 200 KB) ✅
+  #   Download time (Slow 3G): 1900ms
+  #   Parse time: 48ms
+  #   Execution time: 312ms
+  #   Total LCP impact: 2260ms ✅ (< 2500ms target)
+  ```
+
+#### 2.4.12 Exceptions & Override Process
+
+**When to Request Size Limit Increase**:
+
+Legitimate reasons:
+
+- ✅ New critical feature requires unavoidable dependency (e.g., PDF export library)
+- ✅ Dependency update adds features used by application (intentional growth)
+- ✅ Accessibility improvement requires additional code (WCAG compliance > size)
+
+Invalid reasons:
+
+- ❌ Developer convenience (e.g., adding lodash instead of writing 5 lines of code)
+- ❌ "Nice to have" features without user demand
+- ❌ Premature optimization (adding framework before needed)
+
+**Approval Process**:
+
+1. **Attempt Optimization First** (Required)
+   - Follow all strategies in Section 2.4.9
+   - Document what was tried and why it's insufficient
+   - Example: "Tried lazy-loading PDF export, but users need immediate generation"
+
+2. **Document in ADR** (Required for Permanent Increases)
+   - Create ADR in `docs/decisions/` (use MADR 4.0 template)
+   - Title: "Increase Bundle Size Limit for [Feature]"
+   - Include:
+     - Performance impact analysis (LCP, TTI degradation)
+     - Alternative approaches considered
+     - Justification for approval
+   - Example: `docs/decisions/0016-increase-bundle-size-pdf-export.md`
+
+3. **Update `.size-limit.json`** (After ADR Approval)
+
+   ```json
+   [
+     {
+       "name": "Main entry (initial load)",
+       "limit": "250 KB",  // Increased from 200 KB (see ADR-0016)
+       "gzip": true
+     }
+   ]
+   ```
+
+4. **Update Performance Budget** (If Necessary)
+   - If bundle increase degrades LCP/TTI targets, update [performance-strategy.md](performance-strategy.md) accordingly
+   - Example: "LCP target revised to 2.8s (from 2.5s) due to PDF export feature"
+
+5. **Approval Authority**:
+   - **Temporary increase (single PR)**: QA agent approval (use `--skip-step` in PR)
+   - **Permanent increase**: Human product owner approval + ADR
+   - **Emergency override**: Human product owner only (e.g., security patch requires larger bundle)
+
+**Temporary Override** (Single PR Only):
+
+If legitimate feature requires size increase but ADR not yet written:
+
+```yaml
+# In PR description, add comment:
+# bundle-size-override: emergency-security-patch
+
+# CI workflow detects comment and allows override:
+- name: Check Bundle Size
+  run: |
+    if grep -q "bundle-size-override" <<< "${{ github.event.pull_request.body }}"; then
+      echo "⚠️ Bundle size check skipped (temporary override)"
+      exit 0
+    fi
+    npm run size
+```
+
+**Merge Condition**: Override PRs must have follow-up issue created to address size increase or document in ADR.
+
+**Revert Policy**: If size increase causes user-reported performance regressions, feature may be reverted regardless of approval status.
 
 ### 2.5 Build Artifact Management
 
 **Artifacts Produced**:
 
-| Artifact | Location | Retention | Purpose |
-|----------|----------|-----------|---------|
+| Artifact             | Location             | Retention            | Purpose                            |
+| -------------------- | -------------------- | -------------------- | ---------------------------------- |
 | Production bundle | `dist/` | Permanent (deployed) | GitHub Pages deployment |
 | Bundle visualization | `stats.html` | 30 days | Size regression analysis |
 | Playwright report | `playwright-report/` | 14 days | E2E test debugging |
@@ -186,49 +972,802 @@ build:
 
 ### 3.1 Pre-Commit Hooks
 
-**Tool**: Husky + custom script (`.husky/pre-commit`)
+**Status**: IMPLEMENTED — Addresses QA COMPLIANCE-1
 
-**Checks** (run sequentially, fail fast):
+This section documents the complete pre-commit hook system for local development, including installation, configuration, execution, bypass options, troubleshooting, and integration with CI/CD. Pre-commit hooks are the **first line of defense** for code quality, catching issues locally before they reach CI and reducing feedback cycles from minutes to seconds.
 
-1. **Formatting** (Prettier)
-   ```bash
-   npx prettier --check .
-   ```
-   - **Purpose**: Enforce consistent code style
-   - **Fix**: `npx prettier --write .`
-   - **Failure Impact**: Immediate rejection, zero cost
+---
 
-2. **Linting** (ESLint)
-   ```bash
-   npx eslint .
-   ```
-   - **Purpose**: Catch code quality issues, potential bugs, anti-patterns
-   - **Fix**: `npx eslint . --fix` (auto-fixable rules only)
-   - **Failure Impact**: Blocking, developer must address
+#### 3.1.1 Purpose & Rationale
 
-3. **Type Checking** (TypeScript)
-   ```bash
-   npx tsc --noEmit
-   ```
-   - **Purpose**: Catch type errors before CI
-   - **Fix**: Manual type corrections (no auto-fix)
-   - **Failure Impact**: Blocking, must be resolved
+Pre-commit hooks serve four critical functions:
 
-4. **Unit Tests** (Vitest)
-   ```bash
-   npx vitest run --reporter=dot
-   ```
-   - **Purpose**: Ensure code changes don't break existing functionality
-   - **Failure Impact**: Blocking, tests must pass or be fixed
+1. **Fast Feedback**: Catch issues in seconds (locally) vs minutes (CI wait time)
+2. **Quality Enforcement**: Ensure code meets formatting, linting, type safety, and correctness standards before commit
+3. **CI Failure Reduction**: Block broken code from reaching CI, reducing wasted CI minutes and context switching
+4. **Developer Experience**: Consistent code style across team; fewer surprises in code review
+
+**Core Guarantee**: **If pre-commit passes locally, CI must be green.** Any violation of this guarantee is a P0 bug in the DevOps architecture.
+
+---
+
+#### 3.1.2 Pre-Commit Checks
+
+Pre-commit hooks run **four checks sequentially** in fail-fast order (formatting → linting → type-checking → testing). This order optimizes for speed: fast checks (formatting, linting) run first, expensive checks (type-checking, tests) run last.
+
+##### Check 1: Code Formatting (Prettier)
+
+**Command**:
+
+```bash
+npx prettier --check .
+```
+
+**Purpose**: Enforce consistent code style (indentation, quotes, semicolons, line breaks)
+
+**Scope**: All files matching `.prettierrc` and `.prettierignore` configuration
+
+**Configuration**: `.prettierrc`
+
+```json
+{
+  "semi": true,
+  "singleQuote": true,
+  "trailingComma": "es5",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "useTabs": false,
+  "endOfLine": "lf"
+}
+```
+
+**Auto-fix**: `npx prettier --write .` or `npm run format`
+
+**Typical Execution Time**: 1–3 seconds
+
+**Failure Handling**: Immediate rejection; zero cost to retry after fix
+
+---
+
+##### Check 2: Code Linting (ESLint)
+
+**Command**:
+
+```bash
+npx eslint .
+```
+
+**Purpose**: Catch code quality issues, potential bugs, unused variables, anti-patterns
+
+**Scope**: All `.ts`, `.tsx`, `.js`, `.jsx` files per `.eslintrc.json`
+
+**Configuration**: `.eslintrc.json`
+
+```json
+{
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "rules": {
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/explicit-module-boundary-types": "off",
+    "react/react-in-jsx-scope": "off"
+  }
+}
+```
+
+**Auto-fix**: `npx eslint . --fix` or `npm run lint:fix` (auto-fixable rules only)
+
+**Typical Execution Time**: 2–5 seconds
+
+**Failure Examples**:
+
+- Unused variables: `'x' is assigned a value but never used`
+- Missing dependencies in React hooks: `React Hook useEffect has a missing dependency`
+- Invalid TypeScript patterns: `Unexpected any. Specify a different type`
+
+**Failure Handling**: Blocking; developer must manually fix issues that can't be auto-fixed
+
+---
+
+##### Check 3: Type Checking (TypeScript)
+
+**Command**:
+
+```bash
+npx tsc --noEmit
+```
+
+**Purpose**: Catch type errors, interface mismatches, and type safety violations before CI
+
+**Scope**: All `.ts` and `.tsx` files per `tsconfig.json`
+
+**Configuration**: `tsconfig.json` (key settings)
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+```
+
+**Auto-fix**: None — type errors must be resolved manually
+
+**Typical Execution Time**: 3–8 seconds (depends on project size and tsserver cache)
+
+**Failure Examples**:
+
+- Type mismatch: `Type 'string' is not assignable to type 'number'`
+- Missing properties: `Property 'name' is missing in type 'User'`
+- Incorrect function signature: `Expected 2 arguments, but got 1`
+
+**Failure Handling**: Blocking; developer must fix type errors. **Never use `// @ts-ignore` or `any` to bypass.**
+
+**Performance Optimization**: TypeScript uses incremental compilation (`.tsbuildinfo` cache); subsequent runs are faster.
+
+---
+
+##### Check 4: Unit Tests (Vitest)
+
+**Command**:
+
+```bash
+npx vitest run --reporter=dot
+```
+
+**Purpose**: Ensure code changes don't break existing functionality; catch regressions early
+
+**Scope**: All test files matching `**/*.test.ts`, `**/*.test.tsx`, `**/*.spec.ts`, `**/*.spec.tsx` per `vitest.config.ts`
+
+**Configuration**: `vitest.config.ts` (key settings)
+
+```typescript
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html', 'lcov'],
+      exclude: ['node_modules/', 'src/test/'],
+    },
+  },
+});
+```
+
+**Reporter**: `dot` (minimal output for speed; one dot per passing test, F for failure)
+
+**Typical Execution Time**: 5–15 seconds (depends on test count and complexity)
+
+**Failure Handling**: Blocking; tests must pass or be fixed. Skipped tests (`test.skip`) are allowed but discouraged.
+
+**Performance Optimization**: Vitest runs tests in parallel across CPU cores; use `--no-threads` if flaky tests suspected.
+
+---
+
+#### 3.1.3 Execution Order & Fail Fast
+
+Pre-commit checks run in the following order to **minimize wasted time**:
+
+1. **Prettier** (1–3s) — Fastest; trivial to fix
+2. **ESLint** (2–5s) — Fast; mostly auto-fixable
+3. **TypeScript** (3–8s) — Moderate; requires manual fixes
+4. **Vitest** (5–15s) — Slowest; requires debugging
+
+**Fail Fast**: If any check fails, subsequent checks are **not run**. Example: if Prettier fails, ESLint/TypeScript/Vitest are skipped. This reduces feedback time and avoids cascading error messages.
+
+**Total Execution Time**: **< 30 seconds** on typical changes (< 10 files modified). Larger changesets may take 30–60 seconds.
+
+---
+
+#### 3.1.4 Installation & Setup
+
+**Tool**: **Husky v9** (industry-standard Git hooks manager)
+
+**Why Husky**:
+
+- Zero-friction installation via npm postinstall hook
+- Committed hook scripts (`.husky/pre-commit` is version-controlled)
+- Cross-platform compatibility (Windows, macOS, Linux)
+- No global dependencies required
+
+**Installation** (automatic on `npm install`):
+
+```bash
+# Clone repository
+git clone https://github.com/kylescudder/cpap-analyzer.git
+cd cpap-analyzer
+
+# Install dependencies (automatically installs Husky hooks)
+npm install
+
+# Verify hooks are installed
+ls -la .git/hooks/pre-commit
+# Expected: .git/hooks/pre-commit exists and is executable
+```
+
+**Manual Installation** (if hooks not installed):
+
+```bash
+npm run prepare
+```
+
+**NPM Scripts** (`package.json`):
+
+```json
+{
+  "scripts": {
+    "prepare": "husky install",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "pre-commit": "prettier --check . && eslint . && tsc --noEmit && vitest run --reporter=dot"
+  },
+  "devDependencies": {
+    "husky": "^9.0.0",
+    "prettier": "^3.2.0",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.3.0"
+  }
+}
+```
+
+**First-Time Contributor Setup**:
+
+1. Fork the repository
+2. Clone the fork: `git clone https://github.com/<your-username>/cpap-analyzer.git`
+3. Install dependencies: `npm install`
+4. Verify hooks: `npm run pre-commit`
+5. Make changes
+6. Commit (hooks run automatically)
+
+---
+
+#### 3.1.5 Running Checks Manually
+
+Pre-commit hooks run automatically on `git commit`, but checks can also be run manually for debugging, verification, or CI mirroring.
+
+**Individual Check Commands**:
+
+| Check            | Command                  | Purpose                                           |
+| ---------------- | ------------------------ | ------------------------------------------------- |
+| Formatting (check) | `npm run format:check` | Verify code formatting without modifying files |
+| Formatting (fix) | `npm run format` | Auto-format all files |
+| Linting (check) | `npm run lint` | Check for linting errors |
+| Linting (fix) | `npm run lint:fix` | Auto-fix fixable linting issues |
+| Type checking | `npm run type-check` | Run TypeScript compiler without emitting files |
+| Unit tests | `npm run test` | Run full test suite |
+| Unit tests (watch) | `npm run test:watch` | Run tests in watch mode (interactive) |
+| **All checks** | `npm run pre-commit` | Run all pre-commit checks manually |
+
+**Use Cases**:
+
+- **Before committing**: `npm run pre-commit` to verify all checks pass
+- **Auto-fix formatting**: `npm run format` to fix all Prettier issues at once
+- **Auto-fix linting**: `npm run lint:fix` to fix auto-fixable ESLint issues
+- **Interactive testing**: `npm run test:watch` to debug failing tests
+- **CI debugging**: `npm run pre-commit` mirrors exact pre-commit behavior
+
+---
+
+#### 3.1.6 Bypass Options
+
+**Default Policy**: Pre-commit hooks **should not be bypassed** under normal circumstances. The pre-commit guarantee ("if pre-commit passes, CI is green") only holds if hooks are not bypassed.
+
+**Bypass Command**:
+```bash
+git commit --no-verify
+# or short form:
+git commit -n
+```
+
+**When Bypass is Appropriate**:
+
+1. **Emergency Hotfixes**: Critical production bug that must be deployed immediately; skip pre-commit, fix later
+2. **Work-in-Progress Commits**: Committing unfinished code to a feature branch for backup or collaboration (not main branch)
+3. **Pre-Commit Hook Bugs**: Pre-commit hook itself is broken and blocking valid commits (rare, but report to DevOps immediately)
+
+**When Bypass is NOT Appropriate**:
+
+- "Too slow" — Pre-commit is < 30 seconds; fix the issue instead
+- "Tests are flaky" — Fix the tests, don't bypass
+- "Just this once" — If the code doesn't pass pre-commit, it won't pass CI either
+
+**Consequences of Bypassing**:
+
+- **CI will fail**: Same checks run in CI; bypassing pre-commit only delays the error
+- **Blocked PRs**: CI must be green to merge; bypassed commits will block the PR
+- **Context switching**: Waiting for CI failures (5+ minutes) vs fixing locally (< 1 minute)
+- **Code review friction**: Reviewers see linting/formatting issues; wastes review time
+
+**Better Alternatives to Bypass**:
+
+1. **Fix issues locally**: Run `npm run format` and `npm run lint:fix` to auto-fix most issues
+2. **Commit smaller chunks**: If tests fail, commit passing changes first, fix failing tests separately
+3. **Use `--amend`**: Fix issues and amend the commit instead of creating a new commit
+4. **WIP branches**: For work-in-progress, push to a feature branch (not main) with `--no-verify` if needed
+
+**PR Review Policy**: Commits that bypass pre-commit (detected by CI failures) should be rejected in code review unless there's a documented reason (emergency hotfix, pre-commit bug).
+
+---
+
+#### 3.1.7 Performance Considerations
+
+**Performance Target**: Pre-commit checks complete in **< 30 seconds** on typical changes.
+
+**Performance Optimizations**:
+
+##### 3.1.7.1 Lint-Staged (Future Optimization)
+
+**Status**: NOT YET IMPLEMENTED — Performance is currently acceptable (< 30s)
+
+**Concept**: Run checks only on **staged files** (not entire codebase)
+
+**Tool**: `lint-staged` + `husky`
+
+**Configuration** (`.lintstagedrc.json`):
+
+```json
+{
+  "*.{ts,tsx,js,jsx}": [
+    "prettier --write",
+    "eslint --fix",
+    "tsc-files --noEmit"
+  ],
+  "*.{json,md,css}": [
+    "prettier --write"
+  ]
+}
+```
+
+**Expected Speedup**: 3–10x faster for small changes (< 10 files)
+
+**Trade-off**: Added complexity; may miss issues in unchanged files
+
+**Decision**: Implement if pre-commit checks exceed 30 seconds regularly. Currently not needed.
+
+##### 3.1.7.2 TypeScript Incremental Compilation
+
+**Status**: ENABLED via `tsconfig.json`
+
+**Configuration**:
+```json
+{
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo"
+  }
+}
+```
+
+**Speedup**: First run ~8s, subsequent runs ~3s (60% faster)
+
+##### 3.1.7.3 Vitest Affected Tests Only (Future Optimization)
+
+**Status**: NOT YET IMPLEMENTED
+
+**Concept**: Run only tests affected by changed files (requires test dependency graph)
+
+**Tool**: `vitest --changed` (experimental feature)
+
+**Decision**: Implement if test suite grows beyond 500 tests or execution time exceeds 15 seconds
+
+---
+
+#### 3.1.8 Troubleshooting Pre-Commit Failures
+
+##### Prettier Failure
+
+**Symptom**:
+```
+Checking formatting...
+[warn] src/components/Dashboard.tsx
+[warn] Code style issues found in the above file. Run Prettier to fix.
+```
+
+**Cause**: Code formatting doesn't match `.prettierrc` configuration
+
+**Fix**:
+```bash
+npm run format
+git add .
+git commit
+```
+
+**Prevention**: Configure your code editor to run Prettier on save:
+- **VS Code**: Install `esbenp.prettier-vscode`, enable "Format on Save"
+- **WebStorm**: Enable "Prettier" in Settings > Languages & Frameworks > JavaScript > Prettier
+
+---
+
+##### ESLint Failure
+
+**Symptom**:
+```
+/Users/dev/cpap-analyzer/src/utils/helpers.ts
+  12:7  error  'result' is assigned a value but never used  @typescript-eslint/no-unused-vars
+```
+
+**Cause**: Code violates ESLint rules
+
+**Fix (Auto-fixable)**:
+```bash
+npm run lint:fix
+git add .
+git commit
+```
+
+**Fix (Manual)**:
+1. Open the file indicated in the error (`src/utils/helpers.ts`)
+2. Fix the specific issue (remove unused variable, add missing dependency, etc.)
+3. Retry commit
+
+**Prevention**: Configure your code editor to run ESLint on save:
+- **VS Code**: Install `dbaeumer.vscode-eslint`, enable "ESLint: Auto Fix On Save"
+- **WebStorm**: Enable "ESLint" in Settings > Languages & Frameworks > JavaScript > Code Quality Tools
+
+---
+
+##### TypeScript Type Error
+
+**Symptom**:
+```
+src/stores/sessionStore.ts:45:12 - error TS2322: Type 'string' is not assignable to type 'number'.
+
+45     age: "25",
+            ~~~~
+```
+
+**Cause**: Type mismatch detected by TypeScript compiler
+
+**Fix**:
+1. Open the file and line indicated (`src/stores/sessionStore.ts:45`)
+2. Correct the type error (change `"25"` to `25`, or update type definition)
+3. Retry commit
+
+**Prevention**:
+- Configure your code editor for TypeScript integration:
+  - **VS Code**: TypeScript support is built-in; errors appear in "Problems" panel
+  - **WebStorm**: TypeScript support is built-in; enable "TypeScript type checking"
+- Run `npm run type-check` frequently during development
+
+**NEVER USE**:
+- `// @ts-ignore` to suppress errors (hides real bugs)
+- `any` type to bypass type checking (defeats purpose of TypeScript)
+
+---
+
+##### Test Failure
+
+**Symptom**:
+```
+ FAIL  src/utils/helpers.test.ts > formatDate > should format ISO date
+AssertionError: expected '2024-01-01' to equal '01/01/2024'
+```
+
+**Cause**: Code changes broke a test, or test expectations are incorrect
+
+**Fix**:
+1. Run tests interactively: `npm run test:watch`
+2. Debug the failing test:
+   - If code is correct, update test expectations
+   - If code is wrong, fix the implementation
+3. Verify all tests pass: `npm run test`
+4. Retry commit
+
+**Prevention**:
+- Run tests in watch mode during development: `npm run test:watch`
+- Write tests as you write code (TDD approach)
+- Run full test suite before committing: `npm run test`
+
+---
+
+##### Hook Not Running
+
+**Symptom**: Commit succeeds without running pre-commit checks (no output)
+
+**Cause**: Husky hooks not installed or not executable
+
+**Fix**:
+```bash
+# Reinstall Husky hooks
+npm run prepare
+
+# Verify hook is executable
+chmod +x .husky/pre-commit
+
+# Verify hook content
+cat .husky/pre-commit
+```
+
+**Expected Hook Content** (`.husky/pre-commit`):
+```bash
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "Running pre-commit checks..."
+npm run pre-commit
+```
+
+**Prevention**: Run `npm install` (not `npm ci`) during setup to ensure postinstall hooks run
+
+---
+
+#### 3.1.9 Configuration Files
+
+Pre-commit checks rely on the following configuration files:
+
+| File | Purpose | Owner | Change Frequency |
+|------|---------|-------|------------------|
+| `.husky/pre-commit` | Pre-commit hook script | DevOps | Rare (add new checks) |
+| `.prettierrc` | Code formatting rules | DevOps | Rare (style changes) |
+| `.prettierignore` | Files excluded from formatting | DevOps | Occasional (ignore build output) |
+| `.eslintrc.json` | Linting rules | DevOps | Occasional (rule updates) |
+| `.eslintignore` | Files excluded from linting | DevOps | Occasional |
+| `tsconfig.json` | TypeScript compiler configuration | DevOps | Rare (target changes) |
+| `vitest.config.ts` | Test runner configuration | DevOps + Unit Tester | Occasional (coverage thresholds) |
+| `package.json` | npm scripts for manual checks | DevOps | Frequent (add new scripts) |
+
+**Configuration Change Process**:
+1. Propose change in GitHub issue (justify rationale)
+2. Update configuration file
+3. Update `.github/workflows/ci.yml` to mirror change (maintain pre-commit/CI parity)
+4. Test locally with `npm run pre-commit`
+5. Create PR; ensure CI is green
+6. Announce configuration change to team (if user-facing impact)
+
+---
+
+#### 3.1.10 Integration with CI/CD
+
+**Philosophy**: CI mirrors pre-commit checks exactly, plus additional steps that are too slow for local pre-commit (E2E tests, security audit, bundle size analysis).
+
+**Pre-Commit vs CI Checks**:
+
+| Check | Pre-Commit (Local) | CI (GitHub Actions) | Why Different? |
+|-------|-------------------|---------------------|----------------|
+| Prettier | ✅ `npx prettier --check .` | ✅ `npx prettier --check .` | Identical |
+| ESLint | ✅ `npx eslint .` | ✅ `npx eslint .` | Identical |
+| TypeScript | ✅ `npx tsc --noEmit` | ✅ `npx tsc --noEmit` | Identical |
+| Vitest unit tests | ✅ `npx vitest run` | ✅ `npx vitest run --coverage` | CI adds coverage reporting |
+| E2E tests (Playwright) | ❌ (too slow, ~2–5 min) | ✅ | Too slow for pre-commit |
+| Security audit | ❌ (too slow, ~30s) | ✅ | Blocks on vulnerabilities, not code changes |
+| Bundle size check | ❌ (requires full build) | ✅ | Needs production build |
+
+**Pre-Commit Guarantee**: **If pre-commit passes locally, CI formatting/linting/type-checking/unit-tests MUST be green.** CI may still fail on E2E tests or security audit, but core checks must pass.
+
+**Enforcement**: Any violation of this guarantee is a **P0 DevOps bug**. Root causes include:
+- CI and pre-commit use different Node.js versions (must match)
+- CI and pre-commit use different dependency versions (lock file out of sync)
+- Environment-specific configuration differences (`.env` files, OS-specific behavior)
+
+**Debugging Mismatches**:
+1. Reproduce locally: Run CI commands exactly as defined in `.github/workflows/ci.yml`
+2. Check Node.js versions: `node --version` (local) vs `github-actions` (CI logs)
+3. Check dependency versions: `npm list <package>` (local) vs CI logs
+4. Check configuration files: Ensure `.prettierrc`, `.eslintrc.json`, `tsconfig.json` are committed
+
+---
+
+#### 3.1.11 Developer Experience
+
+**Benefits of Pre-Commit Hooks**:
+
+1. **Fast Feedback**: Errors caught in seconds, not minutes (no CI wait time)
+2. **Consistent Code Style**: No debates about formatting; Prettier enforces one style
+3. **Fewer Context Switches**: Fix issues immediately, not after switching tasks
+4. **Reduced CI Failures**: Blocks broken code from reaching CI
+5. **Cleaner Git History**: Every commit passes quality checks
+6. **Better Code Reviews**: Reviewers focus on logic, not formatting/style issues
+
+**Developer Workflow**:
+
+```bash
+# 1. Make changes
+vim src/components/Dashboard.tsx
+
+# 2. (Optional) Run checks manually
+npm run pre-commit
+
+# 3. Stage changes
+git add src/components/Dashboard.tsx
+
+# 4. Commit (pre-commit hook runs automatically)
+git commit -m "feat: add dashboard export button"
+
+# 5. If pre-commit fails, fix and re-commit
+npm run format       # Fix Prettier issues
+npm run lint:fix     # Fix auto-fixable ESLint issues
+git add .
+git commit --amend --no-edit
+
+# 6. Push (CI will mirror pre-commit checks)
+git push
+```
+
+**Time Savings** (per commit):
+
+- **Without pre-commit**: Commit (5s) → Push (10s) → Wait for CI (3–5 min) → CI fails → Fix → Repeat = **5–10 minutes**
+- **With pre-commit**: Commit fails locally (15s) → Fix (1–2 min) → Re-commit succeeds (15s) → Push → CI green = **2–3 minutes**
+
+**Average time saved per commit**: **3–7 minutes**
+
+---
+
+#### 3.1.12 Hook Script Implementation
+
+**File**: `.husky/pre-commit`
+
+```bash
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🎯 Running pre-commit checks..."
+echo ""
+
+# Exit immediately if any command fails
+set -e
+
+# 1. Formatting (Prettier)
+echo "✨ Checking code formatting (Prettier)..."
+npx prettier --check . || {
+  echo "❌ Formatting check failed. Run 'npm run format' to fix."
+  exit 1
+}
+echo "✅ Formatting passed"
+echo ""
+
+# 2. Linting (ESLint)
+echo "🔍 Linting code (ESLint)..."
+npx eslint . || {
+  echo "❌ Linting failed. Run 'npm run lint:fix' to auto-fix, or fix manually."
+  exit 1
+}
+echo "✅ Linting passed"
+echo ""
+
+# 3. Type Checking (TypeScript)
+echo "🔎 Type checking (TypeScript)..."
+npx tsc --noEmit || {
+  echo "❌ Type checking failed. Fix type errors and retry."
+  exit 1
+}
+echo "✅ Type checking passed"
+echo ""
+
+# 4. Unit Tests (Vitest)
+echo "🧪 Running unit tests (Vitest)..."
+npx vitest run --reporter=dot || {
+  echo "❌ Tests failed. Fix failing tests and retry."
+  exit 1
+}
+echo "✅ Tests passed"
+echo ""
+
+echo "✅ All pre-commit checks passed! 🎉"
+echo ""
+```
+
+**Key Features**:
+- **`set -e`**: Fail fast on first error
+- **Custom error messages**: Guide developers to fix commands
+- **Clear progress output**: Shows which check is running
+- **Non-zero exit codes**: Blocks commit on failure
+
+---
+
+#### 3.1.13 Lint-Staged Configuration (Future)
+
+**File**: `.lintstagedrc.json` (NOT YET IMPLEMENTED)
+
+**Purpose**: Run checks only on staged files (not entire codebase) to improve performance
+
+**Configuration**:
+```json
+{
+  "*.{ts,tsx}": [
+    "prettier --write",
+    "eslint --fix",
+    "bash -c 'tsc --noEmit'"
+  ],
+  "*.{js,jsx}": [
+    "prettier --write",
+    "eslint --fix"
+  ],
+  "*.{json,md,css,html}": [
+    "prettier --write"
+  ]
+}
+```
+
+**Modified Hook** (`.husky/pre-commit`):
+
+```bash
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🎯 Running pre-commit checks on staged files..."
+npx lint-staged
+
+echo "🧪 Running unit tests..."
+npx vitest run --reporter=dot
+```
+
+**Decision**: Implement if pre-commit checks regularly exceed 30 seconds. Currently not needed (checks complete in < 30s).
+
+---
+
+#### 3.1.14 NPM Scripts Summary
+
+**File**: `package.json` (scripts section)
+
+```json
+{
+  "scripts": {
+    "prepare": "husky install",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "pre-commit": "prettier --check . && eslint . && tsc --noEmit && vitest run --reporter=dot"
+  }
+}
+```
+
+**Usage Guide**:
+
+| Script | Command | Purpose |
+|--------|---------|---------|
+| `npm run format` | Auto-fix all formatting issues | Use daily before committing |
+| `npm run format:check` | Check formatting without modifying | Use in CI/scripts |
+| `npm run lint:fix` | Auto-fix linting issues | Use when ESLint fails |
+| `npm run type-check` | Check TypeScript types | Use frequently during development |
+| `npm run test` | Run all tests once | Use before committing |
+| `npm run test:watch` | Run tests in watch mode | Use during TDD development |
+| `npm run pre-commit` | Run all pre-commit checks manually | Use to verify before committing |
+
+---
 
 **Performance**: Pre-commit checks complete in < 30 seconds on typical changes (< 10 files modified).
 
 **Guarantee**: If pre-commit passes locally, CI must be green. This is a **contractual guarantee** of the DevOps architecture. Any violation is a P0 bug.
-
-**Enforcement**:
-- Husky installed via `npm install` (postinstall hook)
-- Pre-commit hook is executable and git-tracked
-- No bypass mechanisms (no `--no-verify` allowed; rejected in code review)
 
 ### 3.2 CI Quality Checks
 
@@ -988,7 +2527,1536 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 
 ---
 
-## 8. Development Tooling
+## 8. Client-Side Logging & Observability
+
+### 8.1 Privacy-First Observability Philosophy
+
+**Core Principle**: **Zero external telemetry while maintaining complete debuggability**.
+
+Per [ADR-0015: Zero Telemetry & Analytics](../decisions/0015-zero-telemetry-analytics.md), CPAP Analyzer does not transmit any data to external servers. This extends to error tracking, performance monitoring, and usage analytics. However, production issues still occur and must be debuggable.
+
+**Solution**: User-controlled, privacy-safe log export system.
+
+**Key Requirements**:
+
+1. **No Automatic Reporting**: Logs never leave the user's browser automatically
+2. **User Consent**: Log export requires explicit user action (button click)
+3. **Privacy-Safe Sanitization**: PHI and sensitive data stripped before export
+4. **Technical Completeness**: Sufficient detail for developers to diagnose issues
+5. **Zero Performance Impact**: Logging must not degrade application responsiveness
+
+**Design Trade-offs**:
+
+- **Loss**: Real-time error tracking, automatic crash reports, usage analytics
+- **Gain**: Complete privacy, user trust, regulatory simplicity
+- **Mitigation**: Comprehensive structured logging + easy export workflow
+
+### 8.2 Structured Logging Implementation
+
+#### 8.2.1 Logging Library Choice
+
+**Selected Library**: **Custom logger** (thin wrapper around `console`)
+
+**Rationale**:
+
+- **Simplicity**: No external dependencies for core logging
+- **Performance**: Native `console` methods are highly optimized
+- **Control**: Full ownership of log format and sanitization
+- **Structured Output**: Can still produce JSON-structured logs
+- **Browser DevTools Integration**: Logs appear natively in console
+
+**Alternative Considerations**:
+
+- **`loglevel`**: Lightweight, but limited structure support
+- **`debug`**: Excellent filtering, but no built-in structure
+- **`winston`/`bunyan`**: Node.js-focused, too heavy for client-side
+- **`pino`**: Performance-focused, but still Node.js-oriented
+
+**Decision**: Custom logger provides the best balance of simplicity, performance, and control.
+
+#### 8.2.2 Log Levels
+
+**Hierarchy** (least to most verbose):
+
+| Level   | Severity              | Production Default | Development Default | Use Cases                                                              |
+| ------- | --------------------- | ------------------ | ------------------- | ---------------------------------------------------------------------- |
+| `ERROR` | Critical failures | ✅ Enabled | ✅ Enabled | Unhandled exceptions, critical errors, data corruption |
+| `WARN` | Recoverable issues | ✅ Enabled | ✅ Enabled | Deprecated features, missing optional data, fallback behaviors |
+| `INFO` | Significant events | ❌ Disabled | ✅ Enabled | User actions, data loaded, analysis complete |
+| `DEBUG` | Developer diagnostics | ❌ Disabled | ✅ Enabled | Function entry/exit, state changes, algorithm steps |
+| `TRACE` | Fine-grained detail | ❌ Disabled | ❌ Disabled | Loop iterations, individual data points (use sparingly) |
+
+**Level Selection Guidelines**:
+
+- **ERROR**: Always log. User will see in exported logs.
+- **WARN**: Log by default. May indicate future problems.
+- **INFO**: Disable in production to reduce log volume. Enable during debugging.
+- **DEBUG**: Only for active troubleshooting. Not captured in production.
+- **TRACE**: Rarely useful. Can generate massive log volume. Avoid in hot paths.
+
+#### 8.2.3 Structured Log Format
+
+**Format**: JSON-serializable object with consistent schema
+
+**Schema**:
+
+```typescript
+interface LogEntry {
+  timestamp: string;         // ISO 8601: "2026-02-10T14:32:45.123Z"
+  level: LogLevel;           // "ERROR" | "WARN" | "INFO" | "DEBUG" | "TRACE"
+  category: LogCategory;     // "UI" | "Storage" | "Analysis" | etc.
+  message: string;           // Human-readable message
+  context?: Record<string, unknown>;  // Structured metadata
+  error?: {                  // Present for ERROR level
+    name: string;
+    message: string;
+    stack?: string;
+  };
+}
+
+type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE';
+
+type LogCategory =
+  | 'UI'          // React components, routing, user interactions
+  | 'Storage'     // IndexedDB, OPFS, data persistence
+  | 'Analysis'    // Data analysis algorithms, statistics
+  | 'Worker'      // Web Worker communication and tasks
+  | 'Plugin'      // Plugin loading, execution, errors
+  | 'Import'      // File import, EDF parsing, data validation
+  | 'Export'      // Data export, file generation
+  | 'System';     // Browser features, initialization, lifecycle
+```
+
+**Example Log Entries**:
+
+```typescript
+// ERROR: Storage operation failed
+{
+  timestamp: "2026-02-10T14:32:45.123Z",
+  level: "ERROR",
+  category: "Storage",
+  message: "Failed to save session data to IndexedDB",
+  context: {
+    operation: "put",
+    storeName: "sessions",
+    recordId: "session-abc123"
+  },
+  error: {
+    name: "QuotaExceededError",
+    message: "The quota has been exceeded.",
+    stack: "Error: The quota has been exceeded.\n    at IDBObjectStore..."
+  }
+}
+
+// INFO: Analysis complete
+{
+  timestamp: "2026-02-10T14:33:12.456Z",
+  level: "INFO",
+  category: "Analysis",
+  message: "AHI analysis completed successfully",
+  context: {
+    nightId: "2026-02-09",
+    eventsDetected: 42,
+    duration: "7h 32m",
+    processingTime: 1234
+  }
+}
+
+// DEBUG: Worker task started
+{
+  timestamp: "2026-02-10T14:33:10.000Z",
+  level: "DEBUG",
+  category: "Worker",
+  message: "Started analysis worker task",
+  context: {
+    workerId: "worker-1",
+    taskType: "ahi-calculation",
+    inputSize: 1048576
+  }
+}
+```
+
+#### 8.2.4 Logger Implementation
+
+**File**: `src/utils/logger.ts`
+
+```typescript
+import type { LogEntry, LogLevel, LogCategory } from './logger.types';
+
+class Logger {
+  private static instance: Logger;
+  private logs: LogEntry[] = [];
+  private maxLogs = 10000;  // Prevent memory bloat
+  private levelThresholds: Record<LogLevel, number> = {
+    ERROR: 0,
+    WARN: 1,
+    INFO: 2,
+    DEBUG: 3,
+    TRACE: 4,
+  };
+  private currentLevel: number;
+
+  private constructor() {
+    // Default: ERROR + WARN in production, INFO in development
+    this.currentLevel = import.meta.env.PROD ? 1 : 2;
+  }
+
+  static getInstance(): Logger {
+    if (!Logger.instance) {
+      Logger.instance = new Logger();
+    }
+    return Logger.instance;
+  }
+
+  setLevel(level: LogLevel): void {
+    this.currentLevel = this.levelThresholds[level];
+  }
+
+  private shouldLog(level: LogLevel): boolean {
+    return this.levelThresholds[level] <= this.currentLevel;
+  }
+
+  private log(
+    level: LogLevel,
+    category: LogCategory,
+    message: string,
+    context?: Record<string, unknown>,
+    error?: Error
+  ): void {
+    if (!this.shouldLog(level)) return;
+
+    const entry: LogEntry = {
+      timestamp: new Date().toISOString(),
+      level,
+      category,
+      message,
+      ...(context && { context }),
+      ...(error && {
+        error: {
+          name: error.name,
+          message: error.message,
+          stack: error.stack,
+        },
+      }),
+    };
+
+    // Store in memory
+    this.logs.push(entry);
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift();  // Remove oldest log
+    }
+
+    // Output to console
+    const consoleMethod = level === 'ERROR' ? 'error' :
+                         level === 'WARN' ? 'warn' :
+                         level === 'DEBUG' || level === 'TRACE' ? 'debug' :
+                         'log';
+    console[consoleMethod](
+      `[${level}] [${category}] ${message}`,
+      context || '',
+      error || ''
+    );
+  }
+
+  error(category: LogCategory, message: string, error: Error, context?: Record<string, unknown>): void {
+    this.log('ERROR', category, message, context, error);
+  }
+
+  warn(category: LogCategory, message: string, context?: Record<string, unknown>): void {
+    this.log('WARN', category, message, context);
+  }
+
+  info(category: LogCategory, message: string, context?: Record<string, unknown>): void {
+    this.log('INFO', category, message, context);
+  }
+
+  debug(category: LogCategory, message: string, context?: Record<string, unknown>): void {
+    this.log('DEBUG', category, message, context);
+  }
+
+  trace(category: LogCategory, message: string, context?: Record<string, unknown>): void {
+    this.log('TRACE', category, message, context);
+  }
+
+  getLogs(): LogEntry[] {
+    return [...this.logs];  // Return copy to prevent external mutation
+  }
+
+  clearLogs(): void {
+    this.logs = [];
+  }
+}
+
+// Export singleton instance
+export const logger = Logger.getInstance();
+
+// Convenience exports for category-specific loggers
+export const createCategoryLogger = (category: LogCategory) => ({
+  error: (message: string, error: Error, context?: Record<string, unknown>) =>
+    logger.error(category, message, error, context),
+  warn: (message: string, context?: Record<string, unknown>) =>
+    logger.warn(category, message, context),
+  info: (message: string, context?: Record<string, unknown>) =>
+    logger.info(category, message, context),
+  debug: (message: string, context?: Record<string, unknown>) =>
+    logger.debug(category, message, context),
+  trace: (message: string, context?: Record<string, unknown>) =>
+    logger.trace(category, message, context),
+});
+
+// Usage example:
+// const log = createCategoryLogger('Storage');
+// log.info('Session saved', { sessionId: '123' });
+```
+
+#### 8.2.5 Performance Considerations
+
+**Logging in Critical Paths**:
+
+- **Rule**: Never log in hot loops (> 1000 iterations/sec)
+- **Exception**: Use `TRACE` level (disabled by default) for temporary debugging
+- **Example**: Don't log every time-series data point during analysis
+
+**Structured Context Serialization**:
+
+- **Rule**: Keep context objects shallow (< 5 levels deep)
+- **Rationale**: Deep object cloning is expensive
+- **Mitigation**: Pass only essential fields, not entire objects
+
+**Memory Management**:
+
+- **Circular Buffer**: Fixed-size log array (10,000 entries default)
+- **Rationale**: Prevents unbounded memory growth in long-running sessions
+- **Impact**: Oldest logs discarded when limit reached
+
+**Performance Budget**:
+
+- Logging overhead: < 0.1ms per log statement (INFO or higher)
+- Memory footprint: < 5 MB for full 10,000-entry log buffer
+
+### 8.3 Log Filtering & Verbosity Control
+
+#### 8.3.1 Debug Mode Toggle
+
+**User Interface**: Settings panel → "Developer Options" section
+
+**UI Component**:
+
+```tsx
+// src/components/Settings/DeveloperOptions.tsx
+export function DeveloperOptions() {
+  const [debugMode, setDebugMode] = useState(false);
+  const [selectedCategories, setSelectedCategories] = useState<LogCategory[]>([]);
+
+  const handleDebugModeToggle = (enabled: boolean) => {
+    setDebugMode(enabled);
+    logger.setLevel(enabled ? 'DEBUG' : 'WARN');
+    
+    if (enabled) {
+      logger.info('System', 'Debug mode enabled');
+    }
+  };
+
+  return (
+    <div className="developer-options">
+      <h3>Debug Logging</h3>
+      
+      <Switch
+        checked={debugMode}
+        onCheckedChange={handleDebugModeToggle}
+        label="Enable Debug Mode"
+      />
+      
+      {debugMode && (
+        <CategoryFilter
+          categories={selectedCategories}
+          onChange={setSelectedCategories}
+        />
+      )}
+      
+      <ExportLogsButton />
+    </div>
+  );
+}
+```
+
+#### 8.3.2 Per-Category Verbosity Control
+
+**Feature**: Enable DEBUG logging for specific categories only
+
+**Use Case**: "I want to debug storage issues without seeing all UI logs"
+
+**Implementation**:
+
+```typescript
+// Enhanced Logger with category filtering
+class Logger {
+  private categoryLevels: Partial<Record<LogCategory, number>> = {};
+
+  setCategoryLevel(category: LogCategory, level: LogLevel): void {
+    this.categoryLevels[category] = this.levelThresholds[level];
+  }
+
+  private shouldLog(level: LogLevel, category: LogCategory): boolean {
+    // Check category-specific level first
+    const categoryLevel = this.categoryLevels[category];
+    if (categoryLevel !== undefined) {
+      return this.levelThresholds[level] <= categoryLevel;
+    }
+    
+    // Fall back to global level
+    return this.levelThresholds[level] <= this.currentLevel;
+  }
+}
+
+// Usage:
+logger.setCategoryLevel('Storage', 'DEBUG');  // Enable DEBUG for Storage only
+logger.setCategoryLevel('UI', 'WARN');        // Silence UI except warnings/errors
+```
+
+#### 8.3.3 Default Log Levels
+
+**Production** (built with `NODE_ENV=production`):
+
+```typescript
+const PRODUCTION_DEFAULTS: Record<LogCategory, LogLevel> = {
+  UI: 'WARN',
+  Storage: 'WARN',
+  Analysis: 'WARN',
+  Worker: 'WARN',
+  Plugin: 'WARN',
+  Import: 'WARN',
+  Export: 'WARN',
+  System: 'ERROR',  // Only critical system errors
+};
+```
+
+**Development** (local dev server):
+
+```typescript
+const DEVELOPMENT_DEFAULTS: Record<LogCategory, LogLevel> = {
+  UI: 'INFO',
+  Storage: 'DEBUG',
+  Analysis: 'INFO',
+  Worker: 'DEBUG',
+  Plugin: 'INFO',
+  Import: 'INFO',
+  Export: 'INFO',
+  System: 'INFO',
+};
+```
+
+#### 8.3.4 URL Parameter Override
+
+**Feature**: Enable debug logging via URL parameter (for user support)
+
+**Usage**: `https://cpap-analyzer.app/?debug=Storage,Analysis`
+
+**Implementation**:
+```typescript
+// src/utils/logger-init.ts
+function initializeLoggerFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const debugCategories = params.get('debug');
+  
+  if (debugCategories) {
+    if (debugCategories === '*') {
+      logger.setLevel('DEBUG');
+      logger.info('System', 'Debug mode enabled for all categories via URL parameter');
+    } else {
+      const categories = debugCategories.split(',') as LogCategory[];
+      categories.forEach(category => {
+        logger.setCategoryLevel(category, 'DEBUG');
+        logger.info('System', `Debug mode enabled for category: ${category}`);
+      });
+    }
+  }
+}
+
+// Call during app initialization
+initializeLoggerFromURL();
+```
+
+### 8.4 Export Debug Logs Feature
+
+#### 8.4.1 User Interface
+
+**Location**: Settings → Developer Options → "Export Debug Logs" button
+
+**Button Component**:
+
+```tsx
+// src/components/Settings/ExportLogsButton.tsx
+export function ExportLogsButton() {
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    
+    try {
+      const logData = await exportLogs();
+      const blob = new Blob([logData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cpap-analyzer-logs-${new Date().toISOString()}.json`;
+      a.click();
+      
+      URL.revokeObjectURL(url);
+      
+      logger.info('System', 'Debug logs exported successfully');
+    } catch (error) {
+      logger.error('System', 'Failed to export debug logs', error as Error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleExport}
+      disabled={isExporting}
+      className="export-logs-button"
+    >
+      {isExporting ? 'Exporting...' : 'Export Debug Logs'}
+    </button>
+  );
+}
+```
+
+#### 8.4.2 Export Format
+
+**File Format**: JSON with metadata + sanitized logs
+
+**Schema**:
+
+```typescript
+interface LogExport {
+  exportedAt: string;           // ISO timestamp
+  version: string;              // Application version
+  systemInfo: SystemInfo;       // Browser/system details
+  logCount: number;             // Total number of logs
+  sanitizationWarnings: string[]; // List of sanitized fields
+  logs: LogEntry[];             // Sanitized log entries
+}
+
+interface SystemInfo {
+  appVersion: string;           // e.g., "2026.02.0"
+  userAgent: string;            // Browser UA
+  platform: string;             // "MacIntel", "Win32", etc.
+  storageQuota: {
+    usage: number;              // Bytes used
+    quota: number;              // Total quota
+  };
+  features: {
+    indexedDB: boolean;
+    opfs: boolean;
+    webWorkers: boolean;
+    serviceWorker: boolean;
+  };
+  errorCounts: Record<LogCategory, number>;  // Error count per category
+}
+```
+
+**Example Export**:
+
+```json
+{
+  "exportedAt": "2026-02-10T14:35:00.000Z",
+  "version": "2026.02.0",
+  "systemInfo": {
+    "appVersion": "2026.02.0",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...",
+    "platform": "MacIntel",
+    "storageQuota": {
+      "usage": 52428800,
+      "quota": 1099511627776
+    },
+    "features": {
+      "indexedDB": true,
+      "opfs": true,
+      "webWorkers": true,
+      "serviceWorker": false
+    },
+    "errorCounts": {
+      "UI": 0,
+      "Storage": 2,
+      "Analysis": 0,
+      "Worker": 1,
+      "Plugin": 0,
+      "Import": 0,
+      "Export": 0,
+      "System": 0
+    }
+  },
+  "logCount": 1542,
+  "sanitizationWarnings": [
+    "File names redacted from Import logs",
+    "Stack traces truncated to 3 frames"
+  ],
+  "logs": [
+    {
+      "timestamp": "2026-02-10T14:32:45.123Z",
+      "level": "ERROR",
+      "category": "Storage",
+      "message": "Failed to save session data to IndexedDB",
+      "context": {
+        "operation": "put",
+        "storeName": "sessions",
+        "recordId": "[REDACTED]"
+      },
+      "error": {
+        "name": "QuotaExceededError",
+        "message": "The quota has been exceeded.",
+        "stack": "Error: The quota has been exceeded.\n    at IDBObjectStore...\n    at async saveSession"
+      }
+    }
+  ]
+}
+```
+
+#### 8.4.3 Implementation
+
+**File**: `src/utils/export-logs.ts`
+
+```typescript
+import { logger } from './logger';
+import { sanitizeLogs } from './log-sanitization';
+import { gatherSystemInfo } from './system-info';
+
+export async function exportLogs(): Promise<string> {
+  const logs = logger.getLogs();
+  const sanitized = sanitizeLogs(logs);
+  const systemInfo = await gatherSystemInfo();
+
+  const exportData: LogExport = {
+    exportedAt: new Date().toISOString(),
+    version: import.meta.env.VITE_APP_VERSION || 'unknown',
+    systemInfo,
+    logCount: sanitized.logs.length,
+    sanitizationWarnings: sanitized.warnings,
+    logs: sanitized.logs,
+  };
+
+  return JSON.stringify(exportData, null, 2);
+}
+```
+
+#### 8.4.4 User Prompt
+
+**Privacy Notice**: Displayed before export
+
+**Modal Content**:
+
+```text
+Export Debug Logs
+
+This will export a JSON file containing:
+✓ Application logs (errors, warnings, debug messages)
+✓ System information (browser, version, available features)
+✓ Error counts and timestamps
+
+The following data is EXCLUDED:
+✗ File names (which may contain patient names)
+✗ Personal health information (PHI)
+✗ Authentication tokens or credentials
+
+All logs are sanitized for privacy. You can review the exported
+file before sharing it with developers.
+
+[Cancel]  [Export Logs]
+```
+
+### 8.5 System Information Capture
+
+#### 8.5.1 System Info Collection
+
+**File**: `src/utils/system-info.ts`
+
+```typescript
+interface SystemInfo {
+  appVersion: string;
+  userAgent: string;
+  platform: string;
+  storageQuota: {
+    usage: number;
+    quota: number;
+  };
+  features: {
+    indexedDB: boolean;
+    opfs: boolean;
+    webWorkers: boolean;
+    serviceWorker: boolean;
+  };
+  errorCounts: Record<LogCategory, number>;
+}
+
+export async function gatherSystemInfo(): Promise<SystemInfo> {
+  const storageEstimate = await navigator.storage?.estimate() || { usage: 0, quota: 0 };
+  const logs = logger.getLogs();
+  
+  // Count errors by category
+  const errorCounts = logs
+    .filter(log => log.level === 'ERROR')
+    .reduce((acc, log) => {
+      acc[log.category] = (acc[log.category] || 0) + 1;
+      return acc;
+    }, {} as Record<LogCategory, number>);
+
+  return {
+    appVersion: import.meta.env.VITE_APP_VERSION || 'unknown',
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    storageQuota: {
+      usage: storageEstimate.usage || 0,
+      quota: storageEstimate.quota || 0,
+    },
+    features: {
+      indexedDB: 'indexedDB' in window,
+      opfs: 'storage' in navigator && 'getDirectory' in navigator.storage,
+      webWorkers: 'Worker' in window,
+      serviceWorker: 'serviceWorker' in navigator,
+    },
+    errorCounts: {
+      UI: errorCounts.UI || 0,
+      Storage: errorCounts.Storage || 0,
+      Analysis: errorCounts.Analysis || 0,
+      Worker: errorCounts.Worker || 0,
+      Plugin: errorCounts.Plugin || 0,
+      Import: errorCounts.Import || 0,
+      Export: errorCounts.Export || 0,
+      System: errorCounts.System || 0,
+    },
+  };
+}
+```
+
+#### 8.5.2 Feature Detection
+
+**Purpose**: Identify which browser features are available
+
+**Use Case**: Diagnose why storage or workers aren't functioning
+
+**Implementation** (already in system-info.ts above):
+
+```typescript
+const features = {
+  indexedDB: 'indexedDB' in window,
+  opfs: 'storage' in navigator && 'getDirectory' in navigator.storage,
+  webWorkers: 'Worker' in window,
+  serviceWorker: 'serviceWorker' in navigator,
+  webassembly: 'WebAssembly' in window,
+  bigInt64Array: 'BigInt64Array' in window,
+};
+```
+
+#### 8.5.3 Anonymized Error Counts
+
+**Purpose**: Understand error patterns without exposing individual errors
+
+**Privacy**: No error messages, only counts by category
+
+**Use Case**: "This user has 50 Storage errors but zero UI errors" → focus on storage debugging
+
+### 8.6 Privacy-Safe Log Sanitization
+
+#### 8.6.1 Sanitization Rules
+
+##### Rule 1: Strip File Names
+
+- **Rationale**: File names may contain patient names (e.g., "John-Doe-2026-02-09.edf")
+- **Action**: Replace with `[REDACTED-FILENAME]`
+- **Exception**: File extensions preserved for debugging (e.g., `[REDACTED].edf`)
+
+##### Rule 2: Redact Record IDs
+
+- **Rationale**: Record IDs might be derived from patient data
+- **Action**: Replace with `[REDACTED-ID]` or hash if needed for correlation
+
+##### Rule 3: Truncate Stack Traces
+
+- **Rationale**: Full stack traces can reveal internal details
+- **Action**: Keep top 3 frames (enough for diagnosis, not excessive)
+
+##### Rule 4: Remove Sensitive Context Fields
+
+- **Rationale**: Context objects may contain PHI
+- **Action**: Allowlist safe fields, reject others
+
+##### Rule 5: Hash Plugin Names
+
+- **Rationale**: User may have custom plugins with sensitive names
+- **Action**: Replace with `plugin-<hash>` (preserves correlation)
+
+#### 8.6.2 Sanitization Implementation
+
+**File**: `src/utils/log-sanitization.ts`
+
+```typescript
+import type { LogEntry } from './logger.types';
+import { createHash } from './hash-utils';
+
+interface SanitizationResult {
+  logs: LogEntry[];
+  warnings: string[];
+}
+
+export function sanitizeLogs(logs: LogEntry[]): SanitizationResult {
+  const warnings: string[] = [];
+  const sanitized = logs.map(log => sanitizeLogEntry(log, warnings));
+  
+  return { logs: sanitized, warnings: Array.from(new Set(warnings)) };
+}
+
+function sanitizeLogEntry(log: LogEntry, warnings: string[]): LogEntry {
+  const sanitized = { ...log };
+
+  // Sanitize message
+  sanitized.message = sanitizeString(sanitized.message, warnings);
+
+  // Sanitize context
+  if (sanitized.context) {
+    sanitized.context = sanitizeContext(sanitized.context, log.category, warnings);
+  }
+
+  // Truncate stack traces
+  if (sanitized.error?.stack) {
+    sanitized.error.stack = truncateStackTrace(sanitized.error.stack, 3);
+    if (!warnings.includes('Stack traces truncated to 3 frames')) {
+      warnings.push('Stack traces truncated to 3 frames');
+    }
+  }
+
+  return sanitized;
+}
+
+function sanitizeString(str: string, warnings: string[]): string {
+  // Remove file names (anything ending in .edf, .csv, etc.)
+  const fileNamePattern = /[\w\-]+\.(edf|csv|json|txt)/gi;
+  if (fileNamePattern.test(str)) {
+    if (!warnings.includes('File names redacted from messages')) {
+      warnings.push('File names redacted from messages');
+    }
+    return str.replace(fileNamePattern, '[REDACTED].$1');
+  }
+  
+  return str;
+}
+
+function sanitizeContext(
+  context: Record<string, unknown>,
+  category: LogCategory,
+  warnings: string[]
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+
+  // Allowlist of safe fields per category
+  const SAFE_FIELDS: Record<LogCategory, string[]> = {
+    UI: ['component', 'action', 'route', 'duration'],
+    Storage: ['operation', 'storeName', 'recordCount','databaseVersion'],
+    Analysis: ['algorithm', 'duration', 'sampleCount', 'eventsDetected'],
+    Worker: ['workerId', 'taskType', 'inputSize', 'outputSize', 'duration'],
+    Plugin: ['pluginType', 'version', 'status'],
+    Import: ['fileExtension', 'fileSize', 'recordCount', 'duration'],
+    Export: ['format', 'recordCount', 'fileSize'],
+    System: ['feature', 'status', 'version'],
+  };
+
+  const allowedFields = SAFE_FIELDS[category] || [];
+
+  for (const [key, value] of Object.entries(context)) {
+    if (allowedFields.includes(key)) {
+      sanitized[key] = value;
+    } else {
+      // Redact but indicate what was removed
+      sanitized[key] = '[REDACTED]';
+      if (!warnings.includes(`Context field '${key}' redacted from ${category} logs`)) {
+        warnings.push(`Context field '${key}' redacted from ${category} logs`);
+      }
+    }
+  }
+
+  return sanitized;
+}
+
+function truncateStackTrace(stack: string, maxFrames: number): string {
+  const lines = stack.split('\n');
+  if (lines.length <= maxFrames + 1) return stack;
+  
+  return [
+    lines[0],  // Error message line
+    ...lines.slice(1, maxFrames + 1),  // Top N frames
+    `    ... (${lines.length - maxFrames - 1} more frames omitted)`
+  ].join('\n');
+}
+```
+
+#### 8.6.3 Sanitization Validation
+
+**Testing**: Unit tests verify sanitization effectiveness
+
+**Test Cases**:
+```typescript
+// src/utils/log-sanitization.test.ts
+describe('log sanitization', () => {
+  it('redacts file names from messages', () => {
+    const log: LogEntry = {
+      timestamp: '2026-02-10T12:00:00.000Z',
+      level: 'ERROR',
+      category: 'Import',
+      message: 'Failed to parse file: John-Doe-2026-02-09.edf',
+    };
+
+    const result = sanitizeLogs([log]);
+    expect(result.logs[0].message).toBe('Failed to parse file: [REDACTED].edf');
+    expect(result.warnings).toContain('File names redacted from messages');
+  });
+
+  it('redacts unsafe context fields', () => {
+    const log: LogEntry = {
+      timestamp: '2026-02-10T12:00:00.000Z',
+      level: 'INFO',
+      category: 'Storage',
+      message: 'Session saved',
+      context: {
+        operation: 'put',        // Safe
+        storeName: 'sessions',   // Safe
+        patientId: '12345',      // Unsafe!
+        recordId: 'abc-123',     // Unsafe!
+      },
+    };
+
+    const result = sanitizeLogs([log]);
+    expect(result.logs[0].context).toEqual({
+      operation: 'put',
+      storeName: 'sessions',
+      patientId: '[REDACTED]',
+      recordId: '[REDACTED]',
+    });
+  });
+
+  it('truncates stack traces to 3 frames', () => {
+    const log: LogEntry = {
+      timestamp: '2026-02-10T12:00:00.000Z',
+      level: 'ERROR',
+      category: 'System',
+      message: 'Unhandled exception',
+      error: {
+        name: 'TypeError',
+        message: 'Cannot read property of undefined',
+        stack: `Error: Cannot read property of undefined
+    at func1 (file1.ts:10:5)
+    at func2 (file2.ts:20:10)
+    at func3 (file3.ts:30:15)
+    at func4 (file4.ts:40:20)
+    at func5 (file5.ts:50:25)`,
+      },
+    };
+
+    const result = sanitizeLogs([log]);
+    const frames = result.logs[0].error!.stack!.split('\n');
+    expect(frames).toHaveLength(5);  // Error line + 3 frames + omitted message
+    expect(frames[4]).toMatch(/\(\d+ more frames omitted\)/);
+  });
+});
+```
+
+### 8.7 Integration Points
+
+#### 8.7.1 Error Handling Integration
+
+**Reference**: [error-handling-architecture.md](error-handling-architecture.md)
+
+**Error Boundary Logging**:
+
+```tsx
+// src/components/ErrorBoundary.tsx (enhanced)
+class ErrorBoundary extends React.Component<Props, State> {
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log to structured logger
+    logger.error('UI', 'React error boundary caught exception', error, {
+      componentStack: errorInfo.componentStack,
+      boundary: this.props.boundaryName,
+    });
+
+    // Still show user-friendly error UI
+    this.setState({ hasError: true, error });
+  }
+}
+```
+
+**Global Error Handler**:
+
+```typescript
+// src/utils/global-error-handler.ts
+window.addEventListener('error', (event) => {
+  logger.error('System', 'Unhandled JavaScript error', event.error, {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  logger.error('System', 'Unhandled promise rejection', event.reason, {
+    promise: '[Promise object]',
+  });
+});
+```
+
+#### 8.7.2 Storage Architecture Integration
+
+**Reference**: [storage-architecture.md](storage-architecture.md)
+
+**IndexedDB Operation Logging**:
+
+```typescript
+// src/storage/indexeddb-wrapper.ts
+async function put<T>(storeName: string, record: T): Promise<void> {
+  const startTime = performance.now();
+  const log = createCategoryLogger('Storage');
+
+  try {
+    log.debug('IndexedDB PUT operation started', {
+      storeName,
+      operation: 'put',
+    });
+
+    await db.put(storeName, record);
+
+    const duration = performance.now() - startTime;
+    log.info('IndexedDB PUT operation completed', {
+      storeName,
+      operation: 'put',
+      duration: Math.round(duration),
+    });
+  } catch (error) {
+    log.error('IndexedDB PUT operation failed', error as Error, {
+      storeName,
+      operation: 'put',
+      errorName: (error as Error).name,
+    });
+    throw error;
+  }
+}
+```
+
+**OPFS Operation Logging**:
+
+```typescript
+// src/storage/opfs-wrapper.ts
+async function writeFile(path: string, data: ArrayBuffer): Promise<void> {
+  const log = createCategoryLogger('Storage');
+
+  try {
+    log.debug('OPFS write started', {
+      path: '[REDACTED]',  // Don't log actual paths
+      size: data.byteLength,
+    });
+
+    await opfsHandle.write(data);
+
+    log.info('OPFS write completed', {
+      size: data.byteLength,
+    });
+  } catch (error) {
+    log.error('OPFS write failed', error as Error, {
+      size: data.byteLength,
+      errorName: (error as Error).name,
+    });
+    throw error;
+  }
+}
+```
+
+#### 8.7.3 Web Worker Integration
+
+**Reference**: [data-architecture.md](../data-architecture.md) → Web Workers section
+
+**Worker Task Logging**:
+
+```typescript
+// src/workers/analysis-worker.ts
+self.addEventListener('message', async (event) => {
+  const log = createCategoryLogger('Worker');
+  const { taskId, taskType, input } = event.data;
+
+  log.debug('Worker task started', {
+    workerId: self.name,
+    taskId,
+    taskType,
+    inputSize: input.byteLength,
+  });
+
+  try {
+    const result = await processTask(taskType, input);
+
+    log.info('Worker task completed', {
+      workerId: self.name,
+      taskId,
+      taskType,
+      outputSize: result.byteLength,
+    });
+
+    self.postMessage({ taskId, result });
+  } catch (error) {
+    log.error('Worker task failed', error as Error, {
+      workerId: self.name,
+      taskId,
+      taskType,
+    });
+
+    self.postMessage({ taskId, error: (error as Error).message });
+  }
+});
+```
+
+#### 8.7.4 Plugin Error Isolation
+
+**Reference**: [plugin-architecture.md](../decisions/0007-plugin-architecture.md)
+
+**Plugin Execution Logging**:
+
+```typescript
+// src/plugins/plugin-executor.ts
+export async function executePlugin(
+  plugin: Plugin,
+  input: unknown
+): Promise<unknown> {
+  const log = createCategoryLogger('Plugin');
+
+  log.debug('Plugin execution started', {
+    pluginName: plugin.name,
+    pluginType: plugin.type,
+    version: plugin.version,
+  });
+
+  try {
+    const result = await plugin.execute(input);
+
+    log.info('Plugin execution completed', {
+      pluginName: plugin.name,
+      pluginType: plugin.type,
+    });
+
+    return result;
+  } catch (error) {
+    log.error('Plugin execution failed', error as Error, {
+      pluginName: plugin.name,
+      pluginType: plugin.type,
+      version: plugin.version,
+    });
+
+    // Re-throw to allow error boundary to handle
+    throw error;
+  }
+}
+```
+
+### 8.8 Developer Workflow
+
+#### 8.8.1 Requesting Logs from Users
+
+**Standard Support Process**:
+
+1. **User reports issue**: "Data analysis isn't working"
+
+2. **Developer requests logs**:
+
+   ```text
+   Can you export your debug logs?
+   
+   1. Open Settings
+   2. Scroll to "Developer Options"
+   3. Enable "Debug Mode"
+   4. Reproduce the issue
+   5. Click "Export Debug Logs"
+   6. Send the exported JSON file
+   ```
+
+3. **User exports logs**: Receives `cpap-analyzer-logs-2026-02-10T14-35-00Z.json`
+
+4. **Developer analyzes logs**: Uses log analysis tools (see below)
+
+5. **Developer diagnoses issue**: Identifies root cause from logs
+
+6. **Developer fixes issue**: Implements fix, requests user to verify
+
+#### 8.8.2 Log Analysis Tools
+
+##### Tool 1: Log Viewer Script
+
+**File**: `scripts/analyze-logs.ts` (development tool, not shipped)
+
+```typescript
+// Run with: npx tsx scripts/analyze-logs.ts path/to/logs.json
+
+import fs from 'fs';
+import type { LogExport, LogEntry } from '../src/utils/logger.types';
+
+const logFile = process.argv[2];
+if (!logFile) {
+  console.error('Usage: npx tsx scripts/analyze-logs.ts <log-file.json>');
+  process.exit(1);
+}
+
+const data: LogExport = JSON.parse(fs.readFileSync(logFile, 'utf-8'));
+
+console.log('=== Log File Analysis ===\n');
+console.log(`App Version: ${data.systemInfo.appVersion}`);
+console.log(`Exported At: ${data.exportedAt}`);
+console.log(`Total Logs: ${data.logCount}`);
+console.log(`Platform: ${data.systemInfo.platform}`);
+console.log(`User Agent: ${data.systemInfo.userAgent}\n`);
+
+console.log('=== Error Counts by Category ===');
+for (const [category, count] of Object.entries(data.systemInfo.errorCounts)) {
+  if (count > 0) {
+    console.log(`  ${category}: ${count} errors`);
+  }
+}
+
+console.log('\n=== Recent Errors ===');
+const errors = data.logs.filter(log => log.level === 'ERROR').slice(-10);
+errors.forEach(error => {
+  console.log(`\n[${error.timestamp}] [${error.category}]`);
+  console.log(`  ${error.message}`);
+  if (error.error) {
+    console.log(`  ${error.error.name}: ${error.error.message}`);
+  }
+});
+
+console.log('\n=== Storage Quota ===');
+const quota = data.systemInfo.storageQuota;
+const usagePercent = ((quota.usage / quota.quota) * 100).toFixed(1);
+console.log(`  Used: ${(quota.usage / 1024 / 1024).toFixed(2)} MB`);
+console.log(`  Total: ${(quota.quota / 1024 / 1024 / 1024).toFixed(2)} GB`);
+console.log(`  Usage: ${usagePercent}%`);
+
+console.log('\n=== Feature Detection ===');
+for (const [feature, available] of Object.entries(data.systemInfo.features)) {
+  console.log(`  ${feature}: ${available ? '✓' : '✗'}`);
+}
+```
+
+##### Tool 2: Log Filtering Utilities
+
+```typescript
+// Filter logs by category
+function filterByCategory(logs: LogEntry[], category: LogCategory): LogEntry[] {
+  return logs.filter(log => log.category === category);
+}
+
+// Find error patterns
+function findErrorPatterns(logs: LogEntry[]): Map<string, number> {
+  const patterns = new Map<string, number>();
+  
+  logs
+    .filter(log => log.level === 'ERROR')
+    .forEach(log => {
+      const key = `${log.category}:${log.error?.name || 'Unknown'}`;
+      patterns.set(key, (patterns.get(key) || 0) + 1);
+    });
+  
+  return patterns;
+}
+
+// Timeline analysis
+function analyzeTimeline(logs: LogEntry[]): void {
+  const timeline = logs
+    .filter(log => log.level === 'ERROR' || log.level === 'WARN')
+    .map(log => ({
+      time: new Date(log.timestamp),
+      level: log.level,
+      category: log.category,
+      message: log.message,
+    }));
+  
+  console.log('=== Error Timeline ===');
+  timeline.forEach(event => {
+    console.log(`${event.time.toISOString()} [${event.level}] [${event.category}] ${event.message}`);
+  });
+}
+```
+
+#### 8.8.3 Common Log Patterns
+
+##### Pattern 1: Storage Quota Exceeded
+
+**Symptoms in Logs**:
+
+```json
+{
+  "level": "ERROR",
+  "category": "Storage",
+  "error": { "name": "QuotaExceededError" },
+  "systemInfo": {
+    "storageQuota": {
+      "usage": 1099511627776,
+      "quota": 1099511627776
+    }
+  }
+}
+```
+
+**Diagnosis**: User has filled their storage quota
+
+**Solution**: Prompt user to delete old sessions or increase quota
+
+---
+
+##### Pattern 2: OPFS Not Available
+
+**Symptoms in Logs**:
+
+```json
+{
+  "level": "WARN",
+  "category": "Storage",
+  "message": "OPFS not available, falling back to IndexedDB",
+  "systemInfo": {
+    "features": {
+      "opfs": false
+    }
+  }
+}
+```
+
+**Diagnosis**: Browser doesn't support OPFS (or is in private mode)
+
+**Solution**: Already handled by fallback, but may affect performance
+
+---
+
+##### Pattern 3: Worker Communication Failure
+
+**Symptoms in Logs**:
+
+```json
+{
+  "level": "ERROR",
+  "category": "Worker",
+  "message": "Worker failed to respond within timeout",
+  "context": {
+    "taskType": "ahi-calculation",
+    "timeout": 30000
+  }
+}
+```
+
+**Diagnosis**: Worker crashed or hung during analysis
+
+**Solution**: Check for infinite loops or memory issues in worker code
+
+---
+
+##### Pattern 4: Plugin Load Failure
+
+**Symptoms in Logs**:
+
+```json
+{
+  "level": "ERROR",
+  "category": "Plugin",
+  "message": "Failed to load plugin",
+  "error": {
+    "name": "SyntaxError",
+    "message": "Unexpected token"
+  },
+  "context": {
+    "pluginName": "custom-analysis-plugin",
+    "version": "1.0.0"
+  }
+}
+```
+
+**Diagnosis**: Plugin has syntax error or incompatible API version
+
+**Solution**: Fix plugin code or update to compatible version
+
+#### 8.8.4 Support FAQ
+
+##### Q: User reports error but logs show nothing
+
+**A**: Check:
+
+1. Was debug mode enabled when issue occurred?
+2. Did user reproduce the issue after enabling debug mode?
+3. Is the user on an old app version without logging?
+
+##### Q: How identify which storage backend (IndexedDB vs OPFS) was used?
+
+**A**: Check `systemInfo.features.opfs` and look for "falling back to IndexedDB" warnings
+
+##### Q: User's log file is 50 MB, too large to analyze
+
+**A**:
+
+1. This shouldn't happen (10,000 entry limit = ~5 MB max)
+2. Check if context objects contain large data (bug in sanitization)
+3. Ask user to reproduce with only ERROR+WARN levels enabled
+
+##### Q: How to correlate logs across workers and main thread?
+
+**A**: Use `taskId` or `sessionId` in context to correlate related logs
+
+### 8.9 Testing & Validation
+
+#### 8.9.1 Performance Testing
+
+**Test**: Verify logging doesn't impact critical path performance
+
+**Tools**: Vitest + `performance.now()`
+
+**Test Cases**:
+
+```typescript
+// src/utils/logger.test.ts
+describe('logger performance', () => {
+  it('logs INFO message in < 0.1ms', () => {
+    const iterations = 1000;
+    const start = performance.now();
+
+    for (let i = 0; i < iterations; i++) {
+      logger.info('UI', 'Test message', { iteration: i });
+    }
+
+    const duration = performance.now() - start;
+    const avgDuration = duration / iterations;
+
+    expect(avgDuration).toBeLessThan(0.1);  // < 0.1ms per log
+  });
+
+  it('does not log below threshold (zero overhead)', () => {
+    logger.setLevel('ERROR');  // Only ERROR level enabled
+
+    const start = performance.now();
+    for (let i = 0; i < 10000; i++) {
+      logger.debug('UI', 'This should be skipped');
+    }
+    const duration = performance.now() - start;
+
+    // Should be near-instant because logs are skipped early
+    expect(duration).toBeLessThan(10);  // < 10ms for 10,000 skipped logs
+  });
+
+  it('respects max log limit', () => {
+    logger.clearLogs();
+
+    // Log more than max (10,000)
+    for (let i = 0; i < 15000; i++) {
+      logger.info('System', `Log ${i}`);
+    }
+
+    const logs = logger.getLogs();
+    expect(logs.length).toBeLessThanOrEqual(10000);
+  });
+});
+```
+
+#### 8.9.2 Sanitization Testing
+
+**Test**: Verify sanitization removes sensitive data
+
+**Test Cases** (already shown in section 8.6.3 above):
+
+- File name redaction
+- Context field filtering
+- Stack trace truncation
+- Plugin name hashing
+
+#### 8.9.3 Export Format Validation
+
+**Test**: Verify exported JSON is valid and complete
+
+**Test Cases**:
+
+```typescript
+describe('log export', () => {
+  it('produces valid JSON', async () => {
+    const exported = await exportLogs();
+    expect(() => JSON.parse(exported)).not.toThrow();
+  });
+
+  it('includes all required fields', async () => {
+    const exported = await exportLogs();
+    const data: LogExport = JSON.parse(exported);
+
+    expect(data.exportedAt).toBeDefined();
+    expect(data.version).toBeDefined();
+    expect(data.systemInfo).toBeDefined();
+    expect(data.logCount).toBeDefined();
+    expect(data.sanitizationWarnings).toBeDefined();
+    expect(data.logs).toBeDefined();
+  });
+
+  it('includes system info', async () => {
+    const exported = await exportLogs();
+    const data: LogExport = JSON.parse(exported);
+
+    expect(data.systemInfo.appVersion).toBeDefined();
+    expect(data.systemInfo.userAgent).toBeDefined();
+    expect(data.systemInfo.features.indexedDB).toBeDefined();
+  });
+});
+```
+
+#### 8.9.4 Integration Testing
+
+**Test**: Verify logging integrates correctly with error boundaries, storage, workers
+
+**Test Cases**:
+
+```typescript
+describe('logging integration', () => {
+  it('captures React error boundary exceptions', () => {
+    const spy = vi.spyOn(logger, 'error');
+    
+    // Trigger React error boundary
+    render(<ThrowingComponent />);
+
+    expect(spy).toHaveBeenCalledWith(
+      'UI',
+      expect.stringContaining('error boundary'),
+      expect.any(Error),
+      expect.objectContaining({ boundary: expect.any(String) })
+    );
+  });
+
+  it('captures storage operation failures', async () => {
+    const spy = vi.spyOn(logger, 'error');
+    
+    // Simulate quota exceeded error
+    await expect(storage.put('test', largeData)).rejects.toThrow(QuotaExceededError);
+
+    expect(spy).toHaveBeenCalledWith(
+      'Storage',
+      expect.stringContaining('failed'),
+      expect.any(Error),
+      expect.objectContaining({ operation: 'put' })
+    );
+  });
+
+  it('captures worker task failures', async () => {
+    const spy = vi.spyOn(logger, 'error');
+    
+    // Send invalid task to worker
+    await expect(worker.execute({ type: 'invalid' })).rejects.toThrow();
+
+    expect(spy).toHaveBeenCalledWith(
+      'Worker',
+      expect.stringContaining('failed'),
+      expect.any(Error),
+      expect.objectContaining({ taskType: 'invalid' })
+    );
+  });
+});
+```
+
+---
+
+## 9. Development Tooling
 
 ### 8.1 Local Development Setup
 
@@ -1091,7 +4159,7 @@ server: {
 
 ---
 
-## 9. Dependency Management
+## 10. Dependency Management
 
 ### 9.1 Dependency Update Strategy
 
@@ -1235,7 +4303,7 @@ npx license-checker --summary --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Cla
 
 ---
 
-## 10. Performance and Optimization
+## 11. Performance and Optimization
 
 ### 10.1 Build Performance Targets
 
@@ -1303,7 +4371,7 @@ Total: ~5–7 minutes (wall clock)
 
 ---
 
-## 11. Security Considerations
+## 12. Security Considerations
 
 ### 11.1 CI/CD Security Best Practices
 
@@ -1351,7 +4419,7 @@ permissions:
 
 ---
 
-## 12. Disaster Recovery
+## 13. Disaster Recovery
 
 ### 12.1 Backup Strategy
 
@@ -1410,7 +4478,7 @@ permissions:
 
 ---
 
-## 13. Continuous Improvement
+## 14. Continuous Improvement
 
 ### 13.1 Metrics to Track
 
@@ -1465,7 +4533,7 @@ permissions:
 
 ---
 
-## 14. Appendices
+## 15. Appendices
 
 ### 14.1 Tool Versions
 
@@ -1546,7 +4614,7 @@ permissions:
 
 ---
 
-## 15. References
+## 16. References
 
 - [Frontend Architecture](frontend-architecture.md)
 - [Security Architecture](security-architecture.md)
