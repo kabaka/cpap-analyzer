@@ -1,12 +1,6 @@
 ---
 name: E2E Tester
 description: Owns the Playwright test suite. Writes and maintains end-to-end user flow tests.
-tools:
-  - codebase
-  - editFiles
-  - runTerminal
-  - diagnostics
-model: claude-sonnet-4
 user-invokable: false
 ---
 

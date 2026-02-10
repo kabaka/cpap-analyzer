@@ -1,11 +1,6 @@
 ---
 name: UX
 description: User experience authority. Owns interaction design, accessibility, information architecture, and user flows.
-tools:
-  - codebase
-  - editFiles
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

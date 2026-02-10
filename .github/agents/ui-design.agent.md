@@ -1,11 +1,6 @@
 ---
 name: UI Design
 description: Visual design authority. Owns the design system, themes, color palettes, typography, and component visual specifications.
-tools:
-  - codebase
-  - editFiles
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

@@ -1,13 +1,6 @@
 ---
 name: Data Visualization
 description: Interactive chart and visualization specialist. Handles rendering performance for large time-series datasets.
-tools:
-  - codebase
-  - editFiles
-  - runTerminal
-  - diagnostics
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

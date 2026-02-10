@@ -1,13 +1,6 @@
 ---
 name: ResMed Specialist
 description: Domain expert on ResMed CPAP/APAP/BiPAP/VPAP/ASV machines, EDF data format, and clinical CPAP metrics.
-tools:
-  - codebase
-  - editFiles
-  - runTerminal
-  - diagnostics
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

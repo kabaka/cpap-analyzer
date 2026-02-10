@@ -1,13 +1,6 @@
 ---
 name: Data Science
 description: Statistical analysis specialist with medical data expertise. Implements algorithms, metrics, and analysis pipelines.
-tools:
-  - codebase
-  - editFiles
-  - runTerminal
-  - diagnostics
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

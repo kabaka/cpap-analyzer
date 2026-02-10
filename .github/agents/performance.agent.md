@@ -1,12 +1,6 @@
 ---
 name: Performance
 description: Runtime performance and memory optimization specialist. Profiling, benchmarking, and optimization.
-tools:
-  - codebase
-  - editFiles
-  - runTerminal
-  - diagnostics
-model: claude-sonnet-4
 user-invokable: false
 ---
 

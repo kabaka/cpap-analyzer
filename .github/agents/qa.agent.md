@@ -1,12 +1,6 @@
 ---
 name: QA
 description: Quality gatekeeper. Reviews all code, enforces standards, and can block merges.
-tools:
-  - codebase
-  - runTerminal
-  - diagnostics
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

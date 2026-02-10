@@ -1,13 +1,6 @@
 ---
 name: Frontend
 description: Implements UI components, views, routing, and state management. TypeScript strict mode.
-tools:
-  - codebase
-  - editFiles
-  - runTerminal
-  - diagnostics
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

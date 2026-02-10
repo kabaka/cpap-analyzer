@@ -1,12 +1,6 @@
 ---
 name: Security
 description: Security and privacy specialist. Evaluates vulnerabilities, ensures privacy compliance, and reviews cryptographic operations.
-tools:
-  - codebase
-  - runTerminal
-  - diagnostics
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

@@ -1,12 +1,6 @@
 ---
 name: Unit Tester
 description: Owns the Vitest test suite. Writes and maintains unit and integration tests.
-tools:
-  - codebase
-  - editFiles
-  - runTerminal
-  - diagnostics
-model: claude-sonnet-4
 user-invokable: false
 ---
 

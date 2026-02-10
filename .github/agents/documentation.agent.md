@@ -1,11 +1,6 @@
 ---
 name: Documentation
 description: Owns all user-facing documentation, in-app help, API docs, and developer guides.
-tools:
-  - codebase
-  - editFiles
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

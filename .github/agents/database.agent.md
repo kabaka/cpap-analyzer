@@ -1,13 +1,6 @@
 ---
 name: Database
 description: Client-side storage architecture specialist. Designs IndexedDB/OPFS schemas, data models, and query patterns.
-tools:
-  - codebase
-  - editFiles
-  - runTerminal
-  - diagnostics
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

@@ -1,12 +1,6 @@
 ---
 name: RCA Analyst
 description: Performs systematic root cause analysis when bugs, regressions, or incidents occur.
-tools:
-  - codebase
-  - runTerminal
-  - diagnostics
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

@@ -1,11 +1,6 @@
 ---
 name: ADR Author
 description: Writes Architecture Decision Records using the MADR 4.0 standard template.
-tools:
-  - codebase
-  - editFiles
-  - fetch
-model: claude-sonnet-4
 user-invokable: false
 ---
 

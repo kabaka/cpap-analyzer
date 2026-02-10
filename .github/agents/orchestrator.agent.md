@@ -1,14 +1,8 @@
 ---
 name: Orchestrator
 description: Coordinates complex multi-step tasks by delegating to the specialist agent team. The user-facing entry point for all work.
-tools:
-  - codebase
-  - diagnostics
-  - fetch
-  - agent
 agents:
   - '*'
-model: claude-sonnet-4
 user-invokable: true
 ---
 
