@@ -1,38 +1,34 @@
 #!/usr/bin/env sh
 
-# Pre-commit hook: runs formatting, linting, and tests
+# Pre-commit hook: runs formatting, linting, and tests on staged files
 # If this hook passes, CI should be green.
 
 echo "🔍 Running pre-commit checks..."
 
-# Check formatting
-echo "  → Checking formatting (Prettier)..."
-npx prettier --check . || {
-  echo "❌ Formatting check failed. Run 'npx prettier --write .' to fix."
+# Format and lint staged files using lint-staged
+echo "  → Formatting and linting staged files..."
+./node_modules/.bin/lint-staged || {
+  echo "❌ Formatting or linting failed."
   exit 1
 }
 
-# Lint
-echo "  → Running linter (ESLint)..."
-npx eslint . || {
-  echo "❌ Lint check failed."
+# Type check (full project - fast enough to run on everything)
+echo "  → Running type check..."
+./node_modules/.bin/tsc --noEmit || {
+  echo "❌ Type check failed."
   exit 1
 }
 
-# Type check (if applicable)
-if [ -f "tsconfig.json" ]; then
-  echo "  → Running type check..."
-  npx tsc --noEmit || {
-    echo "❌ Type check failed."
+# Unit tests (only files related to staged changes)
+echo "  → Running tests for affected files..."
+STAGED_FILES=$(git diff --name-only --cached)
+if [ -n "$STAGED_FILES" ]; then
+  ./node_modules/.bin/vitest related --run $STAGED_FILES || {
+    echo "❌ Tests failed."
     exit 1
   }
+else
+  echo "  ℹ️  No staged files to test."
 fi
-
-# Unit tests
-echo "  → Running unit tests..."
-npx vitest run --reporter=dot || {
-  echo "❌ Tests failed."
-  exit 1
-}
 
 echo "✅ All pre-commit checks passed."
