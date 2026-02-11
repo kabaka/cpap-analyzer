@@ -44,25 +44,25 @@ Agents do not communicate directly with each other. The Orchestrator mediates al
 
 ## Team Roster
 
-| Agent | File | Role | User-Facing |
-|-------|------|------|:-----------:|
-| Orchestrator | `.github/agents/orchestrator.agent.md` | Team coordinator; delegates all work, never writes code | ✅ |
-| Frontend | `.github/agents/frontend.agent.md` | UI components, views, routing, state management | — |
-| UI Design | `.github/agents/ui-design.agent.md` | Design system, themes, visual specifications | — |
-| UX | `.github/agents/ux.agent.md` | User experience, accessibility, interaction design | — |
-| Unit Tester | `.github/agents/unit-tester.agent.md` | Vitest unit and integration tests | — |
-| E2E Tester | `.github/agents/e2e-tester.agent.md` | Playwright end-to-end tests | — |
-| ADR Author | `.github/agents/adr-author.agent.md` | Architecture Decision Records (MADR 4.0) | — |
-| RCA Analyst | `.github/agents/rca-analyst.agent.md` | Root cause analysis for bugs and incidents | — |
-| Data Science | `.github/agents/data-science.agent.md` | Statistical analysis, algorithm implementation | — |
-| Data Visualization | `.github/agents/data-visualization.agent.md` | Charts, interactive plots, dashboards | — |
-| Documentation | `.github/agents/documentation.agent.md` | User guides, in-app help, API docs | — |
-| ResMed Specialist | `.github/agents/resmed-specialist.agent.md` | Domain expert on ResMed machines and data formats | — |
-| QA | `.github/agents/qa.agent.md` | Code review, quality enforcement, release gating | — |
-| Security | `.github/agents/security.agent.md` | Security audit, privacy compliance, vulnerability analysis | — |
-| Database | `.github/agents/database.agent.md` | Client-side storage architecture and data modeling | — |
-| Performance | `.github/agents/performance.agent.md` | Runtime performance, memory optimization, profiling | — |
-| DevOps | `.github/agents/devops.agent.md` | CI/CD, build configuration, deployment | — |
+| Agent              | File                                         | Role                                                       | User-Facing |
+| ------------------ | -------------------------------------------- | ---------------------------------------------------------- | :---------: |
+| Orchestrator       | `.github/agents/orchestrator.agent.md`       | Team coordinator; delegates all work, never writes code    |     ✅      |
+| Frontend           | `.github/agents/frontend.agent.md`           | UI components, views, routing, state management            |      —      |
+| UI Design          | `.github/agents/ui-design.agent.md`          | Design system, themes, visual specifications               |      —      |
+| UX                 | `.github/agents/ux.agent.md`                 | User experience, accessibility, interaction design         |      —      |
+| Unit Tester        | `.github/agents/unit-tester.agent.md`        | Vitest unit and integration tests                          |      —      |
+| E2E Tester         | `.github/agents/e2e-tester.agent.md`         | Playwright end-to-end tests                                |      —      |
+| ADR Author         | `.github/agents/adr-author.agent.md`         | Architecture Decision Records (MADR 4.0)                   |      —      |
+| RCA Analyst        | `.github/agents/rca-analyst.agent.md`        | Root cause analysis for bugs and incidents                 |      —      |
+| Data Science       | `.github/agents/data-science.agent.md`       | Statistical analysis, algorithm implementation             |      —      |
+| Data Visualization | `.github/agents/data-visualization.agent.md` | Charts, interactive plots, dashboards                      |      —      |
+| Documentation      | `.github/agents/documentation.agent.md`      | User guides, in-app help, API docs                         |      —      |
+| ResMed Specialist  | `.github/agents/resmed-specialist.agent.md`  | Domain expert on ResMed machines and data formats          |      —      |
+| QA                 | `.github/agents/qa.agent.md`                 | Code review, quality enforcement, release gating           |      —      |
+| Security           | `.github/agents/security.agent.md`           | Security audit, privacy compliance, vulnerability analysis |      —      |
+| Database           | `.github/agents/database.agent.md`           | Client-side storage architecture and data modeling         |      —      |
+| Performance        | `.github/agents/performance.agent.md`        | Runtime performance, memory optimization, profiling        |      —      |
+| DevOps             | `.github/agents/devops.agent.md`             | CI/CD, build configuration, deployment                     |      —      |
 
 ## Agent Categories
 
