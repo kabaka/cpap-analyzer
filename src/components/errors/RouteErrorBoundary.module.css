@@ -1,0 +1,103 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12) var(--space-8);
+  background-color: var(--color-error-bg);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-lg);
+  margin: var(--space-8) auto;
+  max-width: 560px;
+  font-family: var(--font-family-sans);
+  color: var(--color-text-primary);
+}
+
+.heading {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  color: var(--color-error);
+}
+
+.message {
+  margin: 0 0 var(--space-6);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-relaxed);
+  color: var(--color-text-secondary);
+  text-align: center;
+  word-break: break-word;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.buttonPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-5);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-inverse);
+  background-color: var(--color-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.buttonPrimary:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.buttonPrimary:active {
+  background-color: var(--color-primary-active);
+}
+
+.buttonPrimary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  box-shadow: var(--shadow-focus);
+}
+
+.buttonSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-5);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.buttonSecondary:hover {
+  background-color: var(--color-surface-secondary);
+  border-color: var(--color-border-emphasis);
+}
+
+.buttonSecondary:active {
+  background-color: var(--color-surface-tertiary);
+}
+
+.buttonSecondary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  box-shadow: var(--shadow-focus);
+}

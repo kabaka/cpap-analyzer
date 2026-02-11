@@ -1,0 +1,120 @@
+body {
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-primary);
+  transition:
+    background-color var(--transition-base),
+    color var(--transition-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Headings */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  line-height: var(--line-height-tight);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+h1 {
+  font-size: var(--font-size-3xl);
+}
+h2 {
+  font-size: var(--font-size-2xl);
+}
+h3 {
+  font-size: var(--font-size-xl);
+}
+h4 {
+  font-size: var(--font-size-lg);
+}
+h5 {
+  font-size: var(--font-size-base);
+}
+h6 {
+  font-size: var(--font-size-sm);
+}
+
+/* Links */
+a {
+  color: var(--color-text-link);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-text-link-hover);
+}
+
+/* Focus visible */
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-emphasis);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Selection */
+::selection {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+/* Code/pre */
+code,
+pre {
+  font-family: var(--font-family-mono);
+}
+
+code {
+  font-size: 0.9em;
+  padding: 0.125em 0.25em;
+  background-color: var(--color-surface-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+pre {
+  overflow-x: auto;
+  padding: var(--space-4);
+  background-color: var(--color-surface-tertiary);
+  border-radius: var(--radius-md);
+}
+
+pre code {
+  padding: 0;
+  background: none;
+}

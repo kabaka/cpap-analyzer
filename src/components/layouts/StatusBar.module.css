@@ -1,0 +1,22 @@
+.statusBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-6);
+  background-color: var(--color-surface-secondary);
+  border-top: 1px solid var(--color-border-default);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.sessionCount {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.storageUsage {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}

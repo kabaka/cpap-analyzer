@@ -2,6 +2,49 @@ import 'fake-indexeddb/auto';
 import '@testing-library/jest-dom/vitest';
 import { vi } from 'vitest';
 
+// localStorage stub — Node 25+ provides a broken native localStorage that
+// interferes with jsdom's implementation. Replace it with an in-memory mock.
+const localStorageStore = new Map<string, string>();
+const localStorageMock: Storage = {
+  getItem: (key: string) => localStorageStore.get(key) ?? null,
+  setItem: (key: string, value: string) => {
+    localStorageStore.set(key, String(value));
+  },
+  removeItem: (key: string) => {
+    localStorageStore.delete(key);
+  },
+  clear: () => {
+    localStorageStore.clear();
+  },
+  get length() {
+    return localStorageStore.size;
+  },
+  key: (index: number) => {
+    const keys = Array.from(localStorageStore.keys());
+    return keys[index] ?? null;
+  },
+};
+Object.defineProperty(globalThis, 'localStorage', {
+  value: localStorageMock,
+  writable: true,
+  configurable: true,
+});
+
+// matchMedia stub — jsdom doesn't implement matchMedia
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: vi.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+});
+
 // OPFS stub — jsdom doesn't implement the File System Access API
 const mockDirectoryHandle = {} as FileSystemDirectoryHandle;
 

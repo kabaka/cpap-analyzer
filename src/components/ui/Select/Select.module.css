@@ -1,0 +1,107 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.label {
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-normal);
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  line-height: var(--line-height-normal);
+  cursor: pointer;
+  gap: var(--space-2);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.trigger:hover {
+  border-color: var(--color-border-emphasis);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  box-shadow: var(--shadow-focus);
+}
+
+.trigger[data-placeholder] {
+  color: var(--color-text-muted);
+}
+
+.triggerError {
+  border-color: var(--color-error);
+}
+
+.icon {
+  color: var(--color-text-muted);
+}
+
+.content {
+  background-color: var(--color-surface-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  z-index: var(--z-dropdown);
+}
+
+.viewport {
+  padding: var(--space-1);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  outline: none;
+  transition: background-color var(--transition-fast);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.item[data-highlighted] {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.item[data-disabled] {
+  color: var(--color-text-disabled);
+  pointer-events: none;
+}
+
+.itemIndicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-5);
+}
+
+.error {
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  color: var(--color-error);
+  line-height: var(--line-height-normal);
+}

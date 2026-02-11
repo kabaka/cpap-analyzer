@@ -9,7 +9,7 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 - Every phase produces a working, testable increment.
 - QA agent reviews all code before a phase is considered complete.
 
-**Current state:** Phase 1 complete. Blank React app builds, lints, passes unit tests (2) and E2E tests (2), all config verified locally. CI run pending first push.
+**Current state:** Phase 2 complete. Full app shell with domain types, design system (16 components), themed layout with sidebar navigation, Zustand stores, error boundaries, and routing to 16 placeholder views. 113 unit tests and 13 E2E tests pass. All pre-commit checks green.
 
 ---
 
@@ -56,18 +56,18 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 
 **Work items:**
 
-- [ ] **Domain types** (`src/types/`) — All interfaces: Session, NightlyAggregate, Event, ChannelMetadata, SignalChunk, AnalysisInput/Output/Metadata, DataProvider, CPAPError, ErrorCategory, ErrorSeverity, all 5 plugin interfaces (MachinePlugin, AnalysisPlugin, VisualizationPlugin, IntegrationPlugin, ExportPlugin), Settings, ImportRecord, IntegrationData
-- [ ] **Design tokens** (`src/styles/tokens.css`) — Complete CSS custom property set: surfaces, text, status/clinical colors (normal/green, mild/yellow, moderate/orange, severe/red), chart color palette (8 colors), spacing scale (4px base), typography (system fonts, 7-step scale), shadows (4 levels), radii, transitions, z-index layers — light theme default + dark theme override via `[data-theme="dark"]`
-- [ ] **Reset + base styles** (`src/styles/reset.css`, `src/styles/base.css`) — CSS reset, base typography, scrollbar styling, focus-visible styles
-- [ ] **Theme provider** — `useTheme()` hook, system preference detection via `prefers-color-scheme`, localStorage persistence, `[data-theme]` attribute on `<html>`
-- [ ] **Design system components** (`src/components/ui/`) — Button, Card, Input, Select, Badge, Table, Tabs, Dialog, Tooltip, Switch, Slider, Accordion, Popover, DropdownMenu, Toast, Skeleton/Loading — each wrapping Radix UI primitives, styled via CSS Modules + tokens, keyboard accessible, ARIA compliant
-- [ ] **Layout components** (`src/components/layouts/`) — `RootLayout` (header with app title, primary sidebar nav, `<Outlet/>`, toast container), `DashboardLayout` (content area with breadcrumb)
-- [ ] **Routing** (`src/router.tsx`) — All routes with React.lazy placeholder views: `/` Dashboard, `/sessions` SessionList, `/sessions/:id` SessionDetail, `/sessions/:id/signals` SignalViewer, `/sessions/compare` SessionComparison, `/analysis` AnalysisHub, `/analysis/statistical` StatisticalAnalysis, `/analysis/events` EventAnalysis, `/analysis/pressure` PressureOptimization, `/analysis/integrations` IntegrationAnalysis, `/reports` Reports, `/data` DataManagement, `/data/import` ImportWizard, `/settings` Settings, `/help` HelpHome, `/help/:topic` HelpArticle
-- [ ] **Zustand stores** (`src/stores/`) — `useAppStore` (dateRange, selectedSession, theme, importStatus, errors), `useSettingsStore` (analysisParams, display, integrations), `useDataStore` (sessions cache, summaryStats, loading states) — typed interfaces, devtools middleware
-- [ ] **Error boundaries** — Root (catches fatal), route-level (catches view crashes with "Go Home" recovery), component-level (catches widget failures with retry)
-- [ ] **URL state sync** (`src/hooks/useURLState.ts`) — Bidirectional sync of dateRange + selected session to URL search params
-- [ ] **Unit tests** — All design system components render and accept keyboard input, Zustand stores initialize and update correctly, theme toggle works, error boundaries catch thrown errors
-- [ ] **E2E tests** — Navigate all top-level routes, toggle theme, verify responsive layout at mobile/tablet/desktop breakpoints
+- [x] **Domain types** (`src/types/`) — All interfaces: Session, NightlyAggregate, Event, ChannelMetadata, SignalChunk, AnalysisInput/Output/Metadata, DataProvider, CPAPError, ErrorCategory, ErrorSeverity, all 5 plugin interfaces (MachinePlugin, AnalysisPlugin, VisualizationPlugin, IntegrationPlugin, ExportPlugin), Settings, ImportRecord, IntegrationData
+- [x] **Design tokens** (`src/styles/tokens.css`) — Complete CSS custom property set: surfaces, text, status/clinical colors (normal/green, mild/yellow, moderate/orange, severe/red), chart color palette (8 colors), spacing scale (4px base), typography (system fonts, 7-step scale), shadows (4 levels), radii, transitions, z-index layers — light theme default + dark theme override via `[data-theme="dark"]`
+- [x] **Reset + base styles** (`src/styles/reset.css`, `src/styles/base.css`) — CSS reset, base typography, scrollbar styling, focus-visible styles
+- [x] **Theme provider** — `useTheme()` hook, system preference detection via `prefers-color-scheme`, localStorage persistence, `[data-theme]` attribute on `<html>`
+- [x] **Design system components** (`src/components/ui/`) — Button, Card, Input, Select, Badge, Table, Tabs, Dialog, Tooltip, Switch, Slider, Accordion, Popover, DropdownMenu, Toast, Skeleton/Loading — each wrapping Radix UI primitives, styled via CSS Modules + tokens, keyboard accessible, ARIA compliant
+- [x] **Layout components** (`src/components/layouts/`) — `RootLayout` (header with app title, primary sidebar nav, `<Outlet/>`, toast container), `DashboardLayout` (content area with breadcrumb)
+- [x] **Routing** (`src/router.tsx`) — All routes with React.lazy placeholder views: `/` Dashboard, `/sessions` SessionList, `/sessions/:id` SessionDetail, `/sessions/:id/signals` SignalViewer, `/sessions/compare` SessionComparison, `/analysis` AnalysisHub, `/analysis/statistical` StatisticalAnalysis, `/analysis/events` EventAnalysis, `/analysis/pressure` PressureOptimization, `/analysis/integrations` IntegrationAnalysis, `/reports` Reports, `/data` DataManagement, `/data/import` ImportWizard, `/settings` Settings, `/help` HelpHome, `/help/:topic` HelpArticle
+- [x] **Zustand stores** (`src/stores/`) — `useAppStore` (dateRange, selectedSession, importStatus, errors), `useSettingsStore` (analysisParams, display, integrations), `useDataStore` (sessions cache, summaryStats, loading states) — typed interfaces, devtools middleware
+- [x] **Error boundaries** — Root (catches fatal), route-level (catches view crashes with "Go Home" recovery), component-level (catches widget failures with retry)
+- [x] **URL state sync** (`src/hooks/useURLState.ts`) — Bidirectional sync of dateRange + selected session to URL search params
+- [x] **Unit tests** — All design system components render and accept keyboard input, Zustand stores initialize and update correctly, theme toggle works, error boundaries catch thrown errors
+- [x] **E2E tests** — Navigate all top-level routes, toggle theme, verify responsive layout at mobile/tablet/desktop breakpoints
 
 **Agents:** Frontend (routing, layouts, stores, hooks, error boundaries), UI Design (design tokens, CSS, component visual specs), UX (nav structure, URL state, error UX), Unit Tester (component + store tests), E2E Tester (navigation + theme tests), QA (review)
 
