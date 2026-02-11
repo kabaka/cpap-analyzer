@@ -118,17 +118,17 @@ Advanced analysis tools accessible from the main navigation:
 
 ### Requirements
 
-| Criterion | Requirement | Implementation |
-| ---- | ---- | ---- |
-| 1.1.1 Non-text Content | Alt text for all meaningful images/charts | Canvas charts provide text alternatives in adjacent elements or via `aria-label` |
-| 1.3.1 Info and Relationships | Structure conveyed programmatically | Semantic HTML, proper heading hierarchy, ARIA landmarks |
-| 1.4.1 Use of Color | Color not sole means of conveying information | All color-coded data has additional indicators (patterns, labels, icons) |
-| 1.4.3 Contrast (Minimum) | 4.5:1 for normal text, 3:1 for large text | Verified in both light and dark themes |
-| 1.4.11 Non-text Contrast | 3:1 for UI components and graphical objects | Chart lines, buttons, form controls all meet this ratio |
-| 2.1.1 Keyboard | All functionality via keyboard | Tab order, focus management, keyboard shortcuts for common actions |
-| 2.4.1 Bypass Blocks | Skip navigation | Skip-to-content link, ARIA landmarks |
-| 2.4.7 Focus Visible | Visible focus indicator | High-contrast focus ring on all interactive elements |
-| 4.1.2 Name, Role, Value | Programmatic name for all components | ARIA labels, roles, and states for custom components |
+| Criterion                    | Requirement                                   | Implementation                                                                   |
+| ---------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------- |
+| 1.1.1 Non-text Content       | Alt text for all meaningful images/charts     | Canvas charts provide text alternatives in adjacent elements or via `aria-label` |
+| 1.3.1 Info and Relationships | Structure conveyed programmatically           | Semantic HTML, proper heading hierarchy, ARIA landmarks                          |
+| 1.4.1 Use of Color           | Color not sole means of conveying information | All color-coded data has additional indicators (patterns, labels, icons)         |
+| 1.4.3 Contrast (Minimum)     | 4.5:1 for normal text, 3:1 for large text     | Verified in both light and dark themes                                           |
+| 1.4.11 Non-text Contrast     | 3:1 for UI components and graphical objects   | Chart lines, buttons, form controls all meet this ratio                          |
+| 2.1.1 Keyboard               | All functionality via keyboard                | Tab order, focus management, keyboard shortcuts for common actions               |
+| 2.4.1 Bypass Blocks          | Skip navigation                               | Skip-to-content link, ARIA landmarks                                             |
+| 2.4.7 Focus Visible          | Visible focus indicator                       | High-contrast focus ring on all interactive elements                             |
+| 4.1.2 Name, Role, Value      | Programmatic name for all components          | ARIA labels, roles, and states for custom components                             |
 
 ### Keyboard Navigation
 
@@ -155,11 +155,11 @@ Advanced analysis tools accessible from the main navigation:
 
 ### Breakpoints
 
-| Breakpoint | Width | Layout | Primary Use Case |
-| ---- | ---- | ---- | ---- |
-| Mobile | < 640px | Single column, stacked cards | "Show data to doctor on phone" |
-| Tablet | 640px – 1024px | Two-column where appropriate | Bedside review |
-| Desktop | > 1024px | Full multi-panel layout | Primary analysis workstation |
+| Breakpoint | Width          | Layout                       | Primary Use Case               |
+| ---------- | -------------- | ---------------------------- | ------------------------------ |
+| Mobile     | < 640px        | Single column, stacked cards | "Show data to doctor on phone" |
+| Tablet     | 640px – 1024px | Two-column where appropriate | Bedside review                 |
+| Desktop    | > 1024px       | Full multi-panel layout      | Primary analysis workstation   |
 
 ### Mobile-First Considerations
 
@@ -329,20 +329,20 @@ Error messages must:
 
 Always display AHI with its clinical severity classification:
 
-| AHI Range | Severity | Color Token |
-| ---- | ---- | ---- |
-| < 5 | Normal | `--color-status-normal` |
-| 5 – 14.9 | Mild | `--color-status-mild` |
+| AHI Range | Severity | Color Token               |
+| --------- | -------- | ------------------------- |
+| < 5       | Normal   | `--color-status-normal`   |
+| 5 – 14.9  | Mild     | `--color-status-mild`     |
 | 15 – 29.9 | Moderate | `--color-status-moderate` |
-| ≥ 30 | Severe | `--color-status-severe` |
+| ≥ 30      | Severe   | `--color-status-severe`   |
 
 ### Leak Rate
 
-| Metric | Threshold | Color Indicator |
-| ---- | ---- | ---- |
-| Median leak | < 24 L/min | Normal |
-| 95th percentile leak | < 24 L/min | Normal |
-| Any period > 24 L/min for > 30 min | - | Warning |
+| Metric                             | Threshold  | Color Indicator |
+| ---------------------------------- | ---------- | --------------- |
+| Median leak                        | < 24 L/min | Normal          |
+| 95th percentile leak               | < 24 L/min | Normal          |
+| Any period > 24 L/min for > 30 min | -          | Warning         |
 
 ### Usage Compliance
 

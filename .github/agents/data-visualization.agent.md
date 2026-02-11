@@ -23,6 +23,7 @@ This is the most performance-critical aspect of the application. You must handle
 - **Responsive rendering** — chart updates must feel instantaneous.
 
 Techniques to employ:
+
 - Level-of-detail downsampling (show fewer points when zoomed out, full resolution when zoomed in).
 - Viewport-based rendering (only process visible data).
 - Canvas or WebGL for high-density plots; SVG for interactive overlays and annotations.

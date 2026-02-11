@@ -17,22 +17,26 @@ You are the runtime performance and memory optimization specialist for the CPAP 
 ## Key Concerns for This Project
 
 ### Large Dataset Handling
+
 - **ArrayBuffer management**: Efficient allocation, transfer (not copy) between main thread and Workers, and release.
 - **Time-series downsampling**: Level-of-detail algorithms that preserve signal features (min-max, LTTB, etc.).
 - **Memory pressure**: Years of 25–50 Hz data can exceed available memory. Design for streaming access, not full materialization.
 
 ### Web Worker Optimization
+
 - Move all heavy computation off the main thread (EDF parsing, statistical analysis, downsampling).
 - Minimize message passing overhead — transfer ArrayBuffers, don't clone them.
 - Consider SharedArrayBuffer for read-heavy workloads (with appropriate security headers).
 
 ### Rendering Performance
+
 - Canvas/WebGL for high-density time-series plots.
 - Viewport-based rendering — only draw what's visible.
 - RequestAnimationFrame for smooth chart interactions (zoom, pan).
 - Avoid layout thrashing in the DOM.
 
 ### Bundle Size
+
 - Monitor bundle size as the application grows.
 - Use tree-shaking-friendly imports.
 - Code-split by feature/route.

@@ -48,10 +48,10 @@ Plugin interface contracts:
 
 ```typescript
 interface MachinePlugin {
-  metadata: { id, name, version, manufacturer, supportedModels }
-  detectMachine(files: File[]): Promise<boolean>
-  parseSession(files: File[]): Promise<SessionData>
-  getChannelMappings(): ChannelMapping[]
+  metadata: { id; name; version; manufacturer; supportedModels };
+  detectMachine(files: File[]): Promise<boolean>;
+  parseSession(files: File[]): Promise<SessionData>;
+  getChannelMappings(): ChannelMapping[];
 }
 ```
 
@@ -59,11 +59,11 @@ interface MachinePlugin {
 
 ```typescript
 interface AnalysisPlugin {
-  metadata: { id, name, version, category }
-  dataRequirements: { stores, signals, minSampleSize }
-  parameterSchema: JSONSchema
-  execute(input: AnalysisInput): Promise<AnalysisOutput>
-  supportsIncremental?: boolean
+  metadata: { id; name; version; category };
+  dataRequirements: { stores; signals; minSampleSize };
+  parameterSchema: JSONSchema;
+  execute(input: AnalysisInput): Promise<AnalysisOutput>;
+  supportsIncremental?: boolean;
 }
 ```
 
@@ -71,10 +71,10 @@ interface AnalysisPlugin {
 
 ```typescript
 interface VisualizationPlugin {
-  metadata: { id, name, version, category }
-  dataRequirements: { analysisType, parameters }
-  component: React.ComponentType<VisualizationProps>
-  supportedExports?: ('png' | 'svg' | 'csv' | 'json')[]
+  metadata: { id; name; version; category };
+  dataRequirements: { analysisType; parameters };
+  component: React.ComponentType<VisualizationProps>;
+  supportedExports?: ('png' | 'svg' | 'csv' | 'json')[];
 }
 ```
 

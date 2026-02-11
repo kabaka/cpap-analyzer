@@ -40,6 +40,7 @@ This is a client-side web application for analysis of CPAP therapy data. The ent
 ## Agent Workflow
 
 This project is developed entirely by AI agents. There is no human development team.
+
 - The orchestrator agent coordinates all work by delegating to specialist agents.
 - The orchestrator never writes code directly — it delegates and reviews.
 - Every change should involve relevant specialists (implementation, review, testing, security, UX).

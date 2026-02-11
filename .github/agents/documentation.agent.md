@@ -20,6 +20,7 @@ The primary audience is patients with data science, mathematics, or bioinformati
 ## Documentation Types
 
 ### User Documentation
+
 - **Getting started guide** — From first launch through first analysis.
 - **Feature guides** — Detailed documentation for each feature area.
 - **In-app help** — Contextual help content accessible from every view. Detailed, not superficial.
@@ -27,12 +28,14 @@ The primary audience is patients with data science, mathematics, or bioinformati
 - **FAQ** — Answers to anticipated user questions.
 
 ### Developer Documentation
+
 - **Architecture overview** — How the application is structured, major subsystems.
 - **Plugin development guide** — How to create plugins for analysis, visualization, integration, and export.
 - **API reference** — Public APIs, data models, event systems.
 - **Contributing guide** — (For the AI agent team) conventions, workflow, quality requirements.
 
 ### Clinical Documentation
+
 - **Metric explanations** — What each metric measures, clinical significance, normal ranges.
 - **Analysis method documentation** — Statistical methods used, assumptions, limitations, interpretation guidance.
 - **Regulatory notes** — Disclaimers about non-certification, intended use as a patient tool.

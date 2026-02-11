@@ -11,13 +11,13 @@ The CPAP Analyzer uses a plugin architecture for extensibility. All major featur
 
 ## Plugin Categories
 
-| Category | Purpose | Examples |
-| ---- | ---- | ---- |
-| **Machine** | Data import and parsing for a specific machine manufacturer | ResMed, Philips Respironics |
-| **Analysis** | Statistical analysis or derived metric computation | Trend analysis, clustering, correlation |
-| **Visualization** | Chart or visualization component | Time-series plot, heatmap, survival curve |
-| **Integration** | External service connection | Fitbit, weather API, LLM |
-| **Export** | Data export format | PDF report, CSV, session backup |
+| Category          | Purpose                                                     | Examples                                  |
+| ----------------- | ----------------------------------------------------------- | ----------------------------------------- |
+| **Machine**       | Data import and parsing for a specific machine manufacturer | ResMed, Philips Respironics               |
+| **Analysis**      | Statistical analysis or derived metric computation          | Trend analysis, clustering, correlation   |
+| **Visualization** | Chart or visualization component                            | Time-series plot, heatmap, survival curve |
+| **Integration**   | External service connection                                 | Fitbit, weather API, LLM                  |
+| **Export**        | Data export format                                          | PDF report, CSV, session backup           |
 
 ## Plugin Structure
 

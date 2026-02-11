@@ -29,15 +29,17 @@ Documentation is not an afterthought but a **first-class product feature**. It t
 CPAP Analyzer exists in a unique position between consumer health apps (like ResMed myAir) and clinical polysomnography software. Our users seek **scientific rigor** but may lack formal training in sleep medicine or statistics.
 
 **Traditional approach** (rejected):
+
 - Assume users know medical terminology → alienates laypersons
 - Assume users don't understand statistics → frustrates power users
 - Provide only UI instructions → doesn't teach underlying concepts
 - Link to external medical sites → fragments learning experience
 
 **Our approach**:
+
 - Define every term inline with progressive disclosure
 - Include statistical and clinical context for every metric
-- Explain not just *how* to use features but *why* they matter clinically
+- Explain not just _how_ to use features but _why_ they matter clinically
 - Create a self-contained knowledge base within the application
 - Enable users to become knowledgeable advocates for their own care
 
@@ -46,6 +48,7 @@ CPAP Analyzer exists in a unique position between consumer health apps (like Res
 #### Primary Audience: Quantitative Patients
 
 **Profile**:
+
 - Professional or academic backgrounds: data science, statistics, mathematics, bioinformatics, physics, engineering, or related fields
 - Comfortable with statistical concepts (p-values, confidence intervals, correlation, regression)
 - Want to verify computations and see raw data
@@ -54,6 +57,7 @@ CPAP Analyzer exists in a unique position between consumer health apps (like Res
 - May present findings to sleep physicians
 
 **Documentation Expectations**:
+
 - Precise mathematical definitions (formulas, not just descriptions)
 - Algorithm implementation details (what method, which variant)
 - Assumptions and limitations clearly stated
@@ -62,20 +66,24 @@ CPAP Analyzer exists in a unique position between consumer health apps (like Res
 - Transparency about data quality issues and edge cases
 
 **Example Documentation Style**:
+
 > **AHI (Apnea-Hypopnea Index)**
 >
 > **Definition**: Number of apnea and hypopnea events per hour of sleep.
 >
-> **Formula**: 
+> **Formula**:
+>
 > ```
 > AHI = (Total Events) / (Total Sleep Time in hours)
 > ```
 >
 > **Event Definitions** (per AASM 2012 guidelines):
+>
 > - **Apnea**: ≥90% reduction in airflow for ≥10 seconds
 > - **Hypopnea**: ≥30% reduction in airflow for ≥10 seconds with ≥3% oxygen desaturation or arousal
 >
 > **Clinical Significance**:
+>
 > - Normal: AHI < 5
 > - Mild OSA: 5 ≤ AHI < 15
 > - Moderate OSA: 15 ≤ AHI < 30
@@ -86,14 +94,16 @@ CPAP Analyzer exists in a unique position between consumer health apps (like Res
 #### Secondary Audience: Dedicated Laypersons
 
 **Profile**:
+
 - No formal quantitative or medical background
 - Motivated to deeply understand their therapy
 - Willing to learn new concepts
 - May struggle with statistical terminology initially
 - Need explanations of clinical significance
-- Want to understand what results *mean* for their health
+- Want to understand what results _mean_ for their health
 
 **Documentation Expectations**:
+
 - Accessible language without sacrificing accuracy
 - Analogies and real-world comparisons
 - Glossary of terms with definitions
@@ -103,6 +113,7 @@ CPAP Analyzer exists in a unique position between consumer health apps (like Res
 - Progressive disclosure of complexity
 
 **Example Documentation Style**:
+
 > **AHI (Apnea-Hypopnea Index)**
 >
 > **What it measures**: How many times per hour your breathing is interrupted during sleep.
@@ -112,6 +123,7 @@ CPAP Analyzer exists in a unique position between consumer health apps (like Res
 > **Why it matters**: These interruptions prevent deep, restorative sleep and can stress your heart. Your CPAP therapy aims to reduce your AHI to as close to zero as possible.
 >
 > **Understanding your AHI**:
+>
 > - **Under 5**: Excellent control—this is the goal
 > - **5 to 15**: Mild—therapy may need adjustment
 > - **15 to 30**: Moderate—discuss with your doctor
@@ -143,6 +155,7 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 **Purpose**: Onboard new users from first launch through first meaningful analysis.
 
 **Scope**:
+
 - What CPAP Analyzer is and what it does
 - Privacy guarantees (no data leaves your browser)
 - How to import data from SD card
@@ -152,7 +165,8 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 
 **Format**: Multi-page wizard or scrollable single page with progress indicators
 
-**Location**: 
+**Location**:
+
 - In-app: Help → Getting Started
 - First launch: Auto-displayed with "Don't show again" option
 - Web: Project website landing page
@@ -166,6 +180,7 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 **Purpose**: Detailed documentation for each feature area.
 
 **Feature Areas**:
+
 1. **Data Import & Management**
    - Importing from SD card
    - Understanding import history
@@ -219,37 +234,45 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 **Format**: HTML pages with interactive examples, diagrams, annotated screenshots
 
 **Location**:
+
 - In-app: Help → Feature Guides
 - Contextual links from relevant UI sections
 
 **Structure (per guide)**:
+
 ```markdown
 # [Feature Name]
 
 ## Overview
+
 - What this feature does
 - When to use it
 - Key concepts
 
 ## Step-by-Step Instructions
+
 - Numbered steps with screenshots
 - Interactive elements highlighted
 - Expected results
 
 ## Understanding the Results
+
 - How to interpret output
 - What values mean clinically
 - When to be concerned
 
 ## Common Questions
+
 - FAQ specific to this feature
 
 ## Advanced Usage
+
 - Power user tips
 - Customization options
 - Integration with other features
 
 ## Technical Details (Expandable)
+
 - Algorithms used
 - Statistical methods
 - Implementation references
@@ -263,6 +286,7 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 **Implementation Layers**:
 
 **Layer 1: Inline Tooltips**
+
 - Appear on hover over (?) icons or info badges
 - Brief definitions (1-2 sentences)
 - No jargon unless defined
@@ -270,6 +294,7 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 - Examples: Metric names, setting options, button functions
 
 **Layer 2: Help Popovers**
+
 - Triggered by "Learn more" links in tooltips or UI
 - More detailed explanations (paragraph-length)
 - May include small diagrams or formulas
@@ -277,6 +302,7 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 - Examples: Clinical significance, interpretation guidance
 
 **Layer 3: Help Panel (Sidebar)**
+
 - Context-aware help content that updates based on current view
 - Shows relevant feature guide section
 - Always accessible via keyboard shortcut (F1) or Help button
@@ -285,6 +311,7 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 - Examples: Current view guide, recent topics, related features
 
 **Layer 4: Guided Tours**
+
 - First-time user walkthroughs
 - Highlight key UI elements with overlay
 - Step-by-step instructions with "Next" and "Skip" options
@@ -292,6 +319,7 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 - Examples: Dashboard tour, Analysis tour, Import tour
 
 **Content Requirements**:
+
 - Every metric name has a tooltip definition
 - Every chart type has interpretation guidance
 - Every analysis method has algorithm documentation
@@ -299,6 +327,7 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 - Every error message has troubleshooting steps
 
 **Accessibility**:
+
 - Tooltips announced by screen readers
 - Keyboard navigation for all help interactions
 - High contrast text for visibility
@@ -309,64 +338,55 @@ Users can choose their depth level. Technically sophisticated users can skip Lay
 All contextual help elements use **Radix UI** primitives for accessibility and consistency:
 
 **Layer 1: Tooltips** (Brief definitions)
+
 - **Component**: `@radix-ui/react-tooltip`
 - **Pattern**: Info icon (`<InfoCircledIcon />`) with hover/focus trigger
 - **Timing**: 200ms delay on open, instant on close
 - **Max Width**: 300px
 - **Example**:
+
   ```tsx
   import * as Tooltip from '@radix-ui/react-tooltip';
   import { InfoCircledIcon } from '@radix-ui/react-icons';
-  
+
   <Tooltip.Provider delayDuration={200}>
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
-        <button 
-          className="help-icon" 
-          aria-label="Help for AHI metric"
-        >
+        <button className="help-icon" aria-label="Help for AHI metric">
           <InfoCircledIcon />
         </button>
       </Tooltip.Trigger>
       <Tooltip.Portal>
-        <Tooltip.Content 
-          className="tooltip-content" 
-          sideOffset={5}
-          aria-live="polite"
-        >
+        <Tooltip.Content className="tooltip-content" sideOffset={5} aria-live="polite">
           AHI (Apnea-Hypopnea Index): Number of breathing interruptions per hour.
           <Tooltip.Arrow className="tooltip-arrow" />
         </Tooltip.Content>
       </Tooltip.Portal>
     </Tooltip.Root>
-  </Tooltip.Provider>
+  </Tooltip.Provider>;
   ```
 
 **Layer 2: Popovers** (Detailed explanations)
+
 - **Component**: `@radix-ui/react-popover`
 - **Pattern**: "Learn more" link or question mark button
 - **Size**: 400px width, up to 600px height (scrollable)
 - **Content**: Multiple paragraphs, small diagrams, formulas
 - **Example**:
+
   ```tsx
   import * as Popover from '@radix-ui/react-popover';
-  
+
   <Popover.Root>
     <Popover.Trigger asChild>
-      <button className="learn-more-link">
-        Learn more about AHI calculation →
-      </button>
+      <button className="learn-more-link">Learn more about AHI calculation →</button>
     </Popover.Trigger>
     <Popover.Portal>
-      <Popover.Content 
-        className="popover-content" 
-        sideOffset={5}
-        align="start"
-      >
+      <Popover.Content className="popover-content" sideOffset={5} align="start">
         <h3>AHI Calculation Details</h3>
         <p>
-          AHI is calculated by dividing the total number of apnea and hypopnea 
-          events by total sleep time in hours.
+          AHI is calculated by dividing the total number of apnea and hypopnea events by total sleep
+          time in hours.
         </p>
         <p>
           <strong>Formula:</strong> <code>AHI = (Total Events) / (Sleep Hours)</code>
@@ -375,9 +395,13 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
           <strong>Event Definitions (AASM 2012):</strong>
         </p>
         <ul>
-          <li><strong>Apnea:</strong> ≥90% airflow reduction for ≥10 seconds</li>
-          <li><strong>Hypopnea:</strong> ≥30% airflow reduction for ≥10 seconds with 
-              ≥3% SpO₂ drop or arousal</li>
+          <li>
+            <strong>Apnea:</strong> ≥90% airflow reduction for ≥10 seconds
+          </li>
+          <li>
+            <strong>Hypopnea:</strong> ≥30% airflow reduction for ≥10 seconds with ≥3% SpO₂ drop or
+            arousal
+          </li>
         </ul>
         <Popover.Close className="popover-close" aria-label="Close">
           ×
@@ -385,28 +409,30 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
         <Popover.Arrow className="popover-arrow" />
       </Popover.Content>
     </Popover.Portal>
-  </Popover.Root>
+  </Popover.Root>;
   ```
 
 **Layer 3: Help Panel** (Contextual documentation drawer)
+
 - **Component**: `@radix-ui/react-dialog` (used as a side panel)
 - **Pattern**: Keyboard shortcut (F1) or Help button in header
 - **Size**: 400px width (desktop), full-screen (mobile)
 - **Position**: Right side of screen, overlay with backdrop
-- **Features**: 
+- **Features**:
   - Context-aware content (updates based on current view)
   - Search within help content
   - Table of contents navigation
   - Pin/unpin (stays open while working)
   - History (recently viewed topics)
 - **Example**:
+
   ```tsx
   import * as Dialog from '@radix-ui/react-dialog';
-  
+
   const HelpPanel: React.FC = () => {
     const [open, setOpen] = useState(false);
     const currentView = useCurrentView(); // Hook to detect current page
-    
+
     // Open on F1 key
     useEffect(() => {
       const handler = (e: KeyboardEvent) => {
@@ -418,7 +444,7 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
       window.addEventListener('keydown', handler);
       return () => window.removeEventListener('keydown', handler);
     }, []);
-    
+
     return (
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Trigger asChild>
@@ -433,11 +459,11 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
             <Dialog.Description id="help-description">
               Contextual help and documentation for the current view.
             </Dialog.Description>
-            
+
             <HelpSearch />
             <HelpContent view={currentView} />
             <HelpTableOfContents />
-            
+
             <Dialog.Close asChild>
               <button className="help-close" aria-label="Close help panel">
                 ×
@@ -451,6 +477,7 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
   ```
 
 **Layer 4: Guided Tours** (Interactive walkthroughs)
+
 - **Component**: Custom implementation using `@radix-ui/react-popover` with spotlight overlay
 - **Pattern**: Step-by-step overlay with "Next", "Previous", "Skip" buttons
 - **Features**:
@@ -459,30 +486,31 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
   - Progress indicator (Step 3 of 7)
   - Can be dismissed and resumed later
 - **Example**:
+
   ```tsx
   import * as Popover from '@radix-ui/react-popover';
-  
+
   interface TourStep {
     target: string; // CSS selector
     title: string;
     content: string;
     placement: 'top' | 'bottom' | 'left' | 'right';
   }
-  
+
   const GuidedTour: React.FC<{ steps: TourStep[] }> = ({ steps }) => {
     const [currentStep, setCurrentStep] = useState(0);
     const [isActive, setIsActive] = useState(false);
-    
+
     const step = steps[currentStep];
     const targetElement = document.querySelector(step.target);
-    
+
     return (
       <>
         {/* Spotlight overlay */}
         {isActive && (
           <div className="tour-overlay" aria-hidden="true">
-            <div 
-              className="tour-spotlight" 
+            <div
+              className="tour-spotlight"
               style={{
                 top: targetElement?.getBoundingClientRect().top,
                 left: targetElement?.getBoundingClientRect().left,
@@ -492,7 +520,7 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
             />
           </div>
         )}
-        
+
         {/* Tour popover */}
         {isActive && targetElement && (
           <Popover.Root open={isActive}>
@@ -503,11 +531,7 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
                 left: targetElement.getBoundingClientRect().left,
               }}
             />
-            <Popover.Content 
-              className="tour-content"
-              side={step.placement}
-              align="center"
-            >
+            <Popover.Content className="tour-content" side={step.placement} align="center">
               <div className="tour-header">
                 <span className="tour-progress">
                   Step {currentStep + 1} of {steps.length}
@@ -518,14 +542,10 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
               <div className="tour-actions">
                 <button onClick={() => setIsActive(false)}>Skip Tour</button>
                 {currentStep > 0 && (
-                  <button onClick={() => setCurrentStep(currentStep - 1)}>
-                    Previous
-                  </button>
+                  <button onClick={() => setCurrentStep(currentStep - 1)}>Previous</button>
                 )}
                 {currentStep < steps.length - 1 ? (
-                  <button onClick={() => setCurrentStep(currentStep + 1)}>
-                    Next
-                  </button>
+                  <button onClick={() => setCurrentStep(currentStep + 1)}>Next</button>
                 ) : (
                   <button onClick={() => setIsActive(false)}>Finish</button>
                 )}
@@ -539,13 +559,15 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
   ```
 
 **Documentation Drawers** (Alternative to popovers for dense content):
+
 - **Component**: `@radix-ui/react-collapsible` for inline expansion
 - **Pattern**: "Show details" / "Hide details" toggle
 - **Use Case**: Inline documentation within forms or settings panels
 - **Example**:
+
   ```tsx
   import * as Collapsible from '@radix-ui/react-collapsible';
-  
+
   <Collapsible.Root>
     <Collapsible.Trigger asChild>
       <button className="details-toggle">
@@ -554,13 +576,13 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
     </Collapsible.Trigger>
     <Collapsible.Content className="details-content">
       <p>
-        Pressure optimization analyzes your therapy data to find the lowest 
-        effective pressure that maintains good AHI control. This can improve 
+        Pressure optimization analyzes your therapy data to find the lowest
+        effective pressure that maintains good AHI control. This can improve
         comfort while maintaining efficacy.
       </p>
       <p>
-        <strong>How it works:</strong> The algorithm identifies the 5th 
-        percentile pressure on nights with excellent AHI (<1) and recommends 
+        <strong>How it works:</strong> The algorithm identifies the 5th
+        percentile pressure on nights with excellent AHI (<1) and recommends
         this as your minimum pressure setting.
       </p>
     </Collapsible.Content>
@@ -570,6 +592,7 @@ All contextual help elements use **Radix UI** primitives for accessibility and c
 **Styling Consistency**:
 
 All help UI components share a common visual language:
+
 - **Colors**: Use semantic tokens from design system
   - `--color-help-background`: Light blue/gray
   - `--color-help-border`: Subtle border
@@ -580,7 +603,8 @@ All help UI components share a common visual language:
 - **Animations**: Respect `prefers-reduced-motion`
   ```css
   @media (prefers-reduced-motion: reduce) {
-    .tooltip-content, .popover-content {
+    .tooltip-content,
+    .popover-content {
       animation: none !important;
       transition: none !important;
     }
@@ -589,24 +613,26 @@ All help UI components share a common visual language:
 
 **When to Use Each Component**:
 
-| Component | When to Use | Max Content Length | Dismissal |
-|-----------|-------------|-------------------|----------|
-| **Tooltip** | Term definitions, brief explanations | 1-2 sentences | Auto on mouseout/blur |
-| **Popover** | Detailed explanations, formulas, short guides | 2-5 paragraphs | Click outside or Escape |
-| **Help Panel** | Full feature documentation, troubleshooting | Unlimited (scrollable) | Explicit close or F1 toggle |
-| **Guided Tour** | Onboarding, new feature introduction | 1-2 paragraphs per step | Skip button or complete |
-| **Collapsible** | Inline documentation, optional details | 1-3 paragraphs | Toggle open/closed |
+| Component       | When to Use                                   | Max Content Length      | Dismissal                   |
+| --------------- | --------------------------------------------- | ----------------------- | --------------------------- |
+| **Tooltip**     | Term definitions, brief explanations          | 1-2 sentences           | Auto on mouseout/blur       |
+| **Popover**     | Detailed explanations, formulas, short guides | 2-5 paragraphs          | Click outside or Escape     |
+| **Help Panel**  | Full feature documentation, troubleshooting   | Unlimited (scrollable)  | Explicit close or F1 toggle |
+| **Guided Tour** | Onboarding, new feature introduction          | 1-2 paragraphs per step | Skip button or complete     |
+| **Collapsible** | Inline documentation, optional details        | 1-3 paragraphs          | Toggle open/closed          |
 
 #### 2.1.4 Glossary
 
 **Purpose**: Comprehensive reference for all medical, statistical, and technical terms used in the application.
 
 **Scope**:
+
 - **Medical Terms**: Apnea, hypopnea, CPAP, BiPAP, EPAP, IPAP, AHI, ODI, SpO₂, arousal, flow limitation, Cheyne-Stokes respiration, central apnea, obstructive apnea, RERA, AASM, polysomnography, titration, etc.
 - **Statistical Terms**: Mean, median, standard deviation, confidence interval, p-value, correlation, regression, time-series decomposition, autocorrelation, moving average, percentile, outlier, distribution, hypothesis test, significance, effect size, etc.
 - **Technical Terms**: EDF, signal, channel, sample rate, downsampling, IndexedDB, OPFS, plugin, Web Worker, etc.
 
 **Entry Structure**:
+
 ```markdown
 ### [Term]
 
@@ -623,7 +649,8 @@ All help UI components share a common visual language:
 **References**: [AASM guidelines, medical literature if applicable]
 ```
 
-**Format**: 
+**Format**:
+
 - Alphabetically sorted HTML page with anchor links
 - Search box for quick filtering
 - Tag filters (Medical / Statistical / Technical / All)
@@ -637,6 +664,7 @@ All help UI components share a common visual language:
 **Purpose**: Answer common user questions organized by category.
 
 **Categories**:
+
 1. **Getting Started**
    - How do I import my data?
    - Why isn't my machine showing any sessions?
@@ -728,6 +756,7 @@ All help UI components share a common visual language:
 **Location**: Help → Clinical Reference
 
 **Content Standards**:
+
 - References to AASM (American Academy of Sleep Medicine) guidelines where applicable
 - Citations to peer-reviewed medical literature for clinical claims
 - Disclaimers that this is educational content, not medical advice
@@ -755,37 +784,43 @@ All help UI components share a common visual language:
 10. **References**: Statistical literature, algorithm papers
 
 **Example**:
+
 ```markdown
 ## Pearson Correlation Coefficient
 
 **Purpose**: Measures the strength and direction of linear relationship between two continuous variables.
 
-**When to Use**: 
+**When to Use**:
+
 - Exploring relationships between CPAP metrics (e.g., pressure vs leak rate)
 - Correlating CPAP data with external factors (Fitbit HR, weather)
 - Identifying potential causal factors for therapy outcomes
 
 **Assumptions**:
+
 - Both variables are continuous
 - Relationship is approximately linear
 - Data pairs are independent
 - Approximately normal distribution (for significance testing)
 - No extreme outliers
 
-**Implementation**: 
+**Implementation**:
 We use the standard Pearson correlation with two-tailed significance test.
 
 **Formula**:
+
 $$
 r = \frac{\sum_{i=1}^{n}(x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum_{i=1}^{n}(x_i - \bar{x})^2 \sum_{i=1}^{n}(y_i - \bar{y})^2}}
 $$
 
 **Significance Test**: t-statistic with $n-2$ degrees of freedom:
+
 $$
 t = r\sqrt{\frac{n-2}{1-r^2}}
 $$
 
 **Interpretation**:
+
 - $r = 1$: Perfect positive linear relationship
 - $r = 0$: No linear relationship
 - $r = -1$: Perfect negative linear relationship
@@ -796,13 +831,15 @@ $$
 p-value < 0.05 indicates statistically significant correlation (but consider effect size).
 
 **Limitations**:
-- Only detects *linear* relationships; may miss non-linear patterns
+
+- Only detects _linear_ relationships; may miss non-linear patterns
 - Sensitive to outliers
 - Correlation does not imply causation
 - Small sample sizes may yield unreliable p-values
 
 **References**:
-- Pearson, K. (1895). "Notes on regression and inheritance in the case of two parents." *Proceedings of the Royal Society of London*, 58, 240–242.
+
+- Pearson, K. (1895). "Notes on regression and inheritance in the case of two parents." _Proceedings of the Royal Society of London_, 58, 240–242.
 - Statistical Methods in Medical Research, 2nd Edition. (2006). Wiley-Blackwell.
 ```
 
@@ -819,6 +856,7 @@ p-value < 0.05 indicates statistically significant correlation (but consider eff
 **Purpose**: Enable third-party developers (or advanced users) to create custom plugins for CPAP Analyzer.
 
 **Plugin Types**:
+
 1. **Machine Plugins** — Support for additional CPAP manufacturers
 2. **Analysis Plugins** — Custom statistical methods or metrics
 3. **Visualization Plugins** — Custom chart types or dashboards
@@ -860,7 +898,8 @@ p-value < 0.05 indicates statistically significant correlation (but consider eff
 
 **Format**: HTML documentation with code syntax highlighting
 
-**Location**: 
+**Location**:
+
 - Website: /docs/plugin-development
 - Separate developer portal (future consideration)
 
@@ -875,6 +914,7 @@ p-value < 0.05 indicates statistically significant correlation (but consider eff
 **Generation**: Auto-generated from TypeScript source code using **TypeDoc**
 
 **Content**:
+
 - All exported interfaces, types, classes, functions
 - Method signatures with parameter descriptions
 - Return types
@@ -883,13 +923,15 @@ p-value < 0.05 indicates statistically significant correlation (but consider eff
 - Deprecation warnings
 
 **Organization**:
+
 - By module (data-access, analysis, visualization, integration, export)
 - Alphabetical index
 - Search functionality
 
 **Format**: HTML generated by TypeDoc
 
-**Location**: 
+**Location**:
+
 - Website: /docs/api
 - In-app: Help → Developer → API Reference (link to website)
 
@@ -902,6 +944,7 @@ p-value < 0.05 indicates statistically significant correlation (but consider eff
 **Distribution**: Published as npm package `@cpap-analyzer/plugin-types`
 
 **Contents**:
+
 - All plugin interfaces
 - Data models (Session, Event, Signal, etc.)
 - Utility types
@@ -920,6 +963,7 @@ This category documents the application's internal architecture for the AI agent
 **Purpose**: High-level system architecture for new agents joining the project.
 
 **Content**:
+
 - System architecture diagram
 - Technology stack rationale
 - Design principles
@@ -938,6 +982,7 @@ This category documents the application's internal architecture for the AI agent
 **Purpose**: Detailed design specifications for each subsystem.
 
 **Current Documents** (already created by other agents):
+
 - `docs/design/ux-design.md` — User experience and information architecture
 - `docs/design/ui-design-system.md` — Visual design and component specifications
 - `docs/design/frontend-architecture.md` — React, state management, routing
@@ -979,6 +1024,7 @@ See: `.github/skills/adr-authoring/SKILL.md` for ADR writing guidelines
 **Purpose**: Onboard new AI agents to the project workflow.
 
 **Content**:
+
 - Project overview and vision
 - Agent team structure (see `AGENTS.md`)
 - Development workflow
@@ -1003,6 +1049,7 @@ See: `.github/skills/adr-authoring/SKILL.md` for ADR writing guidelines
 **Location**: `CHANGELOG.md` (root)
 
 **Structure**:
+
 ```markdown
 # Changelog
 
@@ -1014,26 +1061,33 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.0M.
 ## [Unreleased]
 
 ### Added
+
 - New feature descriptions
 
 ### Changed
+
 - Changes to existing features
 
 ### Deprecated
+
 - Features marked for removal
 
 ### Removed
+
 - Features removed in this release
 
 ### Fixed
+
 - Bug fixes
 
 ### Security
+
 - Security fixes
 
 ## [2026.02.001] - 2026-02-10
 
 ### Added
+
 - Initial release
 - ...
 ```
@@ -1049,6 +1103,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.0M.
 ### 3.1 Information Architecture
 
 **Hierarchy**:
+
 ```
 Documentation Root
 │
@@ -1113,6 +1168,7 @@ Documentation Root
 ### 3.2 Navigation Strategy
 
 **Primary Navigation** (Help Menu in App):
+
 - Getting Started (🚀)
 - User Guides (📚)
 - Reference (📖)
@@ -1121,18 +1177,21 @@ Documentation Root
 - Developer (🔧) [external link to website]
 
 **Contextual Help Access**:
+
 - (?) info icons throughout UI → tooltips
 - "Learn more" links in tooltips → popovers or help panel
 - F1 keyboard shortcut → context-aware help panel
 - Help button in app header → help panel
 
 **Search**:
+
 - Global search box in help panel
 - Searches across all user-facing documentation
 - Results prioritized by: exact match > partial match > related content
 - Keyboard shortcut: Ctrl/Cmd + K (or F1 then type)
 
 **Cross-References**:
+
 - Hyperlinks between related topics
 - "See also" sections at end of each guide
 - Breadcrumb navigation in help panel
@@ -1143,14 +1202,16 @@ Documentation Root
 **Implementation**:
 
 **Level 1: Tooltips** (hover or focus on ? icon)
+
 ```
 AHI  (?)
- └─→ Tooltip: "Apnea-Hypopnea Index: Number of breathing 
+ └─→ Tooltip: "Apnea-Hypopnea Index: Number of breathing
               interruptions per hour. Lower is better.
               [Learn more →]"
 ```
 
 **Level 2: Popover** (click "Learn more")
+
 ```
 ╔═══════════════════════════════════════════════╗
 ║ Apnea-Hypopnea Index (AHI)                    ║
@@ -1169,6 +1230,7 @@ AHI  (?)
 ```
 
 **Level 3: Help Panel** (click "View detailed explanation")
+
 - Full feature guide content
 - Clinical significance
 - Statistical methods
@@ -1176,6 +1238,7 @@ AHI  (?)
 - External references
 
 **Level 4: Technical Details** (expandable section in help panel)
+
 - Mathematical formulas
 - Algorithm implementation
 - Assumptions and limitations
@@ -1190,12 +1253,15 @@ AHI  (?)
 # [Feature Name]
 
 ## Quick Summary
+
 [1-2 sentence overview of what this feature does]
 
 ## When to Use This Feature
+
 [Scenarios where this feature is useful]
 
 ## Prerequisites
+
 [What user needs to have done first]
 
 ---
@@ -1203,6 +1269,7 @@ AHI  (?)
 ## Getting Started
 
 ### Step 1: [Action]
+
 [Detailed instructions with screenshots]
 
 **Example**: [Concrete example]
@@ -1210,6 +1277,7 @@ AHI  (?)
 **Tip**: [Helpful hint]
 
 ### Step 2: [Action]
+
 ...
 
 ---
@@ -1217,9 +1285,11 @@ AHI  (?)
 ## Understanding the Results
 
 ### What You're Seeing
+
 [Explanation of output format]
 
 ### How to Interpret
+
 [Interpretation guidance]
 
 **Clinical Significance**: [What results mean for health/therapy]
@@ -1227,6 +1297,7 @@ AHI  (?)
 **Statistical Significance**: [What results mean statistically]
 
 ### Common Patterns
+
 - **Pattern 1**: [Description] → [Interpretation]
 - **Pattern 2**: [Description] → [Interpretation]
 
@@ -1235,12 +1306,15 @@ AHI  (?)
 ## Advanced Usage
 
 ### Customizing Parameters
+
 [How to adjust settings]
 
 ### Exporting Results
+
 [How to save or export]
 
 ### Integration with Other Features
+
 [Related features and workflows]
 
 ---
@@ -1248,9 +1322,11 @@ AHI  (?)
 ## Troubleshooting
 
 ### Issue: [Common problem]
+
 **Solution**: [How to fix]
 
 ### Issue: [Another problem]
+
 **Solution**: [How to fix]
 
 ---
@@ -1270,6 +1346,7 @@ A: [Answer]
 [Mathematical formulas, algorithm descriptions, implementation notes]
 
 **Formula**:
+
 $$
 [LaTeX math]
 $$
@@ -1285,6 +1362,7 @@ $$
 ---
 
 ## Related Topics
+
 - [Link to related guide 1]
 - [Link to related guide 2]
 - [Link to glossary terms]
@@ -1292,6 +1370,7 @@ $$
 ---
 
 ## Feedback
+
 Found an error or have a suggestion? [Link to issue tracker or feedback form]
 ```
 
@@ -1311,6 +1390,7 @@ Found an error or have a suggestion? [Link to issue tracker or feedback form]
 **Example**: [Real-world example if applicable]
 
 **Formula** (if quantitative):
+
 $$
 [LaTeX notation]
 $$
@@ -1344,16 +1424,16 @@ $$
 
 ### 4.1 Content Formats
 
-| Content Type | Format | Rationale |
-|-------------|--------|-----------|
-| In-app help | HTML | Native to web platform, supports styling, interactive elements |
-| Design docs | Markdown | Version control friendly, readable in plain text, supports diagrams (Mermaid) |
-| API reference | TypeDoc HTML | Auto-generated from TypeScript, maintains sync with code |
-| User guides (in-app) | HTML | Full styling control, responsive, accessible |
-| User guides (external) | Markdown → HTML | Source control in Markdown, built to HTML for website |
-| Mathematical formulas | LaTeX (KaTeX) | Standard notation for math, accessible alt-text |
-| Diagrams | Mermaid | Text-based, version controllable, renders to SVG |
-| Screenshots | PNG + WebP | WebP for smaller size, PNG fallback for compatibility |
+| Content Type           | Format          | Rationale                                                                     |
+| ---------------------- | --------------- | ----------------------------------------------------------------------------- |
+| In-app help            | HTML            | Native to web platform, supports styling, interactive elements                |
+| Design docs            | Markdown        | Version control friendly, readable in plain text, supports diagrams (Mermaid) |
+| API reference          | TypeDoc HTML    | Auto-generated from TypeScript, maintains sync with code                      |
+| User guides (in-app)   | HTML            | Full styling control, responsive, accessible                                  |
+| User guides (external) | Markdown → HTML | Source control in Markdown, built to HTML for website                         |
+| Mathematical formulas  | LaTeX (KaTeX)   | Standard notation for math, accessible alt-text                               |
+| Diagrams               | Mermaid         | Text-based, version controllable, renders to SVG                              |
+| Screenshots            | PNG + WebP      | WebP for smaller size, PNG fallback for compatibility                         |
 
 ### 4.2 Documentation Tooling
 
@@ -1362,6 +1442,7 @@ $$
 **Technology**: Custom React components
 
 **Components**:
+
 ```typescript
 // Tooltip component for brief definitions
 <Tooltip content="AHI: Breathing interruptions per hour">
@@ -1391,12 +1472,14 @@ $$
 ```
 
 **Content Storage**:
+
 - In-app help content stored in `src/help-content/` as TypeScript modules
 - Bundled with application (no external fetches)
 - Structured as JSON objects for easy editing
 - Hot-reloading in development
 
 **Example Structure**:
+
 ```typescript
 // src/help-content/metrics/ahi.ts
 export const ahiHelp: HelpContent = {
@@ -1421,6 +1504,7 @@ export const ahiHelp: HelpContent = {
 ```
 
 **Search Implementation**:
+
 - Client-side search using Fuse.js (fuzzy search library)
 - Index built at build time from all help content
 - Searches: titles, summaries, keywords, glossary terms
@@ -1431,6 +1515,7 @@ export const ahiHelp: HelpContent = {
 **Technology**: Static site generator (recommendation: **VitePress** or **Docusaurus**)
 
 **Rationale**:
+
 - **VitePress**: Vue-based, extremely fast, minimal config, markdown-centric
 - **Docusaurus**: React-based, more features, plugin ecosystem, versioned docs
 
@@ -1439,6 +1524,7 @@ export const ahiHelp: HelpContent = {
 **Content Source**: `docs/` directory (same content for design docs and user guides)
 
 **Build Process**:
+
 ```bash
 # Development
 npm run docs:dev    # Live preview with hot reload
@@ -1450,6 +1536,7 @@ npm run docs:build  # Generates static HTML in docs/.vitepress/dist
 **Deployment**: GitHub Pages (same repo, `/docs` output)
 
 **URL Structure**:
+
 ```
 https://cpap-analyzer.github.io/docs/
 ├── getting-started/
@@ -1475,6 +1562,7 @@ https://cpap-analyzer.github.io/docs/
 **Tool**: **TypeDoc** (https://typedoc.org/)
 
 **Configuration** (`typedoc.json`):
+
 ```json
 {
   "entryPoints": ["src/plugins/types.ts"],
@@ -1485,17 +1573,12 @@ https://cpap-analyzer.github.io/docs/
   "excludePrivate": true,
   "excludeInternal": true,
   "categorizeByGroup": true,
-  "categoryOrder": [
-    "Data Access",
-    "Analysis",
-    "Visualization",
-    "Integration",
-    "Export"
-  ]
+  "categoryOrder": ["Data Access", "Analysis", "Visualization", "Integration", "Export"]
 }
 ```
 
 **Build Command**:
+
 ```bash
 npm run docs:api     # Generates HTML in docs/api/
 ```
@@ -1503,14 +1586,15 @@ npm run docs:api     # Generates HTML in docs/api/
 **Publish**: npm package `@cpap-analyzer/plugin-types` includes bundled `.d.ts` files
 
 **Documentation Comments** (JSDoc):
-```typescript
+
+````typescript
 /**
  * Retrieves nightly aggregate metrics for a date range.
- * 
+ *
  * @param dateRange - Start and end dates (inclusive)
  * @param metrics - Optional array of specific metrics to retrieve
  * @returns Promise resolving to array of nightly aggregate records
- * 
+ *
  * @example
  * ```typescript
  * const data = await dataProvider.getNightlyAggregates(
@@ -1518,32 +1602,35 @@ npm run docs:api     # Generates HTML in docs/api/
  *   ['AHI', 'LeakRate', 'UsageHours']
  * );
  * ```
- * 
+ *
  * @throws {DataAccessError} If date range is invalid or data cannot be retrieved
- * 
+ *
  * @see {@link DataProvider.getSessionDetails} for detailed session data
  */
 getNightlyAggregates(
   dateRange: DateRange,
   metrics?: string[]
 ): Promise<NightlyAggregate[]>;
-```
+````
 
 #### 4.2.4 Math Rendering
 
 **Library**: **KaTeX** (https://katex.org/)
 
-**Rationale**: 
+**Rationale**:
+
 - Faster than MathJax
 - No JavaScript execution of user input (security)
 - Generates static HTML + CSS (accessible)
 - Smaller bundle size
 
 **Usage in Markdown**:
+
 ```markdown
 Inline math: $AHI = \frac{\text{Total Events}}{\text{Sleep Time (hrs)}}$
 
 Block math:
+
 $$
 r = \frac{\sum_{i=1}^{n}(x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum_{i=1}^{n}(x_i - \bar{x})^2 \sum_{i=1}^{n}(y_i - \bar{y})^2}}
 $$
@@ -1556,13 +1643,15 @@ $$
 **Tool**: **Mermaid** (https://mermaid.js.org/)
 
 **Rationale**:
+
 - Text-based diagrams (version control friendly)
 - Renders to SVG (scalable, accessible)
 - Integrated into VitePress and Docusaurus
 - Supports flowcharts, sequence diagrams, entity-relationship diagrams
 
 **Example**:
-```markdown
+
+````markdown
 ```mermaid
 graph TD
     A[Import EDF Files] --> B[Parse Headers]
@@ -1571,7 +1660,9 @@ graph TD
     D --> E[Store in IndexedDB]
     E --> F[Display Dashboard]
 ```
-```
+````
+
+````
 
 **Accessibility**: Mermaid generates `<title>` and `<desc>` elements in SVG; add text alternatives in surrounding content
 
@@ -1593,7 +1684,7 @@ graph TD
 **Markdown Usage**:
 ```markdown
 ![Dashboard summary cards showing AHI, leak rate, and usage hours](../images/dashboard-summary-cards.png)
-```
+````
 
 **Accessibility**: All images have descriptive alt text
 
@@ -1604,17 +1695,20 @@ graph TD
 **Strategy**: Document the current version only; maintain historical versions via Git tags
 
 **Rationale**:
+
 - Application updates are frequent (CalVer)
 - Small team (AI agents) can't maintain multiple doc versions
 - Users should upgrade to latest version (client-side app, auto-updates via browser cache)
 - Historical versions available via Git for reference
 
 **Version Indicator**: All documentation pages include version badge:
+
 ```markdown
 **Documentation Version**: 2026.02.001 (matches application version)
 ```
 
 **Breaking Changes**: When API or features change significantly:
+
 - Add prominent "Updated in version X" banners
 - Provide migration guides
 - Mark deprecated features clearly
@@ -1624,16 +1718,19 @@ graph TD
 **Current State**: English only
 
 **Future Considerations**:
+
 - CPAP therapy is global; non-English speakers would benefit
 - Medical terminology translation requires clinical expertise
 - Statistical methods are language-agnostic but explanations need translation
 
 **Framework Preparation**: Structure content to support future i18n:
+
 - Separate content from code
 - Use translation keys for UI strings
 - Store help content as structured data (JSON) not hardcoded strings
 
 **Candidate Languages** (future):
+
 - Spanish (large patient population in US and Latin America)
 - German (strong open-source CPAP community)
 - French (Canada, Europe)
@@ -1648,6 +1745,7 @@ graph TD
 ### 5.1 Ownership & Responsibilities
 
 **Documentation Agent** (this role):
+
 - **Primary Owner**: All user-facing documentation
 - **Responsibilities**:
   - Write and maintain user guides
@@ -1657,6 +1755,7 @@ graph TD
   - Ensure glossary is comprehensive and up-to-date
 
 **Other Agents** (contribute domain-specific content):
+
 - **Data Science Agent**: Draft statistical methods documentation (Documentation reviews for clarity)
 - **ResMed Specialist Agent**: Draft clinical metric definitions (Documentation reviews for accessibility)
 - **UX Agent**: Review help content for usability and information architecture
@@ -1669,6 +1768,7 @@ graph TD
 ### 5.2 Documentation Lifecycle
 
 **Creation Phase**:
+
 1. Feature is designed (design document created)
 2. Documentation Agent is included in implementation planning
 3. Documentation drafted alongside feature implementation
@@ -1678,12 +1778,14 @@ graph TD
 7. Documentation merged with feature code
 
 **Maintenance Phase**:
+
 1. Feature changes trigger documentation update task
 2. Documentation Agent updates affected content
 3. Changed docs reviewed (domain expert + UX or QA)
 4. Updates merged
 
 **Review Cycles**:
+
 - **Quarterly**: Full documentation review for accuracy and broken links
 - **Annually**: Clinical reference review (check for updated AASM guidelines)
 - **On-demand**: When user feedback indicates confusion or errors
@@ -1691,6 +1793,7 @@ graph TD
 ### 5.3 Update Triggers
 
 Documentation must be updated when:
+
 - **New feature added** → New user guide page
 - **Existing feature modified** → Update relevant user guide
 - **UI changed** → Update screenshots and instructions
@@ -1705,6 +1808,7 @@ Documentation must be updated when:
 #### Pre-Merge Checklist
 
 **All Documentation Changes Must**:
+
 - [ ] Pass accessibility checks (see section 6)
 - [ ] Use correct terminology (verify with glossary)
 - [ ] Include working links (no 404s)
@@ -1734,17 +1838,20 @@ Documentation must be updated when:
 ### 5.5 User Feedback Integration
 
 **Feedback Mechanisms**:
+
 1. **In-app feedback button** in help panel: "Was this helpful? [Yes] [No]"
 2. **GitHub Issues**: Users can open issues with `documentation` label
 3. **Discussion forum** (future): Community can ask questions and suggest improvements
 
 **Feedback Processing**:
+
 - Documentation Agent reviews feedback weekly
 - Common questions become FAQ entries
 - Confusion patterns indicate needed clarification
 - Feature requests for help system logged as enhancements
 
 **Metrics** (future consideration):
+
 - Help panel usage (which topics are accessed most)
 - Search queries (what users are looking for)
 - "Was this helpful?" ratings
@@ -1758,7 +1865,8 @@ Documentation must be updated when:
 
 **Target**: WCAG 2.1 Level AA compliance for all documentation
 
-**Rationale**: 
+**Rationale**:
+
 - Legal compliance (ADA, Section 508 in US; similar laws globally)
 - Ethical obligation (healthcare information must be accessible to all)
 - Better usability for everyone (not just users with disabilities)
@@ -1770,6 +1878,7 @@ Documentation must be updated when:
 **Requirement**: All non-text content has text alternatives
 
 **Implementation**:
+
 - **Images**: All `<img>` tags have descriptive `alt` attributes
   - Screenshots: Describe visible UI elements and their state
   - Diagrams: Summarize the diagram's information
@@ -1779,11 +1888,14 @@ Documentation must be updated when:
 - **Icons**: Use `aria-label` on icon buttons
 
 **Example**:
+
 ```html
 <!-- Screenshot -->
-<img src="dashboard-summary.png" 
-     alt="Dashboard showing three summary cards: AHI of 3.2 (green, excellent), 
-          leak rate of 18 L/min (yellow, moderate), and 7.2 hours usage time">
+<img
+  src="dashboard-summary.png"
+  alt="Dashboard showing three summary cards: AHI of 3.2 (green, excellent), 
+          leak rate of 18 L/min (yellow, moderate), and 7.2 hours usage time"
+/>
 
 <!-- Icon button -->
 <button aria-label="Close help panel">
@@ -1796,6 +1908,7 @@ Documentation must be updated when:
 **Requirement**: Content can be presented in different ways without losing meaning
 
 **Implementation**:
+
 - **Semantic HTML**: Use proper heading hierarchy (`h1` → `h2` → `h3`)
 - **Lists**: Use `<ul>`, `<ol>`, `<dl>` for lists
 - **Tables**: Use `<table>` with `<th>`, `<caption>`, and `scope` attributes
@@ -1803,9 +1916,12 @@ Documentation must be updated when:
 - **Landmarks**: Use `<nav>`, `<main>`, `<aside>`, `<footer>` for page structure
 
 **Example**:
+
 ```html
 <table>
-  <caption>AHI Severity Classification</caption>
+  <caption>
+    AHI Severity Classification
+  </caption>
   <thead>
     <tr>
       <th scope="col">Severity</th>
@@ -1829,6 +1945,7 @@ Documentation must be updated when:
 **Requirement**: Make it easy to see and hear content
 
 **Implementation**:
+
 - **Color Contrast**: Minimum 4.5:1 for normal text, 3:1 for large text
   - Use contrast checker tools (WebAIM, Stark)
   - Test both light and dark themes
@@ -1840,6 +1957,7 @@ Documentation must be updated when:
 - **Images of Text**: Avoid; use real text with CSS styling
 
 **Example**:
+
 ```html
 <!-- Bad: Color only -->
 <span style="color: red;">High AHI</span>
@@ -1858,6 +1976,7 @@ Documentation must be updated when:
 **Requirement**: All functionality available via keyboard
 
 **Implementation**:
+
 - **Tab order**: Logical, matches visual layout
 - **Focus indicators**: Visible focus rings on all interactive elements
 - **No keyboard traps**: Users can tab away from all components
@@ -1865,21 +1984,25 @@ Documentation must be updated when:
 - **Skip links**: "Skip to main content" link at top of page
 
 **Shortcuts Documentation**:
+
 ```markdown
 ## Keyboard Shortcuts
 
 ### Navigation
+
 - `F1`: Open help panel
 - `Ctrl/Cmd + K`: Search help
 - `Esc`: Close current dialog or panel
 
 ### Help Panel
+
 - `Tab`: Navigate links
 - `Shift + Tab`: Navigate backward
 - `Enter`: Activate link
 - `Esc`: Close panel
 
 ### Tooltips
+
 - `Tab` to element: Show tooltip
 - `Esc`: Hide tooltip
 ```
@@ -1889,6 +2012,7 @@ Documentation must be updated when:
 **Requirement**: Users have enough time to read and interact
 
 **Implementation**:
+
 - **No time limits** on documentation reading
 - **Pause/stop animations**: Respect `prefers-reduced-motion`
 - **Auto-updating content**: None in documentation (no live feeds)
@@ -1898,12 +2022,14 @@ Documentation must be updated when:
 **Requirement**: Do not design content in a way that causes seizures
 
 **Implementation**:
+
 - **No flashing content**: No elements flash more than 3 times per second
 - **Animation control**: Respect `prefers-reduced-motion` media query
   - Disable guided tour animations if user prefers reduced motion
   - Use fade transitions instead of slide animations
 
 **CSS Example**:
+
 ```css
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -1919,6 +2045,7 @@ Documentation must be updated when:
 **Requirement**: Provide ways to help users navigate and find content
 
 **Implementation**:
+
 - **Page titles**: Descriptive `<title>` tags (e.g., "Getting Started | CPAP Analyzer Help")
 - **Focus order**: Logical tab order
 - **Link purpose**: Link text describes destination (avoid "click here")
@@ -1927,6 +2054,7 @@ Documentation must be updated when:
 - **Focus visible**: Clear focus indicators (see 1.4.11)
 
 **Example**:
+
 ```html
 <!-- Bad link text -->
 <a href="/help/ahi">Click here</a> for more information.
@@ -1942,6 +2070,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Requirement**: Make text readable and understandable
 
 **Implementation**:
+
 - **Language declaration**: `<html lang="en">`
 - **Reading level**: Target 8th-10th grade reading level for basic explanations
   - Use readability tools (Hemingway Editor, Flesch-Kincaid)
@@ -1950,15 +2079,16 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 - **Pronunciation**: Provide phonetic guides for medical terms
 
 **Example**:
+
 ```html
 <!-- Language declaration -->
 <html lang="en">
+  <!-- Abbreviation -->
+  <abbr title="Apnea-Hypopnea Index">AHI</abbr>
 
-<!-- Abbreviation -->
-<abbr title="Apnea-Hypopnea Index">AHI</abbr>
-
-<!-- Pronunciation -->
-<dfn>Hypopnea <span class="pronunciation">(HY-pop-nee-uh)</span></dfn>
+  <!-- Pronunciation -->
+  <dfn>Hypopnea <span class="pronunciation">(HY-pop-nee-uh)</span></dfn>
+</html>
 ```
 
 #### 6.4.2 Predictable (3.2)
@@ -1966,6 +2096,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Requirement**: Make pages appear and operate in predictable ways
 
 **Implementation**:
+
 - **Consistent navigation**: Help menu structure same across all pages
 - **Consistent identification**: Icons and labels consistent throughout
 - **Context changes**: Opening help doesn't navigate away from current page (sidebar panel, not new page)
@@ -1976,6 +2107,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Requirement**: Help users avoid and correct mistakes
 
 **Implementation**:
+
 - **Error identification**: Search with no results shows helpful message
 - **Labels or instructions**: Search box has clear label
 - **Error suggestions**: "Did you mean...?" for misspellings
@@ -1988,21 +2120,19 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Requirement**: Maximize compatibility with current and future tools
 
 **Implementation**:
+
 - **Valid HTML**: Validate with W3C validator
 - **Name, Role, Value**: All interactive elements have proper ARIA attributes
 - **Status messages**: Use `role="status"` for announcements (e.g., "Search returned 5 results")
 
 **Example**:
+
 ```html
 <!-- Search results status -->
-<div role="status" aria-live="polite">
-  Found 5 results for "AHI"
-</div>
+<div role="status" aria-live="polite">Found 5 results for "AHI"</div>
 
 <!-- Custom component with proper ARIA -->
-<div role="dialog" 
-     aria-labelledby="help-title" 
-     aria-describedby="help-content">
+<div role="dialog" aria-labelledby="help-title" aria-describedby="help-content">
   <h2 id="help-title">Apnea-Hypopnea Index</h2>
   <div id="help-content">...</div>
 </div>
@@ -2011,12 +2141,14 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 6.6 Accessibility Testing
 
 **Automated Testing**:
+
 - **Lighthouse**: Accessibility audit in Chrome DevTools
 - **axe DevTools**: Browser extension for detailed WCAG checks
 - **pa11y**: CI pipeline accessibility testing
 - **Storybook addon**: Test components in isolation
 
 **Manual Testing**:
+
 - **Keyboard navigation**: Tab through entire interface
 - **Screen reader testing**: NVDA (Windows), VoiceOver (macOS), JAWS (enterprise)
 - **Zoom testing**: Test at 200% browser zoom
@@ -2024,6 +2156,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 - **User testing**: Invite users with disabilities to test (future)
 
 **CI Integration**:
+
 ```yaml
 # .github/workflows/accessibility.yml
 - name: Run pa11y accessibility tests
@@ -2041,15 +2174,18 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 #### 7.1.1 Source Requirements
 
 **Clinical Metrics & Definitions**:
+
 - **Primary source**: AASM (American Academy of Sleep Medicine) guidelines
 - **Current version**: AASM Manual for the Scoring of Sleep and Associated Events (most recent edition)
 - **Citations**: Include reference to specific guideline version and section
 
 **Statistical Methods**:
+
 - **Primary sources**: Peer-reviewed statistical literature, standard textbooks
 - **Implementation verification**: Cross-check algorithm implementations against published methods
 
 **Clinical Interpretation**:
+
 - **Expert review**: ResMed Specialist agent reviews all clinical content
 - **Conservative guidance**: When evidence is mixed, present multiple perspectives
 - **Avoid overstating**: Distinguish correlation from causation; note limitations
@@ -2057,6 +2193,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 #### 7.1.2 Content Review Process
 
 **New Clinical Content**:
+
 1. Documentation Agent drafts content
 2. ResMed Specialist Agent reviews for clinical accuracy
 3. Validate against AASM guidelines or peer-reviewed literature
@@ -2065,6 +2202,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 6. Final review by QA
 
 **Updates to Clinical Guidelines**:
+
 - Monitor AASM for guideline updates (annual check)
 - When guidelines change, review affected content
 - Update metrics definitions, severity thresholds, interpretations
@@ -2073,12 +2211,14 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 #### 7.1.3 Terminology Standards
 
 **Medical Terms**:
+
 - Use AASM standard terminology when available
 - Define all medical terms in glossary
 - Provide pronunciation for complex terms
 - Include both formal and colloquial terms (e.g., "Obstructive Sleep Apnea (OSA)" and "sleep apnea")
 
 **Consistency**:
+
 - Use same term throughout (don't mix "apnea" and "breathing pause" without defining equivalence)
 - Maintain term database in `docs/terminology.json` for reference
 
@@ -2089,6 +2229,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Placement**: Prominent on all clinical content pages
 
 **Text**:
+
 > **Medical Disclaimer**
 >
 > CPAP Analyzer is an educational tool for patients to analyze their own therapy data. It is **not** intended to diagnose, treat, cure, or prevent any disease. It is **not** a substitute for professional medical advice, diagnosis, or treatment.
@@ -2106,6 +2247,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Placement**: About page, Privacy Policy
 
 **Text**:
+
 > **Regulatory Status**
 >
 > CPAP Analyzer is **not** a certified medical device. It has not been evaluated or approved by the FDA, Health Canada, or any other regulatory authority.
@@ -2119,15 +2261,18 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Placement**: Import section, data management guides
 
 **Text**:
+
 > **Data Accuracy**
 >
 > CPAP Analyzer processes data as recorded by your CPAP machine. The accuracy of analyses depends on:
+>
 > - Correct machine setup and calibration
 > - Proper mask fit (large leaks can distort readings)
 > - Consistent machine usage
 > - Data file integrity
 >
 > If you observe unexpected results, consider:
+>
 > - Checking your mask for leaks
 > - Verifying machine settings with your provider
 > - Re-importing data if files may be corrupted
@@ -2139,12 +2284,14 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Principle**: Help users interpret data responsibly, without overpromising or causing undue alarm.
 
 **Pattern**:
+
 ```markdown
 ## Interpreting [Metric]
 
 ### What Your Results Mean
 
 **[Value Range]**: [Clinical significance]
+
 - **Clinical context**: [What this typically indicates]
 - **Common causes**: [Potential factors]
 - **Next steps**: [What to consider or do]
@@ -2163,13 +2310,16 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ```
 
 **Example**:
+
 > **AHI > 15 on Therapy**: If your AHI is consistently above 15 while using CPAP, your therapy may not be adequately controlled. This could indicate:
+>
 > - Pressure settings need adjustment
 > - Mask leaks compromising therapy
 > - Central apneas (may require different therapy mode)
 > - Machine malfunction
 >
-> **Next steps**: 
+> **Next steps**:
+>
 > - Check for mask leaks (review leak rate metric)
 > - Review pressure settings with your provider
 > - Bring this data to your next sleep medicine appointment
@@ -2182,30 +2332,36 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 8.1 Applicable Regulations
 
 **United States**:
+
 - **FDA**: Not a medical device (educational/wellness tool; no diagnostic claims)
 - **HIPAA**: Not a covered entity (users own their data; no transmission to covered entities)
 - **ADA**: Accessibility compliance (Section 508 for federal users)
 
 **European Union**:
+
 - **MDR**: Not a medical device (Class I at most; no certification required for personal use tools)
 - **GDPR**: Full compliance (no data collection, no tracking, no servers)
 
 **Canada**:
+
 - **Health Canada**: Not a medical device (educational tool)
 - **PIPEDA**: Privacy compliance (data never leaves user's device)
 
 **Australia**:
+
 - **TGA**: Not a medical device (personal health software)
 
 ### 8.2 Compliance Strategy
 
 **Positioning**:
+
 - CPAP Analyzer is a **personal health tracking and analysis tool**
 - It is **not** diagnostic, prescriptive, or intended for clinical use
 - It is **educational**: helps users understand their data
 - Users make their own decisions in consultation with healthcare providers
 
 **Documentation Reflects This**:
+
 - No diagnostic language ("This tool helps you understand your therapy" not "This tool diagnoses sleep apnea")
 - Encourages physician consultation
 - Disclaimers on all clinical content
@@ -2214,16 +2370,19 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 8.3 Future Considerations
 
 **If Regulatory Status Changes**:
+
 - Some features (e.g., therapy recommendations) could trigger device classification
 - Integrations with clinical systems could require HIPAA compliance
 - Monetization (e.g., paid subscriptions) could change legal obligations
 
 **Current Mitigation**:
+
 - Open source (transparency, no commercial claims)
 - Non-prescriptive (users decide, we provide information)
 - Privacy-first (no data collection eliminates many regulatory concerns)
 
 **Documentation Strategy Impact**:
+
 - Maintain conservative language
 - Over-disclaim rather than under-disclaim
 - Include legal review option (future) if project scales
@@ -2235,12 +2394,14 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 9.1 In-App Help (Primary Delivery)
 
 **Access Methods**:
+
 1. **Help menu** in application header
 2. **F1 keyboard shortcut** (most universal help shortcut)
 3. **Contextual (?) info icons** throughout UI
 4. **Search** (Ctrl/Cmd + K or search box in help panel)
 
 **Components**:
+
 - **Tooltips**: Inline, hover or focus
 - **Popovers**: Moderate detail, click to expand
 - **Help Panel**: Full content, sidebar with tabs for different sections
@@ -2251,12 +2412,14 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Content Storage**: TypeScript/JSON in `src/help-content/`
 
 **Advantages**:
+
 - Always available (offline-capable)
 - Context-aware
 - Fast (no network requests)
 - Privacy-preserving
 
 **Disadvantages**:
+
 - Increases bundle size (mitigated by code splitting)
 - Updates require app update
 
@@ -2267,6 +2430,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Technology**: VitePress static site (built from `docs/` folder)
 
 **Content**:
+
 - Getting started guides
 - Comprehensive user guides
 - Plugin development documentation
@@ -2276,16 +2440,19 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 - Changelog
 
 **Advantages**:
+
 - SEO-discoverable (users can find help via search engines)
 - Shareable links (users can link to specific help pages)
 - Can be updated independently of app releases
 - No bundle size impact
 
 **Disadvantages**:
+
 - Requires network access
 - May become out of sync with app if not maintained
 
 **Synchronization Strategy**:
+
 - In-app help links to website for detailed guides
 - Website links to in-app features (deep links)
 - Version indicators on all content
@@ -2296,6 +2463,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Goal**: Users searching for CPAP analysis help find our documentation.
 
 **Target Keywords**:
+
 - "CPAP data analysis"
 - "AHI calculator"
 - "OSCAR alternative"
@@ -2304,6 +2472,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 - "Sleep apnea data tracking"
 
 **SEO Strategies**:
+
 - **Semantic HTML**: Proper heading hierarchy, structured data
 - **Meta tags**: `<title>`, `<meta name="description">`, Open Graph tags
 - **Internal linking**: Cross-references between guides
@@ -2314,14 +2483,21 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 - **robots.txt**: Allow all (no restrictions)
 
 **Example Meta Tags**:
+
 ```html
 <head>
   <title>Understanding AHI (Apnea-Hypopnea Index) | CPAP Analyzer</title>
-  <meta name="description" content="Learn what AHI means, how it's calculated, and how to interpret your CPAP therapy AHI scores for optimal sleep apnea treatment.">
-  <meta property="og:title" content="Understanding AHI | CPAP Analyzer">
-  <meta property="og:description" content="Comprehensive guide to Apnea-Hypopnea Index for CPAP users.">
-  <meta property="og:type" content="website">
-  <meta property="og:url" content="https://cpap-analyzer.github.io/docs/reference/glossary/ahi">
+  <meta
+    name="description"
+    content="Learn what AHI means, how it's calculated, and how to interpret your CPAP therapy AHI scores for optimal sleep apnea treatment."
+  />
+  <meta property="og:title" content="Understanding AHI | CPAP Analyzer" />
+  <meta
+    property="og:description"
+    content="Comprehensive guide to Apnea-Hypopnea Index for CPAP users."
+  />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://cpap-analyzer.github.io/docs/reference/glossary/ahi" />
 </head>
 ```
 
@@ -2330,18 +2506,23 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Use Case**: Users want to bring printed summaries to doctor appointments or keep physical reference guides.
 
 **Implementation**:
+
 - **Print-optimized CSS**: Hide navigation, optimize spacing
 - **PDF export**: Generate PDFs from HTML using browser print
 - **Print dialog**: "Print this guide" button on each documentation page
 
 **CSS Example**:
+
 ```css
 @media print {
   /* Hide navigation, sidebars, buttons */
-  nav, aside, button, .no-print {
+  nav,
+  aside,
+  button,
+  .no-print {
     display: none;
   }
-  
+
   /* Optimize typography */
   body {
     font-size: 12pt;
@@ -2349,24 +2530,26 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
     color: black;
     background: white;
   }
-  
+
   /* Page breaks */
-  h1, h2 {
+  h1,
+  h2 {
     page-break-after: avoid;
   }
-  
-  pre, table {
+
+  pre,
+  table {
     page-break-inside: avoid;
   }
-  
+
   /* Links */
   a {
     text-decoration: underline;
     color: black;
   }
-  
-  a[href^="http"]:after {
-    content: " (" attr(href) ")";
+
+  a[href^='http']:after {
+    content: ' (' attr(href) ')';
     font-size: 0.9em;
   }
 }
@@ -2377,6 +2560,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Use Case**: Some users prefer visual walkthroughs over text.
 
 **Candidates**:
+
 - Importing data for the first time
 - Using the signal viewer
 - Running first statistical analysis
@@ -2385,12 +2569,14 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Hosting**: YouTube channel or embedded videos (self-hosted)
 
 **Accessibility**:
+
 - Closed captions (required)
 - Audio descriptions for visual-only content
 - Transcript provided
 - Keyboard-accessible video player
 
 **Production**:
+
 - Screen recordings with voiceover
 - Simple editing (no fancy effects needed)
 - Short (5-10 minutes max per video)
@@ -2403,6 +2589,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 9.6 Community-Contributed Content (Future)
 
 **Potential Platforms**:
+
 - **GitHub Discussions**: Q&A, feature requests, tips & tricks
 - **Wiki** (GitHub Wiki or external): Community-maintained guides, troubleshooting
 - **Reddit** or **Discord**: Community forum for discussions
@@ -2410,11 +2597,13 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 **Moderation**: Requires active community management (not initially prioritized)
 
 **Advantages**:
+
 - Crowdsourced knowledge
 - User-generated tips and workflows
 - Reduces burden on core documentation team
 
 **Disadvantages**:
+
 - Quality control challenges
 - Moderation effort
 - Potential misinformation (medical content)
@@ -2428,6 +2617,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 10.1 Documentation Quality Metrics
 
 **Objective Metrics** (measurable):
+
 - **Accessibility score**: Lighthouse / pa11y (target: 100)
 - **Link health**: % of links working (target: 100%)
 - **Spelling errors**: None in published docs
@@ -2435,32 +2625,38 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 - **Coverage**: % of features documented (target: 100%)
 
 **Subjective Metrics** (user feedback):
+
 - **Helpfulness ratings**: "Was this helpful?" in help panel
 - **Search success**: Do users find what they're looking for?
 - **Time to resolution**: Can users solve problems without external help?
 
 **Community Metrics** (future):
+
 - **GitHub Issues**: Frequency of documentation bugs or requests
 - **Support requests**: How often do users need clarification?
 
 ### 10.2 User Success Indicators
 
 **Short-Term** (within first session):
+
 - User successfully imports data
 - User understands basic dashboard metrics
 - User finds help when needed
 
 **Medium-Term** (within first month):
+
 - User runs first analysis
 - User interprets results correctly
 - User can identify concerning patterns
 
 **Long-Term** (months):
+
 - User advocates for themselves in medical appointments using app data
 - User deepens understanding of sleep therapy
 - User feels empowered and informed
 
 **How We Measure** (without analytics):
+
 - User study surveys (optional, consent-based)
 - GitHub Discussions feedback
 - Anecdotal reports from community
@@ -2468,6 +2664,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 10.3 Continuous Improvement Process
 
 **Quarterly Reviews**:
+
 1. Collect feedback from GitHub Issues and Discussions
 2. Identify common confusion points
 3. Review help panel usage (if telemetry is ever added, anonymized)
@@ -2476,6 +2673,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 6. Update FAQ with new common questions
 
 **Quarterly Actions**:
+
 - Rewrite or clarify confusing sections
 - Add missing topics to user guides
 - Update screenshots if UI has changed
@@ -2483,6 +2681,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 - Review and update examples
 
 **Annual Reviews**:
+
 - Full clinical reference review (AASM guideline compliance)
 - Accessibility audit (manual screen reader testing)
 - User survey (if community permits)
@@ -2496,6 +2695,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 11.1 Phase 1: Foundation (Months 1-2)
 
 **Deliverables**:
+
 - [ ] In-app help system components (Tooltip, Popover, HelpPanel)
 - [ ] Help content structure and TypeScript types
 - [ ] Glossary (all current metrics and terms)
@@ -2509,6 +2709,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 11.2 Phase 2: Expansion (Months 3-4)
 
 **Deliverables**:
+
 - [ ] Complete user guides for all features
 - [ ] Clinical reference (sleep apnea, therapy, metrics)
 - [ ] Statistical methods reference (initial set)
@@ -2521,6 +2722,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 11.3 Phase 3: Refinement (Months 5-6)
 
 **Deliverables**:
+
 - [ ] API reference (TypeDoc auto-generated)
 - [ ] Advanced user guides (complex analyses)
 - [ ] Troubleshooting documentation
@@ -2534,6 +2736,7 @@ Learn more about <a href="/help/ahi">Apnea-Hypopnea Index (AHI)</a>.
 ### 11.4 Phase 4: Maintenance (Ongoing)
 
 **Activities**:
+
 - Monitor feedback and issues
 - Quarterly documentation reviews
 - Annual clinical content reviews
@@ -2570,4 +2773,3 @@ This documentation strategy establishes CPAP Analyzer as more than an analytical
 
 **Maintained By**: Documentation Agent  
 **Reviewed By**: Orchestrator, UX, QA, Security, ResMed Specialist
-

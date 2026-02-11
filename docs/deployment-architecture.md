@@ -26,6 +26,7 @@ The application should function as a Progressive Web App:
 ### CDN Considerations
 
 GitHub Pages has its own CDN (Fastly). No additional CDN is needed:
+
 - Static assets are served with appropriate cache headers.
 - The application is small enough that cache priming is fast.
 - All assets are bundled — no external CDN dependencies (privacy requirement).
@@ -77,30 +78,36 @@ Push/PR to main
 #### Job Details
 
 **Security Audit**
+
 - `npm audit --audit-level=high`
 - Fails the pipeline if any high or critical vulnerabilities are found.
 - Run on every PR to catch vulnerable dependencies before merge.
 
 **Lint & Format**
+
 - `npx prettier --check .` — Verify all files are formatted.
 - `npx eslint .` — Verify no lint errors.
 - `npx tsc --noEmit` — Verify TypeScript compiles with no errors.
 
 **Unit Tests**
+
 - `npx vitest run --coverage` — Run all Vitest tests with coverage reporting.
 - Coverage reports are available as artifacts.
 
 **E2E Tests**
+
 - `npx playwright install --with-deps` — Install browser engines.
 - `npx playwright test` — Run all Playwright tests across Chromium, Firefox, and WebKit.
 - Test reports uploaded as artifacts (retained 14 days) on failure.
 
 **Build**
+
 - `npm run build` — Vite production build.
 - Only runs after all quality checks pass.
 - Build output uploaded as a Pages artifact.
 
 **Deploy**
+
 - Uses the `actions/deploy-pages@v4` action.
 - Only runs on pushes to `main` (not on PRs).
 - Deploys the build output to GitHub Pages.
@@ -120,6 +127,7 @@ The local development environment enforces the same quality checks via Husky pre
 ### Conventional Commits Enforcement
 
 Commit messages must follow the [Conventional Commits](https://www.conventionalcommits.org/) specification. This is enforced by:
+
 - Agent training (all agents are instructed to use conventional commits)
 - QA review (the QA agent verifies commit message format)
 - Future: automated commit message validation in CI (via commitlint or similar)
@@ -135,6 +143,7 @@ The project uses [Calendar Versioning](https://calver.org/) with the format `YYY
 - `MICRO` — Incrementing patch number within the month, starting at `0`
 
 Examples:
+
 - `2026.02.0` — First release of February 2026
 - `2026.02.1` — Second release of February 2026
 - `2026.10.0` — First release of October 2026
@@ -158,20 +167,23 @@ Examples:
 The deployed application should include security headers. On GitHub Pages, this is done via `<meta>` tags in the HTML since HTTP headers are not configurable:
 
 ```html
-<meta http-equiv="Content-Security-Policy"
-      content="default-src 'self';
+<meta
+  http-equiv="Content-Security-Policy"
+  content="default-src 'self';
                script-src 'self';
                style-src 'self' 'unsafe-inline';
                connect-src 'self' https://api.fitbit.com https://*.openweathermap.org;
                img-src 'self' data: blob:;
                worker-src 'self' blob:;
-               font-src 'self';">
+               font-src 'self';"
+/>
 ```
 
 For SharedArrayBuffer support (if used for performance), COOP and COEP headers are required:
+
 ```html
-<meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
-<meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+<meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+<meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
 ```
 
 Note: GitHub Pages has limited header customization. If COOP/COEP cannot be set via meta tags effectively, this may become a factor in the server re-evaluation decision.
@@ -197,12 +209,12 @@ Note: GitHub Pages has limited header customization. If COOP/COEP cannot be set 
 
 ### Options If a Server Is Needed
 
-| Option | Pros | Cons |
-| ---- | ---- | ---- |
-| **Cloudflare Workers** | Edge-deployed, low latency, generous free tier, no cold starts | Limited compute time (10-50ms CPU per request), limited storage |
-| **Vercel Edge Functions** | Good DX, integrates with GitHub, generous free tier | Vendor lock-in, cold starts on paid plans |
-| **Self-hosted (VPS)** | Full control, unlimited compute | Operational overhead, hosting cost, requires maintenance |
-| **Remote MCP Server** | Users bring their own LLM, app provides data tools | Complex protocol, requires user setup |
+| Option                    | Pros                                                           | Cons                                                            |
+| ------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
+| **Cloudflare Workers**    | Edge-deployed, low latency, generous free tier, no cold starts | Limited compute time (10-50ms CPU per request), limited storage |
+| **Vercel Edge Functions** | Good DX, integrates with GitHub, generous free tier            | Vendor lock-in, cold starts on paid plans                       |
+| **Self-hosted (VPS)**     | Full control, unlimited compute                                | Operational overhead, hosting cost, requires maintenance        |
+| **Remote MCP Server**     | Users bring their own LLM, app provides data tools             | Complex protocol, requires user setup                           |
 
 ### Current Decision
 

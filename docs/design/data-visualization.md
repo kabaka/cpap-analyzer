@@ -163,18 +163,18 @@ const useChartInteractionStore = create<ChartInteractionState>((set) => ({
 ```typescript
 interface VisualizationPlugin {
   metadata: {
-    id: string;                          // e.g., "sleep-stage-heatmap"
-    name: string;                        // e.g., "Sleep Stage Heatmap"
+    id: string; // e.g., "sleep-stage-heatmap"
+    name: string; // e.g., "Sleep Stage Heatmap"
     version: string;
     author: string;
     description: string;
     category: 'time-series' | 'distribution' | 'correlation' | 'dashboard' | 'custom';
-    icon?: string;                       // Optional icon URL
+    icon?: string; // Optional icon URL
   };
 
   // Data requirements
   dataRequirements: {
-    analysisType: string;                // Analysis plugin ID
+    analysisType: string; // Analysis plugin ID
     parameters?: Record<string, unknown>;
   };
 
@@ -190,7 +190,7 @@ interface VisualizationPlugin {
 }
 
 interface VisualizationPluginProps {
-  data: unknown;                         // Data from analysis
+  data: unknown; // Data from analysis
   width: number;
   height: number;
   theme: 'light' | 'dark';
@@ -224,9 +224,7 @@ class VisualizationPluginManager {
 
   listPlugins(category?: VisualizationPlugin['metadata']['category']): VisualizationPlugin[] {
     const allPlugins = Array.from(this.plugins.values());
-    return category
-      ? allPlugins.filter((p) => p.metadata.category === category)
-      : allPlugins;
+    return category ? allPlugins.filter((p) => p.metadata.category === category) : allPlugins;
   }
 }
 
@@ -282,13 +280,13 @@ const CustomVisualization: React.FC<{ pluginId: string }> = ({ pluginId }) => {
 
 ### 2.1 Evaluation Criteria
 
-| Criterion | Weight | Description |
-|-----------|--------|-------------|
-| **Performance** | 40% | Handles large datasets (100k+ points) smoothly; supports Canvas rendering; efficient re-rendering |
-| **Features** | 25% | Time-series support, zoom/pan, annotations, responsive, accessibility hooks |
-| **Bundle Size** | 15% | Gzipped size impact on initial load |
-| **TypeScript Support** | 10% | Type safety, inference, AI agent development ease |
-| **Accessibility** | 10% | Built-in ARIA support, keyboard navigation, alternative representations |
+| Criterion              | Weight | Description                                                                                       |
+| ---------------------- | ------ | ------------------------------------------------------------------------------------------------- |
+| **Performance**        | 40%    | Handles large datasets (100k+ points) smoothly; supports Canvas rendering; efficient re-rendering |
+| **Features**           | 25%    | Time-series support, zoom/pan, annotations, responsive, accessibility hooks                       |
+| **Bundle Size**        | 15%    | Gzipped size impact on initial load                                                               |
+| **TypeScript Support** | 10%    | Type safety, inference, AI agent development ease                                                 |
+| **Accessibility**      | 10%    | Built-in ARIA support, keyboard navigation, alternative representations                           |
 
 ### 2.2 Recommended Approach: Hybrid Strategy
 
@@ -297,6 +295,7 @@ const CustomVisualization: React.FC<{ pluginId: string }> = ({ pluginId }) => {
 #### 2.2.1 Recharts (Standard Charts, <100k Points)
 
 **Use For**:
+
 - Aggregate time-series charts (nightly AHI, leak rate)
 - Bar charts, pie charts, stacked area charts
 - Histograms, box plots
@@ -306,6 +305,7 @@ const CustomVisualization: React.FC<{ pluginId: string }> = ({ pluginId }) => {
 **Rationale**:
 
 ✅ **Pros**:
+
 1. **React-Native**: Declarative component API fits React mental model
 2. **Composable**: Easy to combine chart types (e.g., line + scatter + area)
 3. **Responsive**: Built-in responsive container
@@ -316,6 +316,7 @@ const CustomVisualization: React.FC<{ pluginId: string }> = ({ pluginId }) => {
 8. **AI Agent Friendly**: Well-documented patterns, lots of training data
 
 ❌ **Cons**:
+
 1. **Performance**: SVG-based; struggles with >100k points
 2. **Limited Interactivity**: Basic zoom/pan; no advanced selection tools
 3. **Accessibility**: Adequate but not comprehensive
@@ -359,6 +360,7 @@ const AHITrendChart: React.FC<{ data: NightlyAggregate[] }> = ({ data }) => (
 #### 2.2.2 Custom Canvas Renderer (High-Frequency Time-Series)
 
 **Use For**:
+
 - High-frequency signal plots (Flow, Pressure at 25–50 Hz)
 - Multi-year time-series with millions of points
 - Real-time streaming data
@@ -367,12 +369,14 @@ const AHITrendChart: React.FC<{ data: NightlyAggregate[] }> = ({ data }) => (
 **Rationale**:
 
 ✅ **Pros**:
+
 1. **Performance**: 100–1000× faster than SVG for large datasets
 2. **Memory Efficient**: Direct pixel rendering; no DOM nodes
 3. **Full Control**: Fine-grained optimization (level-of-detail, viewport culling)
 4. **Scalability**: Handles millions of points smoothly
 
 ❌ **Cons**:
+
 1. **Implementation Complexity**: Requires custom rendering logic
 2. **Accessibility Challenges**: Canvas is not inherently accessible (requires workarounds)
 3. **Interactivity**: Must implement hit detection, tooltips manually
@@ -518,9 +522,7 @@ const downsampleWorker = {
     const { data, xDomain, method, targetPoints } = request;
 
     // Filter to visible domain
-    const visibleData = data.filter(
-      (point) => point.x >= xDomain[0] && point.x <= xDomain[1]
-    );
+    const visibleData = data.filter((point) => point.x >= xDomain[0] && point.x <= xDomain[1]);
 
     // Downsample if needed
     if (visibleData.length <= targetPoints) {
@@ -543,6 +545,7 @@ export type DownsampleWorker = typeof downsampleWorker;
 #### 2.2.3 D3.js (Custom Complex Visualizations)
 
 **Use For**:
+
 - Calendar heatmaps
 - Correlation matrices
 - Force-directed graphs (if needed)
@@ -552,12 +555,14 @@ export type DownsampleWorker = typeof downsampleWorker;
 **Rationale**:
 
 ✅ **Pros**:
+
 1. **Flexibility**: Full control over every aspect of visualization
 2. **Power**: Industry-standard for complex data viz
 3. **Rich Ecosystem**: Extensive modules (scales, axes, shapes, geo, etc.)
 4. **Data Manipulation**: Built-in data wrangling utilities
 
 ❌ **Cons**:
+
 1. **Bundle Size**: Can be large if importing entire library (~70KB gzipped for core modules)
 2. **Imperative API**: Doesn't fit React's declarative model (requires manual lifecycle management)
 3. **Learning Curve**: Complex API; harder for AI agents to generate correct code
@@ -606,14 +611,14 @@ const CalendarHeatmap: React.FC<{ data: DailyMetric[] }> = ({ data }) => {
 
 ### 2.3 Alternatives Considered and Rejected
 
-| Library | Pros | Cons | Verdict |
-|---------|------|------|---------|
-| **Chart.js** | Simple API, good docs | Canvas-only (no SVG hybrid), limited customization, weak TypeScript | ❌ Rejected: Limited flexibility |
-| **Victory** | React-native, composable | Large bundle (~120KB), slower performance | ❌ Rejected: Bundle size, performance |
-| **Plotly.js** | Feature-rich, 3D support | Huge bundle (~300KB), opinionated styling | ❌ Rejected: Bundle size excessive |
-| **Apache ECharts** | Excellent performance, feature-complete | Large bundle, imperative API, documentation gaps | ❌ Rejected: API complexity, bundle |
-| **Visx** | React + D3 primitives, composable | Low-level (requires lots of boilerplate), immature | ⚠️ Considered: Too low-level for standard charts |
-| **uPlot** | Fastest Canvas renderer, tiny bundle | Very low-level, limited chart types | ⚠️ Considered: Could replace custom Canvas renderer, but less control |
+| Library            | Pros                                    | Cons                                                                | Verdict                                                               |
+| ------------------ | --------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **Chart.js**       | Simple API, good docs                   | Canvas-only (no SVG hybrid), limited customization, weak TypeScript | ❌ Rejected: Limited flexibility                                      |
+| **Victory**        | React-native, composable                | Large bundle (~120KB), slower performance                           | ❌ Rejected: Bundle size, performance                                 |
+| **Plotly.js**      | Feature-rich, 3D support                | Huge bundle (~300KB), opinionated styling                           | ❌ Rejected: Bundle size excessive                                    |
+| **Apache ECharts** | Excellent performance, feature-complete | Large bundle, imperative API, documentation gaps                    | ❌ Rejected: API complexity, bundle                                   |
+| **Visx**           | React + D3 primitives, composable       | Low-level (requires lots of boilerplate), immature                  | ⚠️ Considered: Too low-level for standard charts                      |
+| **uPlot**          | Fastest Canvas renderer, tiny bundle    | Very low-level, limited chart types                                 | ⚠️ Considered: Could replace custom Canvas renderer, but less control |
 
 ### 2.4 Decision Summary
 
@@ -632,17 +637,20 @@ const CalendarHeatmap: React.FC<{ data: DailyMetric[] }> = ({ data }) => {
 ### 3.1 Time-Series Line Charts (Primary Use Case)
 
 **Use Cases**:
+
 - Nightly AHI trends over months/years
 - Leak rate, mask pressure, run time trends
 - Multi-metric comparison (AHI + leak + pressure on same chart)
 - High-frequency signal plots (Flow, Pressure at 25–50 Hz)
 
 **Data Requirements**:
+
 - `x`: Timestamp (Date or unix milliseconds)
 - `y`: Numeric value
 - Optional: `tooltip` metadata (session ID, notes, etc.)
 
 **Interaction Patterns**:
+
 - **Zoom**: Mouse wheel, pinch, rectangular selection
 - **Pan**: Drag (when zoomed in)
 - **Crosshair**: Shows value at cursor position across all synchronized charts
@@ -732,6 +740,7 @@ const AggregateTimeSeriesChart: React.FC<AggregateTimeSeriesChartProps> = ({
 ```
 
 **Accessibility**:
+
 - Provide data table alternative via button or toggle
 - Screen reader announces metric name, value, and date on keyboard navigation
 - Focus indicators for keyboard users
@@ -780,6 +789,7 @@ const HighFrequencySignalPlot: React.FC<HighFrequencySignalPlotProps> = ({
 ### 3.2 Event Markers and Annotations
 
 **Use Cases**:
+
 - Mark apnea/hypopnea events on Flow signal
 - Annotate user notes, symptoms, medication changes
 - Highlight data quality issues (mask leak spikes)
@@ -834,6 +844,7 @@ const EventMarkerLayer: React.FC<{
 ```
 
 **Interaction**:
+
 - Click marker to show details popover
 - Keyboard: Tab through markers, Enter to activate
 
@@ -842,11 +853,13 @@ const EventMarkerLayer: React.FC<{
 #### 3.3.1 Histograms
 
 **Use Cases**:
+
 - Distribution of nightly AHI values
 - Leak rate distribution
 - Session duration distribution
 
 **Data Requirements**:
+
 - Array of numeric values
 - Optional: bin count or bin width
 
@@ -894,12 +907,14 @@ const Histogram: React.FC<{
 ```
 
 **Accessibility**:
+
 - Describe distribution shape (skewed, normal, bimodal) in text summary
 - Provide data table with bins and counts
 
 #### 3.3.2 Box Plots
 
 **Use Cases**:
+
 - Compare AHI distributions across different time periods
 - Identify outliers and variability
 
@@ -943,6 +958,7 @@ function calculateBoxPlotStats(values: number[]) {
 #### 3.3.3 Violin Plots
 
 **Use Cases**:
+
 - Show full distribution shape (density) in addition to quartiles
 - Compare distributions across multiple groups
 
@@ -978,10 +994,12 @@ const ViolinPlot: React.FC<{
 #### 3.4.1 Scatter Plots
 
 **Use Cases**:
+
 - Correlate CPAP metrics with external data (e.g., AHI vs. Fitbit sleep score)
 - Bivariate analysis (leak rate vs. AHI)
 
 **Data Requirements**:
+
 - `x`: Numeric value
 - `y`: Numeric value
 - Optional: `size`, `color`, `label`
@@ -1045,12 +1063,14 @@ const ScatterPlot: React.FC<{
 ```
 
 **Accessibility**:
+
 - Provide correlation coefficient (Pearson's r, Spearman's ρ) in text
 - Describe relationship (positive, negative, weak, strong)
 
 #### 3.4.2 Heatmaps
 
 **Use Cases**:
+
 - Correlation matrix (multiple metrics)
 - Calendar heatmap (AHI by day of week and week of year)
 - Hour-by-hour analysis (leak rate heatmap)
@@ -1112,12 +1132,14 @@ const Heatmap: React.FC<{
 ```
 
 **Accessibility**:
+
 - Provide data table with all values
 - Use patterns or textures in addition to color for critical distinctions
 
 ### 3.5 Summary Dashboards
 
 **Use Cases**:
+
 - Overview of key metrics (AHI, leak rate, run time) for date range
 - KPI cards with sparklines
 - Comparison to previous period or goal
@@ -1304,6 +1326,7 @@ const QQPlot: React.FC<{ data: number[] }> = ({ data }) => {
 **Best For**: Preserving shape and trends in time-series data.
 
 **Algorithm**:
+
 1. Divide data into N buckets (N = target point count).
 2. For each bucket, select the point that maximizes the triangle area formed with the previous and next selected points.
 3. Preserves peaks, troughs, and overall shape.
@@ -1341,8 +1364,7 @@ export function lttb(data: Point[], threshold: number): Point[] {
 
     for (let j = rangeStart; j < rangeEnd; j++) {
       const area = Math.abs(
-        (data[a].x - avgX) * (data[j].y - data[a].y) -
-          (data[a].x - data[j].x) * (avgY - data[a].y)
+        (data[a].x - avgX) * (data[j].y - data[a].y) - (data[a].x - data[j].x) * (avgY - data[a].y),
       );
       if (area > maxArea) {
         maxArea = area;
@@ -1368,6 +1390,7 @@ export function lttb(data: Point[], threshold: number): Point[] {
 **Best For**: Preserving peaks and troughs when exact shape is less critical.
 
 **Algorithm**:
+
 1. Divide data into N buckets (N = target point count / 2).
 2. For each bucket, include the min and max points.
 3. Ensures no peak or trough is lost.
@@ -1420,10 +1443,7 @@ export function minMaxDownsample(data: Point[], threshold: number): Point[] {
 **Implementation**:
 
 ```typescript
-const useProgressiveData = (
-  dataSource: () => Promise<Point[]>,
-  chunkSize: number = 10000
-) => {
+const useProgressiveData = (dataSource: () => Promise<Point[]>, chunkSize: number = 10000) => {
   const [data, setData] = useState<Point[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isComplete, setIsComplete] = useState(false);
@@ -1459,6 +1479,7 @@ const useProgressiveData = (
 ```
 
 **User Experience**:
+
 - Show partial data immediately (~10k points)
 - Update chart progressively as more data loads
 - Display loading indicator for incomplete data
@@ -1522,15 +1543,15 @@ const VirtualizedChartGrid: React.FC<{ charts: ChartConfig[] }> = ({ charts }) =
 
 ### 4.4 Canvas vs. SVG Performance Tradeoffs
 
-| Aspect | Canvas | SVG |
-|--------|--------|-----|
-| **Rendering Speed** | ✅ Fast (direct pixel manipulation) | ❌ Slow (DOM updates) |
-| **Scalability** | ✅ Constant performance (regardless of point count) | ❌ Degrades with DOM node count |
-| **Interactivity** | ❌ Manual hit detection required | ✅ Built-in event handling per element |
-| **Accessibility** | ❌ Not inherently accessible | ✅ Screen readers can traverse SVG DOM |
-| **Crisp Rendering** | ⚠️ Requires HiDPI/Retina handling | ✅ Vector-based, always crisp |
-| **Animation** | ✅ Redraw entire frame | ⚠️ CSS/SMIL animations (limited) |
-| **Memory Usage** | ✅ Low (just pixel buffer) | ❌ High (DOM nodes) |
+| Aspect              | Canvas                                              | SVG                                    |
+| ------------------- | --------------------------------------------------- | -------------------------------------- |
+| **Rendering Speed** | ✅ Fast (direct pixel manipulation)                 | ❌ Slow (DOM updates)                  |
+| **Scalability**     | ✅ Constant performance (regardless of point count) | ❌ Degrades with DOM node count        |
+| **Interactivity**   | ❌ Manual hit detection required                    | ✅ Built-in event handling per element |
+| **Accessibility**   | ❌ Not inherently accessible                        | ✅ Screen readers can traverse SVG DOM |
+| **Crisp Rendering** | ⚠️ Requires HiDPI/Retina handling                   | ✅ Vector-based, always crisp          |
+| **Animation**       | ✅ Redraw entire frame                              | ⚠️ CSS/SMIL animations (limited)       |
+| **Memory Usage**    | ✅ Low (just pixel buffer)                          | ❌ High (DOM nodes)                    |
 
 **Decision Matrix**:
 
@@ -1543,6 +1564,7 @@ const VirtualizedChartGrid: React.FC<{ charts: ChartConfig[] }> = ({ charts }) =
 **Use Case**: If Canvas rendering still insufficient for extreme datasets (10+ million points).
 
 **Library Options**:
+
 - **regl**: Functional WebGL wrapper
 - **three.js**: Full 3D engine (overkill for 2D charts)
 - **deck.gl**: Geospatial viz, but has 2D layers
@@ -1742,6 +1764,7 @@ const TimeSeriesChartWithBrush: React.FC = () => {
 ### 5.3 Tooltip and Hover Details
 
 **Requirements**:
+
 - Show exact data values at cursor position
 - Support multi-metric tooltips (e.g., AHI, leak, pressure at same timestamp)
 - Fast and responsive (<10ms delay)
@@ -1835,6 +1858,7 @@ const SynchronizedChart: React.FC = () => {
 ### 5.5 Annotation and Marking
 
 **Use Cases**:
+
 - User adds notes on specific dates (e.g., "Changed mask type")
 - Mark events of interest (e.g., "Data quality issue")
 - Flag physiological events (apnea clusters)
@@ -1904,6 +1928,7 @@ const AnnotationLayer: React.FC<{
 ### 5.6 Export Capabilities
 
 **Supported Formats**:
+
 - **PNG**: Rasterized image (for presentations, reports)
 - **SVG**: Vector image (for publications, high-quality prints)
 - **CSV**: Data table (for external analysis)
@@ -1957,21 +1982,22 @@ const exportChart = async (format: 'png' | 'svg' | 'csv' | 'json', chartElement:
 ### 6.1 Keyboard Navigation
 
 **Requirements**:
+
 - All interactive elements must be keyboard accessible
 - Logical tab order
 - Visual focus indicators
 
 **Implementation**:
 
-| Element | Keyboard Action | Behavior |
-|---------|----------------|----------|
-| Chart container | `Tab` to focus | Shows focus ring; enables keyboard controls |
-| Zoom | `+` / `-` | Zoom in / out centered on chart |
-| Pan | `Arrow keys` | Pan left/right/up/down |
-| Reset zoom | `Home` or `Escape` | Return to full data range |
-| Data point navigation | `Tab` (within chart) | Cycle through data points or markers |
-| Activate point | `Enter` or `Space` | Show detailed info (equivalent to click) |
-| Tooltip | `Tab` to next point | Tooltip updates to show next point's data |
+| Element               | Keyboard Action      | Behavior                                    |
+| --------------------- | -------------------- | ------------------------------------------- |
+| Chart container       | `Tab` to focus       | Shows focus ring; enables keyboard controls |
+| Zoom                  | `+` / `-`            | Zoom in / out centered on chart             |
+| Pan                   | `Arrow keys`         | Pan left/right/up/down                      |
+| Reset zoom            | `Home` or `Escape`   | Return to full data range                   |
+| Data point navigation | `Tab` (within chart) | Cycle through data points or markers        |
+| Activate point        | `Enter` or `Space`   | Show detailed info (equivalent to click)    |
+| Tooltip               | `Tab` to next point  | Tooltip updates to show next point's data   |
 
 **Focus Management**:
 
@@ -2018,6 +2044,7 @@ const ChartWithKeyboardSupport: React.FC = () => {
 ### 6.2 Screen Reader Support
 
 **Challenges**:
+
 - Charts are primarily visual
 - Large datasets cannot be narrated point-by-point
 - Screen readers need text alternatives
@@ -2120,6 +2147,7 @@ const ChartWithDataTable: React.FC = () => {
 Use palettes that remain distinguishable for common types of color blindness:
 
 **Default Palette** (from ui-design-system.md):
+
 - Chart 1: Blue (`#2563eb`)
 - Chart 2: Red (`#dc2626`)
 - Chart 3: Green (`#16a34a`)
@@ -2182,17 +2210,17 @@ Example text description:
 
 ### 6.5 WCAG AA Compliance Checklist
 
-| Criterion | Requirement | Status |
-|-----------|-------------|--------|
-| **1.1.1 Non-text Content** | All charts have text alternatives | ✅ Implemented (aria-label, data tables) |
-| **1.3.1 Info and Relationships** | Information conveyed through presentation is also available in text | ✅ Implemented (summaries, tables) |
-| **1.4.1 Use of Color** | Color is not the only visual means of conveying information | ✅ Implemented (line styles, labels, patterns) |
-| **1.4.3 Contrast (Minimum)** | 4.5:1 contrast for text, 3:1 for UI components | ✅ Enforced by design tokens |
-| **1.4.11 Non-text Contrast** | 3:1 contrast for chart elements | ✅ Chart colors meet contrast requirements |
-| **2.1.1 Keyboard** | All functionality available via keyboard | ✅ Implemented (zoom, pan, point navigation) |
-| **2.4.3 Focus Order** | Logical tab order | ✅ Implemented |
-| **2.4.7 Focus Visible** | Visible focus indicators | ✅ Implemented (design tokens) |
-| **4.1.2 Name, Role, Value** | UI components have accessible names and roles | ✅ Implemented (ARIA attributes) |
+| Criterion                        | Requirement                                                         | Status                                         |
+| -------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------- |
+| **1.1.1 Non-text Content**       | All charts have text alternatives                                   | ✅ Implemented (aria-label, data tables)       |
+| **1.3.1 Info and Relationships** | Information conveyed through presentation is also available in text | ✅ Implemented (summaries, tables)             |
+| **1.4.1 Use of Color**           | Color is not the only visual means of conveying information         | ✅ Implemented (line styles, labels, patterns) |
+| **1.4.3 Contrast (Minimum)**     | 4.5:1 contrast for text, 3:1 for UI components                      | ✅ Enforced by design tokens                   |
+| **1.4.11 Non-text Contrast**     | 3:1 contrast for chart elements                                     | ✅ Chart colors meet contrast requirements     |
+| **2.1.1 Keyboard**               | All functionality available via keyboard                            | ✅ Implemented (zoom, pan, point navigation)   |
+| **2.4.3 Focus Order**            | Logical tab order                                                   | ✅ Implemented                                 |
+| **2.4.7 Focus Visible**          | Visible focus indicators                                            | ✅ Implemented (design tokens)                 |
+| **4.1.2 Name, Role, Value**      | UI components have accessible names and roles                       | ✅ Implemented (ARIA attributes)               |
 
 ---
 
@@ -2201,6 +2229,7 @@ Example text description:
 ### 7.1 Mobile vs. Desktop Layouts
 
 **Challenges**:
+
 - Limited screen width on mobile (320px – 768px)
 - Touch interactions instead of hover
 - Reduced information density
@@ -2228,11 +2257,11 @@ const ResponsiveChart: React.FC = () => {
 
 #### 7.1.2 Breakpoints
 
-| Breakpoint | Width | Layout Changes |
-|------------|-------|----------------|
-| **Mobile** | <640px | Single column, simplified charts, hide secondary metrics, larger touch targets |
-| **Tablet** | 640px – 1024px | Two-column grid, full charts, show all metrics |
-| **Desktop** | >1024px | Multi-column grid, side-by-side comparisons, advanced features |
+| Breakpoint  | Width          | Layout Changes                                                                 |
+| ----------- | -------------- | ------------------------------------------------------------------------------ |
+| **Mobile**  | <640px         | Single column, simplified charts, hide secondary metrics, larger touch targets |
+| **Tablet**  | 640px – 1024px | Two-column grid, full charts, show all metrics                                 |
+| **Desktop** | >1024px        | Multi-column grid, side-by-side comparisons, advanced features                 |
 
 **Example**:
 
@@ -2295,6 +2324,7 @@ const AdaptiveChart: React.FC<{ metrics: string[] }> = ({ metrics }) => {
 ### 7.2 Touch Interactions
 
 **Differences from Mouse**:
+
 - No hover state (touch is discrete, not continuous)
 - Pinch to zoom (two-finger gesture)
 - Swipe to pan
@@ -2355,6 +2385,7 @@ Ensure interactive elements are at least 44×44 pixels (Apple guideline):
 ### 7.3 Performance on Mobile Devices
 
 **Challenges**:
+
 - Less powerful CPUs/GPUs
 - Limited memory
 - Potential for thermal throttling
@@ -2442,7 +2473,7 @@ interface DataProvider {
 // In plugin's component
 const { data } = useAnalysisData(
   plugin.dataRequirements.analysisType,
-  plugin.dataRequirements.parameters
+  plugin.dataRequirements.parameters,
 );
 ```
 
@@ -2603,14 +2634,14 @@ visualizationPluginManager.register(myCustomVisualizationPlugin);
 
 **Performance Budgets for React Chart Components**:
 
-| Component Type | Initial Render Budget | Re-render Budget | Notes |
-|----------------|----------------------|------------------|-------|
-| **Simple Chart** (Recharts <1k points) | <100ms | <16ms (60 FPS) | Standard time-series, scatter plots |
-| **Complex Chart** (Recharts 1k–10k points) | <200ms | <33ms (30 FPS) | Multi-series, stacked areas |
-| **Canvas Chart** (10k–100k points) | <300ms | <16ms (60 FPS) | High-frequency signals with downsampling |
-| **Heavy Canvas** (100k–1M points) | <500ms | <33ms (30 FPS) | Full-resolution signals, LOD rendering |
-| **Dashboard Grid** (multiple charts) | <1000ms | <100ms | 4–6 charts total load time |
-| **Chart Container** | <10ms | <5ms | Wrapper, loading states, error boundaries |
+| Component Type                             | Initial Render Budget | Re-render Budget | Notes                                     |
+| ------------------------------------------ | --------------------- | ---------------- | ----------------------------------------- |
+| **Simple Chart** (Recharts <1k points)     | <100ms                | <16ms (60 FPS)   | Standard time-series, scatter plots       |
+| **Complex Chart** (Recharts 1k–10k points) | <200ms                | <33ms (30 FPS)   | Multi-series, stacked areas               |
+| **Canvas Chart** (10k–100k points)         | <300ms                | <16ms (60 FPS)   | High-frequency signals with downsampling  |
+| **Heavy Canvas** (100k–1M points)          | <500ms                | <33ms (30 FPS)   | Full-resolution signals, LOD rendering    |
+| **Dashboard Grid** (multiple charts)       | <1000ms               | <100ms           | 4–6 charts total load time                |
+| **Chart Container**                        | <10ms                 | <5ms             | Wrapper, loading states, error boundaries |
 
 **Monitoring Strategy**:
 
@@ -2621,15 +2652,15 @@ import { useEffect } from 'react';
 function useRenderPerformance(componentName: string) {
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
-    
+
     const mountTime = performance.now();
     return () => {
       const unmountTime = performance.now();
       const renderDuration = unmountTime - mountTime;
-      
+
       if (renderDuration > 16) {
         console.warn(
-          `[Performance] ${componentName} took ${renderDuration.toFixed(2)}ms (budget: 16ms for 60 FPS)`
+          `[Performance] ${componentName} took ${renderDuration.toFixed(2)}ms (budget: 16ms for 60 FPS)`,
         );
       }
     };
@@ -2646,6 +2677,7 @@ const TimeSeriesChart: React.FC<Props> = (props) => {
 **Optimization Techniques**:
 
 1. **Memoization**: Use `React.memo()` for expensive chart components
+
    ```typescript
    export const TimeSeriesChart = React.memo<TimeSeriesChartProps>(
      ({ data, ...props }) => {
@@ -2654,11 +2686,12 @@ const TimeSeriesChart: React.FC<Props> = (props) => {
      (prev, next) => {
        // Custom comparison: only re-render if data actually changed
        return prev.data === next.data && prev.width === next.width;
-     }
+     },
    );
    ```
 
 2. **Lazy Data Processing**: Use `useMemo()` for data transformations
+
    ```typescript
    const processedData = useMemo(() => {
      return downsampleData(rawData, targetPoints);
@@ -2666,11 +2699,9 @@ const TimeSeriesChart: React.FC<Props> = (props) => {
    ```
 
 3. **Debounced Interactions**: Debounce zoom/pan to reduce re-renders
+
    ```typescript
-   const debouncedZoom = useMemo(
-     () => debounce((domain) => setZoomDomain(domain), 100),
-     []
-   );
+   const debouncedZoom = useMemo(() => debounce((domain) => setZoomDomain(domain), 100), []);
    ```
 
 4. **Canvas Over SVG**: For >10k points, use Canvas rendering exclusively
@@ -2679,21 +2710,21 @@ const TimeSeriesChart: React.FC<Props> = (props) => {
    - Trade-off: Performance vs. accessibility (mitigate with text alternatives)
 
 5. **Progressive Rendering**: Show low-resolution preview first, then refine
+
    ```typescript
    const [resolution, setResolution] = useState<'low' | 'high'>('low');
-   
+
    useEffect(() => {
      // Render low-res immediately
      const timer = setTimeout(() => setResolution('high'), 100);
      return () => clearTimeout(timer);
    }, [data]);
-   
-   const displayData = resolution === 'low' 
-     ? downsample(data, 500) 
-     : downsample(data, 2000);
+
+   const displayData = resolution === 'low' ? downsample(data, 500) : downsample(data, 2000);
    ```
 
 **When to Optimize**:
+
 - **Always**: Dashboard components (users see them first)
 - **High Priority**: Time-series charts (most common use case)
 - **Medium Priority**: Distribution plots (less frequent, tolerate 200ms)
@@ -2713,11 +2744,11 @@ Virtualization renders only visible items in long lists, dramatically reducing D
 
 **Recommended Libraries**:
 
-| Library | Use Case | Pros | Cons |
-|---------|----------|------|------|
-| **TanStack Virtual** | General-purpose lists, grids | Modern, actively maintained, TypeScript-first | Newer, less battle-tested |
-| **react-window** | Simple fixed-size lists | Lightweight (3 KB), stable, popular | Less flexible for variable heights |
-| **react-virtualized** | Complex grids, tables | Feature-rich, mature | Large bundle (27 KB), older API |
+| Library               | Use Case                     | Pros                                          | Cons                               |
+| --------------------- | ---------------------------- | --------------------------------------------- | ---------------------------------- |
+| **TanStack Virtual**  | General-purpose lists, grids | Modern, actively maintained, TypeScript-first | Newer, less battle-tested          |
+| **react-window**      | Simple fixed-size lists      | Lightweight (3 KB), stable, popular           | Less flexible for variable heights |
+| **react-virtualized** | Complex grids, tables        | Feature-rich, mature                          | Large bundle (27 KB), older API    |
 
 **Recommendation**: Use **TanStack Virtual** for new components (aligned with TanStack Query for data fetching). Fallback to **react-window** for simple lists if bundle size is critical.
 
@@ -2736,14 +2767,14 @@ interface Session {
 
 const SessionList: React.FC<{ sessions: Session[] }> = ({ sessions }) => {
   const parentRef = useRef<HTMLDivElement>(null);
-  
+
   const virtualizer = useVirtualizer({
     count: sessions.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 80, // Estimated row height in pixels
     overscan: 5, // Render 5 extra items above/below viewport for smoothness
   });
-  
+
   return (
     <div
       ref={parentRef}
@@ -2827,11 +2858,11 @@ const virtualizer = useVirtualizer({
 
 **Performance Targets with Virtualization**:
 
-| List Size | Initial Render | Scroll Performance | Memory Usage |
-|-----------|----------------|-------------------|-------------|
-| 100 sessions | <50ms | 60 FPS | ~5 MB |
-| 1,000 sessions | <100ms | 60 FPS | ~15 MB |
-| 10,000 sessions | <200ms | 60 FPS | ~30 MB |
+| List Size       | Initial Render | Scroll Performance | Memory Usage |
+| --------------- | -------------- | ------------------ | ------------ |
+| 100 sessions    | <50ms          | 60 FPS             | ~5 MB        |
+| 1,000 sessions  | <100ms         | 60 FPS             | ~15 MB       |
+| 10,000 sessions | <200ms         | 60 FPS             | ~30 MB       |
 
 Without virtualization, 10,000 sessions would consume >500 MB and take >5 seconds to render.
 
@@ -2891,14 +2922,14 @@ Without virtualization, 10,000 sessions would consume >500 MB and take >5 second
 
 ## 10. Performance Benchmarks and Targets
 
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| **Initial chart render** | <500ms (100k points) | Time from data load to first paint |
-| **Zoom/pan responsiveness** | 60 FPS | Frame rate during interaction |
-| **Tooltip delay** | <10ms | Time from hover to tooltip display |
-| **Downsampling (Web Worker)** | <200ms (1M points) | Time to downsample 1 million points to 2000 |
-| **Memory usage growth** | <100 MB/hour | Memory increase during continuous use |
-| **Mobile responsiveness** | <1s (10k points) | Initial render on mid-tier mobile device |
+| Metric                        | Target               | Measurement                                 |
+| ----------------------------- | -------------------- | ------------------------------------------- |
+| **Initial chart render**      | <500ms (100k points) | Time from data load to first paint          |
+| **Zoom/pan responsiveness**   | 60 FPS               | Frame rate during interaction               |
+| **Tooltip delay**             | <10ms                | Time from hover to tooltip display          |
+| **Downsampling (Web Worker)** | <200ms (1M points)   | Time to downsample 1 million points to 2000 |
+| **Memory usage growth**       | <100 MB/hour         | Memory increase during continuous use       |
+| **Mobile responsiveness**     | <1s (10k points)     | Initial render on mid-tier mobile device    |
 
 **Monitoring**: Use `performance.mark()` and `performance.measure()` to track key metrics in development and production (aggregated, no PII).
 
@@ -3028,12 +3059,12 @@ export default MyChart;
 
 **Benchmark**: 1 million data points downsampled to 2000 points.
 
-| Method | Time (ms) | Visual Quality | Use Case |
-|--------|-----------|----------------|----------|
-| **LTTB** | 180 | Excellent (preserves shape) | General time-series |
-| **Min-Max** | 95 | Good (preserves extremes) | High-frequency signals with spikes |
-| **Average** | 60 | Fair (smooths data) | Sparklines, overviews |
-| **Random Sampling** | 5 | Poor (loses patterns) | Not recommended |
+| Method              | Time (ms) | Visual Quality              | Use Case                           |
+| ------------------- | --------- | --------------------------- | ---------------------------------- |
+| **LTTB**            | 180       | Excellent (preserves shape) | General time-series                |
+| **Min-Max**         | 95        | Good (preserves extremes)   | High-frequency signals with spikes |
+| **Average**         | 60        | Fair (smooths data)         | Sparklines, overviews              |
+| **Random Sampling** | 5         | Poor (loses patterns)       | Not recommended                    |
 
 **Recommendation**: Use **LTTB** as default; use **Min-Max** for physiological signals where peaks (apneas, leaks) are critical.
 

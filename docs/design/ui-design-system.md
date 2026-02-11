@@ -2,7 +2,7 @@
 
 **Version**: 1.0  
 **Last Updated**: February 10, 2026  
-**Status**: Reference Specification  
+**Status**: Reference Specification
 
 ## Executive Summary
 
@@ -34,14 +34,14 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
   --color-surface-tertiary: #ececec;
   --color-surface-elevated: #ffffff;
   --color-surface-overlay: rgba(0, 0, 0, 0.5);
-  
+
   /* ============================================
      BORDER COLORS
      ============================================ */
   --color-border-default: #e0e0e0;
   --color-border-subtle: #f0f0f0;
   --color-border-emphasis: #bdbdbd;
-  
+
   /* ============================================
      TEXT COLORS
      ============================================ */
@@ -52,21 +52,21 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
   --color-text-inverse: #ffffff;
   --color-text-link: #2563eb;
   --color-text-link-hover: #1e40af;
-  
+
   /* ============================================
      CLINICAL STATUS COLORS
      ============================================ */
-  --color-status-normal: #16a34a;        /* Green 600 */
-  --color-status-mild: #ca8a04;          /* Yellow 600 */
-  --color-status-moderate: #ea580c;      /* Orange 600 */
-  --color-status-severe: #dc2626;        /* Red 600 */
-  
+  --color-status-normal: #16a34a; /* Green 600 */
+  --color-status-mild: #ca8a04; /* Yellow 600 */
+  --color-status-moderate: #ea580c; /* Orange 600 */
+  --color-status-severe: #dc2626; /* Red 600 */
+
   /* Status backgrounds (10% opacity) */
   --color-status-normal-bg: rgba(22, 163, 74, 0.1);
   --color-status-mild-bg: rgba(202, 138, 4, 0.1);
   --color-status-moderate-bg: rgba(234, 88, 12, 0.1);
   --color-status-severe-bg: rgba(220, 38, 38, 0.1);
-  
+
   /* ============================================
      SEMANTIC COLORS
      ============================================ */
@@ -78,43 +78,43 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
   --color-error-bg: rgba(220, 38, 38, 0.1);
   --color-info: #2563eb;
   --color-info-bg: rgba(37, 99, 235, 0.1);
-  
+
   /* ============================================
      INTERACTIVE COLORS
      ============================================ */
-  --color-primary: #2563eb;              /* Blue 600 */
-  --color-primary-hover: #1d4ed8;        /* Blue 700 */
-  --color-primary-active: #1e40af;       /* Blue 800 */
-  --color-primary-disabled: #93c5fd;     /* Blue 300 */
-  
-  --color-secondary: #64748b;            /* Slate 500 */
-  --color-secondary-hover: #475569;      /* Slate 600 */
-  --color-secondary-active: #334155;     /* Slate 700 */
-  
+  --color-primary: #2563eb; /* Blue 600 */
+  --color-primary-hover: #1d4ed8; /* Blue 700 */
+  --color-primary-active: #1e40af; /* Blue 800 */
+  --color-primary-disabled: #93c5fd; /* Blue 300 */
+
+  --color-secondary: #64748b; /* Slate 500 */
+  --color-secondary-hover: #475569; /* Slate 600 */
+  --color-secondary-active: #334155; /* Slate 700 */
+
   /* ============================================
      CHART COLORS (Multi-Series)
      ============================================ */
-  --color-chart-1: #2563eb;              /* Blue 600 */
-  --color-chart-2: #dc2626;              /* Red 600 */
-  --color-chart-3: #16a34a;              /* Green 600 */
-  --color-chart-4: #9333ea;              /* Purple 600 */
-  --color-chart-5: #ea580c;              /* Orange 600 */
-  --color-chart-6: #0891b2;              /* Cyan 600 */
-  --color-chart-7: #c026d3;              /* Fuchsia 600 */
-  --color-chart-8: #65a30d;              /* Lime 600 */
-  
+  --color-chart-1: #2563eb; /* Blue 600 */
+  --color-chart-2: #dc2626; /* Red 600 */
+  --color-chart-3: #16a34a; /* Green 600 */
+  --color-chart-4: #9333ea; /* Purple 600 */
+  --color-chart-5: #ea580c; /* Orange 600 */
+  --color-chart-6: #0891b2; /* Cyan 600 */
+  --color-chart-7: #c026d3; /* Fuchsia 600 */
+  --color-chart-8: #65a30d; /* Lime 600 */
+
   /* Chart neutrals */
   --color-chart-grid: #e5e7eb;
   --color-chart-axis: #6b7280;
   --color-chart-tooltip-bg: rgba(255, 255, 255, 0.98);
   --color-chart-tooltip-border: #d1d5db;
-  
+
   /* ============================================
      FOCUS INDICATORS
      ============================================ */
-  --color-focus-ring: #3b82f6;           /* Blue 500 */
+  --color-focus-ring: #3b82f6; /* Blue 500 */
   --color-focus-ring-offset: #ffffff;
-  
+
   /* ============================================
      SPACING SCALE
      ============================================ */
@@ -131,63 +131,61 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
   --space-16: 64px;
   --space-20: 80px;
   --space-24: 96px;
-  
+
   /* Semantic spacing aliases */
-  --space-xs: var(--space-1);            /* 4px */
-  --space-sm: var(--space-2);            /* 8px */
-  --space-md: var(--space-4);            /* 16px */
-  --space-lg: var(--space-6);            /* 24px */
-  --space-xl: var(--space-8);            /* 32px */
-  --space-2xl: var(--space-12);          /* 48px */
-  
+  --space-xs: var(--space-1); /* 4px */
+  --space-sm: var(--space-2); /* 8px */
+  --space-md: var(--space-4); /* 16px */
+  --space-lg: var(--space-6); /* 24px */
+  --space-xl: var(--space-8); /* 32px */
+  --space-2xl: var(--space-12); /* 48px */
+
   /* ============================================
      TYPOGRAPHY
      ============================================ */
-  --font-family-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 
-                      Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-family-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, 
-                      Consolas, 'Liberation Mono', monospace;
-  
+  --font-family-sans:
+    system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-family-mono:
+    ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
   /* Font sizes */
-  --font-size-xs: 0.75rem;               /* 12px */
-  --font-size-sm: 0.875rem;              /* 14px */
-  --font-size-base: 1rem;                /* 16px */
-  --font-size-lg: 1.125rem;              /* 18px */
-  --font-size-xl: 1.25rem;               /* 20px */
-  --font-size-2xl: 1.5rem;               /* 24px */
-  --font-size-3xl: 1.875rem;             /* 30px */
-  --font-size-4xl: 2.25rem;              /* 36px */
-  
+  --font-size-xs: 0.75rem; /* 12px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-base: 1rem; /* 16px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-size-xl: 1.25rem; /* 20px */
+  --font-size-2xl: 1.5rem; /* 24px */
+  --font-size-3xl: 1.875rem; /* 30px */
+  --font-size-4xl: 2.25rem; /* 36px */
+
   /* Font weights */
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
-  
+
   /* Line heights */
   --line-height-tight: 1.25;
   --line-height-normal: 1.5;
   --line-height-relaxed: 1.75;
-  
+
   /* Letter spacing */
   --letter-spacing-tight: -0.025em;
   --letter-spacing-normal: 0;
   --letter-spacing-wide: 0.025em;
-  
+
   /* ============================================
      SHADOWS
      ============================================ */
   --shadow-none: none;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 
-               0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 
-               0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 
-               0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
   --shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.5);
-  
+
   /* ============================================
      BORDER RADIUS
      ============================================ */
@@ -198,19 +196,19 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
   --radius-xl: 12px;
   --radius-2xl: 16px;
   --radius-full: 9999px;
-  
+
   /* ============================================
      TRANSITIONS
      ============================================ */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  
+
   /* Easing functions */
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  
+
   /* ============================================
      Z-INDEX SCALE
      ============================================ */
@@ -233,12 +231,12 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
   --color-surface-tertiary: #262626;
   --color-surface-elevated: #1f1f1f;
   --color-surface-overlay: rgba(0, 0, 0, 0.7);
-  
+
   /* Border colors */
   --color-border-default: #404040;
   --color-border-subtle: #2a2a2a;
   --color-border-emphasis: #525252;
-  
+
   /* Text colors */
   --color-text-primary: #fafafa;
   --color-text-secondary: #a3a3a3;
@@ -247,19 +245,19 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
   --color-text-inverse: #0a0a0a;
   --color-text-link: #60a5fa;
   --color-text-link-hover: #93c5fd;
-  
+
   /* Clinical status colors (slightly brighter for dark bg) */
-  --color-status-normal: #22c55e;        /* Green 500 */
-  --color-status-mild: #eab308;          /* Yellow 500 */
-  --color-status-moderate: #f97316;      /* Orange 500 */
-  --color-status-severe: #ef4444;        /* Red 500 */
-  
+  --color-status-normal: #22c55e; /* Green 500 */
+  --color-status-mild: #eab308; /* Yellow 500 */
+  --color-status-moderate: #f97316; /* Orange 500 */
+  --color-status-severe: #ef4444; /* Red 500 */
+
   /* Status backgrounds (15% opacity for dark) */
   --color-status-normal-bg: rgba(34, 197, 94, 0.15);
   --color-status-mild-bg: rgba(234, 179, 8, 0.15);
   --color-status-moderate-bg: rgba(249, 115, 22, 0.15);
   --color-status-severe-bg: rgba(239, 68, 68, 0.15);
-  
+
   /* Semantic colors */
   --color-success: #22c55e;
   --color-success-bg: rgba(34, 197, 94, 0.15);
@@ -269,46 +267,43 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
   --color-error-bg: rgba(239, 68, 68, 0.15);
   --color-info: #60a5fa;
   --color-info-bg: rgba(96, 165, 250, 0.15);
-  
+
   /* Interactive colors */
-  --color-primary: #3b82f6;              /* Blue 500 */
-  --color-primary-hover: #60a5fa;        /* Blue 400 */
-  --color-primary-active: #2563eb;       /* Blue 600 */
-  --color-primary-disabled: #1e3a8a;     /* Blue 900 */
-  
-  --color-secondary: #71717a;            /* Zinc 500 */
-  --color-secondary-hover: #a1a1aa;      /* Zinc 400 */
-  --color-secondary-active: #52525b;     /* Zinc 600 */
-  
+  --color-primary: #3b82f6; /* Blue 500 */
+  --color-primary-hover: #60a5fa; /* Blue 400 */
+  --color-primary-active: #2563eb; /* Blue 600 */
+  --color-primary-disabled: #1e3a8a; /* Blue 900 */
+
+  --color-secondary: #71717a; /* Zinc 500 */
+  --color-secondary-hover: #a1a1aa; /* Zinc 400 */
+  --color-secondary-active: #52525b; /* Zinc 600 */
+
   /* Chart colors (brighter for dark background) */
-  --color-chart-1: #60a5fa;              /* Blue 400 */
-  --color-chart-2: #f87171;              /* Red 400 */
-  --color-chart-3: #4ade80;              /* Green 400 */
-  --color-chart-4: #c084fc;              /* Purple 400 */
-  --color-chart-5: #fb923c;              /* Orange 400 */
-  --color-chart-6: #22d3ee;              /* Cyan 400 */
-  --color-chart-7: #e879f9;              /* Fuchsia 400 */
-  --color-chart-8: #a3e635;              /* Lime 400 */
-  
+  --color-chart-1: #60a5fa; /* Blue 400 */
+  --color-chart-2: #f87171; /* Red 400 */
+  --color-chart-3: #4ade80; /* Green 400 */
+  --color-chart-4: #c084fc; /* Purple 400 */
+  --color-chart-5: #fb923c; /* Orange 400 */
+  --color-chart-6: #22d3ee; /* Cyan 400 */
+  --color-chart-7: #e879f9; /* Fuchsia 400 */
+  --color-chart-8: #a3e635; /* Lime 400 */
+
   /* Chart neutrals */
   --color-chart-grid: #373737;
   --color-chart-axis: #a3a3a3;
   --color-chart-tooltip-bg: rgba(23, 23, 23, 0.98);
   --color-chart-tooltip-border: #404040;
-  
+
   /* Focus indicators */
   --color-focus-ring: #60a5fa;
   --color-focus-ring-offset: #0a0a0a;
-  
+
   /* Shadows (lighter/more visible on dark) */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 
-               0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 
-               0 4px 6px -2px rgba(0, 0, 0, 0.4);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 
-               0 10px 10px -5px rgba(0, 0, 0, 0.5);
-  
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.5);
+
   --shadow-focus: 0 0 0 3px rgba(96, 165, 250, 0.5);
 }
 
@@ -330,11 +325,11 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
 
 ### 2.1 Primary Colors
 
-| Color | Light Theme | Dark Theme | Usage |
-|-------|-------------|------------|-------|
-| Primary | `#2563eb` (Blue 600) | `#3b82f6` (Blue 500) | Primary actions, links, active states |
-| Primary Hover | `#1d4ed8` (Blue 700) | `#60a5fa` (Blue 400) | Hover state for primary elements |
-| Primary Active | `#1e40af` (Blue 800) | `#2563eb` (Blue 600) | Active/pressed state |
+| Color          | Light Theme          | Dark Theme           | Usage                                 |
+| -------------- | -------------------- | -------------------- | ------------------------------------- |
+| Primary        | `#2563eb` (Blue 600) | `#3b82f6` (Blue 500) | Primary actions, links, active states |
+| Primary Hover  | `#1d4ed8` (Blue 700) | `#60a5fa` (Blue 400) | Hover state for primary elements      |
+| Primary Active | `#1e40af` (Blue 800) | `#2563eb` (Blue 600) | Active/pressed state                  |
 
 **Rationale**: Blue is universally understood for interactive elements, maintains professional clinical aesthetic, and has excellent contrast in both themes.
 
@@ -343,20 +338,22 @@ All theme-dependent values are defined as CSS custom properties. These tokens fo
 These colors communicate AHI severity and clinical relevance:
 
 | Severity | Color (Light) | Color (Dark) | Hex (Light) | Hex (Dark) | Contrast Ratio (Light) | Contrast Ratio (Dark) |
-|----------|---------------|--------------|-------------|------------|----------------------|---------------------|
-| Normal | Green 600 | Green 500 | `#16a34a` | `#22c55e` | 4.53:1 ✓ | 4.61:1 ✓ |
-| Mild | Yellow 600 | Yellow 500 | `#ca8a04` | `#eab308` | 4.54:1 ✓ | 5.12:1 ✓ |
-| Moderate | Orange 600 | Orange 500 | `#ea580c` | `#f97316` | 4.52:1 ✓ | 5.23:1 ✓ |
-| Severe | Red 600 | Red 500 | `#dc2626` | `#ef4444` | 5.62:1 ✓ | 5.85:1 ✓ |
+| -------- | ------------- | ------------ | ----------- | ---------- | ---------------------- | --------------------- |
+| Normal   | Green 600     | Green 500    | `#16a34a`   | `#22c55e`  | 4.53:1 ✓               | 4.61:1 ✓              |
+| Mild     | Yellow 600    | Yellow 500   | `#ca8a04`   | `#eab308`  | 4.54:1 ✓               | 5.12:1 ✓              |
+| Moderate | Orange 600    | Orange 500   | `#ea580c`   | `#f97316`  | 4.52:1 ✓               | 5.23:1 ✓              |
+| Severe   | Red 600       | Red 500      | `#dc2626`   | `#ef4444`  | 5.62:1 ✓               | 5.85:1 ✓              |
 
 **WCAG AA Compliance**: All status colors meet 4.5:1 minimum contrast ratio against their respective theme backgrounds.
 
 **Colorblind Considerations**:
+
 - Deuteranopia (red-green): Orange and red remain distinguishable; use additional indicators (icons, patterns)
 - Protanopia (red-green): Similar to deuteranopia; severity levels use brightness differences
 - Tritanopia (blue-yellow): Yellow and green are distinguishable; pattern differentiation provided
 
 **Additional Indicators**: Never rely on color alone:
+
 - Icons: ✓ (normal), ⚠ (mild/moderate), ⚠⚠ (severe)
 - Patterns: Solid (normal), diagonal lines (mild), cross-hatch (moderate), dense dots (severe)
 - Text labels: Always include severity text alongside color
@@ -365,36 +362,38 @@ These colors communicate AHI severity and clinical relevance:
 
 For multi-series charts (up to 8 series):
 
-| Series | Light Theme | Dark Theme | Hex (Light) | Hex (Dark) | Notes |
-|--------|-------------|------------|-------------|------------|-------|
-| 1 | Blue 600 | Blue 400 | `#2563eb` | `#60a5fa` | Primary series |
-| 2 | Red 600 | Red 400 | `#dc2626` | `#f87171` | Secondary/comparison |
-| 3 | Green 600 | Green 400 | `#16a34a` | `#4ade80` | Positive/target |
-| 4 | Purple 600 | Purple 400 | `#9333ea` | `#c084fc` | Auxiliary metric |
-| 5 | Orange 600 | Orange 400 | `#ea580c` | `#fb923c` | Warning/threshold |
-| 6 | Cyan 600 | Cyan 400 | `#0891b2` | `#22d3ee` | Supplementary |
-| 7 | Fuchsia 600 | Fuchsia 400 | `#c026d3` | `#e879f9` | Additional series |
-| 8 | Lime 600 | Lime 400 | `#65a30d` | `#a3e635` | Additional series |
+| Series | Light Theme | Dark Theme  | Hex (Light) | Hex (Dark) | Notes                |
+| ------ | ----------- | ----------- | ----------- | ---------- | -------------------- |
+| 1      | Blue 600    | Blue 400    | `#2563eb`   | `#60a5fa`  | Primary series       |
+| 2      | Red 600     | Red 400     | `#dc2626`   | `#f87171`  | Secondary/comparison |
+| 3      | Green 600   | Green 400   | `#16a34a`   | `#4ade80`  | Positive/target      |
+| 4      | Purple 600  | Purple 400  | `#9333ea`   | `#c084fc`  | Auxiliary metric     |
+| 5      | Orange 600  | Orange 400  | `#ea580c`   | `#fb923c`  | Warning/threshold    |
+| 6      | Cyan 600    | Cyan 400    | `#0891b2`   | `#22d3ee`  | Supplementary        |
+| 7      | Fuchsia 600 | Fuchsia 400 | `#c026d3`   | `#e879f9`  | Additional series    |
+| 8      | Lime 600    | Lime 400    | `#65a30d`   | `#a3e635`  | Additional series    |
 
 **Line Weights**:
+
 - Primary series: 2px
 - Secondary series: 1.5px
 - Gridlines: 1px
 - Axis lines: 1.5px
 
 **Point Markers**:
+
 - Size: 6px diameter (hover: 8px)
 - Shapes: Circle (primary), square, triangle, diamond (in order)
 - Always include for accessibility when lines may overlap
 
 ### 2.4 Semantic Colors
 
-| Type | Light | Dark | Usage |
-|------|-------|------|-------|
-| Success | `#16a34a` | `#22c55e` | Successful operations, compliance met |
-| Warning | `#ca8a04` | `#eab308` | Non-critical warnings, attention needed |
-| Error | `#dc2626` | `#ef4444` | Errors, failed operations, critical alerts |
-| Info | `#2563eb` | `#60a5fa` | Informational messages, help content |
+| Type    | Light     | Dark      | Usage                                      |
+| ------- | --------- | --------- | ------------------------------------------ |
+| Success | `#16a34a` | `#22c55e` | Successful operations, compliance met      |
+| Warning | `#ca8a04` | `#eab308` | Non-critical warnings, attention needed    |
+| Error   | `#dc2626` | `#ef4444` | Errors, failed operations, critical alerts |
+| Info    | `#2563eb` | `#60a5fa` | Informational messages, help content       |
 
 **Background Variants**: 10% opacity in light theme, 15% in dark theme for subtle backgrounds.
 
@@ -405,18 +404,28 @@ For multi-series charts (up to 8 series):
 ### 3.1 Font Families
 
 **Sans-serif** (Primary):
+
 ```css
-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 
-             Roboto, 'Helvetica Neue', Arial, sans-serif;
+font-family:
+  system-ui,
+  -apple-system,
+  BlinkMacSystemFont,
+  'Segoe UI',
+  Roboto,
+  'Helvetica Neue',
+  Arial,
+  sans-serif;
 ```
 
 **Monospace** (Code/Numeric):
+
 ```css
-font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, 
-             Consolas, 'Liberation Mono', monospace;
+font-family:
+  ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 ```
 
-**Rationale**: 
+**Rationale**:
+
 - Zero network requests (privacy compliance)
 - Respects user's OS preferences
 - Excellent cross-platform rendering
@@ -424,17 +433,17 @@ font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo,
 
 ### 3.2 Type Scale
 
-| Level | Size | Weight | Line Height | Usage |
-|-------|------|--------|-------------|-------|
-| Display | 36px (2.25rem) | 700 | 1.25 | Page-level headings (rare) |
-| H1 | 30px (1.875rem) | 700 | 1.25 | Primary section headings |
-| H2 | 24px (1.5rem) | 600 | 1.25 | Secondary headings |
-| H3 | 20px (1.25rem) | 600 | 1.25 | Tertiary headings |
-| H4 | 18px (1.125rem) | 600 | 1.5 | Component titles |
-| Large | 18px (1.125rem) | 400 | 1.5 | Prominent body text |
-| Base | 16px (1rem) | 400 | 1.5 | Body text, UI labels |
-| Small | 14px (0.875rem) | 400 | 1.5 | Secondary text, table cells |
-| XSmall | 12px (0.75rem) | 400 | 1.5 | Labels, axis ticks, captions |
+| Level   | Size            | Weight | Line Height | Usage                        |
+| ------- | --------------- | ------ | ----------- | ---------------------------- |
+| Display | 36px (2.25rem)  | 700    | 1.25        | Page-level headings (rare)   |
+| H1      | 30px (1.875rem) | 700    | 1.25        | Primary section headings     |
+| H2      | 24px (1.5rem)   | 600    | 1.25        | Secondary headings           |
+| H3      | 20px (1.25rem)  | 600    | 1.25        | Tertiary headings            |
+| H4      | 18px (1.125rem) | 600    | 1.5         | Component titles             |
+| Large   | 18px (1.125rem) | 400    | 1.5         | Prominent body text          |
+| Base    | 16px (1rem)     | 400    | 1.5         | Body text, UI labels         |
+| Small   | 14px (0.875rem) | 400    | 1.5         | Secondary text, table cells  |
+| XSmall  | 12px (0.75rem)  | 400    | 1.5         | Labels, axis ticks, captions |
 
 **Never use text smaller than 12px** for accessibility reasons.
 
@@ -450,6 +459,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 ```
 
 **Precision Guidelines**:
+
 - AHI: 1 decimal place (e.g., "4.2")
 - Percentages: 1 decimal place (e.g., "85.3%")
 - Hours: 1 decimal place (e.g., "6.8 hr")
@@ -512,6 +522,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.1.1 Primary Button
 
 **Visual Specification**:
+
 - Background: `var(--color-primary)`
 - Text: White
 - Padding: `12px 24px` (vertical, horizontal)
@@ -522,6 +533,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Transition: `var(--transition-fast)` (150ms)
 
 **States**:
+
 - Default: Blue background, white text
 - Hover: `var(--color-primary-hover)` background
 - Active: `var(--color-primary-active)` background, scale(0.98)
@@ -529,6 +541,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Disabled: `var(--color-primary-disabled)` background, reduced opacity (0.5)
 
 **CSS Example**:
+
 ```css
 .button-primary {
   background-color: var(--color-primary);
@@ -567,6 +580,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.1.2 Secondary Button
 
 **Visual Specification**:
+
 - Background: Transparent
 - Border: `1px solid var(--color-border-default)`
 - Text: `var(--color-text-primary)`
@@ -574,6 +588,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Border radius: `var(--radius-md)` (6px)
 
 **States**:
+
 - Default: Transparent with border
 - Hover: `var(--color-surface-secondary)` background
 - Active: `var(--color-surface-tertiary)` background
@@ -583,12 +598,14 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.1.3 Ghost Button
 
 **Visual Specification**:
+
 - Background: Transparent
 - Border: None
 - Text: `var(--color-text-secondary)`
 - Padding: `8px 16px`
 
 **States**:
+
 - Default: Transparent, no border
 - Hover: `var(--color-surface-secondary)` background, `var(--color-text-primary)` text
 - Active: `var(--color-surface-tertiary)` background
@@ -597,12 +614,14 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.1.4 Icon Button
 
 **Visual Specification**:
+
 - Size: 40px × 40px (square)
 - Icon size: 20px (centered)
 - Background: Transparent
 - Border radius: `var(--radius-md)` (6px)
 
 **States**:
+
 - Default: Transparent
 - Hover: `var(--color-surface-secondary)` background
 - Active: `var(--color-surface-tertiary)` background
@@ -615,6 +634,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.2.1 Text Input
 
 **Visual Specification**:
+
 - Height: 44px (minimum touch target)
 - Padding: `12px 16px`
 - Border: `1px solid var(--color-border-default)`
@@ -624,6 +644,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Font family: `var(--font-family-sans)`
 
 **States**:
+
 - Default: Gray border
 - Hover: `var(--color-border-emphasis)` border
 - Focus: `var(--color-primary)` border + subtle shadow
@@ -631,6 +652,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Disabled: `var(--color-surface-secondary)` background, reduced opacity
 
 **With Label**:
+
 ```css
 .form-field {
   display: flex;
@@ -678,6 +700,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.2.2 Select / Dropdown
 
 **Visual Specification**:
+
 - Same dimensions as text input (44px height)
 - Chevron icon (right-aligned, 20px)
 - 8px padding before chevron icon
@@ -689,6 +712,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.2.3 Checkbox
 
 **Visual Specification**:
+
 - Size: 20px × 20px
 - Border: `2px solid var(--color-border-default)`
 - Border radius: `var(--radius-sm)` (4px)
@@ -696,6 +720,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Label: 16px font, 8px gap from checkbox
 
 **States**:
+
 - Unchecked: Empty box with border
 - Checked: Filled with checkmark
 - Focus: Focus ring around checkbox
@@ -706,6 +731,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.2.4 Radio Button
 
 **Visual Specification**:
+
 - Size: 20px × 20px (circular)
 - Border: `2px solid var(--color-border-default)`
 - Selected indicator: Filled circle (8px diameter) centered within border
@@ -715,6 +741,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.2.5 Toggle Switch
 
 **Visual Specification**:
+
 - Track: 44px width × 24px height, rounded pill
 - Knob: 20px diameter circle
 - Track color (off): `var(--color-border-default)`
@@ -725,6 +752,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 **Animation**: Knob slides across track in 200ms with ease-out timing.
 
 **States**:
+
 - Off: Gray track, knob left
 - On: Blue track, knob right
 - Focus: Focus ring around entire switch
@@ -733,6 +761,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.2.6 Date Picker
 
 **Visual Specification**:
+
 - Input field: Same as text input with calendar icon (right)
 - Calendar popup: Elevated card with shadow
 - Calendar grid: 7 columns (days), row height 40px
@@ -741,6 +770,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Range selection: Highlighted background between start/end
 
 **Keyboard Navigation**:
+
 - Arrow keys: Navigate dates
 - Enter: Select date
 - Escape: Close popup
@@ -751,6 +781,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.3.1 Standard Card
 
 **Visual Specification**:
+
 - Background: `var(--color-surface-elevated)`
 - Border: `1px solid var(--color-border-subtle)`
 - Border radius: `var(--radius-lg)` (8px)
@@ -758,6 +789,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Shadow: `var(--shadow-sm)`
 
 **Hover State** (if interactive):
+
 - Shadow: `var(--shadow-md)`
 - Border: `var(--color-border-default)`
 - Transform: translateY(-2px)
@@ -784,6 +816,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.3.2 KPI Card (Metric Card)
 
 **Visual Specification**:
+
 - Same base as standard card
 - Header: Metric name (14px, medium weight, secondary color)
 - Value: Large numeric display (30px, bold, primary color)
@@ -791,6 +824,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Sparkline: 60px height, bottom of card
 
 **Layout**:
+
 ```
 ┌─────────────────────────┐
 │ METRIC NAME             │  ← 14px, secondary
@@ -803,6 +837,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 ```
 
 **Color Coding**:
+
 - Improving trend: Green arrow, green text
 - Worsening trend: Red arrow, red text
 - No change: Gray dash
@@ -810,6 +845,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.3.3 Section Panel
 
 **Visual Specification**:
+
 - Background: `var(--color-surface-secondary)`
 - Border: None
 - Border radius: `var(--radius-lg)` (8px)
@@ -822,6 +858,7 @@ All numeric displays must use **tabular figures** for proper alignment:
 #### 4.4.1 Data Table
 
 **Visual Specification**:
+
 - Header row: `var(--color-surface-secondary)` background
 - Header text: 14px, medium weight, uppercase, `var(--color-text-secondary)`
 - Header height: 44px
@@ -831,11 +868,13 @@ All numeric displays must use **tabular figures** for proper alignment:
 - Font: Tabular figures for numeric columns
 
 **States**:
+
 - Hover: `var(--color-surface-tertiary)` background on row
 - Selected: `var(--color-primary)` background at 10% opacity
 - Focus: Focus ring on entire row
 
 **Sortable Headers**:
+
 - Chevron icon (16px) appears on hover
 - Active sort: Chevron visible, bolder text
 - Keyboard: Enter to toggle sort
@@ -893,11 +932,13 @@ All numeric columns must use monospace font with tabular figures:
 Use colored dots or badges for status:
 
 **Dot Indicator**:
+
 - Size: 8px diameter
 - Colors: Status color palette
 - Positioned: Left of text, 8px gap
 
 **Badge Indicator**:
+
 - Padding: `4px 8px`
 - Font size: 12px
 - Border radius: `var(--radius-full)`
@@ -909,12 +950,14 @@ Use colored dots or badges for status:
 #### 4.5.1 Tabs
 
 **Visual Specification**:
+
 - Tab height: 48px
 - Tab padding: `12px 24px`
 - Font size: 16px, medium weight
 - Border bottom: 2px (active), 0px (inactive)
 
 **States**:
+
 - Inactive: `var(--color-text-secondary)`, no border
 - Hover: `var(--color-text-primary)`, `var(--color-surface-secondary)` background
 - Active: `var(--color-text-primary)`, `var(--color-primary)` bottom border
@@ -951,6 +994,7 @@ Use colored dots or badges for status:
 #### 4.5.2 Breadcrumbs
 
 **Visual Specification**:
+
 - Font size: 14px
 - Color: `var(--color-text-secondary)`
 - Separator: "/" (8px margin on each side)
@@ -983,6 +1027,7 @@ Use colored dots or badges for status:
 #### 4.5.3 Pagination
 
 **Visual Specification**:
+
 - Button size: 40px × 40px
 - Border radius: `var(--radius-md)` (6px)
 - Gap between buttons: 4px
@@ -1028,6 +1073,7 @@ Use colored dots or badges for status:
 #### 4.6.1 Chart Container
 
 **Visual Specification**:
+
 - Background: `var(--color-surface-elevated)`
 - Border: `1px solid var(--color-border-subtle)`
 - Border radius: `var(--radius-lg)` (8px)
@@ -1038,6 +1084,7 @@ Use colored dots or badges for status:
 #### 4.6.2 Chart Axes
 
 **Visual Specification**:
+
 - Axis line: `1.5px solid var(--color-chart-axis)`
 - Tick marks: 1px, 6px length
 - Tick labels: 12px, `var(--color-text-secondary)`, monospace (for numbers)
@@ -1046,6 +1093,7 @@ Use colored dots or badges for status:
 #### 4.6.3 Gridlines
 
 **Visual Specification**:
+
 - Color: `var(--color-chart-grid)`
 - Stroke width: 1px
 - Style: Solid for major gridlines, dashed (4px dash, 4px gap) for minor gridlines
@@ -1054,6 +1102,7 @@ Use colored dots or badges for status:
 #### 4.6.4 Chart Lines
 
 **Visual Specification**:
+
 - Primary line: 2px stroke width
 - Secondary lines: 1.5px stroke width
 - Line cap: Round
@@ -1063,6 +1112,7 @@ Use colored dots or badges for status:
 #### 4.6.5 Chart Points
 
 **Visual Specification**:
+
 - Default size: 6px diameter
 - Hover size: 8px diameter
 - Stroke: 2px white border (for contrast)
@@ -1071,6 +1121,7 @@ Use colored dots or badges for status:
 #### 4.6.6 Chart Tooltips
 
 **Visual Specification**:
+
 - Background: `var(--color-chart-tooltip-bg)` (98% opacity)
 - Border: `1px solid var(--color-chart-tooltip-border)`
 - Border radius: `var(--radius-md)` (6px)
@@ -1080,6 +1131,7 @@ Use colored dots or badges for status:
 - Line height: 1.5
 
 **Content Structure**:
+
 ```
 Date/Time Label          ← Bold, 14px
 ────────────────────
@@ -1090,6 +1142,7 @@ Series 2: 38.2
 #### 4.6.7 Chart Legend
 
 **Visual Specification**:
+
 - Position: Bottom center or right side
 - Item spacing: 16px horizontal gap
 - Symbol: 16px line or 8px circle
@@ -1131,6 +1184,7 @@ Series 2: 38.2
 #### 4.6.8 Clinical Threshold Lines
 
 **Visual Specification**:
+
 - Stroke: 2px dashed line
 - Color: Corresponding status color (e.g., red for AHI = 30)
 - Dash pattern: 6px dash, 4px gap
@@ -1138,6 +1192,7 @@ Series 2: 38.2
 - Background: Semi-transparent pill behind label for readability
 
 **Example Thresholds**:
+
 - AHI = 5 (Mild): Yellow dashed line
 - AHI = 15 (Moderate): Orange dashed line
 - AHI = 30 (Severe): Red dashed line
@@ -1147,6 +1202,7 @@ Series 2: 38.2
 #### 4.7.1 Modal Overlay
 
 **Visual Specification**:
+
 - Background: `var(--color-surface-overlay)` (50% opacity black in light, 70% in dark)
 - Backdrop blur: 4px (if browser supports)
 - Z-index: `var(--z-modal)` (400)
@@ -1154,6 +1210,7 @@ Series 2: 38.2
 #### 4.7.2 Modal Container
 
 **Visual Specification**:
+
 - Background: `var(--color-surface-elevated)`
 - Border radius: `var(--radius-xl)` (12px)
 - Shadow: `var(--shadow-xl)`
@@ -1162,6 +1219,7 @@ Series 2: 38.2
 - Margin: 40px from viewport edges (mobile: 16px)
 
 **Structure**:
+
 ```
 ┌─────────────────────────────────────┐
 │ [✕]                          ← Close│  ← Header (32px padding)
@@ -1177,6 +1235,7 @@ Series 2: 38.2
 ```
 
 **Accessibility**:
+
 - Focus trap: Tab navigation stays within modal
 - Escape key: Close modal
 - Initial focus: First interactive element (or close button if read-only)
@@ -1228,6 +1287,7 @@ Series 2: 38.2
 #### 4.8.1 Info Button
 
 **Visual Specification**:
+
 - Icon: "ⓘ" or question mark
 - Size: 20px × 20px
 - Color: `var(--color-text-secondary)`
@@ -1237,6 +1297,7 @@ Series 2: 38.2
 #### 4.8.2 Tooltip
 
 **Visual Specification**:
+
 - Background: `var(--color-surface-elevated)` (98% opacity)
 - Border: `1px solid var(--color-border-default)`
 - Border radius: `var(--radius-md)` (6px)
@@ -1248,11 +1309,13 @@ Series 2: 38.2
 - Arrow: 8px triangle pointing to trigger element
 
 **Trigger**:
+
 - Hover: Show after 300ms delay
 - Focus: Show immediately
 - Click: Toggle (mobile behavior)
 
 **Content**:
+
 - Brief definition (1-2 sentences)
 - Link to detailed help: "Learn more →"
 
@@ -1292,43 +1355,45 @@ Series 2: 38.2
 
 Base unit: **4px**
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `--space-0` | 0px | Reset/none |
-| `--space-1` | 4px | Minimal gap, icon spacing |
-| `--space-2` | 8px | Tight spacing, form field gap |
-| `--space-3` | 12px | Default gap between related items |
-| `--space-4` | 16px | Base spacing unit |
-| `--space-5` | 20px | Medium spacing |
-| `--space-6` | 24px | Standard padding, section spacing |
-| `--space-8` | 32px | Large spacing, component isolation |
-| `--space-10` | 40px | Extra large spacing |
-| `--space-12` | 48px | Section breaks |
-| `--space-16` | 64px | Major section breaks |
-| `--space-20` | 80px | Page-level spacing |
-| `--space-24` | 96px | Maximum spacing |
+| Token        | Value | Usage                              |
+| ------------ | ----- | ---------------------------------- |
+| `--space-0`  | 0px   | Reset/none                         |
+| `--space-1`  | 4px   | Minimal gap, icon spacing          |
+| `--space-2`  | 8px   | Tight spacing, form field gap      |
+| `--space-3`  | 12px  | Default gap between related items  |
+| `--space-4`  | 16px  | Base spacing unit                  |
+| `--space-5`  | 20px  | Medium spacing                     |
+| `--space-6`  | 24px  | Standard padding, section spacing  |
+| `--space-8`  | 32px  | Large spacing, component isolation |
+| `--space-10` | 40px  | Extra large spacing                |
+| `--space-12` | 48px  | Section breaks                     |
+| `--space-16` | 64px  | Major section breaks               |
+| `--space-20` | 80px  | Page-level spacing                 |
+| `--space-24` | 96px  | Maximum spacing                    |
 
 ### 5.2 Semantic Aliases
 
 For readability and consistency:
 
 ```css
---space-xs: var(--space-1);   /* 4px */
---space-sm: var(--space-2);   /* 8px */
---space-md: var(--space-4);   /* 16px */
---space-lg: var(--space-6);   /* 24px */
---space-xl: var(--space-8);   /* 32px */
+--space-xs: var(--space-1); /* 4px */
+--space-sm: var(--space-2); /* 8px */
+--space-md: var(--space-4); /* 16px */
+--space-lg: var(--space-6); /* 24px */
+--space-xl: var(--space-8); /* 32px */
 --space-2xl: var(--space-12); /* 48px */
 ```
 
 ### 5.3 Usage Guidelines
 
 **Component Internal Padding**:
+
 - Small components (buttons, inputs): 12px vertical, 16px horizontal
 - Medium components (cards): 24px all sides
 - Large containers (modals): 32px all sides
 
 **Gaps Between Elements**:
+
 - Inline elements (icons, badges): 4px
 - Form fields: 8px vertical
 - Related items (list items): 12px
@@ -1336,6 +1401,7 @@ For readability and consistency:
 - Section spacing: 24px
 
 **Layout Margins**:
+
 - Content to viewport edge: 16px (mobile), 24px (tablet), 32px (desktop)
 - Between major sections: 48px
 
@@ -1348,11 +1414,13 @@ For readability and consistency:
 **Implementation**: Inline SVG icons (bundled with application, no external CDN).
 
 **Icon Set**: Choose one of:
+
 1. **Lucide** (MIT license, clean, consistent)
 2. **Heroicons** (MIT license, designed by Tailwind team)
 3. **Phosphor Icons** (MIT license, extensive set)
 
 **Rationale for Inline SVG**:
+
 - Zero network requests (privacy compliance)
 - Tree-shakeable (only bundle used icons)
 - Customizable colors via CSS
@@ -1360,19 +1428,20 @@ For readability and consistency:
 
 ### 6.2 Icon Sizing
 
-| Size | Dimension | Usage |
-|------|-----------|-------|
-| Extra Small | 16px | Inline with text, badges |
-| Small | 20px | Buttons, form inputs, table cells |
-| Medium | 24px | Navigation, standalone actions |
-| Large | 32px | Feature highlights, empty states |
-| Extra Large | 48px | Illustrations, placeholders |
+| Size        | Dimension | Usage                             |
+| ----------- | --------- | --------------------------------- |
+| Extra Small | 16px      | Inline with text, badges          |
+| Small       | 20px      | Buttons, form inputs, table cells |
+| Medium      | 24px      | Navigation, standalone actions    |
+| Large       | 32px      | Feature highlights, empty states  |
+| Extra Large | 48px      | Illustrations, placeholders       |
 
 ### 6.3 Icon Colors
 
 **Default**: `currentColor` (inherits text color)
 
 **Custom Colors**:
+
 - Status icons: Use status color palette
 - Interactive icons: `var(--color-text-secondary)` default, `var(--color-text-primary)` on hover
 - Disabled icons: `var(--color-text-disabled)`
@@ -1380,6 +1449,7 @@ For readability and consistency:
 ### 6.4 Usage Guidelines
 
 **Standard Icons**:
+
 - ⚙️ Settings
 - ❓ Help
 - 🌓 Theme toggle (sun/moon)
@@ -1394,6 +1464,7 @@ For readability and consistency:
 - 🔍 Search
 
 **Accessibility**:
+
 ```html
 <!-- Decorative icon (hidden from screen readers) -->
 <svg aria-hidden="true">...</svg>
@@ -1420,19 +1491,19 @@ For readability and consistency:
 
 ### 7.2 Transition Durations
 
-| Speed | Duration | Usage |
-|-------|----------|-------|
-| Instant | 0ms | Reduced motion preference |
-| Fast | 150ms | Color changes, small movements |
-| Base | 200ms | Standard transitions, hover states |
-| Slow | 300ms | Modal appearances, page transitions |
+| Speed   | Duration | Usage                               |
+| ------- | -------- | ----------------------------------- |
+| Instant | 0ms      | Reduced motion preference           |
+| Fast    | 150ms    | Color changes, small movements      |
+| Base    | 200ms    | Standard transitions, hover states  |
+| Slow    | 300ms    | Modal appearances, page transitions |
 
 ### 7.3 Easing Functions
 
-| Function | Curve | Usage |
-|----------|-------|-------|
-| Ease-out | `cubic-bezier(0, 0, 0.2, 1)` | Element entering viewport |
-| Ease-in | `cubic-bezier(0.4, 0, 1, 1)` | Element leaving viewport |
+| Function    | Curve                          | Usage                          |
+| ----------- | ------------------------------ | ------------------------------ |
+| Ease-out    | `cubic-bezier(0, 0, 0.2, 1)`   | Element entering viewport      |
+| Ease-in     | `cubic-bezier(0.4, 0, 1, 1)`   | Element leaving viewport       |
 | Ease-in-out | `cubic-bezier(0.4, 0, 0.2, 1)` | Element moving within viewport |
 
 ### 7.4 Common Animations
@@ -1513,11 +1584,13 @@ For readability and consistency:
 ### 7.6 Chart Animations
 
 **Initial Load**:
+
 - Lines: Draw from left to right (500ms, ease-out)
 - Bars: Grow from zero height (400ms, ease-out, staggered 50ms)
 - Points: Fade in with scale (300ms, ease-out, staggered 30ms)
 
 **Interactions**:
+
 - Hover: Enlarge point (150ms, ease-out)
 - Tooltip: Fade in (100ms)
 - Pan/Zoom: Smooth transition (200ms, ease-out)
@@ -1534,41 +1607,45 @@ For readability and consistency:
 
 Used for overlays and reference lines:
 
-| Threshold | Color (Light) | Color (Dark) | Usage |
-|-----------|---------------|--------------|-------|
-| Normal | `#16a34a` | `#22c55e` | Below clinical concern |
-| Mild | `#ca8a04` | `#eab308` | Mild severity (AHI 5-14.9) |
-| Moderate | `#ea580c` | `#f97316` | Moderate severity (AHI 15-29.9) |
-| Severe | `#dc2626` | `#ef4444` | Severe (AHI ≥30) |
+| Threshold | Color (Light) | Color (Dark) | Usage                           |
+| --------- | ------------- | ------------ | ------------------------------- |
+| Normal    | `#16a34a`     | `#22c55e`    | Below clinical concern          |
+| Mild      | `#ca8a04`     | `#eab308`    | Mild severity (AHI 5-14.9)      |
+| Moderate  | `#ea580c`     | `#f97316`    | Moderate severity (AHI 15-29.9) |
+| Severe    | `#dc2626`     | `#ef4444`    | Severe (AHI ≥30)                |
 
 #### 8.1.2 Multi-Series Diverging Palette
 
 For comparison charts (before/after, two conditions):
 
-| Series | Light | Dark |
-|--------|-------|------|
-| Negative/Before | `#dc2626` (Red) | `#f87171` |
-| Neutral | `#71717a` (Gray) | `#a1a1aa` |
-| Positive/After | `#16a34a` (Green) | `#4ade80` |
+| Series          | Light             | Dark      |
+| --------------- | ----------------- | --------- |
+| Negative/Before | `#dc2626` (Red)   | `#f87171` |
+| Neutral         | `#71717a` (Gray)  | `#a1a1aa` |
+| Positive/After  | `#16a34a` (Green) | `#4ade80` |
 
 ### 8.2 Chart Typography
 
 **Axis Labels**:
+
 - Font: Sans-serif, 14px, semibold
 - Color: `var(--color-text-primary)`
 - Position: Centered on axis
 
 **Tick Labels**:
+
 - Font: Monospace (for numeric), 12px
 - Color: `var(--color-text-secondary)`
 - Format: Minimal (e.g., "1K" not "1000")
 
 **Legend**:
+
 - Font: Sans-serif, 14px
 - Color: `var(--color-text-primary)`
 - Alignment: Center or left-align
 
 **Annotations**:
+
 - Font: Sans-serif, 12px
 - Background: Semi-transparent pill
 - Pointer: Line to data point
@@ -1576,29 +1653,33 @@ For comparison charts (before/after, two conditions):
 ### 8.3 Chart Accessibility
 
 **Text Alternatives**:
+
 - All charts must have a text-based table equivalent
 - Table should be accessible via button or link near chart
 - Screen readers announce chart type and description
 
 **Keyboard Navigation**:
+
 - Tab: Focus chart area
 - Arrow keys: Navigate between data points
 - Enter: Show tooltip for focused point
 - Escape: Exit chart focus
 
 **High Contrast Mode**:
+
 - Ensure all chart elements have sufficient contrast
 - Use patterns in addition to color for critical distinctions
 
 ### 8.4 Responsive Chart Behavior
 
-| Breakpoint | Behavior |
-|------------|----------|
-| Mobile (<640px) | Single column, full width charts; reduce data density (show fewer ticks); legend below chart; touch-optimized tooltips |
-| Tablet (640-1024px) | Side-by-side charts where appropriate (2 columns); moderate data density |
-| Desktop (>1024px) | Multi-panel layouts; full data density; hover tooltips; mouse zoom/pan |
+| Breakpoint          | Behavior                                                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Mobile (<640px)     | Single column, full width charts; reduce data density (show fewer ticks); legend below chart; touch-optimized tooltips |
+| Tablet (640-1024px) | Side-by-side charts where appropriate (2 columns); moderate data density                                               |
+| Desktop (>1024px)   | Multi-panel layouts; full data density; hover tooltips; mouse zoom/pan                                                 |
 
 **Mobile-Specific**:
+
 - Minimum touch target: 44px × 44px for interactive elements
 - Pinch-to-zoom on chart canvas
 - Swipe-to-pan horizontally
@@ -1632,29 +1713,29 @@ For comparison charts (before/after, two conditions):
 }
 ```
 
-| Breakpoint | Range | Layout | Columns |
-|------------|-------|--------|---------|
-| Mobile | 0 - 639px | Single column | 1 |
-| Tablet | 640 - 1023px | 2 column | 2-3 |
-| Desktop | 1024 - 1439px | Multi-column | 3-4 |
-| Wide | 1440px+ | Full width | 4+ |
+| Breakpoint | Range         | Layout        | Columns |
+| ---------- | ------------- | ------------- | ------- |
+| Mobile     | 0 - 639px     | Single column | 1       |
+| Tablet     | 640 - 1023px  | 2 column      | 2-3     |
+| Desktop    | 1024 - 1439px | Multi-column  | 3-4     |
+| Wide       | 1440px+       | Full width    | 4+      |
 
 ### 9.2 Responsive Typography
 
 ```css
 /* Base (mobile) */
 :root {
-  --font-size-display: 1.875rem;  /* 30px */
-  --font-size-h1: 1.5rem;         /* 24px */
-  --font-size-h2: 1.25rem;        /* 20px */
+  --font-size-display: 1.875rem; /* 30px */
+  --font-size-h1: 1.5rem; /* 24px */
+  --font-size-h2: 1.25rem; /* 20px */
 }
 
 /* Tablet and above */
 @media (min-width: 640px) {
   :root {
-    --font-size-display: 2.25rem;  /* 36px */
-    --font-size-h1: 1.875rem;      /* 30px */
-    --font-size-h2: 1.5rem;        /* 24px */
+    --font-size-display: 2.25rem; /* 36px */
+    --font-size-h1: 1.875rem; /* 30px */
+    --font-size-h2: 1.5rem; /* 24px */
   }
 }
 ```
@@ -1664,15 +1745,15 @@ For comparison charts (before/after, two conditions):
 ```css
 /* Mobile: tighter spacing */
 .section {
-  padding: var(--space-4);  /* 16px */
+  padding: var(--space-4); /* 16px */
   gap: var(--space-4);
 }
 
 /* Desktop: more breathing room */
 @media (min-width: 1024px) {
   .section {
-    padding: var(--space-8);  /* 32px */
-    gap: var(--space-6);      /* 24px */
+    padding: var(--space-8); /* 32px */
+    gap: var(--space-6); /* 24px */
   }
 }
 ```
@@ -1680,21 +1761,25 @@ For comparison charts (before/after, two conditions):
 ### 9.4 Component Adaptations
 
 **Navigation**:
+
 - Mobile: Hamburger menu, full-screen overlay
 - Tablet: Collapsed sidebar
 - Desktop: Persistent sidebar or top navigation
 
 **Data Tables**:
+
 - Mobile: Card view (stacked) or horizontal scroll with sticky first column
 - Tablet: Full table with some column hiding
 - Desktop: All columns visible
 
 **Charts**:
+
 - Mobile: Full-width, aspect ratio 16:9, reduced tick labels
 - Tablet: 2-up layout where appropriate, aspect ratio 4:3
 - Desktop: Multi-panel dashboards, aspect ratio flexible
 
 **Modals**:
+
 - Mobile: Full-screen (100% width/height minus safe areas)
 - Tablet: 80% width, centered with margin
 - Desktop: Fixed max-width (600px, 800px, 1200px based on content)
@@ -1759,8 +1844,8 @@ For each component, ensure:
 // Theme toggle function
 function setTheme(theme) {
   if (theme === 'system') {
-    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches 
-      ? 'dark' 
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
       : 'light';
     document.documentElement.setAttribute('data-theme', systemTheme);
   } else {
@@ -1784,6 +1869,7 @@ document.addEventListener('DOMContentLoaded', () => {
 ```
 
 **Theme Options**:
+
 1. Light
 2. Dark
 3. System (follows OS preference)
@@ -1791,6 +1877,7 @@ document.addEventListener('DOMContentLoaded', () => {
 ### 10.4 Accessibility Testing
 
 **Required Tests**:
+
 1. Keyboard navigation through entire interface
 2. Screen reader testing (VoiceOver, NVDA, JAWS)
 3. Color contrast verification (Chrome DevTools Lighthouse, axe DevTools)
@@ -1799,6 +1886,7 @@ document.addEventListener('DOMContentLoaded', () => {
 6. Mobile touch target size verification
 
 **Tools**:
+
 - Chrome Lighthouse
 - axe DevTools browser extension
 - WebAIM Contrast Checker
@@ -1808,6 +1896,7 @@ document.addEventListener('DOMContentLoaded', () => {
 ### 10.5 Browser Support
 
 **Target Support**:
+
 - Chrome/Edge: Last 2 versions
 - Firefox: Last 2 versions
 - Safari: Last 2 versions
@@ -1815,6 +1904,7 @@ document.addEventListener('DOMContentLoaded', () => {
 - Chrome Android: Last 2 versions
 
 **Progressive Enhancement**:
+
 - All core functionality works without JavaScript
 - Enhanced interactions (charts, signal viewer) require modern browser APIs
 - Graceful degradation for unsupported features
@@ -1822,15 +1912,18 @@ document.addEventListener('DOMContentLoaded', () => {
 ### 10.6 Performance Considerations
 
 **CSS Performance**:
+
 - Minimize specificity (flat hierarchy preferred)
 - Use CSS containment for heavy components (charts, tables)
 - Avoid expensive properties in animations (prefer `transform` and `opacity`)
 
 **Font Loading**:
+
 - System fonts load instantly (no FOUT/FOIT)
 - No web font downloads
 
 **Icon Loading**:
+
 - Inline SVGs for critical icons
 - Lazy-load non-critical icons
 - Sprite sheet for large icon sets
@@ -1842,6 +1935,7 @@ document.addEventListener('DOMContentLoaded', () => {
 ### 11.1 Versioning
 
 This design system follows semantic versioning:
+
 - **Major**: Breaking changes to tokens or component APIs
 - **Minor**: New components or non-breaking enhancements
 - **Patch**: Bug fixes, clarifications
@@ -1849,6 +1943,7 @@ This design system follows semantic versioning:
 ### 11.2 Change Process
 
 All changes to the design system must:
+
 1. Be documented in this specification
 2. Maintain backward compatibility (or provide migration guide)
 3. Be reviewed by UI Design agent
@@ -1858,6 +1953,7 @@ All changes to the design system must:
 ### 11.3 Component Library
 
 As components are implemented, maintain a **living style guide** (e.g., Storybook) showcasing:
+
 - All component variants
 - All component states
 - Usage examples
@@ -1871,29 +1967,29 @@ As components are implemented, maintain a **living style guide** (e.g., Storyboo
 
 ### Light Theme Contrast Ratios
 
-| Foreground | Background | Ratio | Pass AA | Pass AAA |
-|------------|------------|-------|---------|----------|
-| `#1a1a1a` (text-primary) | `#ffffff` (surface) | 16.1:1 | ✓ | ✓ |
-| `#666666` (text-secondary) | `#ffffff` (surface) | 5.74:1 | ✓ | ✓ |
-| `#999999` (text-muted) | `#ffffff` (surface) | 2.85:1 | ✗ | ✗ |
-| `#2563eb` (primary) | `#ffffff` (surface) | 4.56:1 | ✓ | ✗ |
-| `#16a34a` (status-normal) | `#ffffff` (surface) | 4.53:1 | ✓ | ✗ |
-| `#ca8a04` (status-mild) | `#ffffff` (surface) | 4.54:1 | ✓ | ✗ |
-| `#ea580c` (status-moderate) | `#ffffff` (surface) | 4.52:1 | ✓ | ✗ |
-| `#dc2626` (status-severe) | `#ffffff` (surface) | 5.62:1 | ✓ | ✓ |
+| Foreground                  | Background          | Ratio  | Pass AA | Pass AAA |
+| --------------------------- | ------------------- | ------ | ------- | -------- |
+| `#1a1a1a` (text-primary)    | `#ffffff` (surface) | 16.1:1 | ✓       | ✓        |
+| `#666666` (text-secondary)  | `#ffffff` (surface) | 5.74:1 | ✓       | ✓        |
+| `#999999` (text-muted)      | `#ffffff` (surface) | 2.85:1 | ✗       | ✗        |
+| `#2563eb` (primary)         | `#ffffff` (surface) | 4.56:1 | ✓       | ✗        |
+| `#16a34a` (status-normal)   | `#ffffff` (surface) | 4.53:1 | ✓       | ✗        |
+| `#ca8a04` (status-mild)     | `#ffffff` (surface) | 4.54:1 | ✓       | ✗        |
+| `#ea580c` (status-moderate) | `#ffffff` (surface) | 4.52:1 | ✓       | ✗        |
+| `#dc2626` (status-severe)   | `#ffffff` (surface) | 5.62:1 | ✓       | ✓        |
 
 ### Dark Theme Contrast Ratios
 
-| Foreground | Background | Ratio | Pass AA | Pass AAA |
-|------------|------------|-------|---------|----------|
-| `#fafafa` (text-primary) | `#0a0a0a` (surface) | 18.5:1 | ✓ | ✓ |
-| `#a3a3a3` (text-secondary) | `#0a0a0a` (surface) | 8.04:1 | ✓ | ✓ |
-| `#737373` (text-muted) | `#0a0a0a` (surface) | 4.68:1 | ✓ | ✗ |
-| `#60a5fa` (primary) | `#0a0a0a` (surface) | 8.37:1 | ✓ | ✓ |
-| `#22c55e` (status-normal) | `#0a0a0a` (surface) | 4.61:1 | ✓ | ✗ |
-| `#eab308` (status-mild) | `#0a0a0a` (surface) | 5.12:1 | ✓ | ✓ |
-| `#f97316` (status-moderate) | `#0a0a0a` (surface) | 5.23:1 | ✓ | ✓ |
-| `#ef4444` (status-severe) | `#0a0a0a` (surface) | 5.85:1 | ✓ | ✓ |
+| Foreground                  | Background          | Ratio  | Pass AA | Pass AAA |
+| --------------------------- | ------------------- | ------ | ------- | -------- |
+| `#fafafa` (text-primary)    | `#0a0a0a` (surface) | 18.5:1 | ✓       | ✓        |
+| `#a3a3a3` (text-secondary)  | `#0a0a0a` (surface) | 8.04:1 | ✓       | ✓        |
+| `#737373` (text-muted)      | `#0a0a0a` (surface) | 4.68:1 | ✓       | ✗        |
+| `#60a5fa` (primary)         | `#0a0a0a` (surface) | 8.37:1 | ✓       | ✓        |
+| `#22c55e` (status-normal)   | `#0a0a0a` (surface) | 4.61:1 | ✓       | ✗        |
+| `#eab308` (status-mild)     | `#0a0a0a` (surface) | 5.12:1 | ✓       | ✓        |
+| `#f97316` (status-moderate) | `#0a0a0a` (surface) | 5.23:1 | ✓       | ✓        |
+| `#ef4444` (status-severe)   | `#0a0a0a` (surface) | 5.85:1 | ✓       | ✓        |
 
 **Note**: `text-muted` is intentionally lower contrast (but still above 2.85:1 minimum for 18pt+ or bold 14pt+ text per WCAG AA). It is used only for non-essential secondary content.
 
@@ -1903,23 +1999,23 @@ As components are implemented, maintain a **living style guide** (e.g., Storyboo
 
 ### Core UI Icons (Required)
 
-| Icon | Name | Usage | Size |
-|------|------|-------|------|
-| ⚙️ | Settings | Settings button | 20-24px |
-| ❓ | Help | Help/info button | 20px |
-| ☀️🌙 | Sun/Moon | Theme toggle | 20px |
-| 📁 | Folder | Import/file operations | 24px |
-| 📊 | Chart | Analytics/charts | 24px |
-| ℹ️ | Info | Tooltip trigger | 16px |
-| ⚠️ | Warning | Warning states | 20px |
-| ✓ | Check | Success states, checkboxes | 16-20px |
-| ✕ | X | Close, clear, error | 16-20px |
-| ↑↓ | Arrows | Sort indicators | 16px |
-| ◄►▲▼ | Chevrons | Navigation, expand/collapse | 16-20px |
-| 🔍 | Search | Search functionality | 20px |
-| 👁️ | Eye | Show/hide | 20px |
-| 📥📤 | Download/Upload | Import/export | 20px |
-| ⋮⋯ | More | Overflow menu | 20px |
+| Icon | Name            | Usage                       | Size    |
+| ---- | --------------- | --------------------------- | ------- |
+| ⚙️   | Settings        | Settings button             | 20-24px |
+| ❓   | Help            | Help/info button            | 20px    |
+| ☀️🌙 | Sun/Moon        | Theme toggle                | 20px    |
+| 📁   | Folder          | Import/file operations      | 24px    |
+| 📊   | Chart           | Analytics/charts            | 24px    |
+| ℹ️   | Info            | Tooltip trigger             | 16px    |
+| ⚠️   | Warning         | Warning states              | 20px    |
+| ✓    | Check           | Success states, checkboxes  | 16-20px |
+| ✕    | X               | Close, clear, error         | 16-20px |
+| ↑↓   | Arrows          | Sort indicators             | 16px    |
+| ◄►▲▼ | Chevrons        | Navigation, expand/collapse | 16-20px |
+| 🔍   | Search          | Search functionality        | 20px    |
+| 👁️   | Eye             | Show/hide                   | 20px    |
+| 📥📤 | Download/Upload | Import/export               | 20px    |
+| ⋮⋯   | More            | Overflow menu               | 20px    |
 
 ---
 

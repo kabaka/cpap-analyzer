@@ -44,16 +44,16 @@ All errors in CPAP Analyzer are classified into five categories. This taxonomy i
 export enum ErrorCategory {
   /** User-triggered errors (invalid input, missing data selection) */
   USER = 'USER',
-  
+
   /** System-level errors (storage quota, browser compatibility, permissions) */
   SYSTEM = 'SYSTEM',
-  
+
   /** Data integrity errors (corrupted files, parse failures, schema violations) */
   DATA = 'DATA',
-  
+
   /** Network-related errors (plugin integrations, external API calls only) */
   NETWORK = 'NETWORK',
-  
+
   /** Web Worker errors (computation failures, timeouts, OOM) */
   WORKER = 'WORKER',
 }
@@ -64,13 +64,13 @@ export enum ErrorCategory {
 export enum ErrorSeverity {
   /** Fatal: Application cannot continue, requires reload or data re-import */
   FATAL = 'FATAL',
-  
+
   /** Error: Operation failed, but application is stable */
   ERROR = 'ERROR',
-  
+
   /** Warning: Operation completed with caveats */
   WARNING = 'WARNING',
-  
+
   /** Info: Non-critical issue that user should be aware of */
   INFO = 'INFO',
 }
@@ -81,32 +81,32 @@ export enum ErrorSeverity {
 export interface CPAPError {
   /** Unique error identifier for tracking and logging */
   id: string;
-  
+
   /** Error category */
   category: ErrorCategory;
-  
+
   /** Severity level */
   severity: ErrorSeverity;
-  
+
   /** Short error title (user-facing) */
   title: string;
-  
+
   /** Detailed error message (user-facing) */
   message: string;
-  
+
   /** Actionable recovery steps for the user */
   recoverySteps?: string[];
-  
+
   /** Technical details (for logging and debugging, not shown to users) */
   technicalDetails?: {
     originalError?: Error;
     stack?: string;
     context?: Record<string, unknown>;
   };
-  
+
   /** Timestamp when error occurred */
   timestamp: Date;
-  
+
   /** Optional retry handler */
   retry?: () => Promise<void>;
 }
@@ -119,23 +119,27 @@ export interface CPAPError {
 **Definition**: Errors caused by invalid user input or incomplete user actions.
 
 **Characteristics**:
+
 - Preventable with proper validation and UI constraints
 - Typically non-fatal (severity: WARNING or INFO)
 - Require user action to resolve
 
 **Examples**:
+
 - User attempts to run analysis without selecting sessions
 - User enters invalid date range (end date before start date)
 - User attempts to export data when no data is selected
 - User selects incompatible analysis parameters
 
 **Handling Strategy**:
+
 - Show inline validation messages before submission when possible
 - Use Toast notifications for post-submission validation
 - Highlight specific form fields or UI elements that need attention
 - Provide clear guidance on what valid input looks like
 
 **Code Example**:
+
 ```typescript
 // Example: Session selection validation
 function validateSessionSelection(selectedIds: string[]): CPAPError | null {
@@ -163,11 +167,13 @@ function validateSessionSelection(selectedIds: string[]): CPAPError | null {
 **Definition**: Errors originating from browser capabilities, storage limits, or system-level permissions.
 
 **Characteristics**:
+
 - Often fatal or require significant user intervention
 - May indicate browser incompatibility or resource exhaustion
 - Require system-level recovery (free storage, update browser, grant permissions)
 
 **Examples**:
+
 - IndexedDB quota exceeded
 - OPFS not available (browser compatibility)
 - `requestIdleCallback` not supported
@@ -175,12 +181,14 @@ function validateSessionSelection(selectedIds: string[]): CPAPError | null {
 - Service Worker registration failed
 
 **Handling Strategy**:
+
 - Feature detection BEFORE attempting operations
 - Graceful degradation to fallback implementations
 - Clear communication about browser requirements
 - Provide storage management UI when quota is approached
 
 **Code Example**:
+
 ```typescript
 // Example: Storage quota detection and handling
 async function checkStorageQuota(): Promise<CPAPError | null> {
@@ -190,7 +198,8 @@ async function checkStorageQuota(): Promise<CPAPError | null> {
       category: ErrorCategory.SYSTEM,
       severity: ErrorSeverity.ERROR,
       title: 'Storage API Not Supported',
-      message: 'Your browser does not support storage quota checking. Some features may not work correctly.',
+      message:
+        'Your browser does not support storage quota checking. Some features may not work correctly.',
       recoverySteps: [
         'Update to a modern browser (Chrome 84+, Firefox 87+, Safari 15.2+)',
         'Continue with limited functionality',
@@ -227,11 +236,13 @@ async function checkStorageQuota(): Promise<CPAPError | null> {
 **Definition**: Errors related to data integrity, file parsing, or schema validation.
 
 **Characteristics**:
+
 - Can be fatal to specific operations but not entire application
 - May indicate corrupted files, unsupported formats, or schema changes
 - Often recoverable through re-import or data cleanup
 
 **Examples**:
+
 - EDF file header checksum mismatch
 - Unrecognized ResMed data format version
 - Missing required EDF signals
@@ -239,12 +250,14 @@ async function checkStorageQuota(): Promise<CPAPError | null> {
 - Corrupted signal data (NaN values, out-of-range values)
 
 **Handling Strategy**:
+
 - Validate file structure before full parsing
 - Support partial imports (skip corrupted records)
 - Provide detailed validation reports
 - Offer data repair tools where appropriate
 
 **Code Example**:
+
 ```typescript
 // Example: EDF parsing error with partial recovery
 interface EDFParseResult {
@@ -258,7 +271,7 @@ async function parseEDFFile(file: File): Promise<EDFParseResult> {
   try {
     const buffer = await file.arrayBuffer();
     const header = parseEDFHeader(buffer);
-    
+
     // Validate header
     if (!header.isValid) {
       return {
@@ -289,7 +302,7 @@ async function parseEDFFile(file: File): Promise<EDFParseResult> {
 
     // Parse signals with error tolerance
     const signals = parseEDFSignals(buffer, header);
-    
+
     if (signals.errors.length > 0) {
       // Partial success: some signals parsed, some failed
       return {
@@ -312,8 +325,8 @@ async function parseEDFFile(file: File): Promise<EDFParseResult> {
           technicalDetails: {
             context: {
               fileName: file.name,
-              validSignals: signals.validSignals.map(s => s.label),
-              failedSignals: signals.errors.map(e => e.signalLabel),
+              validSignals: signals.validSignals.map((s) => s.label),
+              failedSignals: signals.errors.map((e) => e.signalLabel),
             },
           },
           timestamp: new Date(),
@@ -325,7 +338,6 @@ async function parseEDFFile(file: File): Promise<EDFParseResult> {
       success: true,
       data: { header, signals: signals.validSignals },
     };
-
   } catch (error) {
     return {
       success: false,
@@ -359,17 +371,20 @@ async function parseEDFFile(file: File): Promise<EDFParseResult> {
 **Definition**: Errors related to network requests (plugin integrations ONLY; core app is offline-first).
 
 **Characteristics**:
+
 - Only relevant for optional plugin features (Fitbit sync, LLM integrations)
 - Should never block core functionality
 - Often transient and retryable
 
 **Examples**:
+
 - Fitbit API authentication failure
 - LLM API timeout
 - CORS policy rejection
 - Network connectivity lost during plugin sync
 
 **Handling Strategy**:
+
 - Make all network features explicitly opt-in
 - Show clear "online required" indicators
 - Implement exponential backoff retry logic
@@ -377,6 +392,7 @@ async function parseEDFFile(file: File): Promise<EDFParseResult> {
 - Never fail core operations due to plugin network errors
 
 **Code Example**:
+
 ```typescript
 // Example: Plugin API call with retry logic
 interface NetworkRequestOptions {
@@ -387,14 +403,9 @@ interface NetworkRequestOptions {
 
 async function fetchWithRetry(
   url: string,
-  options: RequestInit & NetworkRequestOptions = {}
+  options: RequestInit & NetworkRequestOptions = {},
 ): Promise<Response> {
-  const {
-    maxRetries = 3,
-    retryDelayMs = 1000,
-    timeout = 10000,
-    ...fetchOptions
-  } = options;
+  const { maxRetries = 3, retryDelayMs = 1000, timeout = 10000, ...fetchOptions } = options;
 
   let lastError: Error | null = null;
 
@@ -415,15 +426,12 @@ async function fetchWithRetry(
       }
 
       return response;
-
     } catch (error) {
       lastError = error as Error;
 
       if (attempt < maxRetries) {
         // Exponential backoff
-        await new Promise(resolve =>
-          setTimeout(resolve, retryDelayMs * Math.pow(2, attempt))
-        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs * Math.pow(2, attempt)));
         continue;
       }
     }
@@ -460,11 +468,13 @@ async function fetchWithRetry(
 **Definition**: Errors occurring in Web Workers during heavy computation.
 
 **Characteristics**:
+
 - Can be fatal to specific analysis operations
 - May indicate timeout, OOM, or computation errors
 - Require main thread intervention for recovery
 
 **Examples**:
+
 - Worker script failed to load
 - Computation timeout exceeded
 - Worker out-of-memory (OOM)
@@ -472,6 +482,7 @@ async function fetchWithRetry(
 - Worker-main thread communication failure
 
 **Handling Strategy**:
+
 - Set reasonable timeout limits for all worker operations
 - Implement worker health checks
 - Provide progress updates for long-running operations
@@ -479,13 +490,14 @@ async function fetchWithRetry(
 - Restart workers on fatal errors
 
 **Code Example** (see section 4 for full implementation):
+
 ```typescript
 // Example: Worker timeout handling
 async function executeInWorker<T>(
   worker: Worker,
   operation: string,
   data: unknown,
-  timeoutMs: number = 30000
+  timeoutMs: number = 30000,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -586,6 +598,7 @@ CPAP Analyzer implements a three-tier error boundary strategy to maximize resili
 **Fallback UI**: Full-page error message with options to reload or clear application data.
 
 **Implementation**:
+
 ```typescript
 // src/components/error-boundaries/RootErrorBoundary.tsx
 import React, { Component, ReactNode } from 'react';
@@ -714,6 +727,7 @@ export class RootErrorBoundary extends Component<Props, State> {
 **Fallback UI**: Route-specific error message with navigation options to other routes.
 
 **Implementation**:
+
 ```typescript
 // src/components/error-boundaries/RouteErrorBoundary.tsx
 import React, { Component, ReactNode } from 'react';
@@ -792,6 +806,7 @@ export function RouteErrorBoundary(props: Omit<Props, 'navigate' | 'location'>) 
 ```
 
 **Usage in Routes**:
+
 ```typescript
 // src/App.tsx
 import { RouteErrorBoundary } from '@/components/error-boundaries/RouteErrorBoundary';
@@ -826,6 +841,7 @@ function App() {
 **Purpose**: Isolate errors to specific critical components, allowing the rest of the page to remain functional.
 
 **Target Components**:
+
 - `SignalViewer` (rendering 25–50 Hz time-series data)
 - `AnalysisPanel` (complex statistical computations)
 - `ImportWizard` (file parsing and validation)
@@ -834,6 +850,7 @@ function App() {
 **Fallback UI**: Inline error message within component bounds with retry button.
 
 **Implementation**:
+
 ```typescript
 // src/components/error-boundaries/ComponentErrorBoundary.tsx
 import React, { Component, ReactNode } from 'react';
@@ -914,6 +931,7 @@ export class ComponentErrorBoundary extends Component<Props, State> {
 ```
 
 **Usage Example**:
+
 ```typescript
 // src/pages/SessionDetail.tsx
 import { ComponentErrorBoundary } from '@/components/error-boundaries/ComponentErrorBoundary';
@@ -922,7 +940,7 @@ function SessionDetail() {
   return (
     <div className="session-detail">
       <SessionHeader />
-      
+
       <ComponentErrorBoundary
         componentName="SignalViewer"
         fallback={(error, retry) => (
@@ -1145,7 +1163,7 @@ export const useSessionStore = create<SessionStore>()(
 
     // Error actions
     setError: (error: CPAPError) => {
-      set(state => {
+      set((state) => {
         state.error = error;
         state.lastErrorTime = new Date();
         state.errorCount += 1;
@@ -1153,19 +1171,19 @@ export const useSessionStore = create<SessionStore>()(
     },
 
     clearError: () => {
-      set(state => {
+      set((state) => {
         state.error = null;
       });
     },
 
     incrementErrorCount: () => {
-      set(state => {
+      set((state) => {
         state.errorCount += 1;
       });
     },
 
     resetErrorCount: () => {
-      set(state => {
+      set((state) => {
         state.errorCount = 0;
       });
     },
@@ -1174,7 +1192,7 @@ export const useSessionStore = create<SessionStore>()(
     importSessions: async (files: File[]) => {
       const { setError, clearError, resetErrorCount } = get();
 
-      set(state => {
+      set((state) => {
         state.isImporting = true;
         state.isLoading = true;
         state.error = null;
@@ -1184,14 +1202,13 @@ export const useSessionStore = create<SessionStore>()(
         // Import logic here...
         const importedSessions = await importSessionFiles(files);
 
-        set(state => {
+        set((state) => {
           state.sessions.push(...importedSessions);
           state.isImporting = false;
           state.isLoading = false;
         });
 
         resetErrorCount();
-
       } catch (error) {
         const cpapError: CPAPError = {
           id: crypto.randomUUID(),
@@ -1208,7 +1225,7 @@ export const useSessionStore = create<SessionStore>()(
             originalError: error as Error,
             context: {
               fileCount: files.length,
-              fileNames: files.map(f => f.name),
+              fileNames: files.map((f) => f.name),
             },
           },
           timestamp: new Date(),
@@ -1217,7 +1234,7 @@ export const useSessionStore = create<SessionStore>()(
 
         setError(cpapError);
 
-        set(state => {
+        set((state) => {
           state.isImporting = false;
           state.isLoading = false;
         });
@@ -1225,7 +1242,7 @@ export const useSessionStore = create<SessionStore>()(
     },
 
     selectSession: (id: string) => {
-      set(state => {
+      set((state) => {
         if (!state.selectedSessionIds.includes(id)) {
           state.selectedSessionIds.push(id);
         }
@@ -1233,17 +1250,15 @@ export const useSessionStore = create<SessionStore>()(
     },
 
     deselectSession: (id: string) => {
-      set(state => {
-        state.selectedSessionIds = state.selectedSessionIds.filter(
-          sessionId => sessionId !== id
-        );
+      set((state) => {
+        state.selectedSessionIds = state.selectedSessionIds.filter((sessionId) => sessionId !== id);
       });
     },
 
     deleteSession: async (id: string) => {
       const { setError, clearError } = get();
 
-      set(state => {
+      set((state) => {
         state.isLoading = true;
         state.error = null;
       });
@@ -1251,14 +1266,13 @@ export const useSessionStore = create<SessionStore>()(
       try {
         await deleteSessionFromStorage(id);
 
-        set(state => {
-          state.sessions = state.sessions.filter(s => s.id !== id);
+        set((state) => {
+          state.sessions = state.sessions.filter((s) => s.id !== id);
           state.selectedSessionIds = state.selectedSessionIds.filter(
-            sessionId => sessionId !== id
+            (sessionId) => sessionId !== id,
           );
           state.isLoading = false;
         });
-
       } catch (error) {
         const cpapError: CPAPError = {
           id: crypto.randomUUID(),
@@ -1281,12 +1295,12 @@ export const useSessionStore = create<SessionStore>()(
 
         setError(cpapError);
 
-        set(state => {
+        set((state) => {
           state.isLoading = false;
         });
       }
     },
-  }))
+  })),
 );
 ```
 
@@ -1320,7 +1334,7 @@ export const useAnnotationStore = create<AnnotationStore>()(
       };
 
       // Optimistic update
-      set(state => {
+      set((state) => {
         state.annotations.push(optimisticAnnotation);
       });
 
@@ -1329,19 +1343,16 @@ export const useAnnotationStore = create<AnnotationStore>()(
         const persistedId = await saveAnnotationToStorage(annotation);
 
         // Update with real ID
-        set(state => {
-          const index = state.annotations.findIndex(a => a.id === optimisticId);
+        set((state) => {
+          const index = state.annotations.findIndex((a) => a.id === optimisticId);
           if (index !== -1) {
             state.annotations[index].id = persistedId;
           }
         });
-
       } catch (error) {
         // Rollback on error
-        set(state => {
-          state.annotations = state.annotations.filter(
-            a => a.id !== optimisticId
-          );
+        set((state) => {
+          state.annotations = state.annotations.filter((a) => a.id !== optimisticId);
         });
 
         // Show error to user
@@ -1351,10 +1362,7 @@ export const useAnnotationStore = create<AnnotationStore>()(
           severity: ErrorSeverity.ERROR,
           title: 'Save Failed',
           message: 'Your annotation could not be saved.',
-          recoverySteps: [
-            'Try adding the annotation again',
-            'Check available storage space',
-          ],
+          recoverySteps: ['Try adding the annotation again', 'Check available storage space'],
           technicalDetails: {
             originalError: error as Error,
           },
@@ -1365,7 +1373,7 @@ export const useAnnotationStore = create<AnnotationStore>()(
         useUIStore.getState().setError(cpapError);
       }
     },
-  }))
+  })),
 );
 ```
 
@@ -1395,7 +1403,7 @@ export const useUIStore = create<UIStore>((set) => ({
   toasts: [],
 
   addToast: (error: CPAPError) => {
-    set(state => ({
+    set((state) => ({
       toasts: [
         ...state.toasts,
         {
@@ -1409,9 +1417,9 @@ export const useUIStore = create<UIStore>((set) => ({
     // Auto-dismiss non-fatal errors after 10 seconds
     if (error.severity !== 'FATAL') {
       setTimeout(() => {
-        set(state => ({
-          toasts: state.toasts.map(toast =>
-            toast.id === error.id ? { ...toast, isVisible: false } : toast
+        set((state) => ({
+          toasts: state.toasts.map((toast) =>
+            toast.id === error.id ? { ...toast, isVisible: false } : toast,
           ),
         }));
       }, 10000);
@@ -1419,13 +1427,13 @@ export const useUIStore = create<UIStore>((set) => ({
   },
 
   dismissToast: (id: string) => {
-    set(state => ({
-      toasts: state.toasts.filter(toast => toast.id !== id),
+    set((state) => ({
+      toasts: state.toasts.filter((toast) => toast.id !== id),
     }));
   },
 
   setError: (error: CPAPError) => {
-    set(state => ({
+    set((state) => ({
       toasts: [
         ...state.toasts,
         {
@@ -1548,7 +1556,6 @@ self.onmessage = async (event: MessageEvent) => {
       success: true,
       result,
     });
-
   } catch (error) {
     // Convert to CPAPError if not already
     let cpapError: CPAPError;
@@ -1650,7 +1657,7 @@ export class WorkerManager {
   async execute<T>(
     operation: string,
     data: unknown,
-    timeout: number = this.defaultTimeout
+    timeout: number = this.defaultTimeout,
   ): Promise<T> {
     if (!this.isHealthy) {
       throw this.createWorkerUnavailableError(operation);
@@ -1789,7 +1796,8 @@ export class WorkerManager {
       category: ErrorCategory.WORKER,
       severity: ErrorSeverity.FATAL,
       title: 'Background Process Crashed',
-      message: 'A background computation process crashed unexpectedly. The worker has been restarted.',
+      message:
+        'A background computation process crashed unexpectedly. The worker has been restarted.',
       recoverySteps: [
         'Try the operation again',
         'If the issue persists, reload the application',
@@ -1830,10 +1838,7 @@ export class WorkerManager {
       severity: ErrorSeverity.ERROR,
       title: 'Worker Communication Failed',
       message: `Failed to send ${operation} request to background worker.`,
-      recoverySteps: [
-        'Try the operation again',
-        'Reload the application',
-      ],
+      recoverySteps: ['Try the operation again', 'Reload the application'],
       technicalDetails: {
         originalError: error,
       },
@@ -1864,7 +1869,7 @@ export async function executeWithRetry<T>(
   workerManager: WorkerManager,
   operation: string,
   data: unknown,
-  options: RetryOptions = {}
+  options: RetryOptions = {},
 ): Promise<T> {
   const {
     maxAttempts = 3,
@@ -1883,10 +1888,7 @@ export async function executeWithRetry<T>(
       lastError = error as CPAPError;
 
       // Don't retry fatal errors or user errors
-      if (
-        lastError.severity === ErrorSeverity.FATAL ||
-        lastError.category === 'USER'
-      ) {
+      if (lastError.severity === ErrorSeverity.FATAL || lastError.category === 'USER') {
         throw lastError;
       }
 
@@ -1896,7 +1898,7 @@ export async function executeWithRetry<T>(
       }
 
       // Wait before retry with exponential backoff
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
       delayMs = Math.min(delayMs * backoffMultiplier, maxDelayMs);
 
       console.log(`Retrying ${operation} (attempt ${attempt + 1}/${maxAttempts})...`);
@@ -2438,13 +2440,13 @@ export function validateBrowserCompatibility(): CPAPError[] {
 
 // Run at app startup
 const compatibilityErrors = validateBrowserCompatibility();
-if (compatibilityErrors.some(e => e.severity === 'FATAL')) {
+if (compatibilityErrors.some((e) => e.severity === 'FATAL')) {
   // Show compatibility error page
   renderCompatibilityErrorPage(compatibilityErrors);
 } else {
   // Start app, show warnings in UI if any
   startApp();
-  compatibilityErrors.forEach(error => {
+  compatibilityErrors.forEach((error) => {
     if (error.severity === 'WARNING' || error.severity === 'INFO') {
       useUIStore.getState().addToast(error);
     }
@@ -3037,6 +3039,7 @@ This architecture resolves **QA GAP-1 (BLOCKER)** by providing a unified, well-d
 **Document Status**: ✅ Complete — Addresses QA GAP-1 (BLOCKER)
 
 **Related Documents**:
+
 - [Frontend Architecture](./frontend-architecture.md)
 - [UX Design](./ux-design.md)
 - [DevOps Architecture](./devops-architecture.md)

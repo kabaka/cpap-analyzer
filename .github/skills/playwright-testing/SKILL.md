@@ -65,6 +65,7 @@ test.describe('Feature Name', () => {
 ## Test Fixtures
 
 Store test data files in `tests/fixtures/`:
+
 - Sample EDF files (minimal, valid data)
 - Expected output snapshots
 - Configuration presets
@@ -72,6 +73,7 @@ Store test data files in `tests/fixtures/`:
 ## CI Configuration
 
 Playwright in CI uses the `ci.yml` workflow which:
+
 - Installs browsers: `npx playwright install --with-deps`
 - Runs tests: `npx playwright test`
 - Uploads reports as artifacts on failure

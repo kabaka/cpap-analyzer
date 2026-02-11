@@ -21,11 +21,11 @@ YYYY.0M.MICRO
 
 ## Examples
 
-| Version | Meaning |
-| ---- | ---- |
-| `2026.02.0` | First release of February 2026 |
+| Version     | Meaning                         |
+| ----------- | ------------------------------- |
+| `2026.02.0` | First release of February 2026  |
 | `2026.02.1` | Second release of February 2026 |
-| `2026.03.0` | First release of March 2026 |
+| `2026.03.0` | First release of March 2026     |
 
 ## Release Steps
 
@@ -44,11 +44,14 @@ Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/):
 ## [YYYY.0M.MICRO] — YYYY-MM-DD
 
 ### Added
+
 - ...
 
 ### Changed
+
 - ...
 
 ### Fixed
+
 - ...
 ```

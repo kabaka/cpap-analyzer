@@ -26,7 +26,7 @@ Options evaluated:
 
 ## Decision
 
-Build custom components on **Radix UI primitives** (@radix-ui/react-* packages).
+Build custom components on **Radix UI primitives** (@radix-ui/react-\* packages).
 
 Radix primitives used:
 

@@ -19,6 +19,7 @@ This is not a simplified dashboard. It is a comprehensive analytical platform de
 ### Where CPAP Analyzer Stands
 
 CPAP Analyzer combines the best qualities of all three:
+
 - **Direct machine data access** like OSCAR (reads EDF from the SD card — no intermediate tools needed)
 - **Rigorous statistical analysis** like OSCAR Export Analyzer (every method it implements, and more)
 - **Modern web experience** that surpasses all three (responsive, accessible, themeable, extensible)
@@ -51,6 +52,7 @@ The secondary audience is patients without a formal quantitative background who 
 ### Non-Audience
 
 CPAP Analyzer is not designed for:
+
 - **Sleep physicians** as a clinical tool (though patients may share its output with their doctors)
 - **Compliance monitoring** by insurance companies or DME providers
 - **Real-time therapy adjustment** — it analyzes historical data, not live streams
@@ -88,6 +90,7 @@ CPAP therapy data is protected health information (PHI). While CPAP Analyzer is 
 ### The Challenge
 
 A typical CPAP user generates:
+
 - **Per night**: ~8 hours at 25 Hz across 4-6 channels = ~4–7 million samples
 - **Per year**: ~365 nights = 1.5–2.5 billion samples
 - **Lifetime**: A CPAP user may be on therapy for decades
@@ -96,17 +99,17 @@ The application must handle years of this data with responsive interaction — n
 
 ### Specific Targets
 
-| Operation | Target |
-| ---- | ---- |
-| Initial app load (no data) | < 2 seconds |
-| SD card import (3 months of data) | < 30 seconds |
-| SD card import (1 year of data) | < 60 seconds |
-| Dashboard render (any date range) | < 500 ms |
-| Summary data query (any date range) | < 100 ms |
-| Signal data access (any time range) | < 200 ms |
-| Chart zoom/pan interaction | < 16 ms (60 fps) |
-| Switch between views | < 200 ms |
-| Report generation | < 5 seconds |
+| Operation                           | Target           |
+| ----------------------------------- | ---------------- |
+| Initial app load (no data)          | < 2 seconds      |
+| SD card import (3 months of data)   | < 30 seconds     |
+| SD card import (1 year of data)     | < 60 seconds     |
+| Dashboard render (any date range)   | < 500 ms         |
+| Summary data query (any date range) | < 100 ms         |
+| Signal data access (any time range) | < 200 ms         |
+| Chart zoom/pan interaction          | < 16 ms (60 fps) |
+| Switch between views                | < 200 ms         |
+| Report generation                   | < 5 seconds      |
 
 ### Implementation Strategies
 
@@ -155,7 +158,9 @@ The application must handle years of this data with responsive interaction — n
 Extensibility is a core architectural goal. The five plugin categories are:
 
 ### Machine Plugins
+
 Each machine manufacturer has different data formats, channel definitions, event classifications, and firmware-specific quirks. Machine plugins encapsulate all manufacturer-specific knowledge:
+
 - Data file discovery and format detection
 - EDF parsing and channel mapping
 - Event classification rules
@@ -163,28 +168,36 @@ Each machine manufacturer has different data formats, channel definitions, event
 - Machine metadata extraction
 
 ### Analysis Plugins
+
 Each statistical analysis method is a self-contained plugin:
+
 - Input: a dataset (time series, events, metadata)
 - Output: structured results (numbers, arrays, tables)
 - Configuration: user-adjustable parameters
 - Documentation: explanation of the method, assumptions, and interpretation
 
 ### Visualization Plugins
+
 Each chart or visualization type:
+
 - Renders from structured analysis results
 - Supports standard interactions (zoom, pan, tooltip)
 - Respects the theme system
 - Provides text alternatives for accessibility
 
 ### Integration Plugins
+
 External service connections:
+
 - OAuth flow management
 - API communication
 - Data transformation and normalization
 - Correlation with therapy data
 
 ### Export Plugins
+
 Data output formats:
+
 - PDF reports (configurable content and layout)
 - CSV/TSV data export
 - JSON session export (with optional encryption)
@@ -195,6 +208,7 @@ Data output formats:
 LLM features are optional and additive. The application must be fully functional without them.
 
 ### Potential Capabilities
+
 - **Night summaries**: "Last night your AHI was 3.2, below your 30-day average of 4.1. You had 2 obstructive events in the first hour, which is consistent with your typical pattern."
 - **Trend explanations**: "Over the past 3 months, your central apnea index has increased by 40%. This may warrant discussion with your sleep physician."
 - **Chart annotations**: "This chart shows your AHI has dropped significantly since your pressure was adjusted on March 15."

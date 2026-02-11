@@ -72,7 +72,7 @@ This document defines the complete DevOps architecture for CPAP Analyzer, establ
 - **ES Module Output**: Modern ESM bundles for fast parsing in browsers
 - **Code Splitting**: Automatic route-based splitting with React Router integration
 - **Tree Shaking**: Eliminate unused code from production bundles
-- **Asset Optimization**: 
+- **Asset Optimization**:
   - Image compression (inline < 4KB, external otherwise)
   - CSS extraction and minification
   - Font subsetting for optimal loading
@@ -80,11 +80,11 @@ This document defines the complete DevOps architecture for CPAP Analyzer, establ
 
 **Bundle Size Targets** (from [performance-strategy.md](performance-strategy.md)):
 
-| Bundle | Target (gzipped) | Threshold (gzipped) |
-|--------|------------------|---------------------|
-| Initial (main) | < 150 KB | < 250 KB |
-| Total JS (all chunks) | < 500 KB | < 1 MB |
-| Total assets (CSS, fonts, images) | < 100 KB | < 200 KB |
+| Bundle                            | Target (gzipped) | Threshold (gzipped) |
+| --------------------------------- | ---------------- | ------------------- |
+| Initial (main)                    | < 150 KB         | < 250 KB            |
+| Total JS (all chunks)             | < 500 KB         | < 1 MB              |
+| Total assets (CSS, fonts, images) | < 100 KB         | < 200 KB            |
 
 ### 2.2 Build Workflow
 
@@ -130,21 +130,25 @@ build:
 ### 2.3 Asset Optimization
 
 **JavaScript**:
+
 - Minification: Terser with `compress` and `mangle` enabled
 - Target: ES2020 (95%+ browser support, modern syntax for smaller output)
 - Polyfills: None (target modern browsers only per [deployment-architecture.md](deployment-architecture.md))
 
 **CSS**:
+
 - Minification: cssnano with default preset
 - Autoprefixer: Target last 2 versions of major browsers
 - CSS Modules: Scoped class names with shortened hashes in production
 
 **Images**:
+
 - SVGs: Inlined and optimized with SVGO
 - PNGs/JPGs: Optimized with sharp (if any exist)
 - Inline threshold: 4 KB (base64 data URIs for tiny assets)
 
 **Fonts**:
+
 - Subset to Latin character ranges
 - Preload critical font files with `<link rel="preload">`
 - Self-hosted (no CDN dependencies per privacy architecture)
@@ -188,15 +192,15 @@ npm install --save-dev @size-limit/preset-app @size-limit/file rollup-plugin-vis
 
 Bundle size targets are derived from performance budgets in [performance-strategy.md](performance-strategy.md) and calibrated for **Slow 3G network conditions** (400 Kbps, 400ms RTT) to ensure accessibility for users with limited connectivity.
 
-| Bundle                       | Target (gzipped) | Threshold (Fail CI) | Rationale                                              |
-| ---------------------------- | ---------------- | ------------------- | ------------------------------------------------------ |
-| **Initial (main entry)** | ≤150 KB | ≤200 KB | LCP budget: 2.5s @ 400 Kbps = 125 KB max transfer |
-| **Route bundle (per route)** | ≤75 KB | ≤100 KB | Route transitions < 1s; parallel download with main |
-| **Worker bundle (ResMed parser)** | ≤50 KB | ≤75 KB | Background thread; non-blocking but monitored |
-| **Vendor chunks (React + deps)** | ≤120 KB | ≤150 KB | Shared chunk cached across routes |
-| **Total application** | ≤500 KB | ≤1 MB | Full app download budget (all routes + vendor) |
-| **CSS (total)** | ≤30 KB | ≤50 KB | Render-blocking; must be minimal |
-| **Fonts** | ≤40 KB | ≤60 KB | Subsetted Latin only; preloaded |
+| Bundle                            | Target (gzipped) | Threshold (Fail CI) | Rationale                                           |
+| --------------------------------- | ---------------- | ------------------- | --------------------------------------------------- |
+| **Initial (main entry)**          | ≤150 KB          | ≤200 KB             | LCP budget: 2.5s @ 400 Kbps = 125 KB max transfer   |
+| **Route bundle (per route)**      | ≤75 KB           | ≤100 KB             | Route transitions < 1s; parallel download with main |
+| **Worker bundle (ResMed parser)** | ≤50 KB           | ≤75 KB              | Background thread; non-blocking but monitored       |
+| **Vendor chunks (React + deps)**  | ≤120 KB          | ≤150 KB             | Shared chunk cached across routes                   |
+| **Total application**             | ≤500 KB          | ≤1 MB               | Full app download budget (all routes + vendor)      |
+| **CSS (total)**                   | ≤30 KB           | ≤50 KB              | Render-blocking; must be minimal                    |
+| **Fonts**                         | ≤40 KB           | ≤60 KB              | Subsetted Latin only; preloaded                     |
 
 **Network Assumptions**:
 
@@ -311,38 +315,38 @@ build:
   needs: [audit, lint, test-unit, test-e2e]
   steps:
     - uses: actions/checkout@v4
-    
+
     - uses: actions/setup-node@v4
       with:
         node-version: 22
         cache: npm
-    
+
     - run: npm ci
-    
+
     - run: npm run build
-    
+
     # Bundle Size Enforcement
     - name: Check Bundle Size
       run: npm run size
-    
+
     # Bundle Size PR Comment (PRs only)
     - uses: andresz1/size-limit-action@v1
       if: github.event_name == 'pull_request'
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
-        skip_step: build  # We already built above
-    
+        skip_step: build # We already built above
+
     # Visual Bundle Analysis
     - name: Generate Bundle Visualization
       run: npm run build:analyze
-    
+
     - name: Upload Bundle Report
       uses: actions/upload-artifact@v4
       with:
         name: bundle-report
         path: bundle-report.html
         retention-days: 30
-    
+
     # Upload build artifacts for deployment
     - name: Upload Build Artifacts
       uses: actions/upload-pages-artifact@v3
@@ -389,14 +393,14 @@ export default defineConfig({
       plugins: [
         visualizer({
           filename: 'bundle-report.html',
-          open: false,  // Don't auto-open in CI
+          open: false, // Don't auto-open in CI
           gzipSize: true,
           brotliSize: true,
-          template: 'treemap'  // Options: treemap, sunburst, network
-        })
-      ]
-    }
-  }
+          template: 'treemap', // Options: treemap, sunburst, network
+        }),
+      ],
+    },
+  },
 });
 ```
 
@@ -536,11 +540,11 @@ All size limits passed ✅
 
 **Alert Thresholds**:
 
-| Status     | Condition                   | Action                     |
-| ---------- | --------------------------- | -------------------------- |
-| ✅ **Pass** | All bundles ≤ 80% of limit | No alert, CI passes |
-| ⚠️ **Warning** | Any bundle 80-100% of limit | PR comment warns, CI passes |
-| ❌ **Fail** | Any bundle > 100% of limit | PR comment fails, CI blocked |
+| Status         | Condition                   | Action                       |
+| -------------- | --------------------------- | ---------------------------- |
+| ✅ **Pass**    | All bundles ≤ 80% of limit  | No alert, CI passes          |
+| ⚠️ **Warning** | Any bundle 80-100% of limit | PR comment warns, CI passes  |
+| ❌ **Fail**    | Any bundle > 100% of limit  | PR comment fails, CI blocked |
 
 **PR Comment Format**:
 
@@ -585,6 +589,7 @@ To request a size limit increase, see Section 2.4.12.
 **PR Labeling** (GitHub Actions):
 
 Add to CI workflow:
+
 ```yaml
 - name: Label Large Bundle Changes
   if: github.event_name == 'pull_request'
@@ -594,7 +599,7 @@ Add to CI workflow:
       const fs = require('fs');
       const report = JSON.parse(fs.readFileSync('size-limit-report.json'));
       const anyIncreased = report.some(r => r.size > r.limit * 0.9);
-      
+
       if (anyIncreased) {
         github.rest.issues.addLabels({
           owner: context.repo.owner,
@@ -664,12 +669,12 @@ const result = debounce(fn, 300);
 
 Common bloated dependencies and lightweight alternatives:
 
-| Heavy Dependency     | Size (gzipped) | Lightweight Alternative     | Size (gzipped) | Savings |
-| -------------------- | -------------- | --------------------------- | -------------- | ------- |
-| `moment` | 71 KB | `day.js` | 7 KB | 64 KB |
-| `axios` | 13 KB | `fetch` (native) | 0 KB | 13 KB |
-| `lodash` (full) | 72 KB | `lodash-es` (tree-shakeable) | ~5-20 KB | 50+ KB |
-| `chart.js`           | 88 KB          | `recharts` (already used)   | 45 KB          | N/A     |
+| Heavy Dependency | Size (gzipped) | Lightweight Alternative      | Size (gzipped) | Savings |
+| ---------------- | -------------- | ---------------------------- | -------------- | ------- |
+| `moment`         | 71 KB          | `day.js`                     | 7 KB           | 64 KB   |
+| `axios`          | 13 KB          | `fetch` (native)             | 0 KB           | 13 KB   |
+| `lodash` (full)  | 72 KB          | `lodash-es` (tree-shakeable) | ~5-20 KB       | 50+ KB  |
+| `chart.js`       | 88 KB          | `recharts` (already used)    | 45 KB          | N/A     |
 
 ##### Strategy 4: Code Splitting by Route
 
@@ -696,11 +701,11 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom', '@radix-ui/react-*'],
           analysis: ['./src/features/analysis'],
-          dashboard: ['./src/features/dashboard']
-        }
-      }
-    }
-  }
+          dashboard: ['./src/features/dashboard'],
+        },
+      },
+    },
+  },
 });
 ```
 
@@ -716,6 +721,7 @@ npx depcheck
 ```
 
 Remove unused packages:
+
 ```bash
 npm uninstall styled-components framer-motion
 ```
@@ -747,13 +753,13 @@ Look for:
 
 **Metrics to Track**:
 
-| Split Point     | Target Size  | Monitor For                                 |
-| --------------- | ------------ | ------------------------------------------- |
-| Main entry | ≤150 KB | Growing vendor imports, app shell bloat |
-| Dashboard route | ≤75 KB | Heavy chart libraries, data processing logic |
-| Analysis route | ≤75 KB | Statistical libraries, visualization code |
-| Settings route | ≤50 KB | Minimal; mostly form components |
-| Worker bundles | ≤50 KB each | Parser libraries, compression codecs |
+| Split Point     | Target Size | Monitor For                                  |
+| --------------- | ----------- | -------------------------------------------- |
+| Main entry      | ≤150 KB     | Growing vendor imports, app shell bloat      |
+| Dashboard route | ≤75 KB      | Heavy chart libraries, data processing logic |
+| Analysis route  | ≤75 KB      | Statistical libraries, visualization code    |
+| Settings route  | ≤50 KB      | Minimal; mostly form components              |
+| Worker bundles  | ≤50 KB each | Parser libraries, compression codecs         |
 
 **Monitoring Process**:
 
@@ -796,12 +802,12 @@ Bundle size targets are **derived from** performance budgets in [performance-str
 
 **Performance Budget → Bundle Size Calculation**:
 
-| Performance Metric                 | Target  | Derives Bundle Size Limit                      |
-| ---------------------------------- | ------- | ---------------------------------------------- |
-| **LCP (Largest Contentful Paint)** | ≤2.5s | Initial bundle ≤200 KB (download + parse ≤2s) |
-| **FID (First Input Delay)** | ≤100ms | Main thread not blocked by parse/execute |
-| **CLS (Cumulative Layout Shift)** | ≤0.1 | CSS must load before render (≤50 KB) |
-| **TTI (Time to Interactive)** | ≤3.5s | Total JS ≤1 MB (includes all route chunks) |
+| Performance Metric                 | Target | Derives Bundle Size Limit                     |
+| ---------------------------------- | ------ | --------------------------------------------- |
+| **LCP (Largest Contentful Paint)** | ≤2.5s  | Initial bundle ≤200 KB (download + parse ≤2s) |
+| **FID (First Input Delay)**        | ≤100ms | Main thread not blocked by parse/execute      |
+| **CLS (Cumulative Layout Shift)**  | ≤0.1   | CSS must load before render (≤50 KB)          |
+| **TTI (Time to Interactive)**      | ≤3.5s  | Total JS ≤1 MB (includes all route chunks)    |
 
 **Network Speed Baseline**: **Slow 3G** (400 Kbps downlink, 400ms RTT)
 
@@ -814,14 +820,15 @@ Bundle size targets are **derived from** performance budgets in [performance-str
 
 **Parse/Execute Time Assumptions** (Low-End Mobile):
 
-| Operation                | Time per 100 KB | Impact on LCP                  |
-| ------------------------ | --------------- | ------------------------------ |
-| Download @ 400 Kbps | 2000ms | Direct |
-| Parse JS (V8 engine) | 50ms | Direct (main thread blocked) |
-| Execute JS (hydration) | 100ms | Direct (React render) |
-| First Paint | 200ms | Direct (browser layout) |
+| Operation              | Time per 100 KB | Impact on LCP                |
+| ---------------------- | --------------- | ---------------------------- |
+| Download @ 400 Kbps    | 2000ms          | Direct                       |
+| Parse JS (V8 engine)   | 50ms            | Direct (main thread blocked) |
+| Execute JS (hydration) | 100ms           | Direct (React render)        |
+| First Paint            | 200ms           | Direct (browser layout)      |
 
 **Example Budget Breakdown** (Main Entry Bundle):
+
 ```
 LCP Target: 2.5s
 
@@ -854,7 +861,7 @@ Total: 2500ms ✅ (within LCP target)
         "path": "dist/assets/index-*.js",
         "limit": "200 KB",
         "gzip": true,
-        "running": true  // Enable time-based checks
+        "running": true // Enable time-based checks
       }
     ]
   }
@@ -864,7 +871,7 @@ Total: 2500ms ✅ (within LCP target)
 
   ```bash
   npm run size:why
-  
+
   # Output:
   # Main entry (initial load)
   #   Size: 187 KB (limit: 200 KB) ✅
@@ -912,7 +919,7 @@ Invalid reasons:
    [
      {
        "name": "Main entry (initial load)",
-       "limit": "250 KB",  // Increased from 200 KB (see ADR-0016)
+       "limit": "250 KB", // Increased from 200 KB (see ADR-0016)
        "gzip": true
      }
    ]
@@ -953,15 +960,16 @@ If legitimate feature requires size increase but ADR not yet written:
 
 **Artifacts Produced**:
 
-| Artifact             | Location             | Retention            | Purpose                            |
-| -------------------- | -------------------- | -------------------- | ---------------------------------- |
-| Production bundle | `dist/` | Permanent (deployed) | GitHub Pages deployment |
-| Bundle visualization | `stats.html` | 30 days | Size regression analysis |
-| Playwright report | `playwright-report/` | 14 days | E2E test debugging |
-| Test coverage | `coverage/` | 7 days | Coverage trend analysis |
-| Source maps | `dist/**/*.map` | Not uploaded | Production debugging (local only) |
+| Artifact             | Location             | Retention            | Purpose                           |
+| -------------------- | -------------------- | -------------------- | --------------------------------- |
+| Production bundle    | `dist/`              | Permanent (deployed) | GitHub Pages deployment           |
+| Bundle visualization | `stats.html`         | 30 days              | Size regression analysis          |
+| Playwright report    | `playwright-report/` | 14 days              | E2E test debugging                |
+| Test coverage        | `coverage/`          | 7 days               | Coverage trend analysis           |
+| Source maps          | `dist/**/*.map`      | Not uploaded         | Production debugging (local only) |
 
 **Retention Strategy**:
+
 - Only the latest successful build artifacts are deployed to GitHub Pages
 - Historical artifacts (reports, coverage) are kept for debugging but automatically pruned
 - Source maps are excluded from deployment for security (contain original source code)
@@ -1261,16 +1269,16 @@ Pre-commit hooks run automatically on `git commit`, but checks can also be run m
 
 **Individual Check Commands**:
 
-| Check            | Command                  | Purpose                                           |
-| ---------------- | ------------------------ | ------------------------------------------------- |
+| Check              | Command                | Purpose                                        |
+| ------------------ | ---------------------- | ---------------------------------------------- |
 | Formatting (check) | `npm run format:check` | Verify code formatting without modifying files |
-| Formatting (fix) | `npm run format` | Auto-format all files |
-| Linting (check) | `npm run lint` | Check for linting errors |
-| Linting (fix) | `npm run lint:fix` | Auto-fix fixable linting issues |
-| Type checking | `npm run type-check` | Run TypeScript compiler without emitting files |
-| Unit tests | `npm run test` | Run full test suite |
-| Unit tests (watch) | `npm run test:watch` | Run tests in watch mode (interactive) |
-| **All checks** | `npm run pre-commit` | Run all pre-commit checks manually |
+| Formatting (fix)   | `npm run format`       | Auto-format all files                          |
+| Linting (check)    | `npm run lint`         | Check for linting errors                       |
+| Linting (fix)      | `npm run lint:fix`     | Auto-fix fixable linting issues                |
+| Type checking      | `npm run type-check`   | Run TypeScript compiler without emitting files |
+| Unit tests         | `npm run test`         | Run full test suite                            |
+| Unit tests (watch) | `npm run test:watch`   | Run tests in watch mode (interactive)          |
+| **All checks**     | `npm run pre-commit`   | Run all pre-commit checks manually             |
 
 **Use Cases**:
 
@@ -1287,6 +1295,7 @@ Pre-commit hooks run automatically on `git commit`, but checks can also be run m
 **Default Policy**: Pre-commit hooks **should not be bypassed** under normal circumstances. The pre-commit guarantee ("if pre-commit passes, CI is green") only holds if hooks are not bypassed.
 
 **Bypass Command**:
+
 ```bash
 git commit --no-verify
 # or short form:
@@ -1341,14 +1350,8 @@ git commit -n
 
 ```json
 {
-  "*.{ts,tsx,js,jsx}": [
-    "prettier --write",
-    "eslint --fix",
-    "tsc-files --noEmit"
-  ],
-  "*.{json,md,css}": [
-    "prettier --write"
-  ]
+  "*.{ts,tsx,js,jsx}": ["prettier --write", "eslint --fix", "tsc-files --noEmit"],
+  "*.{json,md,css}": ["prettier --write"]
 }
 ```
 
@@ -1363,6 +1366,7 @@ git commit -n
 **Status**: ENABLED via `tsconfig.json`
 
 **Configuration**:
+
 ```json
 {
   "compilerOptions": {
@@ -1391,6 +1395,7 @@ git commit -n
 ##### Prettier Failure
 
 **Symptom**:
+
 ```
 Checking formatting...
 [warn] src/components/Dashboard.tsx
@@ -1400,6 +1405,7 @@ Checking formatting...
 **Cause**: Code formatting doesn't match `.prettierrc` configuration
 
 **Fix**:
+
 ```bash
 npm run format
 git add .
@@ -1407,6 +1413,7 @@ git commit
 ```
 
 **Prevention**: Configure your code editor to run Prettier on save:
+
 - **VS Code**: Install `esbenp.prettier-vscode`, enable "Format on Save"
 - **WebStorm**: Enable "Prettier" in Settings > Languages & Frameworks > JavaScript > Prettier
 
@@ -1415,6 +1422,7 @@ git commit
 ##### ESLint Failure
 
 **Symptom**:
+
 ```
 /Users/dev/cpap-analyzer/src/utils/helpers.ts
   12:7  error  'result' is assigned a value but never used  @typescript-eslint/no-unused-vars
@@ -1423,6 +1431,7 @@ git commit
 **Cause**: Code violates ESLint rules
 
 **Fix (Auto-fixable)**:
+
 ```bash
 npm run lint:fix
 git add .
@@ -1430,11 +1439,13 @@ git commit
 ```
 
 **Fix (Manual)**:
+
 1. Open the file indicated in the error (`src/utils/helpers.ts`)
 2. Fix the specific issue (remove unused variable, add missing dependency, etc.)
 3. Retry commit
 
 **Prevention**: Configure your code editor to run ESLint on save:
+
 - **VS Code**: Install `dbaeumer.vscode-eslint`, enable "ESLint: Auto Fix On Save"
 - **WebStorm**: Enable "ESLint" in Settings > Languages & Frameworks > JavaScript > Code Quality Tools
 
@@ -1443,6 +1454,7 @@ git commit
 ##### TypeScript Type Error
 
 **Symptom**:
+
 ```
 src/stores/sessionStore.ts:45:12 - error TS2322: Type 'string' is not assignable to type 'number'.
 
@@ -1453,17 +1465,20 @@ src/stores/sessionStore.ts:45:12 - error TS2322: Type 'string' is not assignable
 **Cause**: Type mismatch detected by TypeScript compiler
 
 **Fix**:
+
 1. Open the file and line indicated (`src/stores/sessionStore.ts:45`)
 2. Correct the type error (change `"25"` to `25`, or update type definition)
 3. Retry commit
 
 **Prevention**:
+
 - Configure your code editor for TypeScript integration:
   - **VS Code**: TypeScript support is built-in; errors appear in "Problems" panel
   - **WebStorm**: TypeScript support is built-in; enable "TypeScript type checking"
 - Run `npm run type-check` frequently during development
 
 **NEVER USE**:
+
 - `// @ts-ignore` to suppress errors (hides real bugs)
 - `any` type to bypass type checking (defeats purpose of TypeScript)
 
@@ -1472,6 +1487,7 @@ src/stores/sessionStore.ts:45:12 - error TS2322: Type 'string' is not assignable
 ##### Test Failure
 
 **Symptom**:
+
 ```
  FAIL  src/utils/helpers.test.ts > formatDate > should format ISO date
 AssertionError: expected '2024-01-01' to equal '01/01/2024'
@@ -1480,6 +1496,7 @@ AssertionError: expected '2024-01-01' to equal '01/01/2024'
 **Cause**: Code changes broke a test, or test expectations are incorrect
 
 **Fix**:
+
 1. Run tests interactively: `npm run test:watch`
 2. Debug the failing test:
    - If code is correct, update test expectations
@@ -1488,6 +1505,7 @@ AssertionError: expected '2024-01-01' to equal '01/01/2024'
 4. Retry commit
 
 **Prevention**:
+
 - Run tests in watch mode during development: `npm run test:watch`
 - Write tests as you write code (TDD approach)
 - Run full test suite before committing: `npm run test`
@@ -1501,6 +1519,7 @@ AssertionError: expected '2024-01-01' to equal '01/01/2024'
 **Cause**: Husky hooks not installed or not executable
 
 **Fix**:
+
 ```bash
 # Reinstall Husky hooks
 npm run prepare
@@ -1513,6 +1532,7 @@ cat .husky/pre-commit
 ```
 
 **Expected Hook Content** (`.husky/pre-commit`):
+
 ```bash
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
@@ -1529,18 +1549,19 @@ npm run pre-commit
 
 Pre-commit checks rely on the following configuration files:
 
-| File | Purpose | Owner | Change Frequency |
-|------|---------|-------|------------------|
-| `.husky/pre-commit` | Pre-commit hook script | DevOps | Rare (add new checks) |
-| `.prettierrc` | Code formatting rules | DevOps | Rare (style changes) |
-| `.prettierignore` | Files excluded from formatting | DevOps | Occasional (ignore build output) |
-| `.eslintrc.json` | Linting rules | DevOps | Occasional (rule updates) |
-| `.eslintignore` | Files excluded from linting | DevOps | Occasional |
-| `tsconfig.json` | TypeScript compiler configuration | DevOps | Rare (target changes) |
-| `vitest.config.ts` | Test runner configuration | DevOps + Unit Tester | Occasional (coverage thresholds) |
-| `package.json` | npm scripts for manual checks | DevOps | Frequent (add new scripts) |
+| File                | Purpose                           | Owner                | Change Frequency                 |
+| ------------------- | --------------------------------- | -------------------- | -------------------------------- |
+| `.husky/pre-commit` | Pre-commit hook script            | DevOps               | Rare (add new checks)            |
+| `.prettierrc`       | Code formatting rules             | DevOps               | Rare (style changes)             |
+| `.prettierignore`   | Files excluded from formatting    | DevOps               | Occasional (ignore build output) |
+| `.eslintrc.json`    | Linting rules                     | DevOps               | Occasional (rule updates)        |
+| `.eslintignore`     | Files excluded from linting       | DevOps               | Occasional                       |
+| `tsconfig.json`     | TypeScript compiler configuration | DevOps               | Rare (target changes)            |
+| `vitest.config.ts`  | Test runner configuration         | DevOps + Unit Tester | Occasional (coverage thresholds) |
+| `package.json`      | npm scripts for manual checks     | DevOps               | Frequent (add new scripts)       |
 
 **Configuration Change Process**:
+
 1. Propose change in GitHub issue (justify rationale)
 2. Update configuration file
 3. Update `.github/workflows/ci.yml` to mirror change (maintain pre-commit/CI parity)
@@ -1556,24 +1577,26 @@ Pre-commit checks rely on the following configuration files:
 
 **Pre-Commit vs CI Checks**:
 
-| Check | Pre-Commit (Local) | CI (GitHub Actions) | Why Different? |
-|-------|-------------------|---------------------|----------------|
-| Prettier | ✅ `npx prettier --check .` | ✅ `npx prettier --check .` | Identical |
-| ESLint | ✅ `npx eslint .` | ✅ `npx eslint .` | Identical |
-| TypeScript | ✅ `npx tsc --noEmit` | ✅ `npx tsc --noEmit` | Identical |
-| Vitest unit tests | ✅ `npx vitest run` | ✅ `npx vitest run --coverage` | CI adds coverage reporting |
-| E2E tests (Playwright) | ❌ (too slow, ~2–5 min) | ✅ | Too slow for pre-commit |
-| Security audit | ❌ (too slow, ~30s) | ✅ | Blocks on vulnerabilities, not code changes |
-| Bundle size check | ❌ (requires full build) | ✅ | Needs production build |
+| Check                  | Pre-Commit (Local)          | CI (GitHub Actions)            | Why Different?                              |
+| ---------------------- | --------------------------- | ------------------------------ | ------------------------------------------- |
+| Prettier               | ✅ `npx prettier --check .` | ✅ `npx prettier --check .`    | Identical                                   |
+| ESLint                 | ✅ `npx eslint .`           | ✅ `npx eslint .`              | Identical                                   |
+| TypeScript             | ✅ `npx tsc --noEmit`       | ✅ `npx tsc --noEmit`          | Identical                                   |
+| Vitest unit tests      | ✅ `npx vitest run`         | ✅ `npx vitest run --coverage` | CI adds coverage reporting                  |
+| E2E tests (Playwright) | ❌ (too slow, ~2–5 min)     | ✅                             | Too slow for pre-commit                     |
+| Security audit         | ❌ (too slow, ~30s)         | ✅                             | Blocks on vulnerabilities, not code changes |
+| Bundle size check      | ❌ (requires full build)    | ✅                             | Needs production build                      |
 
 **Pre-Commit Guarantee**: **If pre-commit passes locally, CI formatting/linting/type-checking/unit-tests MUST be green.** CI may still fail on E2E tests or security audit, but core checks must pass.
 
 **Enforcement**: Any violation of this guarantee is a **P0 DevOps bug**. Root causes include:
+
 - CI and pre-commit use different Node.js versions (must match)
 - CI and pre-commit use different dependency versions (lock file out of sync)
 - Environment-specific configuration differences (`.env` files, OS-specific behavior)
 
 **Debugging Mismatches**:
+
 1. Reproduce locally: Run CI commands exactly as defined in `.github/workflows/ci.yml`
 2. Check Node.js versions: `node --version` (local) vs `github-actions` (CI logs)
 3. Check dependency versions: `npm list <package>` (local) vs CI logs
@@ -1681,6 +1704,7 @@ echo ""
 ```
 
 **Key Features**:
+
 - **`set -e`**: Fail fast on first error
 - **Custom error messages**: Guide developers to fix commands
 - **Clear progress output**: Shows which check is running
@@ -1695,20 +1719,12 @@ echo ""
 **Purpose**: Run checks only on staged files (not entire codebase) to improve performance
 
 **Configuration**:
+
 ```json
 {
-  "*.{ts,tsx}": [
-    "prettier --write",
-    "eslint --fix",
-    "bash -c 'tsc --noEmit'"
-  ],
-  "*.{js,jsx}": [
-    "prettier --write",
-    "eslint --fix"
-  ],
-  "*.{json,md,css,html}": [
-    "prettier --write"
-  ]
+  "*.{ts,tsx}": ["prettier --write", "eslint --fix", "bash -c 'tsc --noEmit'"],
+  "*.{js,jsx}": ["prettier --write", "eslint --fix"],
+  "*.{json,md,css,html}": ["prettier --write"]
 }
 ```
 
@@ -1753,15 +1769,15 @@ npx vitest run --reporter=dot
 
 **Usage Guide**:
 
-| Script | Command | Purpose |
-|--------|---------|---------|
-| `npm run format` | Auto-fix all formatting issues | Use daily before committing |
-| `npm run format:check` | Check formatting without modifying | Use in CI/scripts |
-| `npm run lint:fix` | Auto-fix linting issues | Use when ESLint fails |
-| `npm run type-check` | Check TypeScript types | Use frequently during development |
-| `npm run test` | Run all tests once | Use before committing |
-| `npm run test:watch` | Run tests in watch mode | Use during TDD development |
-| `npm run pre-commit` | Run all pre-commit checks manually | Use to verify before committing |
+| Script                 | Command                            | Purpose                           |
+| ---------------------- | ---------------------------------- | --------------------------------- |
+| `npm run format`       | Auto-fix all formatting issues     | Use daily before committing       |
+| `npm run format:check` | Check formatting without modifying | Use in CI/scripts                 |
+| `npm run lint:fix`     | Auto-fix linting issues            | Use when ESLint fails             |
+| `npm run type-check`   | Check TypeScript types             | Use frequently during development |
+| `npm run test`         | Run all tests once                 | Use before committing             |
+| `npm run test:watch`   | Run tests in watch mode            | Use during TDD development        |
+| `npm run pre-commit`   | Run all pre-commit checks manually | Use to verify before committing   |
 
 ---
 
@@ -1778,6 +1794,7 @@ npx vitest run --reporter=dot
 Four independent jobs run in parallel:
 
 **Job 1: Security Audit**
+
 ```yaml
 audit:
   name: Security Audit
@@ -1797,6 +1814,7 @@ audit:
 - **Failure Handling**: Blocking; must upgrade/patch affected dependencies
 
 **Job 2: Lint & Format**
+
 ```yaml
 lint:
   name: Lint & Format
@@ -1818,6 +1836,7 @@ lint:
 - **Failure Handling**: Indicates pre-commit bypass or CI/local environment mismatch (bug)
 
 **Job 3: Unit & Integration Tests**
+
 ```yaml
 test-unit:
   name: Unit & Integration Tests
@@ -1847,6 +1866,7 @@ test-unit:
 - **Failure Handling**: Blocking; tests must pass or be fixed
 
 **Job 4: E2E Tests (Playwright)**
+
 ```yaml
 test-e2e:
   name: E2E Tests (Playwright)
@@ -1937,7 +1957,7 @@ export default defineConfig({
         statements: 80,
         branches: 75,
         functions: 80,
-        lines: 80
+        lines: 80,
       },
       exclude: [
         'node_modules/',
@@ -1945,19 +1965,21 @@ export default defineConfig({
         '**/*.spec.ts',
         '**/*.test.ts',
         '**/types.ts',
-        'vite.config.ts'
-      ]
-    }
-  }
+        'vite.config.ts',
+      ],
+    },
+  },
 });
 ```
 
 **Enforcement**:
+
 - CI blocks on coverage < threshold
 - Coverage report uploaded as artifact for review
 - Future: Coverage badges in README.md
 
 **Exclusions**:
+
 - Test files themselves (no need to test tests)
 - Type definition files (pure types, no runtime behavior)
 - Configuration files (low value, high maintenance)
@@ -1969,10 +1991,12 @@ export default defineConfig({
 **Command**: `npm audit --audit-level=high`
 
 **Policy**:
+
 - **High/Critical vulnerabilities**: Blocking in CI
 - **Moderate/Low vulnerabilities**: Logged but non-blocking (reviewed during dependency updates)
 
 **Handling Process**:
+
 1. Upgrade affected packages to patched versions
 2. If no patch available, evaluate risk and document exception
 3. If critical and unfixable, switch to alternative package
@@ -1991,7 +2015,7 @@ updates:
       day: monday
     open-pull-requests-limit: 10
     reviewers:
-      - kyle  # Human product owner
+      - kyle # Human product owner
     commit-message:
       prefix: chore
       prefix-development: chore
@@ -2003,6 +2027,7 @@ updates:
 ```
 
 **Process**:
+
 1. Dependabot opens PRs weekly for dependency updates
 2. CI runs full quality gate on each PR
 3. Human product owner reviews and merges
@@ -2017,12 +2042,14 @@ updates:
 **Tool**: Vitest
 
 **Execution**:
+
 - **Local (pre-commit)**: `npx vitest run --reporter=dot` (fast, minimal output)
 - **CI**: `npx vitest run --coverage --reporter=verbose` (full report + coverage)
 
 **Parallelization**: Vitest automatically parallelizes test files across CPU cores.
 
 **Performance**:
+
 - **Target**: < 10 seconds for full test suite
 - **Current**: ~3–5 seconds (as of Feb 2026)
 
@@ -2039,11 +2066,11 @@ export default defineConfig({
     },
     poolOptions: {
       threads: {
-        singleThread: false,  // Enable parallelization
-        useAtomics: true
-      }
-    }
-  }
+        singleThread: false, // Enable parallelization
+        useAtomics: true,
+      },
+    },
+  },
 });
 ```
 
@@ -2054,43 +2081,44 @@ export default defineConfig({
 ```typescript
 export default defineConfig({
   testDir: './tests/e2e',
-  fullyParallel: true,  // Run tests in parallel
-  forbidOnly: !!process.env.CI,  // Fail CI if .only() left in tests
-  retries: process.env.CI ? 2 : 0,  // Retry flaky tests in CI
-  workers: process.env.CI ? 2 : undefined,  // Limit CI parallelism
+  fullyParallel: true, // Run tests in parallel
+  forbidOnly: !!process.env.CI, // Fail CI if .only() left in tests
+  retries: process.env.CI ? 2 : 0, // Retry flaky tests in CI
+  workers: process.env.CI ? 2 : undefined, // Limit CI parallelism
   reporter: process.env.CI
-    ? [['html'], ['github']]  // HTML report + GitHub annotations
-    : [['list']],  // Simple list for local dev
+    ? [['html'], ['github']] // HTML report + GitHub annotations
+    : [['list']], // Simple list for local dev
   use: {
-    baseURL: 'http://localhost:5173',  // Vite dev server
-    trace: 'on-first-retry',  // Capture trace on failures
+    baseURL: 'http://localhost:5173', // Vite dev server
+    trace: 'on-first-retry', // Capture trace on failures
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure'
+    video: 'retain-on-failure',
   },
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] }
+      use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'firefox',
-      use: { ...devices['Desktop Firefox'] }
+      use: { ...devices['Desktop Firefox'] },
     },
     {
       name: 'webkit',
-      use: { ...devices['Desktop Safari'] }
-    }
+      use: { ...devices['Desktop Safari'] },
+    },
   ],
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000
-  }
+    timeout: 120_000,
+  },
 });
 ```
 
 **CI Execution**:
+
 1. Install browsers: `npx playwright install --with-deps` (~2 minutes, cached)
 2. Start dev server: Vite serves application on localhost:5173
 3. Run tests: `npx playwright test` (parallel across 3 browsers, ~2–5 minutes)
@@ -2098,29 +2126,34 @@ export default defineConfig({
 5. Upload report: Stored as CI artifact for 14 days
 
 **Test Strategy**:
+
 - **Critical User Paths**: Import data, view dashboard, analyze session, export results
 - **Browser Coverage**: Chromium (Chrome/Edge), Firefox, WebKit (Safari)
 - **Parallelization**: Tests run in parallel workers for speed
 - **Retry Logic**: Flaky tests auto-retry 2× in CI (prevents false negatives)
 
 **Performance**:
+
 - **Target**: < 5 minutes for full E2E suite across all browsers
 - **Current**: ~3–4 minutes (as of Feb 2026)
 
 ### 4.3 Test Result Reporting
 
 **Unit Tests**:
+
 - **Local**: Dot reporter (fast feedback)
 - **CI**: Verbose reporter with coverage summary in GitHub Actions logs
 
 **E2E Tests**:
+
 - **Local**: List reporter (live progress)
-- **CI**: 
+- **CI**:
   - GitHub reporter (inline annotations on PR)
   - HTML report uploaded as artifact
   - Screenshots/videos of failures attached to report
 
 **Viewing Reports**:
+
 ```bash
 # Download Playwright report artifact from GitHub Actions
 # Unzip and open locally
@@ -2132,10 +2165,12 @@ npx playwright show-report path/to/playwright-report
 **Format**: HTML + LCOV
 
 **Storage**:
+
 - HTML report: CI artifact (7-day retention)
 - LCOV: Future integration with coverage tracking service (TBD)
 
 **Viewing**:
+
 ```bash
 # After running tests locally
 npm run test:coverage
@@ -2149,6 +2184,7 @@ npm run test:coverage
 **Status**: Not yet implemented
 
 **Future Plan**:
+
 1. **Tool**: Vitest's `bench` API for microbenchmarks
 2. **Metrics**:
    - EDF parsing time (single file)
@@ -2158,16 +2194,21 @@ npm run test:coverage
 4. **Alerts**: Performance regressions > 20% trigger review flag
 
 **Example Benchmark** (future):
+
 ```typescript
 import { bench, describe } from 'vitest';
 import { parseEDF } from './edf-parser';
 import { readFixture } from './test-utils';
 
 describe('EDF Parsing Performance', () => {
-  bench('parse single-night EDF', async () => {
-    const data = await readFixture('sample-brp.edf');
-    await parseEDF(data);
-  }, { iterations: 100 });
+  bench(
+    'parse single-night EDF',
+    async () => {
+      const data = await readFixture('sample-brp.edf');
+      await parseEDF(data);
+    },
+    { iterations: 100 },
+  );
 });
 ```
 
@@ -2180,6 +2221,7 @@ describe('EDF Parsing Performance', () => {
 **URL**: `https://<username>.github.io/cpap-analyzer/`
 
 **Rationale**:
+
 - **Zero Cost**: Free for public repositories
 - **HTTPS by Default**: Automatic SSL via GitHub
 - **CDN Distribution**: Global edge network for fast delivery
@@ -2187,6 +2229,7 @@ describe('EDF Parsing Performance', () => {
 - **Simple Configuration**: Native GitHub Actions integration
 
 **Alternatives Considered**:
+
 - **Netlify**: Excellent platform but adds external dependency and potential cost
 - **Vercel**: Similar to Netlify, no compelling advantage for static site
 - **Cloudflare Pages**: Good performance but GitHub Pages is simpler for GitHub-hosted repos
@@ -2198,6 +2241,7 @@ describe('EDF Parsing Performance', () => {
 **Trigger**: Push to `main` branch (after successful build)
 
 **Workflow**:
+
 ```yaml
 deploy:
   name: Deploy to GitHub Pages
@@ -2213,12 +2257,14 @@ deploy:
 ```
 
 **Process**:
+
 1. Build job uploads `dist/` as Pages artifact
 2. Deploy job picks up artifact and deploys to GitHub Pages
 3. GitHub's CDN propagates new version globally (~1–2 minutes)
 4. Old version is atomically replaced (no mixed state)
 
 **Concurrency Control**:
+
 ```yaml
 concurrency:
   group: 'pages'
@@ -2238,12 +2284,14 @@ concurrency:
 **Future Plan**: Netlify or Vercel PR previews for pre-merge testing
 
 **Proposed Workflow**:
+
 1. PR opened → Netlify/Vercel builds preview from PR branch
 2. Preview URL posted as PR comment
 3. QA agent reviews preview before approving merge
 4. Preview deleted when PR closed/merged
 
 **Benefits**:
+
 - Visual review of UI changes before merge
 - E2E testing in production-like environment
 - Stakeholder feedback without merging
@@ -2255,6 +2303,7 @@ concurrency:
 **Method**: Git revert + push to `main`
 
 **Process**:
+
 1. Identify problematic commit
 2. `git revert <commit-hash>`
 3. `git push origin main`
@@ -2263,6 +2312,7 @@ concurrency:
 **Rollback Time**: ~3–5 minutes (full CI pipeline + deployment)
 
 **Alternative (Urgent Hotfix)**:
+
 1. Revert locally
 2. Cherry-pick urgent fix
 3. Push to `main`
@@ -2273,6 +2323,7 @@ concurrency:
 ### 5.5 Environment Configuration
 
 **Environments**:
+
 - **Development**: Local dev server (`npm run dev`)
 - **Preview**: PR preview builds (future)
 - **Production**: GitHub Pages (`main` branch)
@@ -2280,6 +2331,7 @@ concurrency:
 **Configuration Strategy**: No environment-specific configuration needed (client-side only, no backend).
 
 **Build Modes**:
+
 - `development`: Source maps, hot reload, verbose errors
 - `production`: Minified, hashed, optimized, no source maps deployed
 
@@ -2300,11 +2352,13 @@ concurrency:
 - `MICRO`: Incremental patch within month, starting at `0`
 
 **Examples**:
+
 - `2026.02.0` — First release of February 2026
 - `2026.02.1` — Second release of February 2026
 - `2026.03.0` — First release of March 2026
 
 **Rationale** (from `.github/skills/calver-release/SKILL.md`):
+
 - Time-based versioning suits continuous delivery model
 - No semantic meaning required (no external API consumers)
 - Clear temporal ordering for user support ("Which version?" → "February 2026")
@@ -2324,6 +2378,7 @@ concurrency:
    - Commit: `chore: release YYYY.0M.MICRO`
 
 3. **Tagging**:
+
    ```bash
    git tag vYYYY.0M.MICRO
    git push origin vYYYY.0M.MICRO
@@ -2348,6 +2403,7 @@ concurrency:
 **Proposed Tool**: `release-please` (Google's release automation tool)
 
 **Workflow** (Future):
+
 ```yaml
 name: Release Please
 
@@ -2368,6 +2424,7 @@ jobs:
 ```
 
 **Benefits**:
+
 - Automatic version calculation based on CalVer
 - Automatic changelog updates from commit messages
 - Automatic GitHub release creation with notes
@@ -2380,6 +2437,7 @@ jobs:
 **Format**: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 **Structure**:
+
 ```markdown
 # Changelog
 
@@ -2391,17 +2449,21 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 ## [Unreleased]
 
 ### Added
+
 - New feature X
 
 ### Changed
+
 - Modified behavior Y
 
 ### Fixed
+
 - Bug fix Z
 
 ## [2026.02.0] - 2026-02-15
 
 ### Added
+
 - Initial release
 - EDF import from SD card
 - Nightly aggregate dashboard
@@ -2409,6 +2471,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 ```
 
 **Categories**:
+
 - `Added`: New features
 - `Changed`: Changes to existing functionality
 - `Deprecated`: Soon-to-be-removed features
@@ -2417,6 +2480,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 - `Security`: Security vulnerability patches
 
 **Maintenance**:
+
 - Developers (AI agents) add entries to `[Unreleased]` section in commit messages
 - Release process moves entries to versioned section
 - Commit message format (Conventional Commits) guides categorization
@@ -2426,6 +2490,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 **Current**: Manual copy-paste from `CHANGELOG.md` to GitHub Release
 
 **Future**: Automated via `release-please`:
+
 - Changelog section automatically used as release notes
 - GitHub Release created with tag and notes
 - Assets (none needed, web app) can be attached if required
@@ -2439,15 +2504,18 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 **Mechanism**: GitHub Actions + GitHub Notifications
 
 **Current**:
+
 - Email notifications to repository watchers on CI failure
 - GitHub UI shows failing CI status on PRs and commits
 
 **Future Enhancements**:
+
 1. **Slack Integration**: Post build failures to dedicated channel
 2. **Discord Webhook**: Alternative for teams using Discord
 3. **Custom Script**: Parse CI logs and generate actionable failure summaries
 
 **Configuration** (Future):
+
 ```yaml
 - name: Notify on Failure
   if: failure()
@@ -2461,16 +2529,19 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 ### 7.2 Security Vulnerability Alerts
 
 **Dependabot Security Alerts**:
+
 - **Enabled**: Yes (GitHub Security tab)
 - **Frequency**: Real-time alerts on new CVEs
 - **Visibility**: Security tab + email notifications
 - **Action**: Dependabot auto-creates PRs for patched versions
 
 **GitHub Advanced Security** (Optional):
+
 - **Code Scanning**: CodeQL analysis for TypeScript vulnerabilities (future)
 - **Secret Scanning**: Detects accidentally committed secrets (enabled by default for public repos)
 
 **Manual Audits**:
+
 - Weekly `npm audit` review (part of dependency update process)
 - Quarterly security architecture review (Security agent)
 
@@ -2483,6 +2554,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 **Proposed Tool**: `bundlesize` or `size-limit`
 
 **Configuration** (Future `package.json`):
+
 ```json
 {
   "bundlesize": [
@@ -2501,12 +2573,14 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 ```
 
 **Workflow Integration**:
+
 ```yaml
 - name: Check Bundle Size
   run: npx bundlesize
 ```
 
 **Action on Regression**:
+
 - CI fails if bundle exceeds threshold
 - PR comment shows size increase
 - Developer must justify or reduce bundle size
@@ -2516,6 +2590,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/).
 **Explicit Decision**: No runtime monitoring services per privacy architecture.
 
 **Prohibited**:
+
 - Error tracking (Sentry, Bugsnag, Rollbar)
 - Performance monitoring (New Relic, Datadog)
 - Session replay (LogRocket, FullStory)
@@ -2578,13 +2653,13 @@ Per [ADR-0015: Zero Telemetry & Analytics](../decisions/0015-zero-telemetry-anal
 
 **Hierarchy** (least to most verbose):
 
-| Level   | Severity              | Production Default | Development Default | Use Cases                                                              |
-| ------- | --------------------- | ------------------ | ------------------- | ---------------------------------------------------------------------- |
-| `ERROR` | Critical failures | ✅ Enabled | ✅ Enabled | Unhandled exceptions, critical errors, data corruption |
-| `WARN` | Recoverable issues | ✅ Enabled | ✅ Enabled | Deprecated features, missing optional data, fallback behaviors |
-| `INFO` | Significant events | ❌ Disabled | ✅ Enabled | User actions, data loaded, analysis complete |
-| `DEBUG` | Developer diagnostics | ❌ Disabled | ✅ Enabled | Function entry/exit, state changes, algorithm steps |
-| `TRACE` | Fine-grained detail | ❌ Disabled | ❌ Disabled | Loop iterations, individual data points (use sparingly) |
+| Level   | Severity              | Production Default | Development Default | Use Cases                                                      |
+| ------- | --------------------- | ------------------ | ------------------- | -------------------------------------------------------------- |
+| `ERROR` | Critical failures     | ✅ Enabled         | ✅ Enabled          | Unhandled exceptions, critical errors, data corruption         |
+| `WARN`  | Recoverable issues    | ✅ Enabled         | ✅ Enabled          | Deprecated features, missing optional data, fallback behaviors |
+| `INFO`  | Significant events    | ❌ Disabled        | ✅ Enabled          | User actions, data loaded, analysis complete                   |
+| `DEBUG` | Developer diagnostics | ❌ Disabled        | ✅ Enabled          | Function entry/exit, state changes, algorithm steps            |
+| `TRACE` | Fine-grained detail   | ❌ Disabled        | ❌ Disabled         | Loop iterations, individual data points (use sparingly)        |
 
 **Level Selection Guidelines**:
 
@@ -2602,12 +2677,13 @@ Per [ADR-0015: Zero Telemetry & Analytics](../decisions/0015-zero-telemetry-anal
 
 ```typescript
 interface LogEntry {
-  timestamp: string;         // ISO 8601: "2026-02-10T14:32:45.123Z"
-  level: LogLevel;           // "ERROR" | "WARN" | "INFO" | "DEBUG" | "TRACE"
-  category: LogCategory;     // "UI" | "Storage" | "Analysis" | etc.
-  message: string;           // Human-readable message
-  context?: Record<string, unknown>;  // Structured metadata
-  error?: {                  // Present for ERROR level
+  timestamp: string; // ISO 8601: "2026-02-10T14:32:45.123Z"
+  level: LogLevel; // "ERROR" | "WARN" | "INFO" | "DEBUG" | "TRACE"
+  category: LogCategory; // "UI" | "Storage" | "Analysis" | etc.
+  message: string; // Human-readable message
+  context?: Record<string, unknown>; // Structured metadata
+  error?: {
+    // Present for ERROR level
     name: string;
     message: string;
     stack?: string;
@@ -2617,14 +2693,14 @@ interface LogEntry {
 type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE';
 
 type LogCategory =
-  | 'UI'          // React components, routing, user interactions
-  | 'Storage'     // IndexedDB, OPFS, data persistence
-  | 'Analysis'    // Data analysis algorithms, statistics
-  | 'Worker'      // Web Worker communication and tasks
-  | 'Plugin'      // Plugin loading, execution, errors
-  | 'Import'      // File import, EDF parsing, data validation
-  | 'Export'      // Data export, file generation
-  | 'System';     // Browser features, initialization, lifecycle
+  | 'UI' // React components, routing, user interactions
+  | 'Storage' // IndexedDB, OPFS, data persistence
+  | 'Analysis' // Data analysis algorithms, statistics
+  | 'Worker' // Web Worker communication and tasks
+  | 'Plugin' // Plugin loading, execution, errors
+  | 'Import' // File import, EDF parsing, data validation
+  | 'Export' // Data export, file generation
+  | 'System'; // Browser features, initialization, lifecycle
 ```
 
 **Example Log Entries**:
@@ -2686,7 +2762,7 @@ import type { LogEntry, LogLevel, LogCategory } from './logger.types';
 class Logger {
   private static instance: Logger;
   private logs: LogEntry[] = [];
-  private maxLogs = 10000;  // Prevent memory bloat
+  private maxLogs = 10000; // Prevent memory bloat
   private levelThresholds: Record<LogLevel, number> = {
     ERROR: 0,
     WARN: 1,
@@ -2721,7 +2797,7 @@ class Logger {
     category: LogCategory,
     message: string,
     context?: Record<string, unknown>,
-    error?: Error
+    error?: Error,
   ): void {
     if (!this.shouldLog(level)) return;
 
@@ -2743,22 +2819,27 @@ class Logger {
     // Store in memory
     this.logs.push(entry);
     if (this.logs.length > this.maxLogs) {
-      this.logs.shift();  // Remove oldest log
+      this.logs.shift(); // Remove oldest log
     }
 
     // Output to console
-    const consoleMethod = level === 'ERROR' ? 'error' :
-                         level === 'WARN' ? 'warn' :
-                         level === 'DEBUG' || level === 'TRACE' ? 'debug' :
-                         'log';
-    console[consoleMethod](
-      `[${level}] [${category}] ${message}`,
-      context || '',
-      error || ''
-    );
+    const consoleMethod =
+      level === 'ERROR'
+        ? 'error'
+        : level === 'WARN'
+          ? 'warn'
+          : level === 'DEBUG' || level === 'TRACE'
+            ? 'debug'
+            : 'log';
+    console[consoleMethod](`[${level}] [${category}] ${message}`, context || '', error || '');
   }
 
-  error(category: LogCategory, message: string, error: Error, context?: Record<string, unknown>): void {
+  error(
+    category: LogCategory,
+    message: string,
+    error: Error,
+    context?: Record<string, unknown>,
+  ): void {
     this.log('ERROR', category, message, context, error);
   }
 
@@ -2779,7 +2860,7 @@ class Logger {
   }
 
   getLogs(): LogEntry[] {
-    return [...this.logs];  // Return copy to prevent external mutation
+    return [...this.logs]; // Return copy to prevent external mutation
   }
 
   clearLogs(): void {
@@ -2851,7 +2932,7 @@ export function DeveloperOptions() {
   const handleDebugModeToggle = (enabled: boolean) => {
     setDebugMode(enabled);
     logger.setLevel(enabled ? 'DEBUG' : 'WARN');
-    
+
     if (enabled) {
       logger.info('System', 'Debug mode enabled');
     }
@@ -2860,20 +2941,17 @@ export function DeveloperOptions() {
   return (
     <div className="developer-options">
       <h3>Debug Logging</h3>
-      
+
       <Switch
         checked={debugMode}
         onCheckedChange={handleDebugModeToggle}
         label="Enable Debug Mode"
       />
-      
+
       {debugMode && (
-        <CategoryFilter
-          categories={selectedCategories}
-          onChange={setSelectedCategories}
-        />
+        <CategoryFilter categories={selectedCategories} onChange={setSelectedCategories} />
       )}
-      
+
       <ExportLogsButton />
     </div>
   );
@@ -2903,15 +2981,15 @@ class Logger {
     if (categoryLevel !== undefined) {
       return this.levelThresholds[level] <= categoryLevel;
     }
-    
+
     // Fall back to global level
     return this.levelThresholds[level] <= this.currentLevel;
   }
 }
 
 // Usage:
-logger.setCategoryLevel('Storage', 'DEBUG');  // Enable DEBUG for Storage only
-logger.setCategoryLevel('UI', 'WARN');        // Silence UI except warnings/errors
+logger.setCategoryLevel('Storage', 'DEBUG'); // Enable DEBUG for Storage only
+logger.setCategoryLevel('UI', 'WARN'); // Silence UI except warnings/errors
 ```
 
 #### 8.3.3 Default Log Levels
@@ -2927,7 +3005,7 @@ const PRODUCTION_DEFAULTS: Record<LogCategory, LogLevel> = {
   Plugin: 'WARN',
   Import: 'WARN',
   Export: 'WARN',
-  System: 'ERROR',  // Only critical system errors
+  System: 'ERROR', // Only critical system errors
 };
 ```
 
@@ -2953,19 +3031,20 @@ const DEVELOPMENT_DEFAULTS: Record<LogCategory, LogLevel> = {
 **Usage**: `https://cpap-analyzer.app/?debug=Storage,Analysis`
 
 **Implementation**:
+
 ```typescript
 // src/utils/logger-init.ts
 function initializeLoggerFromURL() {
   const params = new URLSearchParams(window.location.search);
   const debugCategories = params.get('debug');
-  
+
   if (debugCategories) {
     if (debugCategories === '*') {
       logger.setLevel('DEBUG');
       logger.info('System', 'Debug mode enabled for all categories via URL parameter');
     } else {
       const categories = debugCategories.split(',') as LogCategory[];
-      categories.forEach(category => {
+      categories.forEach((category) => {
         logger.setCategoryLevel(category, 'DEBUG');
         logger.info('System', `Debug mode enabled for category: ${category}`);
       });
@@ -2992,19 +3071,19 @@ export function ExportLogsButton() {
 
   const handleExport = async () => {
     setIsExporting(true);
-    
+
     try {
       const logData = await exportLogs();
       const blob = new Blob([logData], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      
+
       const a = document.createElement('a');
       a.href = url;
       a.download = `cpap-analyzer-logs-${new Date().toISOString()}.json`;
       a.click();
-      
+
       URL.revokeObjectURL(url);
-      
+
       logger.info('System', 'Debug logs exported successfully');
     } catch (error) {
       logger.error('System', 'Failed to export debug logs', error as Error);
@@ -3014,11 +3093,7 @@ export function ExportLogsButton() {
   };
 
   return (
-    <button
-      onClick={handleExport}
-      disabled={isExporting}
-      className="export-logs-button"
-    >
+    <button onClick={handleExport} disabled={isExporting} className="export-logs-button">
       {isExporting ? 'Exporting...' : 'Export Debug Logs'}
     </button>
   );
@@ -3033,21 +3108,21 @@ export function ExportLogsButton() {
 
 ```typescript
 interface LogExport {
-  exportedAt: string;           // ISO timestamp
-  version: string;              // Application version
-  systemInfo: SystemInfo;       // Browser/system details
-  logCount: number;             // Total number of logs
+  exportedAt: string; // ISO timestamp
+  version: string; // Application version
+  systemInfo: SystemInfo; // Browser/system details
+  logCount: number; // Total number of logs
   sanitizationWarnings: string[]; // List of sanitized fields
-  logs: LogEntry[];             // Sanitized log entries
+  logs: LogEntry[]; // Sanitized log entries
 }
 
 interface SystemInfo {
-  appVersion: string;           // e.g., "2026.02.0"
-  userAgent: string;            // Browser UA
-  platform: string;             // "MacIntel", "Win32", etc.
+  appVersion: string; // e.g., "2026.02.0"
+  userAgent: string; // Browser UA
+  platform: string; // "MacIntel", "Win32", etc.
   storageQuota: {
-    usage: number;              // Bytes used
-    quota: number;              // Total quota
+    usage: number; // Bytes used
+    quota: number; // Total quota
   };
   features: {
     indexedDB: boolean;
@@ -3055,7 +3130,7 @@ interface SystemInfo {
     webWorkers: boolean;
     serviceWorker: boolean;
   };
-  errorCounts: Record<LogCategory, number>;  // Error count per category
+  errorCounts: Record<LogCategory, number>; // Error count per category
 }
 ```
 
@@ -3193,16 +3268,19 @@ interface SystemInfo {
 }
 
 export async function gatherSystemInfo(): Promise<SystemInfo> {
-  const storageEstimate = await navigator.storage?.estimate() || { usage: 0, quota: 0 };
+  const storageEstimate = (await navigator.storage?.estimate()) || { usage: 0, quota: 0 };
   const logs = logger.getLogs();
-  
+
   // Count errors by category
   const errorCounts = logs
-    .filter(log => log.level === 'ERROR')
-    .reduce((acc, log) => {
-      acc[log.category] = (acc[log.category] || 0) + 1;
-      return acc;
-    }, {} as Record<LogCategory, number>);
+    .filter((log) => log.level === 'ERROR')
+    .reduce(
+      (acc, log) => {
+        acc[log.category] = (acc[log.category] || 0) + 1;
+        return acc;
+      },
+      {} as Record<LogCategory, number>,
+    );
 
   return {
     appVersion: import.meta.env.VITE_APP_VERSION || 'unknown',
@@ -3304,8 +3382,8 @@ interface SanitizationResult {
 
 export function sanitizeLogs(logs: LogEntry[]): SanitizationResult {
   const warnings: string[] = [];
-  const sanitized = logs.map(log => sanitizeLogEntry(log, warnings));
-  
+  const sanitized = logs.map((log) => sanitizeLogEntry(log, warnings));
+
   return { logs: sanitized, warnings: Array.from(new Set(warnings)) };
 }
 
@@ -3340,21 +3418,21 @@ function sanitizeString(str: string, warnings: string[]): string {
     }
     return str.replace(fileNamePattern, '[REDACTED].$1');
   }
-  
+
   return str;
 }
 
 function sanitizeContext(
   context: Record<string, unknown>,
   category: LogCategory,
-  warnings: string[]
+  warnings: string[],
 ): Record<string, unknown> {
   const sanitized: Record<string, unknown> = {};
 
   // Allowlist of safe fields per category
   const SAFE_FIELDS: Record<LogCategory, string[]> = {
     UI: ['component', 'action', 'route', 'duration'],
-    Storage: ['operation', 'storeName', 'recordCount','databaseVersion'],
+    Storage: ['operation', 'storeName', 'recordCount', 'databaseVersion'],
     Analysis: ['algorithm', 'duration', 'sampleCount', 'eventsDetected'],
     Worker: ['workerId', 'taskType', 'inputSize', 'outputSize', 'duration'],
     Plugin: ['pluginType', 'version', 'status'],
@@ -3383,11 +3461,11 @@ function sanitizeContext(
 function truncateStackTrace(stack: string, maxFrames: number): string {
   const lines = stack.split('\n');
   if (lines.length <= maxFrames + 1) return stack;
-  
+
   return [
-    lines[0],  // Error message line
-    ...lines.slice(1, maxFrames + 1),  // Top N frames
-    `    ... (${lines.length - maxFrames - 1} more frames omitted)`
+    lines[0], // Error message line
+    ...lines.slice(1, maxFrames + 1), // Top N frames
+    `    ... (${lines.length - maxFrames - 1} more frames omitted)`,
   ].join('\n');
 }
 ```
@@ -3397,6 +3475,7 @@ function truncateStackTrace(stack: string, maxFrames: number): string {
 **Testing**: Unit tests verify sanitization effectiveness
 
 **Test Cases**:
+
 ```typescript
 // src/utils/log-sanitization.test.ts
 describe('log sanitization', () => {
@@ -3420,10 +3499,10 @@ describe('log sanitization', () => {
       category: 'Storage',
       message: 'Session saved',
       context: {
-        operation: 'put',        // Safe
-        storeName: 'sessions',   // Safe
-        patientId: '12345',      // Unsafe!
-        recordId: 'abc-123',     // Unsafe!
+        operation: 'put', // Safe
+        storeName: 'sessions', // Safe
+        patientId: '12345', // Unsafe!
+        recordId: 'abc-123', // Unsafe!
       },
     };
 
@@ -3456,7 +3535,7 @@ describe('log sanitization', () => {
 
     const result = sanitizeLogs([log]);
     const frames = result.logs[0].error!.stack!.split('\n');
-    expect(frames).toHaveLength(5);  // Error line + 3 frames + omitted message
+    expect(frames).toHaveLength(5); // Error line + 3 frames + omitted message
     expect(frames[4]).toMatch(/\(\d+ more frames omitted\)/);
   });
 });
@@ -3551,7 +3630,7 @@ async function writeFile(path: string, data: ArrayBuffer): Promise<void> {
 
   try {
     log.debug('OPFS write started', {
-      path: '[REDACTED]',  // Don't log actual paths
+      path: '[REDACTED]', // Don't log actual paths
       size: data.byteLength,
     });
 
@@ -3620,10 +3699,7 @@ self.addEventListener('message', async (event) => {
 
 ```typescript
 // src/plugins/plugin-executor.ts
-export async function executePlugin(
-  plugin: Plugin,
-  input: unknown
-): Promise<unknown> {
+export async function executePlugin(plugin: Plugin, input: unknown): Promise<unknown> {
   const log = createCategoryLogger('Plugin');
 
   log.debug('Plugin execution started', {
@@ -3666,7 +3742,7 @@ export async function executePlugin(
 
    ```text
    Can you export your debug logs?
-   
+
    1. Open Settings
    2. Scroll to "Developer Options"
    3. Enable "Debug Mode"
@@ -3718,8 +3794,8 @@ for (const [category, count] of Object.entries(data.systemInfo.errorCounts)) {
 }
 
 console.log('\n=== Recent Errors ===');
-const errors = data.logs.filter(log => log.level === 'ERROR').slice(-10);
-errors.forEach(error => {
+const errors = data.logs.filter((log) => log.level === 'ERROR').slice(-10);
+errors.forEach((error) => {
   console.log(`\n[${error.timestamp}] [${error.category}]`);
   console.log(`  ${error.message}`);
   if (error.error) {
@@ -3745,37 +3821,39 @@ for (const [feature, available] of Object.entries(data.systemInfo.features)) {
 ```typescript
 // Filter logs by category
 function filterByCategory(logs: LogEntry[], category: LogCategory): LogEntry[] {
-  return logs.filter(log => log.category === category);
+  return logs.filter((log) => log.category === category);
 }
 
 // Find error patterns
 function findErrorPatterns(logs: LogEntry[]): Map<string, number> {
   const patterns = new Map<string, number>();
-  
+
   logs
-    .filter(log => log.level === 'ERROR')
-    .forEach(log => {
+    .filter((log) => log.level === 'ERROR')
+    .forEach((log) => {
       const key = `${log.category}:${log.error?.name || 'Unknown'}`;
       patterns.set(key, (patterns.get(key) || 0) + 1);
     });
-  
+
   return patterns;
 }
 
 // Timeline analysis
 function analyzeTimeline(logs: LogEntry[]): void {
   const timeline = logs
-    .filter(log => log.level === 'ERROR' || log.level === 'WARN')
-    .map(log => ({
+    .filter((log) => log.level === 'ERROR' || log.level === 'WARN')
+    .map((log) => ({
       time: new Date(log.timestamp),
       level: log.level,
       category: log.category,
       message: log.message,
     }));
-  
+
   console.log('=== Error Timeline ===');
-  timeline.forEach(event => {
-    console.log(`${event.time.toISOString()} [${event.level}] [${event.category}] ${event.message}`);
+  timeline.forEach((event) => {
+    console.log(
+      `${event.time.toISOString()} [${event.level}] [${event.category}] ${event.message}`,
+    );
   });
 }
 ```
@@ -3925,11 +4003,11 @@ describe('logger performance', () => {
     const duration = performance.now() - start;
     const avgDuration = duration / iterations;
 
-    expect(avgDuration).toBeLessThan(0.1);  // < 0.1ms per log
+    expect(avgDuration).toBeLessThan(0.1); // < 0.1ms per log
   });
 
   it('does not log below threshold (zero overhead)', () => {
-    logger.setLevel('ERROR');  // Only ERROR level enabled
+    logger.setLevel('ERROR'); // Only ERROR level enabled
 
     const start = performance.now();
     for (let i = 0; i < 10000; i++) {
@@ -3938,7 +4016,7 @@ describe('logger performance', () => {
     const duration = performance.now() - start;
 
     // Should be near-instant because logs are skipped early
-    expect(duration).toBeLessThan(10);  // < 10ms for 10,000 skipped logs
+    expect(duration).toBeLessThan(10); // < 10ms for 10,000 skipped logs
   });
 
   it('respects max log limit', () => {
@@ -4012,7 +4090,7 @@ describe('log export', () => {
 describe('logging integration', () => {
   it('captures React error boundary exceptions', () => {
     const spy = vi.spyOn(logger, 'error');
-    
+
     // Trigger React error boundary
     render(<ThrowingComponent />);
 
@@ -4026,7 +4104,7 @@ describe('logging integration', () => {
 
   it('captures storage operation failures', async () => {
     const spy = vi.spyOn(logger, 'error');
-    
+
     // Simulate quota exceeded error
     await expect(storage.put('test', largeData)).rejects.toThrow(QuotaExceededError);
 
@@ -4040,7 +4118,7 @@ describe('logging integration', () => {
 
   it('captures worker task failures', async () => {
     const spy = vi.spyOn(logger, 'error');
-    
+
     // Send invalid task to worker
     await expect(worker.execute({ type: 'invalid' })).rejects.toThrow();
 
@@ -4061,11 +4139,13 @@ describe('logging integration', () => {
 ### 8.1 Local Development Setup
 
 **Prerequisites**:
+
 - Node.js 22 (LTS)
 - npm 10+
 - Git
 
 **Setup Steps**:
+
 ```bash
 # Clone repository
 git clone https://github.com/<org>/cpap-analyzer.git
@@ -4088,6 +4168,7 @@ npm run dev
 **Tool**: Vite's built-in HMR
 
 **Features**:
+
 - **Fast Refresh**: React components update without full reload
 - **State Preservation**: Component state retained during updates (where possible)
 - **CSS HMR**: CSS changes apply instantly without reload
@@ -4103,18 +4184,19 @@ npm run dev
 export default defineConfig({
   server: {
     port: 5173,
-    strictPort: false,  // Try next port if 5173 is busy
-    open: false,  // Don't auto-open browser (agent-friendly)
-    cors: true,  // Allow CORS for local testing
+    strictPort: false, // Try next port if 5173 is busy
+    open: false, // Don't auto-open browser (agent-friendly)
+    cors: true, // Allow CORS for local testing
     hmr: {
-      overlay: true  // Show error overlay on HMR failures
-    }
+      overlay: true, // Show error overlay on HMR failures
+    },
   },
   // ...
 });
 ```
 
 **HTTPS (Optional)**: For testing Service Worker features:
+
 ```typescript
 server: {
   https: true,  // Vite generates self-signed cert
@@ -4131,6 +4213,7 @@ server: {
 **Browser DevTools**: Primary debugging interface
 
 **VS Code Configuration** (`.vscode/launch.json`):
+
 ```json
 {
   "version": "0.2.0",
@@ -4150,6 +4233,7 @@ server: {
 ```
 
 **Source Maps**:
+
 - **Development**: Inline source maps for instant debugging
 - **Production**: Separate `.map` files (not deployed, local debugging only)
 
@@ -4166,11 +4250,13 @@ server: {
 **Philosophy**: Stay reasonably up-to-date, but prioritize stability over bleeding-edge.
 
 **Update Frequency**:
+
 - **Security patches**: Immediate (via Dependabot alerts)
 - **Minor/patch updates**: Weekly (via Dependabot PRs)
 - **Major updates**: Quarterly review + manual testing
 
 **Process**:
+
 1. Dependabot opens PR with dependency update
 2. CI runs full quality gate (tests, build, E2E)
 3. Human product owner reviews changelog and impact
@@ -4191,11 +4277,11 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "09:00"
+      time: '09:00'
       timezone: America/Los_Angeles
     open-pull-requests-limit: 10
     reviewers:
-      - kyle  # Human product owner
+      - kyle # Human product owner
     assignees:
       - kyle
     commit-message:
@@ -4216,8 +4302,8 @@ updates:
     # Ignore specific packages (if needed)
     ignore:
       # Example: Pin React to v18.x
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: 'react'
+        update-types: ['version-update:semver-major']
 
   # GitHub Actions
   - package-ecosystem: github-actions
@@ -4229,6 +4315,7 @@ updates:
 ```
 
 **Grouping Strategy**:
+
 - **Development dependencies**: Batch minor/patch updates weekly
 - **Production dependencies**: Individual patch updates, manual review for minors
 - **GitHub Actions**: Monthly updates (low churn)
@@ -4238,16 +4325,19 @@ updates:
 **npm Lockfile**: `package-lock.json` (committed to git)
 
 **Pinning Policy**:
+
 - **Production dependencies**: Use caret ranges (`^1.2.3`) for flexibility
 - **Development dependencies**: Use caret ranges (`^1.2.3`)
 - **Known breaking packages**: Pin exact versions (`1.2.3`)
 
 **Rationale**:
+
 - Caret ranges allow automatic patch updates (security fixes)
 - Lockfile pins transitive dependencies for reproducibility
 - Exact pins only for problematic packages (rare)
 
 **Reproducible Builds**:
+
 - `npm ci` in CI (installs exact lockfile versions)
 - `npm install` locally (may update within ranges)
 - Lockfile changes reviewed in PRs
@@ -4255,12 +4345,14 @@ updates:
 ### 9.4 Dependency Review Process
 
 **Automated Review** (via Dependabot):
+
 1. Dependabot PR created
 2. CI runs (tests, build, security audit)
 3. Changelog link included in PR description
 4. Human reviews changelog for breaking changes
 
 **Manual Review** (for major updates):
+
 1. Create feature branch
 2. Update dependency manually
 3. Run full test suite locally
@@ -4269,6 +4361,7 @@ updates:
 6. Open PR with detailed upgrade notes
 
 **Rejection Criteria**:
+
 - CI failures (tests, build, audit)
 - Bundle size increase > 10% without justification
 - Known breaking changes affecting behavior
@@ -4279,6 +4372,7 @@ updates:
 **Tool**: `license-checker` (to be integrated)
 
 **Permitted Licenses**:
+
 - MIT
 - Apache-2.0
 - BSD-2-Clause / BSD-3-Clause
@@ -4286,17 +4380,20 @@ updates:
 - CC0-1.0 (Public Domain)
 
 **Prohibited Licenses**:
+
 - GPL (copyleft, incompatible with MIT)
 - AGPL (strong copyleft)
 - Commercial/proprietary licenses
 
 **Process** (Future):
+
 ```bash
 # Add to CI
 npx license-checker --summary --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;CC0-1.0"
 ```
 
 **Action on Violation**:
+
 - CI fails
 - Find alternative library with compatible license
 - Document decision in ADR
@@ -4307,21 +4404,23 @@ npx license-checker --summary --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Cla
 
 ### 10.1 Build Performance Targets
 
-| Metric | Target | Threshold |
-|--------|--------|-----------|
-| Clean build | < 60s | < 90s |
-| Incremental rebuild | < 10s | < 20s |
-| Dev server startup | < 3s | < 5s |
-| HMR update | < 100ms | < 300ms |
-| CI full pipeline | < 5min | < 8min |
+| Metric              | Target  | Threshold |
+| ------------------- | ------- | --------- |
+| Clean build         | < 60s   | < 90s     |
+| Incremental rebuild | < 10s   | < 20s     |
+| Dev server startup  | < 3s    | < 5s      |
+| HMR update          | < 100ms | < 300ms   |
+| CI full pipeline    | < 5min  | < 8min    |
 
 **Current Performance** (as of Feb 2026):
+
 - Clean build: ~30s
 - Dev server startup: ~2s
 - HMR update: ~50ms
 - CI full pipeline: ~4min
 
 **Optimization Strategies**:
+
 - **Vite Caching**: Leverages native ESM for fast dev server
 - **npm Cache**: `actions/setup-node@v4` caches npm packages
 - **Parallelization**: Independent CI jobs run in parallel
@@ -4330,6 +4429,7 @@ npx license-checker --summary --onlyAllow "MIT;Apache-2.0;BSD-2-Clause;BSD-3-Cla
 ### 10.2 CI Pipeline Optimization
 
 **Current Pipeline Structure**:
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │ Stage 1: Parallel Checks (~3–5 min)                 │
@@ -4355,6 +4455,7 @@ Total: ~5–7 minutes (wall clock)
 ```
 
 **Optimization Opportunities**:
+
 1. **Playwright Caching**: Cache installed browsers (~2 GB) between runs
    - Benefit: ~2 min savings on E2E job
    - Implementation: `actions/cache@v4` for `~/.cache/ms-playwright`
@@ -4376,15 +4477,17 @@ Total: ~5–7 minutes (wall clock)
 ### 11.1 CI/CD Security Best Practices
 
 **Secrets Management**:
+
 - No secrets required for current deployment (GitHub Pages uses `GITHUB_TOKEN` automatically)
 - Future secrets (if needed): Stored in GitHub Secrets, never logged
 
 **Permissions**:
+
 ```yaml
 permissions:
-  contents: read      # Read code
-  pages: write        # Deploy to Pages
-  id-token: write     # OIDC token for Pages
+  contents: read # Read code
+  pages: write # Deploy to Pages
+  id-token: write # OIDC token for Pages
 ```
 
 **Principle of Least Privilege**: Workflows only request necessary permissions.
@@ -4406,11 +4509,13 @@ permissions:
 ### 11.3 Deployment Security
 
 **GitHub Pages Security**:
+
 - **HTTPS Enforced**: All traffic over TLS
 - **Origin Isolation**: Runs on github.io subdomain (origin sandbox)
 - **No Server-Side Code**: Static files only (no execution surface)
 
 **Content Security Policy** (CSP):
+
 - **Implemented in HTML**: `<meta>` tag or HTTP header via `_headers` file
 - **Strict Policy**: No `unsafe-inline`, no `unsafe-eval`
 - **Worker Isolation**: Web Workers run in isolated contexts
@@ -4427,7 +4532,8 @@ permissions:
 
 **CI/CD Configuration**: Version-controlled in `.github/workflows/`
 
-**Build Artifacts**: 
+**Build Artifacts**:
+
 - **Short-term**: GitHub Actions artifacts (7–30 day retention)
 - **Long-term**: Git tags + GitHub Releases
 
@@ -4436,24 +4542,28 @@ permissions:
 ### 12.2 Recovery Procedures
 
 **Scenario 1: Broken Deployment**
+
 - **Detection**: User reports or monitoring alerts
 - **Action**: Git revert + push to `main` (see Section 5.4)
 - **Time**: ~5 minutes (full CI/CD cycle)
 
 **Scenario 2: CI Pipeline Failure (Infrastructure)**
+
 - **Detection**: All jobs fail with "service unavailable"
 - **Action**: Wait for GitHub Actions restoration (out of our control)
 - **Workaround**: Local build + manual deployment (emergency only)
 
 **Scenario 3: Compromised Dependency**
+
 - **Detection**: npm audit or Dependabot alert
-- **Action**: 
+- **Action**:
   1. Revert to last known-good version
   2. Pin compromised package to safe version
   3. Open issue to track resolution
 - **Time**: ~10–30 minutes
 
 **Scenario 4: Lost Git Repository**
+
 - **Likelihood**: Extremely low (GitHub's infrastructure)
 - **Prevention**: Developer clones serve as distributed backups
 - **Recovery**: Restore from any developer clone
@@ -4461,18 +4571,21 @@ permissions:
 ### 12.3 Incident Response Plan
 
 **Severity Levels**:
+
 - **P0 (Critical)**: Production site down or major security vulnerability
 - **P1 (High)**: Feature broken, data loss risk
 - **P2 (Medium)**: Minor bug, degraded performance
 - **P3 (Low)**: Cosmetic issue, documentation error
 
 **P0 Response**:
+
 1. **Immediate**: Rollback to last known-good version
 2. **Within 1 hour**: Identify root cause
 3. **Within 4 hours**: Deploy fix or workaround
 4. **Within 24 hours**: RCA document published
 
 **Communication**:
+
 - GitHub Issues for tracking
 - Project README for status updates (no external status page)
 
@@ -4483,16 +4596,19 @@ permissions:
 ### 13.1 Metrics to Track
 
 **Build Metrics**:
+
 - CI pipeline duration (target: < 5 min)
 - Build failure rate (target: < 5% of commits)
 - Flaky test rate (target: < 1% of E2E tests)
 
 **Performance Metrics**:
+
 - Bundle size over time (target: flat or decreasing)
 - Build time over time (target: flat)
 - Test suite duration (target: flat or decreasing)
 
 **Security Metrics**:
+
 - Dependency update latency (time from Dependabot PR to merge)
 - Security vulnerability count (target: 0 high/critical)
 
@@ -4501,32 +4617,38 @@ permissions:
 ### 13.2 Planned Enhancements
 
 **Short-term** (Next 3 months):
+
 1. Implement Playwright browser caching
 2. Add bundle size regression checks
 3. Automate release process with `release-please`
 
 **Medium-term** (Next 6 months):
+
 1. Add performance benchmarking to CI
 2. Implement PR preview deployments
 3. Add visual regression testing (e.g., Percy, Chromatic)
 
 **Long-term** (Next 12 months):
+
 1. Optimize CI pipeline to < 3 min
 2. Add Lighthouse CI for Core Web Vitals tracking
 3. Implement automated dependency compatibility testing
 
 ### 13.3 Review Cadence
 
-**Weekly**: 
+**Weekly**:
+
 - Review Dependabot PRs
 - Check for flaky tests
 
 **Monthly**:
+
 - Review CI metrics (duration, failure rate)
 - Review bundle size trends
 - Security audit of dependencies
 
 **Quarterly**:
+
 - DevOps architecture review
 - Pipeline optimization sprint
 - Tool/platform evaluation
@@ -4537,24 +4659,25 @@ permissions:
 
 ### 14.1 Tool Versions
 
-| Tool | Version | Update Policy |
-|------|---------|---------------|
-| Node.js | 22 (LTS) | Follow LTS releases |
-| npm | 10+ | Bundled with Node.js |
-| GitHub Actions | Latest | Auto-updated by GitHub |
-| Vite | 6.x | Update minors, review majors |
-| Vitest | 2.x | Update minors, review majors |
-| Playwright | 1.x | Update minors monthly |
-| TypeScript | 5.x | Update minors, review majors |
+| Tool           | Version  | Update Policy                |
+| -------------- | -------- | ---------------------------- |
+| Node.js        | 22 (LTS) | Follow LTS releases          |
+| npm            | 10+      | Bundled with Node.js         |
+| GitHub Actions | Latest   | Auto-updated by GitHub       |
+| Vite           | 6.x      | Update minors, review majors |
+| Vitest         | 2.x      | Update minors, review majors |
+| Playwright     | 1.x      | Update minors monthly        |
+| TypeScript     | 5.x      | Update minors, review majors |
 
 ### 14.2 Workflow File Inventory
 
-| File | Purpose | Trigger |
-|------|---------|---------|
-| `.github/workflows/ci.yml` | Main CI/CD pipeline | Push, PR |
-| `.github/dependabot.yml` | Automated dependency updates | Weekly |
+| File                       | Purpose                      | Trigger  |
+| -------------------------- | ---------------------------- | -------- |
+| `.github/workflows/ci.yml` | Main CI/CD pipeline          | Push, PR |
+| `.github/dependabot.yml`   | Automated dependency updates | Weekly   |
 
 **Future Workflows**:
+
 - `.github/workflows/release.yml` — Automated release process
 - `.github/workflows/preview.yml` — PR preview deployments
 

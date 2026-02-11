@@ -32,32 +32,35 @@ The exact structure varies by machine model and firmware version. ResMed AirSens
 EDF (European Data Format) is a standard for time-series biomedical data storage.
 
 **Header (256 bytes + 256 × n_signals bytes)**:
+
 - Version, patient info, recording info, start date/time, header size
 - Number of data records, duration of each data record
 - For each signal: label, transducer type, physical dimension (unit), physical min/max, digital min/max, number of samples per data record
 
 **Data Records**:
+
 - Fixed-duration blocks (typically 1–30 seconds)
 - Each signal's samples packed as 16-bit signed integers
 - Samples per record × sample rate determines signal frequency
 
 **Signal Channels (ResMed typical)**:
 
-| Channel Label | Sample Rate | Unit | Description |
-| ---- | ---- | ---- | ---- |
-| Flow | 25 Hz | L/min | Mask airflow |
-| MaskPress | 25 Hz | cmH₂O | Mask pressure |
-| Leak | 2 Hz | L/min | Total leak rate |
-| TidVol | ~0.1 Hz | mL | Tidal volume |
-| MinVent | ~0.1 Hz | L/min | Minute ventilation |
-| RespRate | ~0.1 Hz | breaths/min | Respiratory rate |
-| EPAP | ~0.1 Hz | cmH₂O | Expiratory pressure |
-| IPAP | ~0.1 Hz | cmH₂O | Inspiratory pressure (bilevel) |
-| SpO2 | 1 Hz | % | Oxygen saturation (if oximeter) |
-| Pulse | 1 Hz | bpm | Pulse rate (if oximeter) |
+| Channel Label | Sample Rate | Unit        | Description                     |
+| ------------- | ----------- | ----------- | ------------------------------- |
+| Flow          | 25 Hz       | L/min       | Mask airflow                    |
+| MaskPress     | 25 Hz       | cmH₂O       | Mask pressure                   |
+| Leak          | 2 Hz        | L/min       | Total leak rate                 |
+| TidVol        | ~0.1 Hz     | mL          | Tidal volume                    |
+| MinVent       | ~0.1 Hz     | L/min       | Minute ventilation              |
+| RespRate      | ~0.1 Hz     | breaths/min | Respiratory rate                |
+| EPAP          | ~0.1 Hz     | cmH₂O       | Expiratory pressure             |
+| IPAP          | ~0.1 Hz     | cmH₂O       | Inspiratory pressure (bilevel)  |
+| SpO2          | 1 Hz        | %           | Oxygen saturation (if oximeter) |
+| Pulse         | 1 Hz        | bpm         | Pulse rate (if oximeter)        |
 
 **Event Channels**:
 Events are encoded in EDF+ as annotations with timestamps and text labels:
+
 - `Obstructive Apnea` — Duration ≥ 10s, caused by airway collapse
 - `Central Apnea` — Duration ≥ 10s, caused by absent respiratory drive
 - `Mixed Apnea` — Begins central, becomes obstructive
@@ -69,15 +72,15 @@ Events are encoded in EDF+ as annotations with timestamps and text labels:
 
 #### Machine Model Differences
 
-| Model | Therapy Mode | Data Differences |
-| ---- | ---- | ---- |
-| AirSense 10 CPAP | Fixed pressure | No IPAP channel, no pressure support |
-| AirSense 10 AutoSet | Auto-adjusting | EPAP varies, wider pressure range |
-| AirSense 10 VPAP | Bilevel | IPAP and EPAP channels, pressure support |
-| AirSense 11 CPAP | Fixed pressure | Updated EDF structure, same channels |
-| AirSense 11 AutoSet | Auto-adjusting | Enhanced event detection algorithms |
-| AirCurve 10 VAuto | Bilevel auto | Pressure support channel |
-| AirCurve 10 ASV | Adaptive servo-ventilation | Additional servo gain and backup rate parameters |
+| Model               | Therapy Mode               | Data Differences                                 |
+| ------------------- | -------------------------- | ------------------------------------------------ |
+| AirSense 10 CPAP    | Fixed pressure             | No IPAP channel, no pressure support             |
+| AirSense 10 AutoSet | Auto-adjusting             | EPAP varies, wider pressure range                |
+| AirSense 10 VPAP    | Bilevel                    | IPAP and EPAP channels, pressure support         |
+| AirSense 11 CPAP    | Fixed pressure             | Updated EDF structure, same channels             |
+| AirSense 11 AutoSet | Auto-adjusting             | Enhanced event detection algorithms              |
+| AirCurve 10 VAuto   | Bilevel auto               | Pressure support channel                         |
+| AirCurve 10 ASV     | Adaptive servo-ventilation | Additional servo gain and backup rate parameters |
 
 The data import pipeline must handle all models gracefully, extracting whatever channels are available without failing on missing channels.
 
@@ -86,6 +89,7 @@ The data import pipeline must handle all models gracefully, extracting whatever 
 OAuth 2.0 with PKCE flow. User authorizes access to their Fitbit data.
 
 **Endpoints used**:
+
 - Intraday Heart Rate (1-minute resolution)
 - Intraday SpO2 (5-minute resolution)
 - Sleep Stages (per-stage duration)
@@ -98,6 +102,7 @@ OAuth 2.0 with PKCE flow. User authorizes access to their Fitbit data.
 Weather and air quality data correlated with therapy dates.
 
 **Potential sources**:
+
 - OpenWeatherMap API (temperature, humidity, pressure)
 - AirNow API or AQICN (air quality index, PM2.5)
 - Pollen.com or Ambee (pollen counts)
@@ -107,6 +112,7 @@ Location-based. User provides their location (city/zip) or uses browser geolocat
 ### 1.4 Future Machine Manufacturers (Plugin Architecture)
 
 The machine plugin interface must accommodate:
+
 - **Philips Respironics**: Different EDF conventions, different channel labels
 - **Fisher & Paykel**: Proprietary data format
 - **Löwenstein**: Different directory structure
@@ -128,6 +134,7 @@ Each manufacturer plugin encapsulates all format-specific knowledge.
 ### 2.2 Incremental Import
 
 After the initial import, subsequent imports should detect and import only new data:
+
 - Track the last imported session date per machine.
 - Scan the SD card for sessions after that date.
 - Import only the new sessions.
@@ -193,16 +200,17 @@ The EDF parser must:
 
 ### 3.1 Technology Selection
 
-| Store | Technology | Purpose |
-| ---- | ---- | ---- |
-| **Metadata Store** | IndexedDB | Session metadata, nightly aggregates, settings, analysis results, import history |
-| **Signal Store** | OPFS (Origin Private File System) | High-resolution time-series data in chunked binary format |
+| Store              | Technology                        | Purpose                                                                          |
+| ------------------ | --------------------------------- | -------------------------------------------------------------------------------- |
+| **Metadata Store** | IndexedDB                         | Session metadata, nightly aggregates, settings, analysis results, import history |
+| **Signal Store**   | OPFS (Origin Private File System) | High-resolution time-series data in chunked binary format                        |
 
 **Rationale**: IndexedDB is well-suited for structured, queryable data with complex indices. OPFS provides direct file system access with better performance for large binary blobs, avoiding the overhead of IndexedDB transactions for high-throughput signal data.
 
 ### 3.2 Schema: Metadata Store (IndexedDB)
 
 #### Sessions Table
+
 ```
 {
   id: string (UUID),
@@ -221,6 +229,7 @@ The EDF parser must:
 ```
 
 #### Nightly Aggregates Table
+
 ```
 {
   sessionId: string (FK → Sessions),
@@ -248,6 +257,7 @@ The EDF parser must:
 ```
 
 #### Events Table
+
 ```
 {
   id: string (UUID),
@@ -262,6 +272,7 @@ The EDF parser must:
 ```
 
 #### Analysis Results Table
+
 ```
 {
   id: string (UUID),
@@ -274,6 +285,7 @@ The EDF parser must:
 ```
 
 #### Settings Table
+
 ```
 {
   key: string (setting name),
@@ -282,6 +294,7 @@ The EDF parser must:
 ```
 
 #### Import History Table
+
 ```
 {
   id: string (UUID),
@@ -311,6 +324,7 @@ cpap-analyzer/
 ```
 
 #### Manifest Format
+
 ```json
 {
   "sessionId": "uuid",
@@ -321,8 +335,16 @@ cpap-analyzer/
   ],
   "chunkDurationSeconds": 300,
   "chunks": [
-    { "index": 0, "startTime": 1709251200000, "samples": { "Flow": 7500, "MaskPress": 7500, "Leak": 600 } },
-    { "index": 1, "startTime": 1709251500000, "samples": { "Flow": 7500, "MaskPress": 7500, "Leak": 600 } }
+    {
+      "index": 0,
+      "startTime": 1709251200000,
+      "samples": { "Flow": 7500, "MaskPress": 7500, "Leak": 600 }
+    },
+    {
+      "index": 1,
+      "startTime": 1709251500000,
+      "samples": { "Flow": 7500, "MaskPress": 7500, "Leak": 600 }
+    }
   ]
 }
 ```
@@ -330,6 +352,7 @@ cpap-analyzer/
 #### Binary Chunk Format
 
 Each chunk file contains interleaved channel data in Float32 format:
+
 - All samples for channel 0, then all samples for channel 1, etc.
 - Float32 (4 bytes per sample) for numerical precision and JavaScript Float64 compatibility.
 - Fixed chunk duration (5 minutes = 300 seconds) for predictable sizing.
@@ -337,6 +360,7 @@ Each chunk file contains interleaved channel data in Float32 format:
 #### Chunk Sizing Calculation
 
 For a 5-minute chunk with typical ResMed channels:
+
 - Flow: 25 Hz × 300s × 4 bytes = 30,000 bytes
 - MaskPress: 25 Hz × 300s × 4 bytes = 30,000 bytes
 - Leak: 2 Hz × 300s × 4 bytes = 2,400 bytes
@@ -347,16 +371,17 @@ For an 8-hour night: ~96 chunks → ~6 MB per night.
 
 ### 3.4 Storage Estimation
 
-| Timeframe | Nights | Signal Data | Metadata | Total |
-| ---- | ---- | ---- | ---- | ---- |
-| 1 month | ~30 | ~180 MB | ~50 KB | ~180 MB |
-| 1 year | ~365 | ~2.2 GB | ~600 KB | ~2.2 GB |
-| 5 years | ~1,825 | ~11 GB | ~3 MB | ~11 GB |
-| 10 years | ~3,650 | ~22 GB | ~6 MB | ~22 GB |
+| Timeframe | Nights | Signal Data | Metadata | Total   |
+| --------- | ------ | ----------- | -------- | ------- |
+| 1 month   | ~30    | ~180 MB     | ~50 KB   | ~180 MB |
+| 1 year    | ~365   | ~2.2 GB     | ~600 KB  | ~2.2 GB |
+| 5 years   | ~1,825 | ~11 GB      | ~3 MB    | ~11 GB  |
+| 10 years  | ~3,650 | ~22 GB      | ~6 MB    | ~22 GB  |
 
 Browser storage quotas vary but modern browsers typically allow up to ~60% of available disk space for OPFS. On a device with 256 GB storage, this allows ~150 GB — sufficient for decades of data.
 
 The application must:
+
 - Display current storage usage.
 - Warn when approaching quota limits.
 - Allow users to delete old data or reduce retention.
@@ -394,6 +419,7 @@ Signal data is accessed in response to user interaction (zooming into a specific
 - **Downsampled request**: Given a session, time range, and target sample count, return a downsampled representation.
 
 The access pattern is viewport-based:
+
 1. The visualization layer requests data for the currently visible time range.
 2. The data access layer identifies which chunks overlap the requested range.
 3. Only those chunks are loaded from OPFS.
@@ -403,12 +429,12 @@ This ensures that memory usage is proportional to the visible time range, not th
 
 ### 4.3 Downsampling Strategies
 
-| Algorithm | When Used | Properties |
-| ---- | ---- | ---- |
-| **Min-Max** | Intermediate zoom levels | Preserves peaks and valleys. Each downsampled point is (min, max) of the original window. |
-| **LTTB** (Largest Triangle Three Buckets) | Moderate zoom levels | Perceptually optimized — preserves the general shape of the data with fewer points. |
-| **Average** | Low zoom levels (year view) | Simple mean per time window. Suitable when individual events are not visible. |
-| **None** (native resolution) | Highest zoom levels | Full 25–50 Hz data when zoomed in enough. |
+| Algorithm                                 | When Used                   | Properties                                                                                |
+| ----------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------- |
+| **Min-Max**                               | Intermediate zoom levels    | Preserves peaks and valleys. Each downsampled point is (min, max) of the original window. |
+| **LTTB** (Largest Triangle Three Buckets) | Moderate zoom levels        | Perceptually optimized — preserves the general shape of the data with fewer points.       |
+| **Average**                               | Low zoom levels (year view) | Simple mean per time window. Suitable when individual events are not visible.             |
+| **None** (native resolution)              | Highest zoom levels         | Full 25–50 Hz data when zoomed in enough.                                                 |
 
 The downsampling level is chosen automatically based on the ratio of requested time range to available pixels.
 
@@ -467,23 +493,30 @@ Target memory budget for the main thread: **< 512 MB**.
 ## 6. Data Lifecycle
 
 ### 6.1 Import
+
 User selects SD card → EDF parsed → converted to binary chunks → stored in OPFS + IndexedDB.
 
 ### 6.2 Process
+
 On-demand analysis as user navigates. Results cached in IndexedDB for future access. Cache invalidated when new data is imported for the affected date range.
 
 ### 6.3 Store
+
 Data persists in browser storage across sessions. The application checks storage integrity on startup.
 
 ### 6.4 Query
+
 Viewport-based signal access, indexed metadata queries, cached analysis results.
 
 ### 6.5 Export
+
 Users can export:
+
 - Session data as JSON (with optional AES-256-GCM encryption)
 - Analysis results as CSV
 - Reports as PDF
 - Raw signal data as EDF or CSV
 
 ### 6.6 Delete
+
 Users can delete individual sessions, date ranges, or all data. Deletion removes data from both OPFS and IndexedDB. The operation is confirmed by the user and is irreversible.

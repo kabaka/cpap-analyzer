@@ -46,10 +46,10 @@ Implement **dual storage strategy**:
 
 Technology split:
 
-| Store    | Technology | Purpose                                                                   | Rationale                                                                                                    |
-| -------- | ---------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Metadata | IndexedDB  | Sessions, aggregates, events, settings, analysis results, import history  | Structured queryable data with indices; transaction support; cross-browser compatibility                     |
-| Signals  | OPFS       | High-resolution time-series (25–50 Hz)                                    | High-throughput binary I/O; direct file system access; lower overhead for large blobs; better streaming      |
+| Store    | Technology | Purpose                                                                  | Rationale                                                                                               |
+| -------- | ---------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Metadata | IndexedDB  | Sessions, aggregates, events, settings, analysis results, import history | Structured queryable data with indices; transaction support; cross-browser compatibility                |
+| Signals  | OPFS       | High-resolution time-series (25–50 Hz)                                   | High-throughput binary I/O; direct file system access; lower overhead for large blobs; better streaming |
 
 IndexedDB stores (database: `cpap-analyzer`):
 

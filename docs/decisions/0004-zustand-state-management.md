@@ -51,13 +51,19 @@ Store structure:
 
 ```typescript
 // Global app state
-useAppStore: { dateRange, selectedSessionId, theme, importStatus }
+useAppStore: {
+  (dateRange, selectedSessionId, theme, importStatus);
+}
 
 // Settings state
-useSettingsStore: { analysisParams, displayPrefs, integrations }
+useSettingsStore: {
+  (analysisParams, displayPrefs, integrations);
+}
 
 // Chart interaction state
-useChartInteractionStore: { zoomDomain, brushSelection, crosshairPosition }
+useChartInteractionStore: {
+  (zoomDomain, brushSelection, crosshairPosition);
+}
 ```
 
 React Context used for:

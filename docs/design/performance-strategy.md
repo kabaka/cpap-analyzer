@@ -33,14 +33,14 @@ Performance is a **first-class architectural concern**, not an afterthought. Eve
 
 ### 1.1 Core Web Vitals Targets
 
-| Metric | Target | Threshold | Current Importance |
-|--------|--------|-----------|-------------------|
-| **Largest Contentful Paint (LCP)** | < 1.5s | < 2.5s (Good) | Critical |
-| **First Input Delay (FID)** | < 50ms | < 100ms (Good) | Critical |
-| **Cumulative Layout Shift (CLS)** | < 0.05 | < 0.1 (Good) | Critical |
+| Metric                              | Target  | Threshold      | Current Importance       |
+| ----------------------------------- | ------- | -------------- | ------------------------ |
+| **Largest Contentful Paint (LCP)**  | < 1.5s  | < 2.5s (Good)  | Critical                 |
+| **First Input Delay (FID)**         | < 50ms  | < 100ms (Good) | Critical                 |
+| **Cumulative Layout Shift (CLS)**   | < 0.05  | < 0.1 (Good)   | Critical                 |
 | **Interaction to Next Paint (INP)** | < 100ms | < 200ms (Good) | Critical (replacing FID) |
-| **Time to First Byte (TTFB)** | < 200ms | < 600ms (Good) | Important |
-| **First Contentful Paint (FCP)** | < 1.0s | < 1.8s (Good) | Important |
+| **Time to First Byte (TTFB)**       | < 200ms | < 600ms (Good) | Important                |
+| **First Contentful Paint (FCP)**    | < 1.0s  | < 1.8s (Good)  | Important                |
 
 **Rationale**: These targets represent "Good" scores according to Chrome User Experience Report (CrUX) methodology. LCP < 1.5s provides instant perceived performance. INP < 100ms ensures UI feels immediate and responsive.
 
@@ -48,61 +48,61 @@ Performance is a **first-class architectural concern**, not an afterthought. Eve
 
 #### 1.2.1 Import & Parsing
 
-| Operation | Target | Acceptable | Notes |
-|-----------|--------|------------|-------|
-| **Single night EDF parse** | < 2s | < 5s | Typical 6 MB BRP.edf file on main thread |
-| **Single night EDF parse (Worker)** | < 1s | < 3s | Same file, Web Worker parallel processing |
-| **Full SD card scan** | < 10s | < 30s | Directory enumeration, no parsing |
-| **Multi-night batch import (10 nights)** | < 30s | < 90s | Parallel Worker pool, 4 concurrent |
-| **Multi-night batch import (100 nights)** | < 5min | < 15min | Batch processing with progress updates |
-| **IndexedDB write (single session)** | < 500ms | < 1.5s | Metadata + aggregate metrics |
-| **OPFS write (signal data, per night)** | < 1.5s | < 4s | ~6 MB Float32Array to OPFS |
+| Operation                                 | Target  | Acceptable | Notes                                     |
+| ----------------------------------------- | ------- | ---------- | ----------------------------------------- |
+| **Single night EDF parse**                | < 2s    | < 5s       | Typical 6 MB BRP.edf file on main thread  |
+| **Single night EDF parse (Worker)**       | < 1s    | < 3s       | Same file, Web Worker parallel processing |
+| **Full SD card scan**                     | < 10s   | < 30s      | Directory enumeration, no parsing         |
+| **Multi-night batch import (10 nights)**  | < 30s   | < 90s      | Parallel Worker pool, 4 concurrent        |
+| **Multi-night batch import (100 nights)** | < 5min  | < 15min    | Batch processing with progress updates    |
+| **IndexedDB write (single session)**      | < 500ms | < 1.5s     | Metadata + aggregate metrics              |
+| **OPFS write (signal data, per night)**   | < 1.5s  | < 4s       | ~6 MB Float32Array to OPFS                |
 
 **Testing Methodology**: Benchmarked on "reference system" (2020 MacBook Pro, M1, 16 GB RAM, Chrome 120+). Acceptable threshold = 3× target for "low-end system" (2018 laptop, Core i5, 8 GB RAM).
 
 #### 1.2.2 Analysis Computation
 
-| Analysis Type | Target | Acceptable | Notes |
-|---------------|--------|------------|-------|
-| **Nightly aggregate query (1 year)** | < 50ms | < 150ms | IndexedDB query, 365 records |
-| **Time-series analysis (1 year)** | < 200ms | < 500ms | Rolling statistics, trend detection |
-| **Correlation analysis (2 years)** | < 500ms | < 1.5s | Pearson correlation, significance tests |
-| **Event clustering (1 year)** | < 1s | < 3s | FLG clustering algorithm |
-| **Signal-based analysis (single night)** | < 3s | < 10s | Breath-by-breath flow limitation, Worker |
-| **Signal-based analysis (1 week)** | < 20s | < 60s | 7× single night, parallel processing |
-| **Cache lookup** | < 10ms | < 30ms | IndexedDB indexed query |
+| Analysis Type                            | Target  | Acceptable | Notes                                    |
+| ---------------------------------------- | ------- | ---------- | ---------------------------------------- |
+| **Nightly aggregate query (1 year)**     | < 50ms  | < 150ms    | IndexedDB query, 365 records             |
+| **Time-series analysis (1 year)**        | < 200ms | < 500ms    | Rolling statistics, trend detection      |
+| **Correlation analysis (2 years)**       | < 500ms | < 1.5s     | Pearson correlation, significance tests  |
+| **Event clustering (1 year)**            | < 1s    | < 3s       | FLG clustering algorithm                 |
+| **Signal-based analysis (single night)** | < 3s    | < 10s      | Breath-by-breath flow limitation, Worker |
+| **Signal-based analysis (1 week)**       | < 20s   | < 60s      | 7× single night, parallel processing     |
+| **Cache lookup**                         | < 10ms  | < 30ms     | IndexedDB indexed query                  |
 
 **Testing Methodology**: Median of 10 runs with cold cache, using representative real-world datasets. Measure from user action trigger to result display completion.
 
 #### 1.2.3 Visualization Rendering
 
-| Visualization | Target | Acceptable | Notes |
-|---------------|--------|------------|-------|
-| **Recharts render (< 1k points)** | < 100ms | < 300ms | Standard Recharts rendering |
-| **Recharts render (< 10k points)** | < 500ms | < 1.5s | Recharts with optimized data |
-| **Canvas time-series (1M points, downsampled)** | < 200ms | < 600ms | LTTB to 2k points, Canvas render |
-| **Canvas time-series (10M points, downsampled)** | < 500ms | < 1.5s | LTTB to 2k points, Canvas render |
-| **Zoom/pan interaction response** | < 50ms | < 100ms | Viewport recalculation + redraw |
-| **Crosshair update (synchronized charts)** | < 16ms | < 33ms | 60 FPS / 30 FPS |
-| **Chart resize** | < 100ms | < 300ms | Layout recalculation + redraw |
-| **Export to PNG (1080p chart)** | < 2s | < 5s | Canvas → Blob conversion |
+| Visualization                                    | Target  | Acceptable | Notes                            |
+| ------------------------------------------------ | ------- | ---------- | -------------------------------- |
+| **Recharts render (< 1k points)**                | < 100ms | < 300ms    | Standard Recharts rendering      |
+| **Recharts render (< 10k points)**               | < 500ms | < 1.5s     | Recharts with optimized data     |
+| **Canvas time-series (1M points, downsampled)**  | < 200ms | < 600ms    | LTTB to 2k points, Canvas render |
+| **Canvas time-series (10M points, downsampled)** | < 500ms | < 1.5s     | LTTB to 2k points, Canvas render |
+| **Zoom/pan interaction response**                | < 50ms  | < 100ms    | Viewport recalculation + redraw  |
+| **Crosshair update (synchronized charts)**       | < 16ms  | < 33ms     | 60 FPS / 30 FPS                  |
+| **Chart resize**                                 | < 100ms | < 300ms    | Layout recalculation + redraw    |
+| **Export to PNG (1080p chart)**                  | < 2s    | < 5s       | Canvas → Blob conversion         |
 
 **Testing Methodology**: Measure from requestAnimationFrame to paint completion using Chrome DevTools Performance profiler. Interaction targets based on 60 FPS goal (16.67ms budget).
 
 #### 1.2.4 Initial Load Performance
 
-| Metric | Target | Acceptable | Notes |
-|--------|--------|------------|-------|
-| **Bundle size (initial, gzipped)** | ≤150 KB | ≤200 KB | Main app bundle without code-split chunks |
-| **Route bundles (per route, gzipped)** | ≤75 KB | ≤100 KB | Code-split route chunks |
-| **Worker bundles (per worker, gzipped)** | ≤50 KB | ≤75 KB | ResMed parser and other workers |
-| **Vendor chunks (gzipped)** | ≤120 KB | ≤150 KB | React, Radix UI, shared dependencies |
-| **Total JavaScript (all chunks, gzipped)** | ≤500 KB | ≤1 MB | All bundles combined |
-| **CSS (total, gzipped)** | ≤30 KB | ≤50 KB | All stylesheets |
-| **Fonts (gzipped)** | ≤40 KB | ≤60 KB | Subsetted fonts (if any) |
-| **Time to Interactive (TTI)** | < 2s | < 3.5s | On 3G connection (1.6 Mbps) |
-| **Service Worker cache priming** | < 5s | < 10s | Background, non-blocking |
-| **IndexedDB schema initialization** | < 100ms | < 300ms | First launch only |
+| Metric                                     | Target  | Acceptable | Notes                                     |
+| ------------------------------------------ | ------- | ---------- | ----------------------------------------- |
+| **Bundle size (initial, gzipped)**         | ≤150 KB | ≤200 KB    | Main app bundle without code-split chunks |
+| **Route bundles (per route, gzipped)**     | ≤75 KB  | ≤100 KB    | Code-split route chunks                   |
+| **Worker bundles (per worker, gzipped)**   | ≤50 KB  | ≤75 KB     | ResMed parser and other workers           |
+| **Vendor chunks (gzipped)**                | ≤120 KB | ≤150 KB    | React, Radix UI, shared dependencies      |
+| **Total JavaScript (all chunks, gzipped)** | ≤500 KB | ≤1 MB      | All bundles combined                      |
+| **CSS (total, gzipped)**                   | ≤30 KB  | ≤50 KB     | All stylesheets                           |
+| **Fonts (gzipped)**                        | ≤40 KB  | ≤60 KB     | Subsetted fonts (if any)                  |
+| **Time to Interactive (TTI)**              | < 2s    | < 3.5s     | On 3G connection (1.6 Mbps)               |
+| **Service Worker cache priming**           | < 5s    | < 10s      | Background, non-blocking                  |
+| **IndexedDB schema initialization**        | < 100ms | < 300ms    | First launch only                         |
 
 **Note**: Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops-architecture.md) for detailed target breakdown and monitoring strategy.
 
@@ -110,14 +110,14 @@ Performance is a **first-class architectural concern**, not an afterthought. Eve
 
 ### 1.3 Memory Budgets
 
-| Component | Budget | Critical Threshold | Recovery Strategy |
-| --------- | ------ | ------------------ | ----------------- |
-| **React component tree** | < 50 MB | < 100 MB | Virtualization, unmount off-screen |
-| **Chart rendering (active)** | < 100 MB | < 200 MB | LOD downsampling, Canvas reuse |
-| **Analysis computation (Worker)** | < 200 MB | < 500 MB | Streaming algorithms, chunked processing |
-| **Signal data (in-memory cache)** | < 100 MB | < 200 MB | LRU eviction, OPFS read-through |
-| **Nightly aggregates cache** | < 20 MB | < 50 MB | In-memory LRU, IndexedDB backing |
-| **Total heap (per tab)** | < 500 MB | < 1 GB | Combined budget |
+| Component                         | Budget   | Critical Threshold | Recovery Strategy                        |
+| --------------------------------- | -------- | ------------------ | ---------------------------------------- |
+| **React component tree**          | < 50 MB  | < 100 MB           | Virtualization, unmount off-screen       |
+| **Chart rendering (active)**      | < 100 MB | < 200 MB           | LOD downsampling, Canvas reuse           |
+| **Analysis computation (Worker)** | < 200 MB | < 500 MB           | Streaming algorithms, chunked processing |
+| **Signal data (in-memory cache)** | < 100 MB | < 200 MB           | LRU eviction, OPFS read-through          |
+| **Nightly aggregates cache**      | < 20 MB  | < 50 MB            | In-memory LRU, IndexedDB backing         |
+| **Total heap (per tab)**          | < 500 MB | < 1 GB             | Combined budget                          |
 
 **Monitoring**: Continuous heap snapshots during automated test runs. Critical threshold triggers warning in development console and telemetry flag.
 
@@ -132,29 +132,29 @@ Performance is a **first-class architectural concern**, not an afterthought. Eve
 
 **Canonical Bundle Size Targets** (enforced in CI):
 
-| Bundle Type | Target (gzipped) | Threshold (Fail CI) | Notes |
-| ----------- | ---------------- | ------------------- | ----- |
-| **Initial (main entry)** | ≤150 KB | ≤200 KB | Main app bundle with core framework |
-| **Route bundles (per route)** | ≤75 KB | ≤100 KB | Dashboard, Analysis, Settings, Help routes |
-| **Worker bundles (per worker)** | ≤50 KB | ≤75 KB | ResMed parser, analysis workers |
-| **Vendor chunks** | ≤120 KB | ≤150 KB | React, Radix UI, Zustand, shared deps |
-| **Total application** | ≤500 KB | ≤1 MB | All JavaScript bundles combined |
-| **CSS (total)** | ≤30 KB | ≤50 KB | All stylesheets |
-| **Fonts** | ≤40 KB | ≤60 KB | Subsetted fonts (if any) |
+| Bundle Type                     | Target (gzipped) | Threshold (Fail CI) | Notes                                      |
+| ------------------------------- | ---------------- | ------------------- | ------------------------------------------ |
+| **Initial (main entry)**        | ≤150 KB          | ≤200 KB             | Main app bundle with core framework        |
+| **Route bundles (per route)**   | ≤75 KB           | ≤100 KB             | Dashboard, Analysis, Settings, Help routes |
+| **Worker bundles (per worker)** | ≤50 KB           | ≤75 KB              | ResMed parser, analysis workers            |
+| **Vendor chunks**               | ≤120 KB          | ≤150 KB             | React, Radix UI, Zustand, shared deps      |
+| **Total application**           | ≤500 KB          | ≤1 MB               | All JavaScript bundles combined            |
+| **CSS (total)**                 | ≤30 KB           | ≤50 KB              | All stylesheets                            |
+| **Fonts**                       | ≤40 KB           | ≤60 KB              | Subsetted fonts (if any)                   |
 
 **Component Budget Breakdown** (for planning and monitoring):
 
-| Component | Budget (gzipped) | Budget (uncompressed) | Notes |
-| --------- | ---------------- | --------------------- | ----- |
-| Core framework | ~45 KB | ~130 KB | React, React-DOM, Router |
-| State management | ~3 KB | ~10 KB | Zustand |
-| UI components | ~20 KB | ~60 KB | Radix primitives + custom components |
-| Charting libraries | ~80 KB | ~240 KB | Recharts + D3 subset (lazy-loaded) |
-| Analysis engine | ~50 KB | ~150 KB | Statistical algorithms |
-| Storage layer | ~15 KB | ~45 KB | IndexedDB wrapper, OPFS utilities |
-| Utilities & helpers | ~20 KB | ~60 KB | Date formatting, validation, etc. |
-| Machine plugins | ~40-50 KB | ~120-150 KB | ResMed EDF parser (per worker) |
-| Service Worker | ~10 KB | ~30 KB | Workbox runtime |
+| Component           | Budget (gzipped) | Budget (uncompressed) | Notes                                |
+| ------------------- | ---------------- | --------------------- | ------------------------------------ |
+| Core framework      | ~45 KB           | ~130 KB               | React, React-DOM, Router             |
+| State management    | ~3 KB            | ~10 KB                | Zustand                              |
+| UI components       | ~20 KB           | ~60 KB                | Radix primitives + custom components |
+| Charting libraries  | ~80 KB           | ~240 KB               | Recharts + D3 subset (lazy-loaded)   |
+| Analysis engine     | ~50 KB           | ~150 KB               | Statistical algorithms               |
+| Storage layer       | ~15 KB           | ~45 KB                | IndexedDB wrapper, OPFS utilities    |
+| Utilities & helpers | ~20 KB           | ~60 KB                | Date formatting, validation, etc.    |
+| Machine plugins     | ~40-50 KB        | ~120-150 KB           | ResMed EDF parser (per worker)       |
+| Service Worker      | ~10 KB           | ~30 KB                | Workbox runtime                      |
 
 **Enforcement**: Bundle size targets are enforced in CI/CD using `size-limit`. Builds fail if any bundle exceeds its threshold. See [devops-architecture.md](./devops-architecture.md) for detailed monitoring strategy and PR comment integration.
 
@@ -166,17 +166,17 @@ Performance is a **first-class architectural concern**, not an afterthought. Eve
 
 **Ranked by user frequency × performance impact**:
 
-| Rank | User Flow | Frequency | Perf Impact | Priority |
-|------|-----------|-----------|-------------|----------|
-| 1 | **View dashboard (recent data)** | Every session | High | **P0** |
-| 2 | **Navigate to session detail** | Multiple per session | High | **P0** |
-| 3 | **Zoom/pan time-series chart** | Many per session | Medium | **P0** |
-| 4 | **Import single night (incremental)** | Daily | High | **P0** |
-| 5 | **Run trend analysis (1 year)** | Weekly | High | **P1** |
-| 6 | **Compare sessions side-by-side** | Occasional | Medium | **P1** |
-| 7 | **Initial bulk import (setup)** | Once | Very High | **P1** |
-| 8 | **Export session report (PDF)** | Occasional | Medium | **P2** |
-| 9 | **Custom plugin execution** | Power users | Variable | **P2** |
+| Rank | User Flow                             | Frequency            | Perf Impact | Priority |
+| ---- | ------------------------------------- | -------------------- | ----------- | -------- |
+| 1    | **View dashboard (recent data)**      | Every session        | High        | **P0**   |
+| 2    | **Navigate to session detail**        | Multiple per session | High        | **P0**   |
+| 3    | **Zoom/pan time-series chart**        | Many per session     | Medium      | **P0**   |
+| 4    | **Import single night (incremental)** | Daily                | High        | **P0**   |
+| 5    | **Run trend analysis (1 year)**       | Weekly               | High        | **P1**   |
+| 6    | **Compare sessions side-by-side**     | Occasional           | Medium      | **P1**   |
+| 7    | **Initial bulk import (setup)**       | Once                 | Very High   | **P1**   |
+| 8    | **Export session report (PDF)**       | Occasional           | Medium      | **P2**   |
+| 9    | **Custom plugin execution**           | Power users          | Variable    | **P2**   |
 
 **P0 (Critical)**: Must meet target performance on all supported devices. Continuous monitoring. Regressions block releases.  
 **P1 (Important)**: Must meet acceptable performance on reference system. Monitored in CI. Regressions require issue filing.  
@@ -187,6 +187,7 @@ Performance is a **first-class architectural concern**, not an afterthought. Eve
 **Flow**: User navigates to app URL → sees interactive dashboard
 
 **Critical Rendering Path**:
+
 ```
 DNS Lookup → TCP → TLS → HTML → CSS → JS (main bundle) → Parse/Compile
   ↓
@@ -223,6 +224,7 @@ IndexedDB Open → Load Recent Sessions → Fetch Aggregates → Render Charts
    - Defer heavy chart rendering until viewport (Intersection Observer)
 
 **Current Measurement (Target)**:
+
 - HTML: 5 KB gzipped → 2 KB target (inline critical CSS + shell)
 - Main JS bundle: Must be ≤150 KB target / ≤200 KB threshold (enforced in CI)
 - Route bundles: Must be ≤75 KB target / ≤100 KB threshold per route
@@ -239,6 +241,7 @@ IndexedDB Open → Load Recent Sessions → Fetch Aggregates → Render Charts
 **Flow**: User selects SD card directory → scans files → parses EDFs → writes to storage
 
 **Detailed Flow**:
+
 ```
 File System Access API → Directory Handle → Enumerate Files
   ↓
@@ -294,17 +297,18 @@ Update UI Progress → (Next session)
 
 **Expected Performance (10 night import)**:
 
-| Stage | Time | Cumulative |
-|-------|------|------------|
-| Directory scan | 1s | 1s |
-| Transfer files to Workers | 2s | 3s |
-| Parse + compute (parallel) | 8s | 11s |
-| Write to storage | 4s | 15s |
-| **Total** | — | **15s** |
+| Stage                      | Time | Cumulative |
+| -------------------------- | ---- | ---------- |
+| Directory scan             | 1s   | 1s         |
+| Transfer files to Workers  | 2s   | 3s         |
+| Parse + compute (parallel) | 8s   | 11s        |
+| Write to storage           | 4s   | 15s        |
+| **Total**                  | —    | **15s**    |
 
 **Target**: **< 30s** for 10 nights on reference system.
 
 **Fallback for low-end devices**:
+
 - Reduce Worker pool size to 2
 - Process sessions sequentially if memory pressure detected
 - Target: < 90s acceptable on low-end system
@@ -314,6 +318,7 @@ Update UI Progress → (Next session)
 **Flow**: App loads → fetch recent sessions → aggregate metrics → render dashboard cards
 
 **Detailed Flow**:
+
 ```
 Router Navigation → Dashboard Component Mount
   ↓
@@ -354,6 +359,7 @@ Render Dashboard Cards + Mini-Charts
    - Render charts incrementally (one per frame via `requestIdleCallback`)
 
 **Expected Performance**:
+
 - IndexedDB query (30 days): **< 20ms**
 - Metric aggregation: **< 10ms**
 - Initial render (3 cards): **< 100ms**
@@ -364,6 +370,7 @@ Render Dashboard Cards + Mini-Charts
 **Flow**: User clicks session → navigate to detail → load signals → render charts
 
 **Detailed Flow**:
+
 ```
 Router Navigation → SessionDetail Component Mount
   ↓
@@ -409,6 +416,7 @@ OPFS Read (signal chunk) → Downsample (Worker) → Render Canvas Chart
    - Cache loaded module for subsequent views
 
 **Expected Performance**:
+
 - Metadata fetch: **< 20ms**
 - Page render (no charts): **< 100ms**
 - Signal fetch + downsample (Worker): **< 500ms**
@@ -420,6 +428,7 @@ OPFS Read (signal chunk) → Downsample (Worker) → Render Canvas Chart
 **Flow**: User requests trend analysis → fetch data → compute → cache → display
 
 **Detailed Flow**:
+
 ```
 User Action (e.g., "Show AHI Trend") → Analysis Request
   ↓
@@ -466,12 +475,12 @@ Cache Result → Render Visualization
 
 **Expected Performance (1 year of data)**:
 
-| Analysis | Cache Hit | Cache Miss | Data Size |
-|----------|-----------|------------|-----------|
-| AHI trend (rolling 7-day avg) | < 10ms | 200ms | ~150 KB |
-| Correlation (AHI vs leak) | < 10ms | 300ms | ~150 KB |
-| Event clustering (FLG) | < 10ms | 2s | ~2 MB |
-| Signal-based (breath analysis) | < 10ms | 20s | ~500 MB |
+| Analysis                       | Cache Hit | Cache Miss | Data Size |
+| ------------------------------ | --------- | ---------- | --------- |
+| AHI trend (rolling 7-day avg)  | < 10ms    | 200ms      | ~150 KB   |
+| Correlation (AHI vs leak)      | < 10ms    | 300ms      | ~150 KB   |
+| Event clustering (FLG)         | < 10ms    | 2s         | ~2 MB     |
+| Signal-based (breath analysis) | < 10ms    | 20s        | ~500 MB   |
 
 **Cache hit rate target**: > 80% for analyses (measured via telemetry).
 
@@ -480,6 +489,7 @@ Cache Result → Render Visualization
 **Flow**: User drags to zoom → update chart state → re-render visible region
 
 **Detailed Flow**:
+
 ```
 User Mouse/Touch Event → Interaction Handler
   ↓
@@ -525,6 +535,7 @@ Canvas Redraw (only visible region)
    - Never block frame rendering (target 60 FPS)
 
 **Expected Performance**:
+
 - Interaction response (zoom/pan): **< 50ms** (20 FPS minimum)
 - Target: **< 16ms** (60 FPS) on reference system
 - Acceptable: **< 33ms** (30 FPS) on low-end devices
@@ -580,7 +591,7 @@ const CanvasRenderer = lazy(() => import('./CanvasRenderer'));
 
 export function SessionChart({ data, highFrequency }: Props) {
   const Renderer = highFrequency ? CanvasRenderer : RechartsRenderer;
-  
+
   return (
     <Suspense fallback={<ChartSkeleton />}>
       <Renderer data={data} />
@@ -591,13 +602,13 @@ export function SessionChart({ data, highFrequency }: Props) {
 
 **Library Splitting**:
 
-| Library | Bundle Size | Strategy |
-|---------|-------------|----------|
-| **Recharts** | 80 KB gzipped | Lazy-load on first chart render |
-| **D3 (subset)** | 30 KB gzipped | Lazy-load for custom visualizations |
-| **PDF export (jsPDF)** | 120 KB gzipped | Lazy-load on export action |
-| **Fitbit integration** | 40 KB gzipped | Lazy-load on integration page |
-| **Plugin system** | 50 KB gzipped | Lazy-load on first plugin use |
+| Library                | Bundle Size    | Strategy                            |
+| ---------------------- | -------------- | ----------------------------------- |
+| **Recharts**           | 80 KB gzipped  | Lazy-load on first chart render     |
+| **D3 (subset)**        | 30 KB gzipped  | Lazy-load for custom visualizations |
+| **PDF export (jsPDF)** | 120 KB gzipped | Lazy-load on export action          |
+| **Fitbit integration** | 40 KB gzipped  | Lazy-load on integration page       |
+| **Plugin system**      | 50 KB gzipped  | Lazy-load on first plugin use       |
 
 **Granular Imports**:
 
@@ -622,16 +633,16 @@ export default defineConfig({
         manualChunks: {
           // Vendor chunk (React, Router, Zustand)
           vendor: ['react', 'react-dom', 'react-router-dom', 'zustand'],
-          
+
           // Charting chunk (lazy-loaded)
           charting: ['recharts'],
-          
+
           // Analysis chunk (lazy-loaded)
           analysis: ['./src/analysis/engine.ts'],
         },
       },
     },
-    
+
     // Enable minification and tree-shaking
     minify: 'terser',
     terserOptions: {
@@ -640,7 +651,7 @@ export default defineConfig({
         drop_debugger: true,
       },
     },
-    
+
     // Target modern browsers (smaller bundle)
     target: 'es2020',
   },
@@ -648,6 +659,7 @@ export default defineConfig({
 ```
 
 **Expected Impact**:
+
 - Initial bundle: **180 KB → 150 KB** (17% reduction)
 - Total bundle (all chunks): **800 KB → 500 KB** (38% reduction)
 - Time to Interactive: **2.5s → 1.8s** (28% improvement) on 3G
@@ -664,7 +676,7 @@ export class WorkerPool {
   private workers: Worker[] = [];
   private idleWorkers: Worker[] = [];
   private taskQueue: Task[] = [];
-  
+
   constructor(workerScript: string, poolSize: number = navigator.hardwareConcurrency || 4) {
     for (let i = 0; i < poolSize; i++) {
       const worker = new Worker(workerScript, { type: 'module' });
@@ -672,7 +684,7 @@ export class WorkerPool {
       this.idleWorkers.push(worker);
     }
   }
-  
+
   async execute<T>(task: () => Promise<T>): Promise<T> {
     const worker = await this.getIdleWorker();
     try {
@@ -682,7 +694,7 @@ export class WorkerPool {
       this.releaseWorker(worker);
     }
   }
-  
+
   private async getIdleWorker(): Promise<Worker> {
     if (this.idleWorkers.length > 0) {
       return this.idleWorkers.pop()!;
@@ -692,7 +704,7 @@ export class WorkerPool {
       this.taskQueue.push({ resolve });
     });
   }
-  
+
   private releaseWorker(worker: Worker): void {
     if (this.taskQueue.length > 0) {
       const task = this.taskQueue.shift()!;
@@ -719,7 +731,7 @@ const api = {
     const signals = parser.parseSignals();
     const annotations = parser.parseAnnotations();
     const aggregates = computeNightlyAggregates(signals, annotations);
-    
+
     return {
       header,
       signals,
@@ -745,7 +757,7 @@ const api = {
     const result = await runAnalysis(type, data, params);
     return result;
   },
-  
+
   async downsample(data: Float32Array, targetPoints: number): Promise<Float32Array> {
     // LTTB downsampling
     const downsampled = lttb(data, targetPoints);
@@ -773,7 +785,7 @@ export function getEDFParser(): Remote<EDFParserAPI> {
       4 // 4 concurrent Workers
     );
   }
-  
+
   return wrap<EDFParserAPI>(parserWorkerPool.getWorker());
 }
 ```
@@ -787,14 +799,14 @@ const WORKER_IDLE_TIMEOUT = 30_000;
 class ManagedWorker {
   private worker: Worker;
   private idleTimer: number | null = null;
-  
+
   use(): void {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
     }
   }
-  
+
   release(): void {
     this.idleTimer = setTimeout(() => {
       this.worker.terminate();
@@ -821,6 +833,7 @@ await worker.processData(transfer(largeArrayBuffer, [largeArrayBuffer]));
 **Note**: Comlink automatically handles the underlying `postMessage` with transferable list.
 
 **Expected Impact**:
+
 - EDF parsing: **5s → 1s** (5× faster with parallel Workers)
 - Signal downsampling: **300ms → 100ms** (3× faster, main thread non-blocking)
 - Analysis computation: **2s → 2s** (same duration, but UI remains responsive)
@@ -842,7 +855,7 @@ function renderChart(data: Float32Array) {
 // ✅ Good: Reuse buffer across renders
 class ChartRenderer {
   private downsampledBuffer: Float32Array = new Float32Array(2000);
-  
+
   renderChart(data: Float32Array) {
     lttbInPlace(data, this.downsampledBuffer);
     drawCanvas(this.downsampledBuffer);
@@ -855,11 +868,11 @@ class ChartRenderer {
 ```typescript
 class PointPool {
   private pool: Point[] = [];
-  
+
   acquire(): Point {
     return this.pool.pop() || { x: 0, y: 0 };
   }
-  
+
   release(point: Point): void {
     point.x = 0;
     point.y = 0;
@@ -881,12 +894,12 @@ for (let i = 0; i < 1_000_000; i++) {
 // Cache large objects with WeakRef to allow GC when memory pressure
 class SignalCache {
   private cache = new Map<string, WeakRef<Float32Array>>();
-  
+
   get(key: string): Float32Array | undefined {
     const ref = this.cache.get(key);
     return ref?.deref(); // Returns undefined if GC'd
   }
-  
+
   set(key: string, value: Float32Array): void {
     this.cache.set(key, new WeakRef(value));
   }
@@ -899,11 +912,11 @@ class SignalCache {
 // In React component unmount
 useEffect(() => {
   const largeData = fetchLargeData();
-  
+
   return () => {
     // Explicitly null references to hint GC
     largeData = null;
-    
+
     // Clear any WeakMap/WeakSet entries
     cache.delete(id);
   };
@@ -955,8 +968,10 @@ useEffect(() => {
 if (import.meta.env.DEV && performance.memory) {
   setInterval(() => {
     const { usedJSHeapSize, totalJSHeapSize, jsHeapSizeLimit } = performance.memory;
-    console.log(`Heap: ${(usedJSHeapSize / 1024 / 1024).toFixed(0)} MB / ${(jsHeapSizeLimit / 1024 / 1024).toFixed(0)} MB`);
-    
+    console.log(
+      `Heap: ${(usedJSHeapSize / 1024 / 1024).toFixed(0)} MB / ${(jsHeapSizeLimit / 1024 / 1024).toFixed(0)} MB`,
+    );
+
     if (usedJSHeapSize / jsHeapSizeLimit > 0.9) {
       console.warn('Memory pressure: 90% of heap limit');
     }
@@ -965,6 +980,7 @@ if (import.meta.env.DEV && performance.memory) {
 ```
 
 **Expected Impact**:
+
 - Heap allocations: **1 GB → 500 MB** (50% reduction via reuse + GC hints)
 - GC pauses: **100ms avg → 30ms avg** (smaller heap, fewer allocations)
 - Memory leaks: **0 critical leaks** (enforced via automated heap snapshot analysis)
@@ -1040,22 +1056,22 @@ interface CacheEntry {
 
 async function getCachedAnalysis(key: string): Promise<unknown | null> {
   const entry = await db.analysis_results.get(key);
-  
+
   if (!entry) return null;
-  
+
   // Check expiration
   if (new Date(entry.expiresAt) < new Date()) {
     await db.analysis_results.delete(key);
     return null;
   }
-  
+
   // Check cache version
   const currentVersion = getAnalysisVersion(entry.analysisType);
   if (entry.cacheVersion !== currentVersion) {
     await db.analysis_results.delete(key);
     return null;
   }
-  
+
   return entry.result;
 }
 ```
@@ -1065,16 +1081,13 @@ async function getCachedAnalysis(key: string): Promise<unknown | null> {
 ```typescript
 // On data import, invalidate affected analyses
 async function onImportComplete(importedSessions: Session[]): Promise<void> {
-  const dateRanges = importedSessions.map(s => s.date);
-  
+  const dateRanges = importedSessions.map((s) => s.date);
+
   // Find cached analyses overlapping these dates
-  const affectedAnalyses = await db.analysis_results
-    .where('dateRange')
-    .anyOf(dateRanges)
-    .toArray();
-  
+  const affectedAnalyses = await db.analysis_results.where('dateRange').anyOf(dateRanges).toArray();
+
   // Delete affected analyses
-  await db.analysis_results.bulkDelete(affectedAnalyses.map(a => a.key));
+  await db.analysis_results.bulkDelete(affectedAnalyses.map((a) => a.key));
 }
 ```
 
@@ -1099,7 +1112,7 @@ registerRoute(
         maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
       }),
     ],
-  })
+  }),
 );
 
 // Network-first for HTML (support updates)
@@ -1111,7 +1124,7 @@ registerRoute(
       new CacheableResponsePlugin({ statuses: [200] }),
       new ExpirationPlugin({ maxEntries: 10 }),
     ],
-  })
+  }),
 );
 
 // Stale-while-revalidate for images
@@ -1126,11 +1139,12 @@ registerRoute(
         maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
       }),
     ],
-  })
+  }),
 );
 ```
 
 **Expected Impact**:
+
 - Analysis cache hit rate: **> 80%**
 - Analysis execution time (cache hit): **500ms → 10ms** (50× faster)
 - Signal data fetch time (L1 hit): **500ms → < 1ms** (500× faster)
@@ -1141,17 +1155,20 @@ registerRoute(
 **Strategy**: Minimize asset sizes; optimize delivery
 
 **Image Optimization**:
+
 - **No images in initial bundle** (prefer SVG icons, icon fonts, or inline SVG)
 - If images needed: WebP format, responsive sizes via `srcset`
 - Lazy-load images outside viewport (`loading="lazy"`)
 - No hero images or marketing assets (clinical app)
 
 **Font Optimization**:
+
 - **System fonts only** (no web font downloads)
 - `font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;`
 - Zero font download overhead
 
 **CSS Optimization**:
+
 - **CSS Modules** for automatic scoping and dead code elimination
 - Critical CSS inlined in HTML (`<style>` tag)
 - Non-critical CSS loaded async (`<link rel="stylesheet" media="print" onload="this.media='all'">`)
@@ -1159,6 +1176,7 @@ registerRoute(
 - Remove unused CSS via PurgeCSS (if needed)
 
 **JavaScript Optimization**:
+
 - **Terser** minification with dead code elimination
 - Tree-shaking via ES modules
 - Target modern browsers (`es2020`) for smaller syntax
@@ -1198,22 +1216,21 @@ export default defineConfig({
       localsConvention: 'camelCase',
     },
     postcss: {
-      plugins: [
-        autoprefixer(),
-        cssnano({ preset: 'default' }),
-      ],
+      plugins: [autoprefixer(), cssnano({ preset: 'default' })],
     },
   },
 });
 ```
 
 **Compression**:
+
 - **Brotli** compression for all text assets (JS, CSS, HTML)
 - Serve pre-compressed `.br` files from CDN/hosting
 - Fallback to gzip for older browsers
 - Target: 75–80% size reduction for JS bundles
 
 **Expected Impact**:
+
 - Total assets (gzipped): **700 KB → 500 KB** (29% reduction)
 - Initial load (3G): **3.5s → 2.0s** (43% improvement)
 - No web font latency (system fonts)
@@ -1231,14 +1248,14 @@ export default defineConfig({
 
 **Performance Characteristics**:
 
-| Operation | IndexedDB | OPFS | Notes |
-|-----------|-----------|------|-------|
-| **Write (small, <1 MB)** | 10–50ms | 50–150ms | IndexedDB faster for small writes |
-| **Write (large, >10 MB)** | 500ms–2s | 200–500ms | OPFS faster for large writes |
-| **Read (indexed query)** | 10–50ms | N/A | IndexedDB excels at indexed queries |
-| **Read (sequential, large)** | 500ms–2s | 100–300ms | OPFS faster for large sequential reads |
-| **Random access** | 10–50ms | 50–150ms | Both perform well |
-| **Transaction overhead** | 10–20ms | < 5ms | OPFS has lower overhead |
+| Operation                    | IndexedDB | OPFS      | Notes                                  |
+| ---------------------------- | --------- | --------- | -------------------------------------- |
+| **Write (small, <1 MB)**     | 10–50ms   | 50–150ms  | IndexedDB faster for small writes      |
+| **Write (large, >10 MB)**    | 500ms–2s  | 200–500ms | OPFS faster for large writes           |
+| **Read (indexed query)**     | 10–50ms   | N/A       | IndexedDB excels at indexed queries    |
+| **Read (sequential, large)** | 500ms–2s  | 100–300ms | OPFS faster for large sequential reads |
+| **Random access**            | 10–50ms   | 50–150ms  | Both perform well                      |
+| **Transaction overhead**     | 10–20ms   | < 5ms     | OPFS has lower overhead                |
 
 **Design Decision**: Store structure in IndexedDB, signals in OPFS (see [ADR 0001](../decisions/0001-client-side-architecture.md)).
 
@@ -1251,26 +1268,24 @@ export default defineConfig({
 async function importMultipleSessions(files: File[]): Promise<void> {
   const workerPool = new WorkerPool('edf-parser.worker.ts', 4);
   const batchSize = 10;
-  
+
   for (let i = 0; i < files.length; i += batchSize) {
     const batch = files.slice(i, i + batchSize);
-    
+
     // Process batch in parallel
     const results = await Promise.all(
-      batch.map(file => workerPool.execute(() => parseEDF(file)))
+      batch.map((file) => workerPool.execute(() => parseEDF(file))),
     );
-    
+
     // Batch write to IndexedDB (single transaction)
     await db.transaction('rw', [db.sessions, db.nightly_aggregates], async () => {
-      await db.sessions.bulkAdd(results.map(r => r.session));
-      await db.nightly_aggregates.bulkAdd(results.map(r => r.aggregate));
+      await db.sessions.bulkAdd(results.map((r) => r.session));
+      await db.nightly_aggregates.bulkAdd(results.map((r) => r.aggregate));
     });
-    
+
     // Write signals to OPFS (parallel)
-    await Promise.all(
-      results.map(r => writeSignalToOPFS(r.sessionId, r.signals))
-    );
-    
+    await Promise.all(results.map((r) => writeSignalToOPFS(r.sessionId, r.signals)));
+
     // Update progress (every batch)
     progress.current = i + batch.length;
     onProgress(progress);
@@ -1288,10 +1303,7 @@ for (const sessionId of sessionIds) {
 }
 
 // ✅ Good: Single bulk query
-const aggregates = await db.nightly_aggregates
-  .where('sessionId')
-  .anyOf(sessionIds)
-  .toArray();
+const aggregates = await db.nightly_aggregates.where('sessionId').anyOf(sessionIds).toArray();
 ```
 
 ### 4.3 Streaming Data Handling
@@ -1302,18 +1314,18 @@ const aggregates = await db.nightly_aggregates
 async function streamParseEDF(file: File): Promise<AsyncGenerator<DataRecord>> {
   const HEADER_SIZE = 256;
   const reader = file.stream().getReader();
-  
+
   // Read header
   const headerBuffer = await readBytes(reader, HEADER_SIZE);
   const header = parseHeader(headerBuffer);
-  
+
   const recordSize = calculateRecordSize(header);
-  
+
   // Stream data records
   while (true) {
     const recordBuffer = await readBytes(reader, recordSize);
     if (!recordBuffer) break;
-    
+
     const record = parseDataRecord(recordBuffer, header);
     yield record;
   }
@@ -1324,19 +1336,19 @@ async function importSession(file: File): Promise<void> {
   const records = stream ParseEDF(file);
   const signalBuffer = new Float32Array(MAX_SAMPLES);
   let offset = 0;
-  
+
   for await (const record of records) {
     // Accumulate signals
     signalBuffer.set(record.samples, offset);
     offset += record.samples.length;
-    
+
     // Flush to OPFS every 10 MB
     if (offset * 4 >= 10 * 1024 * 1024) {
       await writeChunkToOPFS(signalBuffer.subarray(0, offset));
       offset = 0;
     }
   }
-  
+
   // Flush remaining
   if (offset > 0) {
     await writeChunkToOPFS(signalBuffer.subarray(0, offset));
@@ -1352,7 +1364,7 @@ class OnlineStats {
   private count = 0;
   private mean = 0;
   private m2 = 0;
-  
+
   update(value: number): void {
     this.count++;
     const delta = value - this.mean;
@@ -1360,11 +1372,11 @@ class OnlineStats {
     const delta2 = value - this.mean;
     this.m2 += delta * delta2;
   }
-  
+
   getMean(): number {
     return this.mean;
   }
-  
+
   getVariance(): number {
     return this.count > 1 ? this.m2 / (this.count - 1) : 0;
   }
@@ -1374,13 +1386,13 @@ class OnlineStats {
 async function computeStats(sessionId: string): Promise<Stats> {
   const stats = new OnlineStats();
   const stream = streamSignalFromOPFS(sessionId, 'Flow');
-  
+
   for await (const chunk of stream) {
     for (const sample of chunk) {
       stats.update(sample);
     }
   }
-  
+
   return {
     mean: stats.getMean(),
     variance: stats.getVariance(),
@@ -1401,12 +1413,12 @@ interface IncrementalAHIState {
 
 async function updateAHIIncremental(
   state: IncrementalAHIState,
-  newSessions: Session[]
+  newSessions: Session[],
 ): Promise<IncrementalAHIState> {
   // Only process new sessions since lastUpdateDate
   const newEvents = newSessions.reduce((sum, s) => sum + s.eventCount, 0);
   const newHours = newSessions.reduce((sum, s) => sum + s.usageMinutes / 60, 0);
-  
+
   return {
     totalEvents: state.totalEvents + newEvents,
     totalHours: state.totalHours + newHours,
@@ -1427,21 +1439,21 @@ class RollingWindow {
   private window: number[] = [];
   private sum = 0;
   private readonly size: number;
-  
+
   constructor(size: number) {
     this.size = size;
   }
-  
+
   push(value: number): void {
     this.window.push(value);
     this.sum += value;
-    
+
     if (this.window.length > this.size) {
       const removed = this.window.shift()!;
       this.sum -= removed;
     }
   }
-  
+
   getMean(): number {
     return this.window.length > 0 ? this.sum / this.window.length : 0;
   }
@@ -1473,7 +1485,7 @@ self.addEventListener('sync', (event) => {
 async function processQueuedImports(): Promise<void> {
   // Retrieve queued import tasks from IndexedDB
   const tasks = await getQueuedTasks();
-  
+
   for (const task of tasks) {
     await processImport(task);
     await markTaskComplete(task.id);
@@ -1502,16 +1514,19 @@ self.addEventListener('periodicsync', (event) => {
 
 ```typescript
 // In main thread: request idle processing
-requestIdleCallback(() => {
-  // Trigger background cache warming
-  workerPool.execute(() => warmCaches());
-}, { timeout: 5000 });
+requestIdleCallback(
+  () => {
+    // Trigger background cache warming
+    workerPool.execute(() => warmCaches());
+  },
+  { timeout: 5000 },
+);
 
 // Worker warms caches when idle
 async function warmCaches(): Promise<void> {
   // Pre-compute common analyses
   const commonAnalyses = ['ahi-trend-30day', 'compliance-rate'];
-  
+
   for (const analysisType of commonAnalyses) {
     await computeAndCacheAnalysis(analysisType);
   }
@@ -1519,6 +1534,7 @@ async function warmCaches(): Promise<void> {
 ```
 
 **Expected Impact**:
+
 - User-perceived import time: **30s → 5s** (background continuation)
 - Cache warmth on app open: **Cold → Warm** (80% hit rate on first use)
 
@@ -1530,14 +1546,14 @@ async function warmCaches(): Promise<void> {
 
 **Development Tools**:
 
-| Tool | Purpose | Frequency |
-|------|---------|-----------|
-| **Chrome DevTools Performance** | Profile CPU, memory, rendering | Every performance investigation |
-| **Chrome DevTools Memory** | Heap snapshots, allocation timeline | Weekly during development |
-| **Lighthouse** | Core Web Vitals, best practices | Every PR via CI |
-| **React DevTools Profiler** | Component render time, re-renders | During component optimization |
-| **Webpack Bundle Analyzer** | Bundle size visualization | Monthly review |
-| **Performance Observer API** | Custom metrics in production | Always (telemetry) |
+| Tool                            | Purpose                             | Frequency                       |
+| ------------------------------- | ----------------------------------- | ------------------------------- |
+| **Chrome DevTools Performance** | Profile CPU, memory, rendering      | Every performance investigation |
+| **Chrome DevTools Memory**      | Heap snapshots, allocation timeline | Weekly during development       |
+| **Lighthouse**                  | Core Web Vitals, best practices     | Every PR via CI                 |
+| **React DevTools Profiler**     | Component render time, re-renders   | During component optimization   |
+| **Webpack Bundle Analyzer**     | Bundle size visualization           | Monthly review                  |
+| **Performance Observer API**    | Custom metrics in production        | Always (telemetry)              |
 
 **Custom Benchmarking Suite**:
 
@@ -1547,18 +1563,30 @@ import { bench, describe } from 'vitest';
 
 describe('Analysis Performance', () => {
   const testData = generateTestDataset(365); // 1 year
-  
-  bench('AHI trend calculation', () => {
-    computeAHITrend(testData);
-  }, { time: 1000, iterations: 100 });
-  
-  bench('Correlation analysis', () => {
-    computeCorrelation(testData, 'AHI', 'LeakRate');
-  }, { time: 1000, iterations: 100 });
-  
-  bench('LTTB downsampling (720k → 2k)', () => {
-    lttb(largeSignalData, 2000);
-  }, { time: 5000, iterations: 50 });
+
+  bench(
+    'AHI trend calculation',
+    () => {
+      computeAHITrend(testData);
+    },
+    { time: 1000, iterations: 100 },
+  );
+
+  bench(
+    'Correlation analysis',
+    () => {
+      computeCorrelation(testData, 'AHI', 'LeakRate');
+    },
+    { time: 1000, iterations: 100 },
+  );
+
+  bench(
+    'LTTB downsampling (720k → 2k)',
+    () => {
+      lttb(largeSignalData, 2000);
+    },
+    { time: 5000, iterations: 50 },
+  );
 });
 ```
 
@@ -1570,19 +1598,19 @@ import { test, expect } from '@playwright/test';
 
 test('import 10 nights within 30s', async ({ page }) => {
   await page.goto('/');
-  
+
   const startTime = Date.now();
-  
+
   // Trigger import
   await page.click('[data-testid="import-button"]');
   await page.setInputFiles('[data-testid="file-input"]', testFiles);
-  
+
   // Wait for completion
   await page.waitForSelector('[data-testid="import-complete"]', { timeout: 30_000 });
-  
+
   const elapsed = Date.now() - startTime;
   expect(elapsed).toBeLessThan(30_000);
-  
+
   // Log for tracking
   console.log(`Import time: ${elapsed}ms`);
 });
@@ -1595,31 +1623,30 @@ test('import 10 nights within 30s', async ({ page }) => {
 ```yaml
 # .lighthouserc.json
 {
-  "ci": {
-    "collect": {
-      "numberOfRuns": 3,
-      "settings": {
-        "preset": "desktop",
-        "throttling": {
-          "rttMs": 150,
-          "throughputKbps": 1638,
-          "cpuSlowdownMultiplier": 4
-        }
-      }
+  'ci':
+    {
+      'collect':
+        {
+          'numberOfRuns': 3,
+          'settings':
+            {
+              'preset': 'desktop',
+              'throttling': { 'rttMs': 150, 'throughputKbps': 1638, 'cpuSlowdownMultiplier': 4 },
+            },
+        },
+      'assert':
+        {
+          'assertions':
+            {
+              'categories:performance': ['error', { 'minScore': 0.9 }],
+              'first-contentful-paint': ['error', { 'maxNumericValue': 1800 }],
+              'largest-contentful-paint': ['error', { 'maxNumericValue': 2500 }],
+              'interactive': ['error', { 'maxNumericValue': 3500 }],
+              'cumulative-layout-shift': ['error', { 'maxNumericValue': 0.1 }],
+            },
+        },
+      'upload': { 'target': 'temporary-public-storage' },
     },
-    "assert": {
-      "assertions": {
-        "categories:performance": ["error", { "minScore": 0.9 }],
-        "first-contentful-paint": ["error", { "maxNumericValue": 1800 }],
-        "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }],
-        "interactive": ["error", { "maxNumericValue": 3500 }],
-        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }]
-      }
-    },
-    "upload": {
-      "target": "temporary-public-storage"
-    }
-  }
 }
 ```
 
@@ -1642,16 +1669,16 @@ jobs:
         with:
           node-version: 18
           cache: 'npm'
-      
+
       - run: npm ci
       - run: npm run build
-      
+
       - name: Run Lighthouse CI
         uses: treosh/lighthouse-ci-action@v9
         with:
           configPath: './.lighthouserc.json'
           uploadArtifacts: true
-      
+
       - name: Comment PR
         uses: actions/github-script@v6
         with:
@@ -1685,7 +1712,7 @@ observer.observe({ entryTypes: ['largest-contentful-paint', 'first-input', 'layo
 // Custom metrics
 export function measureAnalysis(type: string, fn: () => Promise<unknown>): Promise<unknown> {
   const start = performance.now();
-  
+
   return fn().finally(() => {
     const duration = performance.now() - start;
     logMetric(`analysis.${type}`, duration);
@@ -1696,7 +1723,7 @@ export function measureAnalysis(type: string, fn: () => Promise<unknown>): Promi
 function logMetric(name: string, value: number): void {
   // Store in-memory buffer
   metricBuffer.push({ name, value, timestamp: Date.now() });
-  
+
   // Flush every 1 minute (non-blocking)
   if (metricBuffer.length >= FLUSH_THRESHOLD) {
     flushMetrics();
@@ -1741,11 +1768,11 @@ const current = JSON.parse(fs.readFileSync('benchmark-results.json', 'utf-8'));
 const REGRESSION_THRESHOLD = 1.2; // 20% slower = regression
 
 for (const bench of current.benchmarks) {
-  const baselineBench = baseline.benchmarks.find(b => b.name === bench.name);
+  const baselineBench = baseline.benchmarks.find((b) => b.name === bench.name);
   if (!baselineBench) continue;
-  
+
   const ratio = bench.mean / baselineBench.mean;
-  
+
   if (ratio > REGRESSION_THRESHOLD) {
     console.error(`❌ Performance regression detected: ${bench.name}`);
     console.error(`   Baseline: ${baselineBench.mean.toFixed(2)}ms`);
@@ -1780,7 +1807,9 @@ const mainBundle = fs.readFileSync('dist/assets/index-*.js');
 const gzipped = gzipSync(mainBundle);
 
 if (gzipped.length > BUNDLE_SIZE_LIMIT) {
-  console.error(`❌ Bundle size exceeds limit: ${(gzipped.length / 1024).toFixed(0)} KB > ${(BUNDLE_SIZE_LIMIT / 1024).toFixed(0)} KB`);
+  console.error(
+    `❌ Bundle size exceeds limit: ${(gzipped.length / 1024).toFixed(0)} KB > ${(BUNDLE_SIZE_LIMIT / 1024).toFixed(0)} KB`,
+  );
   process.exit(1);
 }
 
@@ -1809,16 +1838,16 @@ export interface DeviceCapabilities {
 export function detectCapabilities(): DeviceCapabilities {
   const cores = navigator.hardwareConcurrency || 2;
   const memory = (navigator as any).deviceMemory || 4; // GB
-  
+
   // Tiering heuristic
   let tier: DeviceCapabilities['tier'] = 'medium';
-  
+
   if (cores >= 8 && memory >= 8) {
     tier = 'high';
   } else if (cores <= 2 || memory <= 2) {
     tier = 'low';
   }
-  
+
   return {
     tier,
     supportsWorkers: typeof Worker !== 'undefined',
@@ -1849,34 +1878,43 @@ const capabilities = detectCapabilities();
 
 export const config = {
   maxWorkers: capabilities.tier === 'high' ? 8 : capabilities.tier === 'medium' ? 4 : 2,
-  
+
   chartRenderer: capabilities.tier === 'low' ? 'svg' : 'canvas',
-  
+
   chunkSize: capabilities.tier === 'high' ? 10 * 1024 * 1024 : 5 * 1024 * 1024,
-  
-  downsamplePoints: capabilities.tier === 'high' ? 5000 : capabilities.tier === 'medium' ? 2000 : 1000,
-  
+
+  downsamplePoints:
+    capabilities.tier === 'high' ? 5000 : capabilities.tier === 'medium' ? 2000 : 1000,
+
   enableAnimations: capabilities.tier !== 'low',
-  
-  cacheSize: capabilities.tier === 'high' ? 200 * 1024 * 1024 : capabilities.tier === 'medium' ? 100 * 1024 * 1024 : 50 * 1024 * 1024,
+
+  cacheSize:
+    capabilities.tier === 'high'
+      ? 200 * 1024 * 1024
+      : capabilities.tier === 'medium'
+        ? 100 * 1024 * 1024
+        : 50 * 1024 * 1024,
 };
 ```
 
 ### 6.2 Progressive Enhancement Strategies
 
 **Core Functionality** (works everywhere):
+
 - View session metadata and nightly aggregates
 - Simple aggregate statistics (AHI, compliance)
 - Export session data to CSV
 - Basic navigation and settings
 
 **Enhanced Functionality** (medium-tier devices):
+
 - Time-series charting with downsampling
 - Trend analysis (1 year)
 - Web Worker parallelism
 - Service Worker caching
 
 **Advanced Functionality** (high-tier devices):
+
 - High-resolution signal visualization
 - Complex multi-variate analysis (clustering, correlation)
 - Real-time chart interactions (60 FPS zoom/pan)
@@ -1899,21 +1937,21 @@ if (capabilities.tier === 'high') {
 
 **Fallback Strategies**:
 
-| Feature | Primary | Fallback (Low-End) |
-|---------|---------|-------------------|
-| **Chart rendering** | Canvas | SVG |
-| **Downsampling** | LTTB (accurate) | Simple decimation (fast) |
-| **Import parallelism** | 8 Workers | 2 Workers or sequential |
-| **Analysis** | Web Worker | Main thread (with yield) |
-| **Animations** | 60 FPS | Instant transitions |
-| **Storage** | OPFS | IndexedDB (signals as blobs) |
+| Feature                | Primary         | Fallback (Low-End)           |
+| ---------------------- | --------------- | ---------------------------- |
+| **Chart rendering**    | Canvas          | SVG                          |
+| **Downsampling**       | LTTB (accurate) | Simple decimation (fast)     |
+| **Import parallelism** | 8 Workers       | 2 Workers or sequential      |
+| **Analysis**           | Web Worker      | Main thread (with yield)     |
+| **Animations**         | 60 FPS          | Instant transitions          |
+| **Storage**            | OPFS            | IndexedDB (signals as blobs) |
 
 **Responsive Downsampling**:
 
 ```typescript
 function getDownsampleTarget(deviceTier: string, dataSize: number): number {
   if (dataSize < 1000) return dataSize; // No downsampling needed
-  
+
   if (deviceTier === 'high') {
     return Math.min(dataSize, 5000);
   } else if (deviceTier === 'medium') {
@@ -1929,19 +1967,19 @@ function getDownsampleTarget(deviceTier: string, dataSize: number): number {
 ```typescript
 async function importWithMemoryLimit(files: File[]): Promise<void> {
   const memoryLimit = capabilities.memory * 1024 * 1024 * 1024 * 0.5; // 50% of device memory
-  
+
   let processedSize = 0;
-  
+
   for (const file of files) {
     // Check memory before processing
     if (performance.memory && performance.memory.usedJSHeapSize > memoryLimit) {
       // Wait for GC
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       // Force cache eviction
       clearCache();
     }
-    
+
     await processFile(file);
     processedSize += file.size;
   }
@@ -1958,12 +1996,12 @@ async function importWithMemoryLimit(files: File[]): Promise<void> {
 
 **Future Scenarios**:
 
-| Scenario | Data Size | Challenge | Mitigation |
-|----------|-----------|-----------|------------|
-| **20+ years** | 44+ GB | Exceeds typical browser quota | Selective archive/delete old data |
-| **Multiple machines** | 2×–5× multiplier | Index complexity, query performance | Partition by machineId, optimize indices |
-| **High-freq oximetry** | 3× signal data | Storage and rendering overhead | Optional signal storage, on-demand load |
-| **Video integration** | TB-scale | Exceeds client-side capacity | External S3-compatible storage link (metadata only) |
+| Scenario               | Data Size        | Challenge                           | Mitigation                                          |
+| ---------------------- | ---------------- | ----------------------------------- | --------------------------------------------------- |
+| **20+ years**          | 44+ GB           | Exceeds typical browser quota       | Selective archive/delete old data                   |
+| **Multiple machines**  | 2×–5× multiplier | Index complexity, query performance | Partition by machineId, optimize indices            |
+| **High-freq oximetry** | 3× signal data   | Storage and rendering overhead      | Optional signal storage, on-demand load             |
+| **Video integration**  | TB-scale         | Exceeds client-side capacity        | External S3-compatible storage link (metadata only) |
 
 **Scalability Strategies**:
 
@@ -2017,27 +2055,33 @@ async function importWithMemoryLimit(files: File[]): Promise<void> {
 
 ```typescript
 // src/plugins/runtime.ts
-export async function executePlugin(plugin: AnalysisPlugin, input: AnalysisInput): Promise<AnalysisOutput> {
+export async function executePlugin(
+  plugin: AnalysisPlugin,
+  input: AnalysisInput,
+): Promise<AnalysisOutput> {
   // Enforce Worker execution for heavy plugins
   if (plugin.executionMode === 'worker' || estimateExecutionTime(plugin, input) > 100) {
     return executeInWorker(plugin, input);
   }
-  
+
   // Timeout protection
   const timeout = 30_000; // 30s max
   const result = await Promise.race([
     plugin.execute(input, dataProvider),
     new Promise((_, reject) => setTimeout(() => reject(new Error('Plugin timeout')), timeout)),
   ]);
-  
+
   return result as AnalysisOutput;
 }
 
 // Memory monitoring
-async function executeInWorker(plugin: AnalysisPlugin, input: AnalysisInput): Promise<AnalysisOutput> {
+async function executeInWorker(
+  plugin: AnalysisPlugin,
+  input: AnalysisInput,
+): Promise<AnalysisOutput> {
   const workerInstance = new Worker(plugin.workerUrl, { type: 'module' });
   const worker = wrap<PluginWorkerAPI>(workerInstance);
-  
+
   // Monitor memory usage
   const memoryCheck = setInterval(() => {
     if (performance.memory && performance.memory.usedJSHeapSize > MEMORY_LIMIT) {
@@ -2045,7 +2089,7 @@ async function executeInWorker(plugin: AnalysisPlugin, input: AnalysisInput): Pr
       throw new Error('Plugin exceeded memory limit');
     }
   }, 1000);
-  
+
   try {
     const result = await worker.execute(input);
     clearInterval(memoryCheck);
@@ -2061,26 +2105,26 @@ async function executeInWorker(plugin: AnalysisPlugin, input: AnalysisInput): Pr
 
 **Plugin Performance Budget**:
 
-| Plugin Type | Max Execution Time | Max Memory | Max Bundle Size |
-|-------------|-------------------|------------|-----------------|
-| **Visualization** | 1s | 50 MB | 100 KB |
-| **Analysis (light)** | 5s | 100 MB | 200 KB |
-| **Analysis (heavy)** | 30s | 500 MB | 500 KB |
-| **Integration** | 10s | 50 MB | 100 KB |
+| Plugin Type          | Max Execution Time | Max Memory | Max Bundle Size |
+| -------------------- | ------------------ | ---------- | --------------- |
+| **Visualization**    | 1s                 | 50 MB      | 100 KB          |
+| **Analysis (light)** | 5s                 | 100 MB     | 200 KB          |
+| **Analysis (heavy)** | 30s                | 500 MB     | 500 KB          |
+| **Integration**      | 10s                | 50 MB      | 100 KB          |
 
 **Enforcement**: Plugins that exceed budget logged as warnings. Repeat violations → disable plugin.
 
 ### 7.3 Anticipated Bottlenecks & Mitigation Plans
 
-| Bottleneck | Trigger | Impact | Mitigation Plan |
-|------------|---------|--------|-----------------|
-| **IndexedDB transaction contention** | Concurrent writes from multiple Workers | Serialized writes, slow imports | **Batch writes**: accumulate, single transaction |
-| **OPFS quota exhaustion** | 20+ years of data | Import fails | **Quota management**: user-facing quota meter, archive old data |
-| **Memory exhaustion on low-end devices** | Importing 100+ nights | Import crashes | **Chunked processing**: process in smaller batches, force GC between |
-| **Chart rendering lag (high zoom)** | Zooming into 10M-point signal | UI freezes | **Adaptive LOD**: increase resolution only to visible limit (5k points max) |
-| **Analysis cache bloat** | Years of cached results | IndexedDB slow | **LRU eviction**: cap cache at 500 MB, evict oldest |
-| **Service Worker cache staleness** | User doesn't reload for weeks | Outdated app code | **Version check**: prompt user to reload on new version |
-| **WebAssembly overhead** | Future WASM plugins | Startup cost | **Lazy WASM init**: load on first plugin execution, reuse instance |
+| Bottleneck                               | Trigger                                 | Impact                          | Mitigation Plan                                                             |
+| ---------------------------------------- | --------------------------------------- | ------------------------------- | --------------------------------------------------------------------------- |
+| **IndexedDB transaction contention**     | Concurrent writes from multiple Workers | Serialized writes, slow imports | **Batch writes**: accumulate, single transaction                            |
+| **OPFS quota exhaustion**                | 20+ years of data                       | Import fails                    | **Quota management**: user-facing quota meter, archive old data             |
+| **Memory exhaustion on low-end devices** | Importing 100+ nights                   | Import crashes                  | **Chunked processing**: process in smaller batches, force GC between        |
+| **Chart rendering lag (high zoom)**      | Zooming into 10M-point signal           | UI freezes                      | **Adaptive LOD**: increase resolution only to visible limit (5k points max) |
+| **Analysis cache bloat**                 | Years of cached results                 | IndexedDB slow                  | **LRU eviction**: cap cache at 500 MB, evict oldest                         |
+| **Service Worker cache staleness**       | User doesn't reload for weeks           | Outdated app code               | **Version check**: prompt user to reload on new version                     |
+| **WebAssembly overhead**                 | Future WASM plugins                     | Startup cost                    | **Lazy WASM init**: load on first plugin execution, reuse instance          |
 
 **Monitoring & Alerting**:
 
@@ -2106,22 +2150,35 @@ describe('Downsampling Algorithms', () => {
   for (let i = 0; i < signal.length; i++) {
     signal[i] = Math.sin(i / 1000) + Math.random() * 0.1;
   }
-  
-  bench('LTTB (720k → 2k)', () => {
-    lttb(signal, 2000);
-  }, { time: 5000 });
-  
-  bench('MinMax (720k → 2k)', () => {
-    minMax(signal, 2000);
-  }, { time: 5000 });
-  
-  bench('Decimation (720k → 2k)', () => {
-    downsampleDecimate(signal, 360); // every 360th sample
-  }, { time: 5000 });
+
+  bench(
+    'LTTB (720k → 2k)',
+    () => {
+      lttb(signal, 2000);
+    },
+    { time: 5000 },
+  );
+
+  bench(
+    'MinMax (720k → 2k)',
+    () => {
+      minMax(signal, 2000);
+    },
+    { time: 5000 },
+  );
+
+  bench(
+    'Decimation (720k → 2k)',
+    () => {
+      downsampleDecimate(signal, 360); // every 360th sample
+    },
+    { time: 5000 },
+  );
 });
 ```
 
 **Run Regularly**:
+
 - Local: `npm run bench`
 - CI: On every PR to main branch
 
@@ -2136,7 +2193,7 @@ import { test, expect } from '@playwright/test';
 test('dashboard loads under 1s', async ({ page }) => {
   // Start performance measurement
   await page.goto('/', { waitUntil: 'networkidle' });
-  
+
   // Measure LCP
   const lcp = await page.evaluate(() => {
     return new Promise((resolve) => {
@@ -2147,19 +2204,19 @@ test('dashboard loads under 1s', async ({ page }) => {
       }).observe({ entryTypes: ['largest-contentful-paint'] });
     });
   });
-  
+
   expect(lcp).toBeLessThan(1500);
 });
 
 test('session detail navigates under 500ms', async ({ page }) => {
   await page.goto('/');
   await page.waitForSelector('[data-testid="session-card"]');
-  
+
   const start = Date.now();
   await page.click('[data-testid="session-card"]:first-child');
   await page.waitForSelector('[data-testid="session-detail"]');
   const elapsed = Date.now() - start;
-  
+
   expect(elapsed).toBeLessThan(500);
 });
 ```
@@ -2172,20 +2229,20 @@ test('session detail navigates under 500ms', async ({ page }) => {
 // tests/fixtures/generateLargeDataset.ts
 export async function generateLargeDataset(years: number): Promise<void> {
   const db = await openDB('cpap-analyzer');
-  
+
   const sessions: Session[] = [];
   const aggregates: NightlyAggregate[] = [];
-  
+
   for (let day = 0; day < years * 365; day++) {
     const date = new Date();
     date.setDate(date.getDate() - day);
-    
+
     const session = generateRandomSession(date);
     sessions.push(session);
-    
+
     const aggregate = generateRandomAggregate(session);
     aggregates.push(aggregate);
-    
+
     // Batch writes every 1000 sessions
     if (sessions.length >= 1000) {
       await db.sessions.bulkAdd(sessions);
@@ -2194,7 +2251,7 @@ export async function generateLargeDataset(years: number): Promise<void> {
       aggregates.length = 0;
     }
   }
-  
+
   // Flush remaining
   if (sessions.length > 0) {
     await db.sessions.bulkAdd(sessions);
@@ -2213,17 +2270,14 @@ test.beforeAll(async () => {
 
 test('query 1-year aggregates from 10-year dataset', async ({ page }) => {
   await page.goto('/trends?range=1y');
-  
+
   // Measure query time
   const queryTime = await page.evaluate(async () => {
     const start = performance.now();
-    await db.nightly_aggregates
-      .where('date')
-      .between(oneYearAgo, today)
-      .toArray();
+    await db.nightly_aggregates.where('date').between(oneYearAgo, today).toArray();
     return performance.now() - start;
   });
-  
+
   expect(queryTime).toBeLessThan(150);
 });
 ```
@@ -2249,7 +2303,7 @@ jobs:
       - run: npm run bench
       - name: Check for regressions
         run: node scripts/check-regression.js
-  
+
   lighthouse:
     runs-on: ubuntu-latest
     steps:
@@ -2260,7 +2314,7 @@ jobs:
       - uses: treosh/lighthouse-ci-action@v9
         with:
           configPath: './.lighthouserc.json'
-  
+
   bundle-size:
     runs-on: ubuntu-latest
     steps:
@@ -2270,7 +2324,7 @@ jobs:
       - run: npm run build
       - name: Check bundle size
         run: node scripts/check-bundle-size.js
-  
+
   load-tests:
     runs-on: ubuntu-latest
     steps:
@@ -2288,6 +2342,7 @@ jobs:
 ### 9.1 Performance Priorities
 
 **P0 (Must optimize before v1.0)**:
+
 - ✅ Initial load (LCP < 1.5s)
 - ✅ Dashboard render (< 300ms)
 - ✅ Worker-based EDF parsing
@@ -2296,6 +2351,7 @@ jobs:
 - ✅ Service Worker caching
 
 **P1 (Optimize before v1.1)**:
+
 - 🔄 Analysis result caching with incremental computation
 - 🔄 Adaptive configuration based on device tier
 - 🔄 LTTB downsampling in Workers
@@ -2303,6 +2359,7 @@ jobs:
 - 🔄 Plugin performance safeguards
 
 **P2 (Future optimization)**:
+
 - ⏳ Data archiving for 20+ year datasets
 - ⏳ WebAssembly for signal processing
 - ⏳ WebGL rendering for ultra-high-frequency signals
@@ -2311,15 +2368,15 @@ jobs:
 
 **Monitor continuously**:
 
-| Metric | Target | Current | Status |
-|--------|--------|---------|--------|
-| LCP | < 1.5s | TBD | 🟡 Pending |
-| FID/INP | < 50ms / < 100ms | TBD | 🟡 Pending |
-| CLS | < 0.05 | TBD | 🟡 Pending |
-| Bundle (gzipped) | < 150 KB | TBD | 🟡 Pending |
-| Import (10 nights) | < 30s | TBD | 🟡 Pending |
-| Analysis (1 year) | < 500ms | TBD | 🟡 Pending |
-| Chart render | < 200ms | TBD | 🟡 Pending |
+| Metric             | Target           | Current | Status     |
+| ------------------ | ---------------- | ------- | ---------- |
+| LCP                | < 1.5s           | TBD     | 🟡 Pending |
+| FID/INP            | < 50ms / < 100ms | TBD     | 🟡 Pending |
+| CLS                | < 0.05           | TBD     | 🟡 Pending |
+| Bundle (gzipped)   | < 150 KB         | TBD     | 🟡 Pending |
+| Import (10 nights) | < 30s            | TBD     | 🟡 Pending |
+| Analysis (1 year)  | < 500ms          | TBD     | 🟡 Pending |
+| Chart render       | < 200ms          | TBD     | 🟡 Pending |
 
 **Update quarterly**: Review metrics, adjust targets, identify optimizations.
 

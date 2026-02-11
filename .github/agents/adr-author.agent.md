@@ -11,6 +11,7 @@ You write Architecture Decision Records (ADRs) for the CPAP Analyzer project fol
 ## When You Are Invoked
 
 Before any significant architectural choice:
+
 - Framework or library selection
 - Data storage strategy decisions
 - Plugin API design choices
@@ -43,12 +44,15 @@ What was decided and why.
 ## Consequences
 
 ### Positive
+
 - ...
 
 ### Negative
+
 - ...
 
 ### Neutral
+
 - ...
 ```
 

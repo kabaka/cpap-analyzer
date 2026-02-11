@@ -61,13 +61,13 @@ Workflow structure:
 
 ```yaml
 ci.yml:
-  audit:        # Fail fast, 30s
-  lint:         # Parallel, 45s
-  type-check:   # Parallel, 60s
-  test-unit:    # Parallel, 2min
-  test-e2e:     # Parallel, 3min (Chromium only for PRs)
-  build:        # After all checks, 1min
-  deploy:       # Main branch only, 30s
+  audit: # Fail fast, 30s
+  lint: # Parallel, 45s
+  type-check: # Parallel, 60s
+  test-unit: # Parallel, 2min
+  test-e2e: # Parallel, 3min (Chromium only for PRs)
+  build: # After all checks, 1min
+  deploy: # Main branch only, 30s
 ```
 
 Caching strategy:

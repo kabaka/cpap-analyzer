@@ -28,21 +28,27 @@ You perform root cause analysis (RCA) when bugs, regressions, or unexpected beha
 # RCA: [Brief title]
 
 ## Issue
+
 What was observed.
 
 ## Reproduction Steps
+
 1. ...
 
 ## Root Cause
+
 Why it happened.
 
 ## Contributing Factors
+
 Other conditions that enabled or worsened the issue.
 
 ## Recommended Fix
+
 What should be changed and who should do it.
 
 ## Prevention
+
 What tests, checks, or architectural changes would prevent recurrence.
 ```
 

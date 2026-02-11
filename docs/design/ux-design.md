@@ -138,6 +138,7 @@ Application Root
 ### 1.2 Navigation Hierarchy
 
 **Primary Navigation** (Top-level tabs):
+
 1. **Dashboard** — Default view, at-a-glance overview
 2. **Sessions** — Browse and drill into individual nights
 3. **Analysis** — Advanced statistical tools
@@ -145,11 +146,13 @@ Application Root
 5. **Data** — Import/export management
 
 **Secondary Navigation** (Context-dependent):
+
 - Within Analysis: Category submenu (Statistical / Event / Pressure / Integrations)
 - Within Sessions: List → Detail → Signal Viewer (progressive depth)
 - Within Reports: Templates → Generator → Preview → Export
 
 **Utility Navigation** (Top-right icons):
+
 - `?` Help (context-sensitive)
 - `⚙` Settings
 - `🌓` Theme Toggle
@@ -157,17 +160,20 @@ Application Root
 
 ### 1.3 Persistent Components
 
-**Date Range Selector**: 
+**Date Range Selector**:
+
 - Present in Dashboard, Sessions, Analysis, Reports
 - State persists across navigation (user maintains temporal context)
 - Presets: Last 7 days, Last 30 days, Last 90 days, Last year, All time, Custom
 
 **Breadcrumb Navigation**:
+
 - Not necessary for top-level tabs
 - Essential for Analysis submenu depth (e.g., `Analysis > Time Series > STL Decomposition`)
 - Session Detail (e.g., `Dashboard > January 15, 2026`)
 
 **Status Bar** (Bottom):
+
 - Session count for current date range
 - Storage usage (clickable for detail)
 - Background task indicators (import progress, analysis running)
@@ -257,6 +263,7 @@ Application Root
 ```
 
 **Design Decisions**:
+
 - **No account creation** — Data is local, no authentication needed
 - **Inline help, not separate wizard** — Contextual guidance reduces cognitive load
 - **Progress transparency** — Show file count, time estimate, allow cancellation
@@ -288,6 +295,7 @@ Application Root
 ```
 
 **State Restored**:
+
 - Date range selection
 - Active view and tab
 - Chart zoom/pan state (if applicable)
@@ -296,6 +304,7 @@ Application Root
 - Sidebar open/closed state
 
 **Intelligent Defaults**:
+
 - If last visit was >7 days ago, suggest checking for new data
 - If user had a specific analysis open, restore it but show dashboard first with option to "Return to [Analysis Name]"
 
@@ -377,6 +386,7 @@ Application Root
 ```
 
 **Interaction Details**:
+
 1. **Summary Cards**: Hover for tooltip definition, click for glossary entry
 2. **Sparklines**: Inline 30-day trend, not interactive (pure indicator)
 3. **Session Table**: Sortable by any column, filterable, searchable by notes
@@ -436,6 +446,7 @@ Application Root
 ```
 
 **Progressive Disclosure Example**:
+
 - **Level 1** (Default): Plain-language interpretation
 - **Level 2** (Click "Show Details"): Statistical test name, p-value, effect size
 - **Level 3** (Click "Methodology"): Full explanation of Mann-Whitney U, assumptions, when to use it
@@ -504,6 +515,7 @@ Application Root
 **Component**: Persistent across all primary views
 
 **Interaction Model**:
+
 ```
 ┌────────────────────────────────────────────┐
 │ Date Range: ◄ Jan 10 – Feb 9, 2026 ►      │
@@ -512,6 +524,7 @@ Application Root
 ```
 
 **Behaviors**:
+
 - **Click left/right arrows**: Shift range backward/forward by current range duration
 - **Click "Presets"**: Dropdown with Last 7/30/90 days, Last year, All time
 - **Click "Custom Range"**: Calendar picker (dual date selection)
@@ -519,6 +532,7 @@ Application Root
 - **URL sync**: Date range encoded in URL for bookmarking deep links
 
 **Visual Feedback**:
+
 - Active range highlighted
 - All data views update simultaneously (debounced, 200ms)
 - Loading indicators on each component during range change queries
@@ -527,25 +541,27 @@ Application Root
 
 **Standard Interactions for All Time-Series Charts**:
 
-| Interaction | Method | Behavior |
-| ---- | ---- | ---- |
-| **Zoom In** | Mouse wheel up / Pinch out | Zoom centered on cursor position |
-| **Zoom Out** | Mouse wheel down / Pinch in | Zoom centered on cursor position |
-| **Pan** | Click-drag / Touch-drag | Horizontal pan (time axis), constrain to data range |
-| **Box Zoom** | Shift + Click-drag | Draw selection box, zoom to fit selection |
-| **Tooltip** | Hover / Touch-hold | Show exact values at data point, snap to nearest |
-| **Crosshair** | Hover (while in multi-chart view) | Vertical line synced across all charts |
-| **Reset Zoom** | Double-click / Two-finger tap | Return to full date range view |
-| **Legend Toggle** | Click legend item | Show/hide series, persist preference |
-| **Brush Select** | Alt/Option + Click-drag | Highlight time range for filtering |
+| Interaction       | Method                            | Behavior                                            |
+| ----------------- | --------------------------------- | --------------------------------------------------- |
+| **Zoom In**       | Mouse wheel up / Pinch out        | Zoom centered on cursor position                    |
+| **Zoom Out**      | Mouse wheel down / Pinch in       | Zoom centered on cursor position                    |
+| **Pan**           | Click-drag / Touch-drag           | Horizontal pan (time axis), constrain to data range |
+| **Box Zoom**      | Shift + Click-drag                | Draw selection box, zoom to fit selection           |
+| **Tooltip**       | Hover / Touch-hold                | Show exact values at data point, snap to nearest    |
+| **Crosshair**     | Hover (while in multi-chart view) | Vertical line synced across all charts              |
+| **Reset Zoom**    | Double-click / Two-finger tap     | Return to full date range view                      |
+| **Legend Toggle** | Click legend item                 | Show/hide series, persist preference                |
+| **Brush Select**  | Alt/Option + Click-drag           | Highlight time range for filtering                  |
 
 **Interaction Feedback**:
+
 - Cursor changes (grab hand for pan, crosshair for zoom box)
 - Smooth animation on zoom (120ms ease-out)
 - Immediate tooltip (no delay)
 - Crosshair synced across all visible charts in view
 
 **Accessibility Alternatives**:
+
 - Tab to chart, Arrow keys to move crosshair datapoint-by-datapoint
 - Enter to "activate" chart (zoom mode), Arrow keys to pan, +/- to zoom
 - Each chart has an associated data table (Show/Hide toggle) for non-visual access
@@ -554,16 +570,17 @@ Application Root
 
 **Session List Table** (Dashboard):
 
-| Feature | Interaction |
-| ---- | ---- |
-| **Sort** | Click column header (ascending → descending → unsorted) |
-| **Filter** | Type in column header filter box (instant search) |
-| **Select Row** | Click row → Navigate to Session Detail |
-| **Multi-Select** | Ctrl/Cmd + Click → Select multiple for bulk operations |
-| **Comparison** | Select 2 sessions → "Compare" button appears |
-| **Notes** | Double-click Notes column → Inline edit |
+| Feature          | Interaction                                             |
+| ---------------- | ------------------------------------------------------- |
+| **Sort**         | Click column header (ascending → descending → unsorted) |
+| **Filter**       | Type in column header filter box (instant search)       |
+| **Select Row**   | Click row → Navigate to Session Detail                  |
+| **Multi-Select** | Ctrl/Cmd + Click → Select multiple for bulk operations  |
+| **Comparison**   | Select 2 sessions → "Compare" button appears            |
+| **Notes**        | Double-click Notes column → Inline edit                 |
 
 **Keyboard Shortcuts**:
+
 - `↑/↓` Navigate rows
 - `Enter` Open selected session
 - `Space` Toggle row selection (multi-select mode)
@@ -575,23 +592,27 @@ Application Root
 **Multi-Channel Time-Series Viewer** (most complex component):
 
 **Zoom Levels**:
+
 1. **Overview (8 hours)**: Downsampled to 1-second resolution, event markers only
 2. **Intermediate (1 hour)**: 10-samples/second, flow patterns visible
 3. **Detail (5 minutes)**: Full 25 Hz resolution, individual breaths visible
 4. **Breath-level (<1 minute)**: Breath morphology analysis, measurement cursors
 
 **Interaction Modes**:
+
 - **Explore Mode** (default): Pan/zoom freely
 - **Measure Mode**: Click two points to measure time/value delta
 - **Annotate Mode**: Click to add note marker at timestamp
 - **Comparison Mode**: Split view showing two time ranges side-by-side
 
 **Channel Management**:
+
 - Toggle channels on/off (maintain scale for consistency)
 - Stack vertically (default) or overlay (for correlation visual inspection)
 - Adjust individual channel scale (auto-scale or manual range)
 
 **Event Overlay**:
+
 - Event markers on timeline (color-coded by type)
 - Click event → Detail popover (type, duration, pressure at time)
 - Filter events by type (show only obstructive, only central, etc.)
@@ -601,6 +622,7 @@ Application Root
 **Usage Pattern**: Settings, configuration, help articles
 
 **Structure**:
+
 ```
 ┌──────────────────────────────────────────────┐
 │ [✕]                                          │
@@ -613,6 +635,7 @@ Application Root
 ```
 
 **Behaviors**:
+
 - `Esc` to close (if no unsaved changes)
 - Click outside modal → Close (if no unsaved changes, otherwise warn)
 - Focus trap: Tab cycles within modal
@@ -623,11 +646,13 @@ Application Root
 **Inline Help Icons**: `ⓘ` next to every metric label
 
 **Interaction**:
+
 - **Hover**: Tooltip with one-line definition (appears after 300ms)
 - **Click**: Open help drawer with detailed explanation
 - **Keyboard**: Tab to focus, Enter to open detailed help
 
 **Help Drawer** (slides in from right):
+
 ```
 ┌──────────────────────────────────────────────┐
 │ ✕ AHI (Apnea-Hypopnea Index)                 │
@@ -662,11 +687,13 @@ Application Root
 ### 4.1 Semantic HTML & ARIA
 
 **Structure**:
+
 - Proper heading hierarchy (`h1` for page title, `h2` for sections, etc.)
 - Landmark regions: `<header>`, `<nav>`, `<main>`, `<aside>`, `<footer>`
 - ARIA labels for custom controls (`role="tablist"`, `role="button"`, etc.)
 
 **Dynamic Content**:
+
 - Live regions for status updates: `aria-live="polite"` for import progress
 - Modal dialogs: `role="dialog"`, `aria-modal="true"`, `aria-labelledby`
 - Loading states: `aria-busy="true"` while content updates
@@ -675,19 +702,20 @@ Application Root
 
 **Global Shortcuts** (activate when no input focused):
 
-| Shortcut | Action |
-| ---- | ---- |
-| `D` | Go to Dashboard |
-| `S` | Go to Sessions |
-| `A` | Go to Analysis |
-| `R` | Go to Reports |
-| `I` | Open Import Dialog |
-| `?` | Show Keyboard Shortcuts Reference |
-| `Ctrl/Cmd + K` | Command Palette (quick navigation) |
-| `/` | Focus Search |
-| `Esc` | Close modal/drawer, cancel operation |
+| Shortcut       | Action                               |
+| -------------- | ------------------------------------ |
+| `D`            | Go to Dashboard                      |
+| `S`            | Go to Sessions                       |
+| `A`            | Go to Analysis                       |
+| `R`            | Go to Reports                        |
+| `I`            | Open Import Dialog                   |
+| `?`            | Show Keyboard Shortcuts Reference    |
+| `Ctrl/Cmd + K` | Command Palette (quick navigation)   |
+| `/`            | Focus Search                         |
+| `Esc`          | Close modal/drawer, cancel operation |
 
 **Navigation & Focus**:
+
 - **Tab Order**: Logical, left-to-right, top-to-bottom
 - **Focus Indicators**: High-contrast focus ring (3px solid, 4.5:1 contrast)
 - **Skip Links**: "Skip to main content" link (visible on focus)
@@ -696,11 +724,13 @@ Application Root
 ### 4.3 Chart Accessibility
 
 **Text Alternatives**:
+
 - Each chart has an associated data table (toggle-able)
 - `aria-describedby` links chart to table
 - Screen reader announcement: "AHI trend line chart, 30 data points. View data table for details."
 
 **Keyboard Chart Navigation**:
+
 1. **Tab to chart** → Focus on chart container
 2. **Enter** → Activate chart (keyboard navigation mode)
 3. **Arrow keys** → Move crosshair datapoint by datapoint
@@ -710,6 +740,7 @@ Application Root
 7. **T** → Toggle to data table view
 
 **Data Table Format**:
+
 ```
 Date       | AHI  | Usage | Leak | Notes
 -----------|------|-------|------|-------
@@ -720,6 +751,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 ### 4.4 Color & Contrast
 
 **Minimum Contrast Ratios**:
+
 - Body text: 4.5:1 (WCAG AA)
 - Large text (≥18pt or ≥14pt bold): 3:1
 - UI components (buttons, chart lines): 3:1
@@ -727,14 +759,15 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 
 **Clinical Severity Colors** (tested for colorblindness):
 
-| Severity | Light Theme | Dark Theme | Pattern (if color ambiguous) |
-| ---- | ---- | ---- | ---- |
-| Normal | Green #22c55e | Green #4ade80 | Solid line |
-| Mild | Yellow #eab308 | Yellow #facc15 | Dashed line (- - -) |
-| Moderate | Orange #f97316 | Orange #fb923c | Dotted line (· · ·) |
-| Severe | Red #ef4444 | Red #f87171 | Bold solid line |
+| Severity | Light Theme    | Dark Theme     | Pattern (if color ambiguous) |
+| -------- | -------------- | -------------- | ---------------------------- |
+| Normal   | Green #22c55e  | Green #4ade80  | Solid line                   |
+| Mild     | Yellow #eab308 | Yellow #facc15 | Dashed line (- - -)          |
+| Moderate | Orange #f97316 | Orange #fb923c | Dotted line (· · ·)          |
+| Severe   | Red #ef4444    | Red #f87171    | Bold solid line              |
 
 **Never Color Alone**:
+
 - Charts use both color and line style (solid, dashed, dotted)
 - Status indicators use icons in addition to color (✓, ⚠, ✕)
 - Trend arrows supplement color (▲ improving, ▼ worsening)
@@ -742,6 +775,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 ### 4.5 Motion & Animation
 
 **Respect User Preferences**:
+
 ```css
 @media (prefers-reduced-motion: reduce) {
   * {
@@ -753,6 +787,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 ```
 
 **Essential vs. Decorative**:
+
 - **Decorative** (can be disabled): Chart zoom animations, sparkline transitions, hover effects
 - **Essential** (always present): Focus indicators, loading spinners, error shake
 - **User Control**: Settings → Display → "Enable animations" toggle
@@ -774,19 +809,20 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 
 ### 5.1 Breakpoint Strategy
 
-| Breakpoint | Width Range | Layout Mode | Target Device |
-| ---- | ---- | ---- | ---- |
-| **Mobile** | 320px – 639px | Single column, stacked | Phone (portrait) |
-| **Mobile Landscape** | 640px – 767px | Adaptable 2-column | Phone (landscape) |
-| **Tablet** | 768px – 1023px | Flexible 2-3 column | Tablet |
-| **Desktop** | 1024px – 1439px | Multi-panel | Laptop |
-| **Large Desktop** | 1440px+ | Wide multi-panel | Desktop monitor |
+| Breakpoint           | Width Range     | Layout Mode            | Target Device     |
+| -------------------- | --------------- | ---------------------- | ----------------- |
+| **Mobile**           | 320px – 639px   | Single column, stacked | Phone (portrait)  |
+| **Mobile Landscape** | 640px – 767px   | Adaptable 2-column     | Phone (landscape) |
+| **Tablet**           | 768px – 1023px  | Flexible 2-3 column    | Tablet            |
+| **Desktop**          | 1024px – 1439px | Multi-panel            | Laptop            |
+| **Large Desktop**    | 1440px+         | Wide multi-panel       | Desktop monitor   |
 
 ### 5.2 Mobile Layout (< 640px)
 
 **Use Case**: "Show my doctor my data during an appointment"
 
 **Dashboard**:
+
 ```
 ┌──────────────────────────┐
 │ [☰] CPAP Analyzer  [?][⚙]│
@@ -817,17 +853,20 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 
 **Navigation**: Hamburger menu (☰) expands to overlay navigation
 
-**Charts**: 
+**Charts**:
+
 - Full viewport width
 - Touch-enabled (pinch-to-zoom, swipe-to-pan)
 - Simplified tooltips (tap, not hover)
 
 **Tables**:
+
 - Horizontal scroll
 - First column (Date) sticky
 - Simplified view (3-4 columns max visible)
 
 **Signal Viewer**:
+
 - Full-screen mode automatic
 - One channel at a time (toggle between channels)
 - Gesture-driven zoom/pan
@@ -837,6 +876,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 **Use Case**: "Review data before bed" or "Bedside analysis"
 
 **Dashboard**:
+
 ```
 ┌────────────────────────────────────────────┐
 │ [Logo] CPAP Analyzer     [?] [⚙] [Theme]  │
@@ -855,6 +895,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 ```
 
 **Layout Changes**:
+
 - Tab navigation visible (not hamburger)
 - Summary cards 2×2 grid
 - Charts: 1-2 side-by-side (configurable)
@@ -865,6 +906,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 **Use Case**: "Primary analysis workstation"
 
 **Dashboard**:
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ [Logo] CPAP Analyzer              [?] [⚙] [Theme]           │
@@ -883,6 +925,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 ```
 
 **Layout Changes**:
+
 - Sidebar for secondary information (compliance, notes, quick stats)
 - Multi-chart dashboard (2-4 charts configurable)
 - Drag-and-drop to rearrange widgets
@@ -893,6 +936,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 **Touch Targets**: Minimum 44×44px (WCAG 2.1 Level AAA guideline)
 
 **Gestures**:
+
 - **Tap**: Select, activate
 - **Long press**: Context menu, tooltip
 - **Swipe**: Navigate between views (if applicable)
@@ -900,6 +944,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 - **Two-finger drag**: Pan (charts)
 
 **Mobile Considerations**:
+
 - Bottom navigation bar (thumbs-friendly)
 - Larger font sizes (minimum 16px body)
 - Generous padding (easier tapping)
@@ -919,24 +964,27 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 
 **Example: AHI Display**
 
-| Level | Display | Audience |
-| ---- | ---- | ---- |
-| **Summary** | `AHI: 4.2` (with color indicator) | Everyone |
-| **Detail** | `AHI: 4.2 (Mild) — Total: 29 events, 6.8 hours` | Click "Details" |
-| **Expert** | `Obstructive: 3.2, Central: 1.0, Hypopnea: 0` + event table | Click "Show Breakdown" |
+| Level       | Display                                                     | Audience               |
+| ----------- | ----------------------------------------------------------- | ---------------------- |
+| **Summary** | `AHI: 4.2` (with color indicator)                           | Everyone               |
+| **Detail**  | `AHI: 4.2 (Mild) — Total: 29 events, 6.8 hours`             | Click "Details"        |
+| **Expert**  | `Obstructive: 3.2, Central: 1.0, Hypopnea: 0` + event table | Click "Show Breakdown" |
 
 ### 6.2 Dashboard Progressive Complexity
 
 **First Glance** (no scrolling):
+
 - Date range
 - 3-4 KPI cards with sparklines
 - Compliance status
 
 **Scroll Down** (immediate):
+
 - Primary trend chart
 - Session list (top 10 nights)
 
 **Dig Deeper** (user-initiated):
+
 - Click KPI card → Full analysis for that metric
 - Click trend chart → Expanded chart with more detail
 - Click session → Session detail view
@@ -944,6 +992,7 @@ Feb 8      | 5.1  | 6.8h  | 9    | High leak
 ### 6.3 Analysis Tools Progressive Exposure
 
 **Analysis Menu** (tiered):
+
 ```
 Analysis
 ├── Quick Analysis (always visible)
@@ -964,6 +1013,7 @@ Analysis
 ```
 
 **Within Each Tool**:
+
 - **Simple Interface First**: Minimal required inputs, smart defaults
 - **Advanced Options Collapsed**: "Show Advanced Options" expander
 - **Methodology Link**: "How does this work?" → Help article
@@ -1008,16 +1058,19 @@ Analysis
 ### 6.4 Help System Layering
 
 **Tooltip** (Level 1):
+
 - Hover: "AHI is the number of apnea/hypopnea events per hour"
 - Appears after 300ms
 - One sentence maximum
 
 **Help Drawer** (Level 2):
+
 - Click metric label: Slide-in panel with 2-3 paragraphs
 - Tabs: Definition, Clinical Significance, How It's Calculated
 - Links to related metrics
 
 **Full Article** (Level 3):
+
 - Click "Learn More" in help drawer
 - Dedicated page with comprehensive explanation
 - Includes formulas, examples, clinical studies, references
@@ -1031,6 +1084,7 @@ Analysis
 **Principle**: Help is never more than one click away from any context.
 
 **Entry Points**:
+
 1. **Inline help icons** — `ⓘ` next to every metric, control, or complex feature
 2. **Global help button** — `?` in top-right, opens context-sensitive help
 3. **Command palette** — `Ctrl/Cmd + K`, type "help [topic]"
@@ -1040,48 +1094,60 @@ Analysis
 ### 7.2 Help Content Structure
 
 **Metric Help Template**:
+
 ```markdown
 # [Metric Name]
 
 ## Quick Definition
+
 [One-sentence plain-language explanation]
 
 ## Clinical Context
+
 - What it measures
 - Normal ranges
 - Clinical significance
 - When to be concerned
 
 ## How It's Calculated
+
 [Formula or algorithm description]
 [For power users — include statistical methodology]
 
 ## Related Metrics
+
 [Links to related help articles]
 
 ## Further Reading
+
 [Links to clinical studies, AASM guidelines]
 ```
 
 **Analysis Method Help Template**:
+
 ```markdown
 # [Analysis Method Name]
 
 ## What This Analysis Does
+
 [Plain-language summary]
 
 ## When to Use It
+
 [Appropriate scenarios]
 
 ## Understanding the Results
+
 [How to interpret output]
 [What p-values mean, effect sizes, etc.]
 
 ## Methodology
+
 [Statistical method explanation]
 [Assumptions and limitations]
 
 ## Example Use Cases
+
 [Real-world scenarios with screenshots]
 ```
 
@@ -1117,6 +1183,7 @@ Analysis
    - "Full documentation available in the Help menu"
 
 **Implementation**:
+
 - Non-modal (user can click around, tour stays visible)
 - "Next" / "Skip Tour" buttons
 - Progress indicator (Step 2 of 5)
@@ -1157,6 +1224,7 @@ Help & Documentation
 ```
 
 **Search Functionality**:
+
 - Full-text search across all help content
 - Keyboard shortcut: `?` then type query
 - Results show snippet + context
@@ -1165,6 +1233,7 @@ Help & Documentation
 ### 7.5 Error Guidance
 
 **Error Message Template**:
+
 ```
 ┌──────────────────────────────────────────┐
 │ ⚠ Import Failed                          │
@@ -1187,6 +1256,7 @@ Help & Documentation
 ```
 
 **Error Categories**:
+
 1. **User Action Needed** — Clear remedy (example: re-insert SD card)
 2. **Partial Success** — Allow continuation with reduced data
 3. **Fatal Error** — Explain limitation, suggest workaround
@@ -1198,16 +1268,17 @@ Help & Documentation
 
 ### 8.1 UI State Categories
 
-| State Category | Persistence | Storage | Example |
-| ---- | ---- | ---- | ---- |
-| **Session State** | No | Memory | Current scroll position, dropdown open/closed |
-| **User Preferences** | Yes | LocalStorage | Theme, date format, chart preferences |
-| **View State** | Yes | LocalStorage | Last date range, active tab, sort order |
-| **Application Data** | Yes | IndexedDB | Imported CPAP sessions, user annotations |
+| State Category       | Persistence | Storage      | Example                                       |
+| -------------------- | ----------- | ------------ | --------------------------------------------- |
+| **Session State**    | No          | Memory       | Current scroll position, dropdown open/closed |
+| **User Preferences** | Yes         | LocalStorage | Theme, date format, chart preferences         |
+| **View State**       | Yes         | LocalStorage | Last date range, active tab, sort order       |
+| **Application Data** | Yes         | IndexedDB    | Imported CPAP sessions, user annotations      |
 
 ### 8.2 Persisted Preferences
 
 **Settings > Display**:
+
 ```javascript
 {
   theme: "dark" | "light" | "system",
@@ -1220,6 +1291,7 @@ Help & Documentation
 ```
 
 **Settings > Analysis**:
+
 ```javascript
 {
   defaultChangePointPenalty: 10,
@@ -1231,6 +1303,7 @@ Help & Documentation
 ```
 
 **Settings > Chart**:
+
 ```javascript
 {
   defaultCharts: ["ahi-trend", "usage-trend"],
@@ -1244,6 +1317,7 @@ Help & Documentation
 ### 8.3 View State Persistence
 
 **Dashboard State**:
+
 ```javascript
 {
   dateRange: {
@@ -1265,6 +1339,7 @@ Help & Documentation
 ```
 
 **Session Detail State**:
+
 ```javascript
 {
   lastViewedSession: "2026-02-08",
@@ -1277,6 +1352,7 @@ Help & Documentation
 ```
 
 **Analysis State**:
+
 ```javascript
 {
   activeAnalysis: "change-point-detection",
@@ -1321,6 +1397,7 @@ Database: cpap-analyzer-v1
 ```
 
 **Storage Quota Management**:
+
 ```javascript
 {
   totalSessions: 350,
@@ -1331,6 +1408,7 @@ Database: cpap-analyzer-v1
 ```
 
 **Actions Available**:
+
 - View session-by-session storage usage
 - Delete individual sessions
 - Delete date range (bulk)
@@ -1340,6 +1418,7 @@ Database: cpap-analyzer-v1
 ### 8.5 State Restoration on Launch
 
 **Launch Sequence**:
+
 1. Load UI shell (< 100ms)
 2. Check IndexedDB for existing data (< 200ms)
 3. Restore last view state from LocalStorage (< 50ms)
@@ -1347,11 +1426,13 @@ Database: cpap-analyzer-v1
 5. Check for new data on SD card (if path known, optional background task)
 
 **If State Exists**:
+
 - Navigate directly to last view (or Dashboard if last view unavailable)
 - Restore date range, chart zoom, table filters
 - User continues where they left off
 
 **If No State** (fresh start):
+
 - Show welcome screen
 - Prompt for data import
 - Initialize with default preferences
@@ -1359,11 +1440,13 @@ Database: cpap-analyzer-v1
 ### 8.6 URL State Synchronization
 
 **Bookmarkable URLs**:
+
 - Date ranges: `/#/dashboard?start=2026-01-10&end=2026-02-09`
 - Session detail: `/#/sessions/2026-02-08`
 - Analysis with params: `/#/analysis/change-point?metric=AHI&penalty=10`
 
 **Benefits**:
+
 - Deep linking to specific views
 - Share link with physician (data still local, only view configuration shared)
 - Browser back/forward works as expected
@@ -1385,11 +1468,11 @@ When design decisions conflict, prioritize in this order:
 
 ### 9.2 User Experience Goals
 
-| User Type | Primary Goal | Design Focus | Success Metric |
-| ---- | ---- | ---- | ---- |
-| **Power User** | Deep, rigorous analysis | Information density, keyboard shortcuts, export | Time to complete analysis task |
-| **Learner** | Understand therapy metrics | Contextual help, progressive disclosure | Comprehension (self-reported) |
-| **Patient-Physician** | Share findings with doctor | Clear summaries, professional reports | Report quality rating |
+| User Type             | Primary Goal               | Design Focus                                    | Success Metric                 |
+| --------------------- | -------------------------- | ----------------------------------------------- | ------------------------------ |
+| **Power User**        | Deep, rigorous analysis    | Information density, keyboard shortcuts, export | Time to complete analysis task |
+| **Learner**           | Understand therapy metrics | Contextual help, progressive disclosure         | Comprehension (self-reported)  |
+| **Patient-Physician** | Share findings with doctor | Clear summaries, professional reports           | Report quality rating          |
 
 ### 9.3 Interaction Design Tenets
 
@@ -1402,12 +1485,14 @@ When design decisions conflict, prioritize in this order:
 ### 9.4 Future Extensibility
 
 **Plugin Support** (planned):
+
 - Settings UI for enabling/disabling plugins
 - Plugin-contributed navigation items
 - Plugin-contributed chart types
 - Plugin-contributed analysis methods
 
 **Design Considerations**:
+
 - Navigation structure must accommodate variable number of tabs
 - Settings must scale to arbitrary number of plugin configs
 - Help system must merge plugin documentation seamlessly
@@ -1417,6 +1502,7 @@ When design decisions conflict, prioritize in this order:
 ## 10. Implementation Priorities
 
 ### Phase 1: Core Patient Experience (MVP)
+
 - ✅ Data import pipeline
 - ✅ Dashboard with summary cards
 - ✅ Session detail view
@@ -1425,6 +1511,7 @@ When design decisions conflict, prioritize in this order:
 - ✅ Light/dark theme
 
 ### Phase 2: Analysis Tools
+
 - Time-series analysis (rolling averages, STL)
 - Correlation analysis
 - Range comparison (Mann-Whitney U)
@@ -1432,17 +1519,20 @@ When design decisions conflict, prioritize in this order:
 - Advanced accessibility (WCAG AA, screen reader testing)
 
 ### Phase 3: Signal Viewer & Advanced
+
 - High-resolution signal viewer
 - Event clustering algorithms
 - False-negative detection
 - Breath-level detail view
 
 ### Phase 4: Integrations (Plugins)
+
 - Fitbit correlation
 - Environmental correlation (weather, AQI)
 - LLM insights (optional)
 
 ### Phase 5: Polish & Optimization
+
 - Performance optimization for 5+ years of data
 - Advanced keyboard shortcuts
 - Customizable dashboard

@@ -31,6 +31,7 @@ You are the client-side storage architecture specialist for the CPAP Analyzer.
 ## Storage Architecture
 
 ### Summary Data (IndexedDB)
+
 - Session metadata (date, duration, machine model, firmware version)
 - Nightly aggregates (AHI, leak rate stats, pressure stats, compliance)
 - Analysis results (trends, correlations, cluster summaries)
@@ -38,6 +39,7 @@ You are the client-side storage architecture specialist for the CPAP Analyzer.
 - Import history and data provenance
 
 ### Signal Data (OPFS)
+
 - High-resolution time-series (flow, pressure, leak, SpO2) at native sample rates
 - Event markers (apnea, hypopnea, RERA, flow limitation) with timestamps
 - Stored in an optimized binary format (not raw EDF — converted on import)

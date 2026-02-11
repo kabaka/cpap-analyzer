@@ -27,22 +27,26 @@ You must review any code that involves:
 ## Analysis Scope
 
 ### Input Validation
+
 - EDF file parsing: validate headers, handle truncated files, reject malformed data.
 - User input sanitization for search, filter, and configuration fields.
 - API response validation — never trust external API responses.
 
 ### Browser Security
+
 - Content Security Policy (CSP) configuration.
 - XSS prevention in dynamic content rendering.
 - Subresource Integrity (SRI) for any external resources (though we prefer bundling).
 - Secure cookie/storage practices.
 
 ### Dependency Security
+
 - Review new dependencies for known vulnerabilities.
 - Minimize dependency surface area — fewer dependencies means fewer attack vectors.
 - `npm audit` must pass at the `high` severity level.
 
 ### Privacy
+
 - No data exfiltration — verify no network calls to unexpected endpoints.
 - User data must be deletable — support complete data removal from storage.
 - PHI awareness — CPAP therapy data is health information, even if HIPAA doesn't formally apply to this tool.

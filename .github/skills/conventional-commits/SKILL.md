@@ -21,24 +21,24 @@ All commits in this project must follow the [Conventional Commits](https://www.c
 
 ## Types
 
-| Type | When to use |
-| ---- | ---- |
-| `feat` | A new feature or capability |
-| `fix` | A bug fix |
-| `docs` | Documentation changes only |
-| `chore` | Maintenance tasks, dependency updates, config changes |
-| `refactor` | Code restructuring without behavior change |
-| `test` | Adding or updating tests |
-| `perf` | Performance improvements |
-| `ci` | CI/CD pipeline changes |
-| `style` | Formatting changes (Prettier, whitespace) |
-| `build` | Build system or dependency changes |
+| Type       | When to use                                           |
+| ---------- | ----------------------------------------------------- |
+| `feat`     | A new feature or capability                           |
+| `fix`      | A bug fix                                             |
+| `docs`     | Documentation changes only                            |
+| `chore`    | Maintenance tasks, dependency updates, config changes |
+| `refactor` | Code restructuring without behavior change            |
+| `test`     | Adding or updating tests                              |
+| `perf`     | Performance improvements                              |
+| `ci`       | CI/CD pipeline changes                                |
+| `style`    | Formatting changes (Prettier, whitespace)             |
+| `build`    | Build system or dependency changes                    |
 
 ## Rules
 
 - **Description**: Imperative mood, lowercase, no period at end. Max 72 characters.
 - **Scope**: Optional. Use module/feature name (e.g., `feat(import):`, `fix(charts):`).
-- **Body**: Explain *what* and *why*, not *how*. Wrap at 72 characters.
+- **Body**: Explain _what_ and _why_, not _how_. Wrap at 72 characters.
 - **Breaking changes**: Add `!` after type/scope (e.g., `feat!:`) and include `BREAKING CHANGE:` footer.
 
 ## Examples

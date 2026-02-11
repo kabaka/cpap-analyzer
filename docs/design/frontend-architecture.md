@@ -104,21 +104,21 @@ This document defines the complete frontend architecture for CPAP Analyzer, a cl
 
 **Radix UI Primitives to Use**:
 
-| Component | Radix Package | Purpose |
-|-----------|---------------|---------|
-| Modal/Dialog | `@radix-ui/react-dialog` | Import wizard, settings, confirmations |
-| Dropdown Menu | `@radix-ui/react-dropdown-menu` | Date range presets, chart options |
-| Tooltip | `@radix-ui/react-tooltip` | Metric definitions, help icons |
-| Select | `@radix-ui/react-select` | Analysis method selection |
-| Tabs | `@radix-ui/react-tabs` | Navigation, help content sections |
-| Accordion | `@radix-ui/react-accordion` | Collapsible settings, help sections |
-| Popover | `@radix-ui/react-popover` | Advanced chart controls |
-| Switch | `@radix-ui/react-switch` | Theme toggle, settings toggles |
-| Slider | `@radix-ui/react-slider` | Date range selection, zoom controls |
+| Component     | Radix Package                   | Purpose                                |
+| ------------- | ------------------------------- | -------------------------------------- |
+| Modal/Dialog  | `@radix-ui/react-dialog`        | Import wizard, settings, confirmations |
+| Dropdown Menu | `@radix-ui/react-dropdown-menu` | Date range presets, chart options      |
+| Tooltip       | `@radix-ui/react-tooltip`       | Metric definitions, help icons         |
+| Select        | `@radix-ui/react-select`        | Analysis method selection              |
+| Tabs          | `@radix-ui/react-tabs`          | Navigation, help content sections      |
+| Accordion     | `@radix-ui/react-accordion`     | Collapsible settings, help sections    |
+| Popover       | `@radix-ui/react-popover`       | Advanced chart controls                |
+| Switch        | `@radix-ui/react-switch`        | Theme toggle, settings toggles         |
+| Slider        | `@radix-ui/react-slider`        | Date range selection, zoom controls    |
 
 **Rationale**:
 
-1. **Accessibility Built-In**: 
+1. **Accessibility Built-In**:
    - Radix handles ARIA attributes, keyboard navigation, focus management
    - Meets WCAG AA requirements out of the box
    - Reduces accessibility bugs from AI-generated code
@@ -171,15 +171,15 @@ interface AppState {
   // Date range selection (persisted to URL)
   dateRange: { start: Date; end: Date };
   setDateRange: (range: { start: Date; end: Date }) => void;
-  
+
   // Currently selected session (persisted to URL)
   selectedSessionId: string | null;
   setSelectedSession: (id: string | null) => void;
-  
+
   // Theme preference (persisted to localStorage)
   theme: 'light' | 'dark' | 'system';
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
-  
+
   // Import state
   importStatus: 'idle' | 'scanning' | 'importing' | 'complete' | 'error';
   importProgress: { current: number; total: number };
@@ -196,7 +196,7 @@ interface SettingsState {
     // ... more parameters
   };
   updateAnalysisParam: (path: string, value: unknown) => void;
-  
+
   // Display preferences
   display: {
     dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
@@ -204,7 +204,7 @@ interface SettingsState {
     chartAnimations: boolean;
   };
   updateDisplayPref: (key: string, value: unknown) => void;
-  
+
   // Integration config
   integrations: {
     fitbit: { enabled: boolean; accessToken: string | null };
@@ -219,7 +219,7 @@ interface DataState {
   // Session metadata cache (loaded from IndexedDB on app start)
   sessions: Map<string, SessionMetadata>;
   loadSessions: (range: { start: Date; end: Date }) => Promise<void>;
-  
+
   // Summary statistics cache
   summaryStats: {
     range: { start: Date; end: Date };
@@ -256,25 +256,25 @@ export function useURLStateSync() {
   const { dateRange, selectedSessionId } = useAppStore();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  
+
   // Sync URL -> Zustand on mount
   useEffect(() => {
     const rangeStart = searchParams.get('start');
     const rangeEnd = searchParams.get('end');
     const sessionId = searchParams.get('session');
-    
+
     if (rangeStart && rangeEnd) {
       useAppStore.getState().setDateRange({
         start: new Date(rangeStart),
         end: new Date(rangeEnd),
       });
     }
-    
+
     if (sessionId) {
       useAppStore.getState().setSelectedSession(sessionId);
     }
   }, []);
-  
+
   // Sync Zustand -> URL on change (debounced)
   useEffect(() => {
     const params = new URLSearchParams();
@@ -283,7 +283,7 @@ export function useURLStateSync() {
     if (selectedSessionId) {
       params.set('session', selectedSessionId);
     }
-    
+
     navigate({ search: params.toString() }, { replace: true });
   }, [dateRange, selectedSessionId]);
 }
@@ -431,7 +431,7 @@ const router = createBrowserRouter([
 // src/layouts/RootLayout.tsx
 export function RootLayout() {
   useURLStateSync(); // Sync URL params to Zustand
-  
+
   return (
     <div className="app-root" data-theme={theme}>
       <Header />
@@ -523,19 +523,19 @@ export default defineConfig({
       },
     }),
   ],
-  
+
   build: {
     target: 'esnext',
-    
+
     rollupOptions: {
       output: {
         manualChunks: {
           // Core framework
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          
+
           // State management
           'vendor-state': ['zustand'],
-          
+
           // UI primitives
           'vendor-ui': [
             '@radix-ui/react-dialog',
@@ -544,34 +544,34 @@ export default defineConfig({
             '@radix-ui/react-select',
             '@radix-ui/react-tabs',
           ],
-          
+
           // Data visualization (lazy-loaded)
           'vendor-charts': ['recharts', 'd3-scale', 'd3-shape'],
-          
+
           // Data processing (loaded in worker)
           // Not bundled with main app
         },
       },
     },
-    
+
     // Enable source maps for production debugging (can be disabled later)
     sourcemap: true,
-    
+
     // Increase chunk size warning limit (we have large datasets)
     chunkSizeWarningLimit: 1000,
   },
-  
+
   // Optimize dependency pre-bundling
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router-dom', 'zustand'],
   },
-  
+
   // Web Worker support
   worker: {
     format: 'es',
     plugins: [],
   },
-  
+
   // Development server config
   server: {
     port: 3000,
@@ -585,6 +585,7 @@ export default defineConfig({
 **Splitting Points**:
 
 1. **Route-based splitting** (automatic with React.lazy):
+
    ```typescript
    const SessionDetail = React.lazy(() => import('./views/SessionDetail'));
    const Analysis = React.lazy(() => import('./views/Analysis'));
@@ -813,14 +814,14 @@ export function SessionCard({ session, selected, onClick }: SessionCardProps) {
   const handleClick = () => {
     onClick?.(session.id);
   };
-  
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onClick?.(session.id);
     }
   };
-  
+
   return (
     <Card
       className={cn(styles.sessionCard, selected && styles.selected)}
@@ -836,13 +837,13 @@ export function SessionCard({ session, selected, onClick }: SessionCardProps) {
         </time>
         <StatusBadge severity={getAHISeverity(session.ahi)} />
       </div>
-      
+
       <div className={styles.metrics}>
         <Metric label="AHI" value={formatNumber(session.ahi, 1)} />
         <Metric label="Usage" value={formatDuration(session.usage)} />
         <Metric label="Leak" value={`${formatNumber(session.leak95, 0)} L/min`} />
       </div>
-      
+
       {session.notes && (
         <div className={styles.notes} aria-label="Session notes">
           {session.notes}
@@ -872,6 +873,7 @@ function Metric({ label, value }: MetricProps) {
 ### 7.2 Prop Handling and Typing
 
 **Principles**:
+
 - Always use explicit interfaces for props (no inline types)
 - Use TypeScript's utility types (Partial, Pick, Omit) for prop composition
 - Prefer composition over configuration (many focused props over one config object)
@@ -899,11 +901,11 @@ function Chart(props: ChartProps) {
   if (props.status === 'loading') {
     return <ChartSkeleton />;
   }
-  
+
   if (props.status === 'error') {
     return <ErrorMessage message={props.error} />;
   }
-  
+
   return <ChartRenderer data={props.data} />;
 }
 ```
@@ -911,6 +913,7 @@ function Chart(props: ChartProps) {
 ### 7.3 Event Handling
 
 **Principles**:
+
 - Event handlers are always optional props (suffix with `?`)
 - Name event handlers with `on` prefix (`onClick`, `onSubmit`, `onChange`)
 - Pass minimal data in event callbacks (IDs, not full objects)
@@ -930,17 +933,17 @@ function TableRow({ session, onSelect, onEdit, onDelete }: TableRowProps) {
   const handleClick = () => {
     onSelect?.(session.id);
   };
-  
+
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent row click
     onEdit?.(session.id);
   };
-  
+
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onDelete?.(session.id);
   };
-  
+
   return (
     <tr onClick={handleClick} className={styles.row}>
       <td>{format(session.date)}</td>
@@ -979,17 +982,17 @@ type SettingsFormData = z.infer<typeof settingsSchema>;
 
 export function SettingsForm() {
   const { settings, updateSettings } = useSettingsStore();
-  
+
   const { register, handleSubmit, formState: { errors } } = useForm<SettingsFormData>({
     resolver: zodResolver(settingsSchema),
     defaultValues: settings,
   });
-  
+
   const onSubmit = (data: SettingsFormData) => {
     updateSettings(data);
     // Show success toast
   };
-  
+
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <Select
@@ -1002,16 +1005,16 @@ export function SettingsForm() {
         ]}
         error={errors.theme?.message}
       />
-      
+
       <Input
         label="Mild AHI Threshold"
         type="number"
         {...register('analysisParams.mildThreshold', { valueAsNumber: true })}
         error={errors.analysisParams?.mildThreshold?.message}
       />
-      
+
       {/* More fields... */}
-      
+
       <Button type="submit">Save Settings</Button>
     </form>
   );
@@ -1019,6 +1022,7 @@ export function SettingsForm() {
 ```
 
 **Dependencies**:
+
 - `react-hook-form`: Form state management, validation
 - `zod`: Schema validation with TypeScript inference
 
@@ -1047,26 +1051,26 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     super(props);
     this.state = { hasError: false, error: null };
   }
-  
+
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
-  
+
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught error:', error, errorInfo);
     // Could send to error tracking service here (if user opts in)
   }
-  
+
   resetError = () => {
     this.setState({ hasError: false, error: null });
   };
-  
+
   render() {
     if (this.state.hasError && this.state.error) {
       if (this.props.fallback) {
         return this.props.fallback(this.state.error, this.resetError);
       }
-      
+
       return (
         <div className={styles.errorBoundary}>
           <h2>Something went wrong</h2>
@@ -1079,7 +1083,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         </div>
       );
     }
-    
+
     return this.props.children;
   }
 }
@@ -1124,7 +1128,7 @@ import type { EDFFile, ParsedSession } from '@/types/session';
 const edfParserWorker = {
   async parseEDFFile(fileBuffer: ArrayBuffer): Promise<ParsedSession> {
     const edf = await parseEDF(fileBuffer);
-    
+
     return {
       header: edf.header,
       signals: edf.signals,
@@ -1132,7 +1136,7 @@ const edfParserWorker = {
       metadata: edf.metadata,
     };
   },
-  
+
   async validateEDFHeader(headerBuffer: ArrayBuffer): Promise<{
     valid: boolean;
     error?: string;
@@ -1166,14 +1170,14 @@ export class WorkerPool<T> {
     resolve: (value: unknown) => void;
     reject: (error: unknown) => void;
   }> = [];
-  
+
   constructor(
     private WorkerClass: new () => Worker,
-    private poolSize: number = navigator.hardwareConcurrency || 4
+    private poolSize: number = navigator.hardwareConcurrency || 4,
   ) {
     this.initializeWorkers();
   }
-  
+
   private initializeWorkers() {
     for (let i = 0; i < this.poolSize; i++) {
       const worker = wrap<T>(new this.WorkerClass());
@@ -1181,10 +1185,10 @@ export class WorkerPool<T> {
       this.availableWorkers.push(worker);
     }
   }
-  
+
   async execute<R>(task: (worker: Remote<T>) => Promise<R>): Promise<R> {
     const worker = this.availableWorkers.pop();
-    
+
     if (worker) {
       try {
         return await task(worker);
@@ -1193,21 +1197,21 @@ export class WorkerPool<T> {
         this.processQueue();
       }
     }
-    
+
     // No workers available, add to queue
     return new Promise((resolve, reject) => {
       this.queue.push({ task, resolve, reject });
     });
   }
-  
+
   private processQueue() {
     if (this.queue.length === 0 || this.availableWorkers.length === 0) {
       return;
     }
-    
+
     const { task, resolve, reject } = this.queue.shift()!;
     const worker = this.availableWorkers.pop()!;
-    
+
     task(worker)
       .then(resolve)
       .catch(reject)
@@ -1216,11 +1220,9 @@ export class WorkerPool<T> {
         this.processQueue();
       });
   }
-  
+
   async terminate() {
-    await Promise.all(
-      this.workers.map(worker => (worker as any)[Symbol.dispose]?.())
-    );
+    await Promise.all(this.workers.map((worker) => (worker as any)[Symbol.dispose]?.()));
     this.workers = [];
     this.availableWorkers = [];
   }
@@ -1228,7 +1230,7 @@ export class WorkerPool<T> {
 
 // Create global worker pool instance
 export const edfParserPool = new WorkerPool<EDFParserWorker>(
-  () => new Worker(new URL('./edfParser.worker.ts', import.meta.url), { type: 'module' })
+  () => new Worker(new URL('./edfParser.worker.ts', import.meta.url), { type: 'module' }),
 );
 ```
 
@@ -1241,12 +1243,10 @@ import { edfParserPool } from '../workers/WorkerPool';
 export class ImportService {
   async importSession(file: File): Promise<void> {
     const arrayBuffer = await file.arrayBuffer();
-    
+
     // Parse in worker (automatically queued if all workers busy)
-    const parsedSession = await edfParserPool.execute(worker =>
-      worker.parseEDFFile(arrayBuffer)
-    );
-    
+    const parsedSession = await edfParserPool.execute((worker) => worker.parseEDFFile(arrayBuffer));
+
     // Store parsed session
     await this.storeSession(parsedSession);
   }
@@ -1254,6 +1254,7 @@ export class ImportService {
 ```
 
 **Dependencies**:
+
 - `comlink`: ~2KB, type-safe worker communication
 - Built-in Web Workers (no additional library needed)
 
@@ -1362,13 +1363,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt', // User confirms updates
       includeAssets: ['fonts/*.woff2', 'icons/*.svg'],
-      
+
       workbox: {
         // Precache: App shell assets
-        globPatterns: [
-          '**/*.{js,css,woff2,svg}',
-        ],
-        
+        globPatterns: ['**/*.{js,css,woff2,svg}'],
+
         // Runtime caching strategies
         runtimeCaching: [
           // Strategy 1: index.html (network-first)
@@ -1386,7 +1385,7 @@ export default defineConfig({
               networkTimeoutSeconds: 5, // Fast fallback to cache
             },
           },
-          
+
           // Strategy 2: JS/CSS (cache-first, content-hashed)
           {
             urlPattern: /\.(?:js|css)$/,
@@ -1399,7 +1398,7 @@ export default defineConfig({
               },
             },
           },
-          
+
           // Strategy 3: Dynamic imports (stale-while-revalidate)
           {
             urlPattern: /\/assets\/.*\.js$/,
@@ -1412,7 +1411,7 @@ export default defineConfig({
               },
             },
           },
-          
+
           // Strategy 4: Fonts & icons (cache-first, long-lived)
           {
             urlPattern: /\.(?:woff2|svg)$/,
@@ -1426,11 +1425,11 @@ export default defineConfig({
             },
           },
         ],
-        
+
         // Cache versioning by build
         cleanupOutdatedCaches: true,
       },
-      
+
       manifest: {
         name: 'CPAP Analyzer',
         short_name: 'CPAP Analyzer',
@@ -1496,30 +1495,33 @@ export function usePWAUpdate() {
     updateServiceWorker,
   } = useRegisterSW({
     immediate: true,
-    
+
     onRegistered(registration) {
       console.log('[PWA] Service Worker registered:', registration);
-      
+
       // Check for updates every hour
-      setInterval(() => {
-        console.log('[PWA] Checking for updates...');
-        registration?.update();
-      }, 60 * 60 * 1000);
+      setInterval(
+        () => {
+          console.log('[PWA] Checking for updates...');
+          registration?.update();
+        },
+        60 * 60 * 1000,
+      );
     },
-    
+
     onRegisterError(error) {
       console.error('[PWA] Service Worker registration failed:', error);
     },
-    
+
     onNeedRefresh() {
       console.log('[PWA] New version available');
     },
-    
+
     onOfflineReady() {
       console.log('[PWA] App ready to work offline');
     },
   });
-  
+
   return {
     updateAvailable: needRefresh,
     applyUpdate: () => updateServiceWorker(true),
@@ -1539,16 +1541,16 @@ import styles from './UpdateBanner.module.css';
 
 export function UpdateBanner() {
   const { updateAvailable, applyUpdate, dismissUpdate } = usePWAUpdate();
-  
+
   if (!updateAvailable) return null;
-  
+
   return (
     <div className={styles.banner} role="alert" aria-live="polite">
       <div className={styles.content}>
         <p className={styles.message}>
           A new version of CPAP Analyzer is available.
         </p>
-        
+
         <div className={styles.actions}>
           <Button
             onClick={applyUpdate}
@@ -1557,7 +1559,7 @@ export function UpdateBanner() {
           >
             Reload to Update
           </Button>
-          
+
           <Button
             onClick={dismissUpdate}
             variant="ghost"
@@ -1604,7 +1606,7 @@ self.addEventListener('message', (event) => {
 // src/hooks/usePWAUpdate.ts - Enhanced with error handling
 export function usePWAUpdate() {
   const [updateError, setUpdateError] = useState<string | null>(null);
-  
+
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
@@ -1612,26 +1614,22 @@ export function usePWAUpdate() {
     onRegistered(registration) {
       console.log('[PWA] Service Worker registered');
     },
-    
+
     onRegisterError(error) {
       console.error('[PWA] Registration failed:', error);
-      setUpdateError(
-        'Failed to install app updates. Try refreshing the page.'
-      );
+      setUpdateError('Failed to install app updates. Try refreshing the page.');
     },
   });
-  
+
   const applyUpdate = async () => {
     try {
       await updateServiceWorker(true);
     } catch (error) {
       console.error('[PWA] Update failed:', error);
-      setUpdateError(
-        'Failed to apply update. Please refresh the page manually.'
-      );
+      setUpdateError('Failed to apply update. Please refresh the page manually.');
     }
   };
-  
+
   return {
     updateAvailable: needRefresh,
     updateError,
@@ -1700,29 +1698,27 @@ export class CacheManager {
     if (!('caches' in window)) {
       throw new Error('Cache API not supported');
     }
-    
+
     const cacheNames = await caches.keys();
-    
-    await Promise.all(
-      cacheNames.map(cacheName => caches.delete(cacheName))
-    );
-    
+
+    await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+
     console.log('[Cache] Cleared all app caches:', cacheNames);
   }
-  
+
   /**
    * Get total size of all Service Worker caches.
    */
   static async getCacheSize(): Promise<number> {
     if (!('caches' in window)) return 0;
-    
+
     const cacheNames = await caches.keys();
     let totalSize = 0;
-    
+
     for (const cacheName of cacheNames) {
       const cache = await caches.open(cacheName);
       const keys = await cache.keys();
-      
+
       for (const request of keys) {
         const response = await cache.match(request);
         if (response) {
@@ -1731,25 +1727,25 @@ export class CacheManager {
         }
       }
     }
-    
+
     return totalSize;
   }
-  
+
   /**
    * List all cached resources.
    */
   static async listCachedResources(): Promise<string[]> {
     if (!('caches' in window)) return [];
-    
+
     const cacheNames = await caches.keys();
     const allUrls: string[] = [];
-    
+
     for (const cacheName of cacheNames) {
       const cache = await caches.open(cacheName);
       const keys = await cache.keys();
-      allUrls.push(...keys.map(req => req.url));
+      allUrls.push(...keys.map((req) => req.url));
     }
-    
+
     return allUrls;
   }
 }
@@ -1766,12 +1762,12 @@ import { Button } from '@/components/ui/Button';
 export function CacheSettings() {
   const [cacheSize, setCacheSize] = useState<number | null>(null);
   const [isClearing, setIsClearing] = useState(false);
-  
+
   const loadCacheSize = async () => {
     const size = await CacheManager.getCacheSize();
     setCacheSize(size);
   };
-  
+
   const clearCache = async () => {
     setIsClearing(true);
     try {
@@ -1785,22 +1781,22 @@ export function CacheSettings() {
       setIsClearing(false);
     }
   };
-  
+
   return (
     <div>
       <h3>Application Cache</h3>
-      
+
       <p>
         The app caches static assets (HTML, JS, CSS) for offline access.
         User data is stored separately and is not affected by clearing the cache.
       </p>
-      
+
       <Button onClick={loadCacheSize}>Check Cache Size</Button>
-      
+
       {cacheSize !== null && (
         <p>Current cache size: {(cacheSize / 1024 / 1024).toFixed(2)} MB</p>
       )}
-      
+
       <Button
         onClick={clearCache}
         disabled={isClearing}
@@ -1808,7 +1804,7 @@ export function CacheSettings() {
       >
         {isClearing ? 'Clearing...' : 'Clear App Cache'}
       </Button>
-      
+
       <p>
         <small>
           This clears the application code cache. Your CPAP data,
@@ -1849,20 +1845,20 @@ import { useState, useEffect } from 'react';
 
 export function useOnlineStatus() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  
+
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-    
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-  
+
   return isOnline;
 }
 ```
@@ -1875,9 +1871,9 @@ import styles from './OfflineBanner.module.css';
 
 export function OfflineBanner() {
   const isOnline = useOnlineStatus();
-  
+
   if (isOnline) return null;
-  
+
   return (
     <div className={styles.banner} role="status" aria-live="polite">
       <WifiOff size={16} />
@@ -1900,7 +1896,7 @@ export class ExternalAPIService {
       console.warn('[ExternalAPI] Offline: Cannot fetch weather data');
       return null; // Graceful return, not an error
     }
-    
+
     try {
       const response = await fetch(`/api/weather?location=${location}`);
       return await response.json();
@@ -1916,7 +1912,7 @@ export class ExternalAPIService {
 // UI handles null gracefully
 function WeatherWidget() {
   const weather = useWeather(userLocation);
-  
+
   if (weather === null) {
     return (
       <div>
@@ -1927,7 +1923,7 @@ function WeatherWidget() {
       </div>
     );
   }
-  
+
   return <WeatherDisplay data={weather} />;
 }
 ```
@@ -1946,25 +1942,28 @@ import { registerSW } from 'virtual:pwa-register';
 if ('serviceWorker' in navigator) {
   const updateSW = registerSW({
     immediate: true,
-    
+
     onRegistered(registration) {
       console.log('[PWA] Service Worker registered');
-      
+
       // Poll for updates every hour
-      setInterval(() => {
-        registration?.update();
-      }, 60 * 60 * 1000);
+      setInterval(
+        () => {
+          registration?.update();
+        },
+        60 * 60 * 1000,
+      );
     },
-    
+
     onRegisterError(error) {
       console.error('[PWA] Service Worker registration failed:', error);
     },
-    
+
     onNeedRefresh() {
       console.log('[PWA] New version available');
       // Trigger update UI (handled by usePWAUpdate hook)
     },
-    
+
     onOfflineReady() {
       console.log('[PWA] App ready to work offline');
       // Optional: Show "Ready for offline use" toast
@@ -2013,7 +2012,7 @@ const applyUpdate = () => {
   if (registration?.waiting) {
     registration.waiting.postMessage({ type: 'SKIP_WAITING' });
   }
-  
+
   // Reload page after new SW activates
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     window.location.reload();
@@ -2030,18 +2029,17 @@ export async function registerServiceWorker(): Promise<boolean> {
     console.warn('[PWA] Service Workers not supported');
     return false;
   }
-  
+
   try {
     const registration = await navigator.serviceWorker.register('/sw.js', {
       scope: '/',
     });
-    
+
     console.log('[PWA] Service Worker registered:', registration);
     return true;
-    
   } catch (error) {
     console.error('[PWA] Service Worker registration failed:', error);
-    
+
     // App still works, just without offline support
     // Show non-blocking notification to user
     return false;
@@ -2055,11 +2053,11 @@ export async function registerServiceWorker(): Promise<boolean> {
 // Fallback for browsers without Service Worker support
 if (!('serviceWorker' in navigator)) {
   console.warn('[PWA] Service Worker not supported - app runs online-only');
-  
+
   // Optional: Show one-time banner
   showOneTimeBanner(
     'Your browser does not support offline mode. The app will work, ' +
-    'but requires an internet connection.'
+      'but requires an internet connection.',
   );
 }
 ```
@@ -2077,7 +2075,7 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       // Only register Service Worker in production
       disable: mode === 'development',
-      
+
       // Alternative: Use 'injectManifest' for more control
       strategies: mode === 'development' ? 'injectManifest' : 'generateSW',
     }),
@@ -2122,7 +2120,7 @@ import { rest } from 'msw';
 export const server = setupServer(
   rest.get('/sw.js', (req, res, ctx) => {
     return res(ctx.status(200), ctx.text('// Mock Service Worker'));
-  })
+  }),
 );
 
 beforeAll(() => server.listen());
@@ -2207,15 +2205,10 @@ navigator.serviceWorker.register('/sw.js', {
 const cachedResources = await CacheManager.listCachedResources();
 
 // Verify no user data paths
-const userDataPaths = [
-  '/api/sessions',
-  '/api/data',
-  'indexeddb',
-  'opfs',
-];
+const userDataPaths = ['/api/sessions', '/api/data', 'indexeddb', 'opfs'];
 
-const violations = cachedResources.filter(url =>
-  userDataPaths.some(path => url.includes(path))
+const violations = cachedResources.filter((url) =>
+  userDataPaths.some((path) => url.includes(path)),
 );
 
 if (violations.length > 0) {
@@ -2272,10 +2265,14 @@ export default defineConfig({
       includeAssets: ['fonts/*.woff2', 'icons/*.svg'],
       workbox: {
         globPatterns: ['**/*.{js,css,html,woff2,svg}'],
-        runtimeCaching: [ /* see Section 9.3.2 */ ],
+        runtimeCaching: [
+          /* see Section 9.3.2 */
+        ],
         cleanupOutdatedCaches: true,
       },
-      manifest: { /* PWA manifest */ },
+      manifest: {
+        /* PWA manifest */
+      },
     }),
   ],
 });
@@ -2314,13 +2311,12 @@ registerRoute(
         maxAgeSeconds: 60 * 60 * 24, // 24 hours
       }),
     ],
-  })
+  }),
 );
 
 // Custom route: Assets (cache-first)
 registerRoute(
-  ({ request }) => request.destination === 'script' ||
-                   request.destination === 'style',
+  ({ request }) => request.destination === 'script' || request.destination === 'style',
   new CacheFirst({
     cacheName: 'asset-cache',
     plugins: [
@@ -2329,7 +2325,7 @@ registerRoute(
         maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
       }),
     ],
-  })
+  }),
 );
 ```
 
@@ -2374,10 +2370,10 @@ App Shell:
 // Check cache quota usage
 if (navigator.storage && navigator.storage.estimate) {
   const { usage, quota } = await navigator.storage.estimate();
-  
+
   console.log(`Cache usage: ${(usage / 1024 / 1024).toFixed(2)} MB`);
   console.log(`Cache quota: ${(quota / 1024 / 1024).toFixed(2)} MB`);
-  console.log(`Cache % used: ${(usage / quota * 100).toFixed(2)}%`);
+  console.log(`Cache % used: ${((usage / quota) * 100).toFixed(2)}%`);
 }
 ```
 
@@ -2444,46 +2440,42 @@ test.describe('Offline Functionality', () => {
     // First visit: Load app online
     await page.goto('/');
     await expect(page.locator('h1')).toContainText('CPAP Analyzer');
-    
+
     // Wait for Service Worker registration
-    await page.waitForFunction(() => 
-      navigator.serviceWorker.controller !== null
-    );
-    
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+
     // Go offline
     await context.setOffline(true);
-    
+
     // Reload page
     await page.reload();
-    
+
     // App should still load from cache
     await expect(page.locator('h1')).toContainText('CPAP Analyzer');
   });
-  
+
   test('shows offline indicator when network unavailable', async ({ page, context }) => {
     await page.goto('/');
-    
+
     // Go offline
     await context.setOffline(true);
-    
+
     // Offline banner should appear
-    await expect(page.locator('[role="status"]')).toContainText(
-      "You're offline"
-    );
+    await expect(page.locator('[role="status"]')).toContainText("You're offline");
   });
-  
+
   test('analysis functions work offline', async ({ page, context }) => {
     // Import session data online
     await page.goto('/');
     await page.locator('button:has-text("Import Data")').click();
     // ... import session ...
-    
+
     // Go offline
     await context.setOffline(true);
-    
+
     // Navigate to session
     await page.locator('a:has-text("Session 1")').click();
-    
+
     // Analysis should run offline
     await expect(page.locator('[data-testid="ahi-score"]')).toBeVisible();
   });
@@ -2497,24 +2489,24 @@ test.describe('Offline Functionality', () => {
 test.describe('Service Worker Lifecycle', () => {
   test('registers Service Worker on first visit', async ({ page }) => {
     await page.goto('/');
-    
+
     const swRegistered = await page.evaluate(() => {
       return navigator.serviceWorker.controller !== null;
     });
-    
+
     expect(swRegistered).toBe(true);
   });
-  
+
   test('detects updates and shows update banner', async ({ page }) => {
     await page.goto('/');
-    
+
     // Simulate new Service Worker available
     await page.evaluate(() => {
       // Trigger update event
       const event = new CustomEvent('needRefresh');
       window.dispatchEvent(event);
     });
-    
+
     // Update banner should appear
     await expect(page.locator('button:has-text("Reload to Update")')).toBeVisible();
   });
@@ -2528,14 +2520,14 @@ test.describe('Service Worker Lifecycle', () => {
 test.describe('Cache Management', () => {
   test('clears app cache when user requests', async ({ page }) => {
     await page.goto('/settings');
-    
+
     // Check cache size
     await page.locator('button:has-text("Check Cache Size")').click();
     await expect(page.locator('text=/Current cache size/')).toBeVisible();
-    
+
     // Clear cache
     await page.locator('button:has-text("Clear App Cache")').click();
-    
+
     // Verify cache cleared
     await expect(page.locator('text=/0.00 MB/')).toBeVisible();
   });
@@ -2549,36 +2541,36 @@ test.describe('Cache Management', () => {
 test.describe('Update Flow', () => {
   test('applies update when user clicks "Reload to Update"', async ({ page }) => {
     await page.goto('/');
-    
+
     // Simulate update available
     await page.evaluate(() => {
       const event = new CustomEvent('needRefresh');
       window.dispatchEvent(event);
     });
-    
+
     // Click update button
     await page.locator('button:has-text("Reload to Update")').click();
-    
+
     // Page should reload
     await page.waitForLoadState('load');
-    
+
     // Verify new version loaded (check version in footer or DevTools)
     const version = await page.locator('[data-testid="app-version"]').textContent();
     expect(version).toBeTruthy();
   });
-  
+
   test('dismisses update notification', async ({ page }) => {
     await page.goto('/');
-    
+
     // Simulate update available
     await page.evaluate(() => {
       const event = new CustomEvent('needRefresh');
       window.dispatchEvent(event);
     });
-    
+
     // Click dismiss button
     await page.locator('button[aria-label="Dismiss update notification"]').click();
-    
+
     // Update banner should disappear
     await expect(page.locator('button:has-text("Reload to Update")')).not.toBeVisible();
   });
@@ -2592,6 +2584,7 @@ test.describe('Update Flow', () => {
 ### 10.1 Vitest Unit Tests
 
 **Testing Strategy**:
+
 - Test all utility functions (pure functions are easy to test)
 - Test component logic (not visual appearance)
 - Test custom hooks
@@ -2612,17 +2605,17 @@ describe('Button', () => {
     render(<Button>Click me</Button>);
     expect(screen.getByRole('button', { name: /click me/i })).toBeInTheDocument();
   });
-  
+
   it('calls onClick when clicked', async () => {
     const handleClick = vi.fn();
     render(<Button onClick={handleClick}>Click me</Button>);
-    
+
     const user = userEvent.setup();
     await user.click(screen.getByRole('button'));
-    
+
     expect(handleClick).toHaveBeenCalledTimes(1);
   });
-  
+
   it('is disabled when disabled prop is true', () => {
     render(<Button disabled>Click me</Button>);
     expect(screen.getByRole('button')).toBeDisabled();
@@ -2643,19 +2636,19 @@ describe('useAppStore', () => {
     // Reset store state
     useAppStore.setState(useAppStore.getInitialState());
   });
-  
+
   it('updates date range', () => {
     const { result } = renderHook(() => useAppStore());
-    
+
     const newRange = {
       start: new Date('2026-01-01'),
       end: new Date('2026-01-31'),
     };
-    
+
     act(() => {
       result.current.setDateRange(newRange);
     });
-    
+
     expect(result.current.dateRange).toEqual(newRange);
   });
 });
@@ -2664,6 +2657,7 @@ describe('useAppStore', () => {
 ### 10.2 Playwright E2E Tests
 
 **Testing Strategy**:
+
 - Test critical user flows (import, dashboard, session detail)
 - Test keyboard navigation
 - Test accessibility (ARIA attributes, focus management)
@@ -2679,26 +2673,26 @@ import { test, expect } from '@playwright/test';
 test.describe('Data Import Flow', () => {
   test('imports ResMed SD card data successfully', async ({ page }) => {
     await page.goto('/');
-    
+
     // Welcome screen should show
     await expect(page.getByRole('heading', { name: /CPAP Analyzer/i })).toBeVisible();
-    
+
     // Click import button
     await page.getByRole('button', { name: /Import Your Data/i }).click();
-    
+
     // Select directory (using test fixtures)
     // Note: Browser automation for file system access requires special setup
     // This is a simplified example
-    
+
     // Progress should show
     await expect(page.getByText(/Importing CPAP Data/i)).toBeVisible();
-    
+
     // Wait for completion
     await expect(page.getByText(/Import Successful/i)).toBeVisible({ timeout: 30000 });
-    
+
     // Should navigate to dashboard
     await expect(page).toHaveURL('/');
-    
+
     // Dashboard should show imported data
     await expect(page.getByText(/AHI/i)).toBeVisible();
   });
@@ -2857,10 +2851,10 @@ export function cn(...classes: (string | boolean | undefined | null)[]): string 
 
 ```typescript
 // src/main.tsx
-import './styles/tokens.css';       // Design tokens
-import './styles/reset.css';        // CSS reset
-import './styles/base.css';         // Base styles (body, headings, etc.)
-import './styles/utilities.css';    // Utility classes (if needed)
+import './styles/tokens.css'; // Design tokens
+import './styles/reset.css'; // CSS reset
+import './styles/base.css'; // Base styles (body, headings, etc.)
+import './styles/utilities.css'; // Utility classes (if needed)
 ```
 
 ---
@@ -2878,30 +2872,30 @@ import './styles/utilities.css';    // Utility classes (if needed)
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,
-    
+
     // Module resolution
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    
+
     // Type resolution
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    
+
     // Emit
     "noEmit": true, // Vite handles transpilation
     "isolatedModules": true,
-    
+
     // Interop
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    
+
     // JSX
     "jsx": "react-jsx",
     "jsxImportSource": "react",
-    
+
     // Path aliases
     "baseUrl": ".",
     "paths": {
@@ -2930,24 +2924,24 @@ export interface SessionMetadata {
   startTime: Date;
   endTime: Date;
   duration: number; // seconds
-  
+
   // Summary metrics
   ahi: number;
   oahi: number; // Obstructive AHI
   cahi: number; // Central AHI
   hahi: number; // Hypopnea AHI
-  
+
   usage: number; // seconds
   leak95: number; // 95th percentile leak (L/min)
   leakMedian: number;
-  
+
   pressure: {
     mean: number;
     p95: number;
     min: number;
     max: number;
   };
-  
+
   // Event counts
   events: {
     obstructive: number;
@@ -2957,11 +2951,11 @@ export interface SessionMetadata {
     rera: number;
     largeLeak: number;
   };
-  
+
   // User annotations
   notes: string | null;
   tags: string[];
-  
+
   // Import metadata
   importedAt: Date;
   sourceFiles: string[];
@@ -3148,14 +3142,14 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 export function SessionTable({ sessions }: { sessions: SessionMetadata[] }) {
   const parentRef = useRef<HTMLDivElement>(null);
-  
+
   const virtualizer = useVirtualizer({
     count: sessions.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 60, // Row height in pixels
     overscan: 10, // Render 10 extra rows above/below viewport
   });
-  
+
   return (
     <div ref={parentRef} className={styles.tableContainer}>
       <div
@@ -3226,12 +3220,14 @@ return <SessionCard session={session} onSelect={handleSessionSelect} />;
 ```
 
 **When to Memoize**:
+
 - Components that render large lists
 - Expensive computations (filtering, sorting, downsampling)
 - Callbacks passed to memoized child components
 - Context values that trigger many re-renders
 
 **When NOT to Memoize**:
+
 - Cheap computations (simple arithmetic, string concatenation)
 - Components that always render with different props
 - Premature optimization (measure first)
@@ -3244,17 +3240,17 @@ return <SessionCard session={session} onSelect={handleSessionSelect} />;
 // src/hooks/useDebounce.ts
 export function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState(value);
-  
+
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedValue(value);
     }, delay);
-    
+
     return () => {
       clearTimeout(handler);
     };
   }, [value, delay]);
-  
+
   return debouncedValue;
 }
 
@@ -3272,19 +3268,19 @@ useEffect(() => {
 
 ```typescript
 // src/hooks/useThrottle.ts
-export function useThrottle<T extends (...args: any[]) => any>(
-  callback: T,
-  delay: number
-): T {
+export function useThrottle<T extends (...args: any[]) => any>(callback: T, delay: number): T {
   const lastRun = useRef(Date.now());
-  
-  return useCallback((...args: Parameters<T>) => {
-    const now = Date.now();
-    if (now - lastRun.current >= delay) {
-      callback(...args);
-      lastRun.current = now;
-    }
-  }, [callback, delay]) as T;
+
+  return useCallback(
+    (...args: Parameters<T>) => {
+      const now = Date.now();
+      if (now - lastRun.current >= delay) {
+        callback(...args);
+        lastRun.current = now;
+      }
+    },
+    [callback, delay],
+  ) as T;
 }
 
 // Usage
@@ -3319,17 +3315,17 @@ const handleScroll = useThrottle(() => {
 export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean) {
   useEffect(() => {
     if (!active || !ref.current) return;
-    
+
     const focusableElements = ref.current.querySelectorAll(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     );
-    
+
     const firstElement = focusableElements[0] as HTMLElement;
     const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
-    
+
     const handleTabKey = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
-      
+
       if (e.shiftKey && document.activeElement === firstElement) {
         lastElement.focus();
         e.preventDefault();
@@ -3338,10 +3334,10 @@ export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean) {
         e.preventDefault();
       }
     };
-    
+
     document.addEventListener('keydown', handleTabKey);
     firstElement?.focus();
-    
+
     return () => {
       document.removeEventListener('keydown', handleTabKey);
     };
@@ -3386,21 +3382,21 @@ export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean) {
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.0",
     "zustand": "^4.4.7",
-    
+
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-dropdown-menu": "^2.0.6",
     "@radix-ui/react-tooltip": "^1.0.7",
     "@radix-ui/react-select": "^2.0.0",
     "@radix-ui/react-tabs": "^1.0.4",
-    
+
     "comlink": "^4.4.1",
     "react-hook-form": "^7.49.2",
     "zod": "^3.22.4",
     "@hookform/resolvers": "^3.3.3",
-    
+
     "recharts": "^2.10.3",
     "@tanstack/react-virtual": "^3.0.1",
-    
+
     "date-fns": "^3.0.6"
   },
   "devDependencies": {
@@ -3408,25 +3404,25 @@ export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean) {
     "vite": "^5.0.8",
     "vite-plugin-pwa": "^0.17.4",
     "vite-tsconfig-paths": "^4.2.2",
-    
+
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
     "typescript": "^5.3.3",
-    
+
     "vitest": "^1.1.0",
     "@testing-library/react": "^14.1.2",
     "@testing-library/user-event": "^14.5.1",
     "@testing-library/jest-dom": "^6.1.5",
-    
+
     "@playwright/test": "^1.40.1",
-    
+
     "eslint": "^8.56.0",
     "@typescript-eslint/eslint-plugin": "^6.17.0",
     "@typescript-eslint/parser": "^6.17.0",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-jsx-a11y": "^6.8.0",
-    
+
     "prettier": "^3.1.1"
   }
 }
@@ -3436,15 +3432,15 @@ export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean) {
 
 The following targets are enforced in CI/CD:
 
-| Bundle Type | Target | Threshold (Fail CI) |
-| ----------- | ------ | ------------------- |
-| Initial (main entry) | ≤150 KB | ≤200 KB |
-| Route bundles (per route) | ≤75 KB | ≤100 KB |
-| Worker bundles (per worker) | ≤50 KB | ≤75 KB |
-| Vendor chunks | ≤120 KB | ≤150 KB |
-| Total application | ≤500 KB | ≤1 MB |
-| CSS (total) | ≤30 KB | ≤50 KB |
-| Fonts | ≤40 KB | ≤60 KB |
+| Bundle Type                 | Target  | Threshold (Fail CI) |
+| --------------------------- | ------- | ------------------- |
+| Initial (main entry)        | ≤150 KB | ≤200 KB             |
+| Route bundles (per route)   | ≤75 KB  | ≤100 KB             |
+| Worker bundles (per worker) | ≤50 KB  | ≤75 KB              |
+| Vendor chunks               | ≤120 KB | ≤150 KB             |
+| Total application           | ≤500 KB | ≤1 MB               |
+| CSS (total)                 | ≤30 KB  | ≤50 KB              |
+| Fonts                       | ≤40 KB  | ≤60 KB              |
 
 **Estimated Component Breakdown**:
 
@@ -3469,6 +3465,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 **Goals**: Get the basic application shell running with navigation and theming.
 
 **Tasks**:
+
 1. Initialize Vite project with React + TypeScript
 2. Configure TypeScript (strict mode, path aliases)
 3. Set up ESLint, Prettier, pre-commit hooks
@@ -3480,6 +3477,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 9. Configure Vitest for unit testing
 
 **Deliverables**:
+
 - Empty app shell with navigation
 - Theme switching works
 - Core components built and tested
@@ -3489,6 +3487,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 **Goals**: Implement storage and data import pipeline.
 
 **Tasks**:
+
 1. Implement IndexedDB service for session metadata
 2. Implement OPFS service for signal data
 3. Build EDF parser (in Web Worker with Comlink)
@@ -3498,6 +3497,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 7. Add session metadata caching (DataStore)
 
 **Deliverables**:
+
 - Users can import ResMed SD card data
 - Session list displays imported sessions
 - Storage management UI works
@@ -3507,6 +3507,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 **Goals**: Build core data exploration views.
 
 **Tasks**:
+
 1. Implement Dashboard with summary cards, trend charts, session table
 2. Build date range selector component
 3. Implement Session Detail view with metadata and event timeline
@@ -3515,6 +3516,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 6. Add keyboard navigation to all views
 
 **Deliverables**:
+
 - Dashboard displays summary statistics
 - Users can drill into individual sessions
 - Signal viewer renders waveforms smoothly
@@ -3524,6 +3526,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 **Goals**: Implement statistical analysis and report generation.
 
 **Tasks**:
+
 1. Build analysis algorithms (in Web Workers)
 2. Implement Analysis view with method selection UI
 3. Build chart components (line, bar, scatter, heatmap) with Recharts
@@ -3531,6 +3534,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 5. Build help system (contextual help, glossary, search)
 
 **Deliverables**:
+
 - Users can run statistical analyses
 - Users can generate PDF reports
 - Help system provides guidance
@@ -3540,6 +3544,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 **Goals**: Optimize performance, accessibility, and user experience.
 
 **Tasks**:
+
 1. Implement code splitting for all views
 2. Add loading skeletons and progress indicators
 3. Optimize chart rendering (level-of-detail, viewport culling)
@@ -3549,6 +3554,7 @@ Bundle size targets are enforced in CI/CD. See [devops-architecture.md](./devops
 7. Performance profiling and optimization
 
 **Deliverables**:
+
 - App loads in <2 seconds
 - All interactions <200ms
 - WCAG AA compliant
@@ -3681,8 +3687,7 @@ async function detectIndexedDB(): Promise<boolean> {
  */
 function detectWebWorkers(): boolean {
   try {
-    return typeof Worker !== 'undefined' && 
-           typeof MessageChannel !== 'undefined';
+    return typeof Worker !== 'undefined' && typeof MessageChannel !== 'undefined';
   } catch {
     return false;
   }
@@ -3696,13 +3701,13 @@ function detectES2020(): boolean {
     // Optional chaining
     const obj: any = {};
     const _ = obj?.nested?.property;
-    
+
     // Nullish coalescing
     const val = null ?? 'default';
-    
+
     // BigInt
     const bigInt = BigInt(9007199254740991);
-    
+
     // Promise.allSettled
     return typeof Promise.allSettled === 'function';
   } catch {
@@ -3734,9 +3739,11 @@ function detectFileSystemAccess(): boolean {
  */
 function detectTypedArrays(): boolean {
   try {
-    return typeof Float32Array !== 'undefined' && 
-           typeof Int16Array !== 'undefined' &&
-           typeof Uint8Array !== 'undefined';
+    return (
+      typeof Float32Array !== 'undefined' &&
+      typeof Int16Array !== 'undefined' &&
+      typeof Uint8Array !== 'undefined'
+    );
   } catch {
     return false;
   }
@@ -3832,11 +3839,11 @@ export async function detectBrowserCapabilities(): Promise<FeatureAvailability> 
 
 #### 17.3.1 Storage Fallback Matrix
 
-| Primary           | Fallback     | Performance Impact                   | Status                |
-| ----------------- | ------------ | ------------------------------------ | --------------------- |
-| OPFS              | IndexedDB    | 30-50% slower write/read             | ✅ Functional         |
-| IndexedDB         | None         | N/A                                  | ❌ Blocker            |
-| OPFS + IndexedDB  | Memory-only  | Session-only, data loss on refresh   | ⚠️ Emergency fallback |
+| Primary          | Fallback    | Performance Impact                 | Status                |
+| ---------------- | ----------- | ---------------------------------- | --------------------- |
+| OPFS             | IndexedDB   | 30-50% slower write/read           | ✅ Functional         |
+| IndexedDB        | None        | N/A                                | ❌ Blocker            |
+| OPFS + IndexedDB | Memory-only | Session-only, data loss on refresh | ⚠️ Emergency fallback |
 
 #### 17.3.2 OPFS Unavailable → IndexedDB Fallback
 
@@ -3865,7 +3872,7 @@ class OPFSSignalStorage implements SignalStorageAdapter {
 
   async writeSignal(sessionId: string, channel: string, data: Float32Array): Promise<void> {
     if (!this.root) throw new Error('OPFS not initialized');
-    
+
     const sessionDir = await this.root.getDirectoryHandle(sessionId, { create: true });
     const fileHandle = await sessionDir.getFileHandle(`${channel}.bin`, { create: true });
     const writable = await fileHandle.createWritable();
@@ -3873,14 +3880,19 @@ class OPFSSignalStorage implements SignalStorageAdapter {
     await writable.close();
   }
 
-  async readSignal(sessionId: string, channel: string, start: number, end: number): Promise<Float32Array> {
+  async readSignal(
+    sessionId: string,
+    channel: string,
+    start: number,
+    end: number,
+  ): Promise<Float32Array> {
     if (!this.root) throw new Error('OPFS not initialized');
-    
+
     const sessionDir = await this.root.getDirectoryHandle(sessionId);
     const fileHandle = await sessionDir.getFileHandle(`${channel}.bin`);
     const file = await fileHandle.getFile();
     const buffer = await file.arrayBuffer();
-    
+
     const fullArray = new Float32Array(buffer);
     return fullArray.slice(start, end);
   }
@@ -3900,13 +3912,13 @@ class IndexedDBSignalStorage implements SignalStorageAdapter {
   async initialize(): Promise<void> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('cpap-analyzer-signals', 1);
-      
+
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         this.db = request.result;
         resolve();
       };
-      
+
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains('signals')) {
@@ -3918,28 +3930,33 @@ class IndexedDBSignalStorage implements SignalStorageAdapter {
 
   async writeSignal(sessionId: string, channel: string, data: Float32Array): Promise<void> {
     if (!this.db) throw new Error('IndexedDB not initialized');
-    
+
     return new Promise((resolve, reject) => {
       const tx = this.db!.transaction(['signals'], 'readwrite');
       const store = tx.objectStore('signals');
       const key = `${sessionId}:${channel}`;
-      
+
       store.put({ key, data: Array.from(data) }); // Convert to regular array for IDB
-      
+
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
   }
 
-  async readSignal(sessionId: string, channel: string, start: number, end: number): Promise<Float32Array> {
+  async readSignal(
+    sessionId: string,
+    channel: string,
+    start: number,
+    end: number,
+  ): Promise<Float32Array> {
     if (!this.db) throw new Error('IndexedDB not initialized');
-    
+
     return new Promise((resolve, reject) => {
       const tx = this.db!.transaction(['signals'], 'readonly');
       const store = tx.objectStore('signals');
       const key = `${sessionId}:${channel}`;
       const request = store.get(key);
-      
+
       request.onsuccess = () => {
         const result = request.result;
         if (!result) {
@@ -3949,20 +3966,20 @@ class IndexedDBSignalStorage implements SignalStorageAdapter {
         const fullArray = new Float32Array(result.data);
         resolve(fullArray.slice(start, end));
       };
-      
+
       request.onerror = () => reject(request.error);
     });
   }
 
   async deleteSession(sessionId: string): Promise<void> {
     if (!this.db) throw new Error('IndexedDB not initialized');
-    
+
     // Delete all keys matching sessionId prefix
     return new Promise((resolve, reject) => {
       const tx = this.db!.transaction(['signals'], 'readwrite');
       const store = tx.objectStore('signals');
       const request = store.openCursor();
-      
+
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest).result;
         if (cursor) {
@@ -3972,7 +3989,7 @@ class IndexedDBSignalStorage implements SignalStorageAdapter {
           cursor.continue();
         }
       };
-      
+
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -3983,7 +4000,7 @@ class IndexedDBSignalStorage implements SignalStorageAdapter {
  * Factory: selects storage adapter based on browser capabilities
  */
 export async function createSignalStorage(
-  capabilities: BrowserCapabilities
+  capabilities: BrowserCapabilities,
 ): Promise<SignalStorageAdapter> {
   if (capabilities.opfs) {
     console.info('Using OPFS for signal storage (optimal performance)');
@@ -3991,14 +4008,14 @@ export async function createSignalStorage(
     await storage.initialize();
     return storage;
   }
-  
+
   if (capabilities.indexedDB) {
     console.warn('OPFS not available, using IndexedDB fallback (reduced performance)');
     const storage = new IndexedDBSignalStorage();
     await storage.initialize();
     return storage;
   }
-  
+
   throw new Error('No storage backend available — cannot proceed');
 }
 ```
@@ -4024,11 +4041,11 @@ export interface ComputeWorker {
 class MainThreadWorker implements ComputeWorker {
   async computeStatistics(data: Float32Array): Promise<Statistics> {
     console.warn('Computing statistics on main thread — UI may freeze');
-    
+
     // Inline implementation (normally in worker)
     const mean = data.reduce((sum, val) => sum + val, 0) / data.length;
     const variance = data.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / data.length;
-    
+
     return {
       mean,
       stdDev: Math.sqrt(variance),
@@ -4039,7 +4056,7 @@ class MainThreadWorker implements ComputeWorker {
 
   async detectEvents(data: Float32Array, threshold: number): Promise<Event[]> {
     console.warn('Detecting events on main thread — UI may freeze');
-    
+
     const events: Event[] = [];
     // Event detection logic...
     return events;
@@ -4052,19 +4069,18 @@ class MainThreadWorker implements ComputeWorker {
 export function createWorkerPool(capabilities: BrowserCapabilities, poolSize: number = 4) {
   if (capabilities.webWorkers && capabilities.structuredClone) {
     console.info(`Creating Web Worker pool (${poolSize} workers)`);
-    
+
     const workers: Remote<ComputeWorker>[] = [];
     for (let i = 0; i < poolSize; i++) {
-      const worker = new Worker(
-        new URL('../workers/compute.worker.ts', import.meta.url),
-        { type: 'module' }
-      );
+      const worker = new Worker(new URL('../workers/compute.worker.ts', import.meta.url), {
+        type: 'module',
+      });
       workers.push(wrap<ComputeWorker>(worker));
     }
-    
+
     return workers;
   }
-  
+
   console.warn('Web Workers not available — using main thread fallback');
   return [new MainThreadWorker()];
 }
@@ -4154,17 +4170,17 @@ export function BrowserCompatibilityWarning({
         <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
         </svg>
-        
+
         <h1 className={styles.title}>
           {hasBlockers ? 'Browser Not Supported' : 'Limited Browser Support'}
         </h1>
-        
+
         {hasBlockers && (
           <>
             <p className={styles.description}>
               Your browser does not support the features required to run CPAP Analyzer.
             </p>
-            
+
             <section className={styles.section}>
               <h2 className={styles.sectionTitle}>Missing Critical Features:</h2>
               <ul className={styles.list}>
@@ -4216,7 +4232,7 @@ export function BrowserCompatibilityWarning({
             <p className={styles.description}>
               CPAP Analyzer can run on your browser, but some features are unavailable or will perform slower than optimal.
             </p>
-            
+
             <section className={styles.section}>
               <h2 className={styles.sectionTitle}>Performance Warnings:</h2>
               <ul className={styles.list}>
@@ -4228,7 +4244,7 @@ export function BrowserCompatibilityWarning({
               </ul>
             </section>
 
-            <button 
+            <button
               className={styles.continueButton}
               onClick={() => {
                 // Store user acknowledgment
@@ -4332,12 +4348,12 @@ export function PerformanceWarningBanner({ warnings }: Props) {
         <svg className={styles.icon} viewBox="0 0 24 24" aria-label="Warning">
           <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
         </svg>
-        
+
         <div className={styles.text}>
           <strong>Performance Notice:</strong>
           <span>{warnings.join(' • ')}</span>
         </div>
-        
+
         <button
           className={styles.dismissButton}
           onClick={handleDismiss}
@@ -4431,7 +4447,7 @@ export function detectCanvasPerformance(): boolean {
   if (!ctx) return false;
 
   const start = performance.now();
-  
+
   // Render test pattern
   for (let i = 0; i < 10000; i++) {
     ctx.beginPath();
@@ -4439,9 +4455,9 @@ export function detectCanvasPerformance(): boolean {
     ctx.lineTo(Math.random() * 1920, Math.random() * 1080);
     ctx.stroke();
   }
-  
+
   const duration = performance.now() - start;
-  
+
   // If render takes >500ms, consider it slow
   return duration < 500;
 }
@@ -4465,7 +4481,7 @@ export default defineConfig({
       name: 'chrome-modern',
       use: { ...devices['Desktop Chrome'] },
     },
-    
+
     // OPFS disabled (simulate Safari or older browsers)
     {
       name: 'no-opfs',
@@ -4480,7 +4496,7 @@ export default defineConfig({
         },
       },
     },
-    
+
     // Web Workers disabled
     {
       name: 'no-workers',
@@ -4492,7 +4508,7 @@ export default defineConfig({
         },
       },
     },
-    
+
     // IndexedDB disabled (blocker test)
     {
       name: 'no-indexeddb',
@@ -4523,7 +4539,7 @@ describe('detectBrowserCapabilities', () => {
 
   it('detects all features in modern browser', async () => {
     const result = await detectBrowserCapabilities();
-    
+
     expect(result.isFullySupported).toBe(true);
     expect(result.blockers).toHaveLength(0);
   });
@@ -4536,11 +4552,9 @@ describe('detectBrowserCapabilities', () => {
     });
 
     const result = await detectBrowserCapabilities();
-    
+
     expect(result.capabilities.opfs).toBe(false);
-    expect(result.warnings).toContain(
-      expect.stringMatching(/OPFS not available/)
-    );
+    expect(result.warnings).toContain(expect.stringMatching(/OPFS not available/));
   });
 
   it('blocks app when IndexedDB is unavailable', async () => {
@@ -4548,7 +4562,7 @@ describe('detectBrowserCapabilities', () => {
     vi.stubGlobal('indexedDB', undefined);
 
     const result = await detectBrowserCapabilities();
-    
+
     expect(result.isFullySupported).toBe(false);
     expect(result.blockers).toContain('IndexedDB is not available');
   });
@@ -4558,11 +4572,9 @@ describe('detectBrowserCapabilities', () => {
     vi.stubGlobal('Worker', undefined);
 
     const result = await detectBrowserCapabilities();
-    
+
     expect(result.capabilities.webWorkers).toBe(false);
-    expect(result.warnings).toContain(
-      expect.stringMatching(/Web Workers not available/)
-    );
+    expect(result.warnings).toContain(expect.stringMatching(/Web Workers not available/));
   });
 });
 ```
@@ -4578,14 +4590,14 @@ test.describe('Browser Compatibility', () => {
   test('shows blocker when IndexedDB is disabled', async ({ page, context }) => {
     // Disable IndexedDB via context permission
     await context.grantPermissions([]);
-    
+
     await page.goto('/');
-    
+
     // Should show compatibility warning
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(page.getByText(/Browser Not Supported/i)).toBeVisible();
     await expect(page.getByText(/IndexedDB is not available/i)).toBeVisible();
-    
+
     // Should NOT allow continuing
     await expect(page.getByRole('button', { name: /continue anyway/i })).not.toBeVisible();
   });
@@ -4600,11 +4612,11 @@ test.describe('Browser Compatibility', () => {
     });
 
     await page.goto('/');
-    
+
     // Should show performance warning banner
     await expect(page.getByText(/Performance Notice/i)).toBeVisible();
     await expect(page.getByText(/fallback storage/i)).toBeVisible();
-    
+
     // Should allow dismissal
     const dismissButton = page.getByLabel(/dismiss warning/i);
     await dismissButton.click();
@@ -4621,13 +4633,13 @@ test.describe('Browser Compatibility', () => {
     });
 
     await page.goto('/');
-    
+
     // Should show "Continue Anyway" option
     const continueButton = page.getByRole('button', { name: /continue anyway/i });
     await expect(continueButton).toBeVisible();
-    
+
     await continueButton.click();
-    
+
     // Should proceed to app
     await expect(page.getByText(/CPAP Analyzer/i)).toBeVisible();
   });
@@ -4734,7 +4746,7 @@ export class BrowserCompatibilityError extends Error {
   constructor(
     public readonly feature: string,
     public readonly isCritical: boolean,
-    message: string
+    message: string,
   ) {
     super(message);
     this.name = 'BrowserCompatibilityError';
@@ -4787,7 +4799,7 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     // Log to error handling system
     console.error('Error caught by boundary:', error, errorInfo);
-    
+
     // Report to analytics if enabled
     if (error instanceof BrowserCompatibilityError) {
       // Track compatibility issues
