@@ -247,6 +247,61 @@ describe('SessionBuilder', () => {
   });
 
   // -----------------------------------------------------------------------
+  // Per-file event timing (regression)
+  // -----------------------------------------------------------------------
+
+  describe('per-file event timing', () => {
+    it('should base event timestamps on each file startTime, not the global session start', () => {
+      const t1 = new Date(2026, 0, 15, 22, 0, 0);
+      // Second EVE file starts 10 minutes later
+      const t2 = new Date(2026, 0, 15, 22, 10, 0);
+      const patientId = '12345678 AirSense 10 AutoSet';
+
+      // BRP spanning the full window so both EVE files merge into one session
+      const brp = interpretFile(
+        generateBRPFile({ patientId, startDate: t1, numDataRecords: 3600 }),
+      );
+
+      // First EVE: event at onset=30s → expected timestamp = t1 + 30s
+      const eve1 = interpretFile(
+        generateEVEFile([{ onset: 30, duration: 10, label: 'Obstructive Apnea' }], {
+          patientId,
+          startDate: t1,
+          numDataRecords: 600,
+        }),
+      );
+
+      // Second EVE: event at onset=30s → expected timestamp = t2 + 30s (NOT t1 + 30s)
+      const eve2 = interpretFile(
+        generateEVEFile([{ onset: 30, duration: 12, label: 'Hypopnea' }], {
+          patientId,
+          startDate: t2,
+          numDataRecords: 600,
+        }),
+      );
+
+      const results = builder.buildSessions([brp, eve1, eve2]);
+      expect(results).toHaveLength(1);
+
+      const first = results[0];
+      if (!first) throw new Error('expected first result');
+      const { events } = first;
+      expect(events).toHaveLength(2);
+
+      const [e1, e2] = events;
+      if (!e1 || !e2) throw new Error('expected two events');
+
+      // Event from eve1: t1 + 30s
+      expect(e1.timestamp).toBe(t1.getTime() + 30_000);
+      // Event from eve2: t2 + 30s — 10 minutes later, NOT t1 + 30s
+      expect(e2.timestamp).toBe(t2.getTime() + 30_000);
+
+      // The difference between timestamps should reflect the 10 minute file offset
+      expect(e2.timestamp - e1.timestamp).toBe(10 * 60 * 1000);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Boundary detection utility
   // -----------------------------------------------------------------------
 

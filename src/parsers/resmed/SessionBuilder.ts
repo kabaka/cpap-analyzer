@@ -153,10 +153,6 @@ export class SessionBuilder {
     // Compute usage time from mask pressure
     const usageSeconds = this.computeUsageSeconds(channelMap);
 
-    // Merge and sort events
-    const allStandardEvents = group.flatMap((g) => [...g.events]);
-    allStandardEvents.sort((a, b) => a.onset - b.onset);
-
     // Build machine info from first interpretation
     const firstInterp = group[0];
     if (!firstInterp) {
@@ -165,20 +161,29 @@ export class SessionBuilder {
     const machineInfo = firstInterp.machineInfo;
 
     // Convert standard events to domain Events
-    const domainEvents: Event[] = allStandardEvents.map((evt) => ({
-      id: crypto.randomUUID(),
-      sessionId,
-      type: evt.type,
-      timestamp: startMs + evt.onset * 1000,
-      duration: evt.duration,
-      severity: null,
-      pressure: null,
-      epap: null,
-      ipap: null,
-      leak: null,
-      spo2: null,
-      clusterId: null,
-    }));
+    // Each event's onset is relative to its source file's startTime, not startMs.
+    // Build events with correct absolute timestamps per-file.
+    const domainEvents: Event[] = [];
+    for (const interp of group) {
+      const interpStartMs = interp.startTime.getTime();
+      for (const evt of interp.events) {
+        domainEvents.push({
+          id: crypto.randomUUID(),
+          sessionId,
+          type: evt.type,
+          timestamp: interpStartMs + evt.onset * 1000,
+          duration: evt.duration,
+          severity: null,
+          pressure: null,
+          epap: null,
+          ipap: null,
+          leak: null,
+          spo2: null,
+          clusterId: null,
+        });
+      }
+    }
+    domainEvents.sort((a, b) => a.timestamp - b.timestamp);
 
     // Build channel metadata
     const channelMetadata: ChannelMetadata[] = Array.from(channelMap.values()).map(

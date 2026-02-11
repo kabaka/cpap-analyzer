@@ -9,6 +9,25 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ### Added
 
+- Event marker legend in signal viewer
+
+### Changed
+
+- Signal data now preloaded into memory for instant zoom/pan
+- Crosshair renders via direct canvas calls for zero-lag response
+- Channel/event legend always visible above chart
+
+### Fixed
+
+- Passive wheel listener warning in signal viewer
+- Timeseries disappearing on zoom in signal viewer
+- Loading flicker during pan in signal viewer
+- Crosshair lag in signal viewer
+- Empty unit parentheses for Snore/FlowLimitation channels
+- Event timing offset for multi-file sessions
+
+### Added (initial)
+
 - Initial project scaffolding and repository structure
 - Project documentation and design specification
 - Agent and skill definitions for AI-assisted development workflow

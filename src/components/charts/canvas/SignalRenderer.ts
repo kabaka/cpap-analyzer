@@ -561,7 +561,8 @@ export class SignalRenderer {
     ctx.font = `bold ${CHANNEL_LABEL_FONT_SIZE}px ${this.fontFamily()}`;
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    ctx.fillText(`${ch.name} (${ch.unit})`, plotLeft + 6, stripTop + 2);
+    const label = ch.unit ? `${ch.name} (${ch.unit})` : ch.name;
+    ctx.fillText(label, plotLeft + 6, stripTop + 2);
     ctx.restore();
   }
 
