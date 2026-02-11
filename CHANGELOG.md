@@ -73,6 +73,11 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 - 80 new unit tests (548 total): LTTB/min-max downsampling correctness, SignalRenderer helper functions and spatial queries, session comparison delta calculations
 - 19 new E2E tests (46 total, 138 across 3 browsers): session list rendering/filtering/sorting, session detail metrics and navigation, signal viewer chrome and controls, session comparison flow with deltas, full navigation journey
 
+### Fixed (Phase 6 post-merge)
+
+- Signal Viewer canvas now renders waveform data correctly — ResizeObserver/renderer setup used a `[]`-dependency `useEffect` that ran on mount when the canvas was not in the DOM (loading skeleton shown instead); converted to a callback ref pattern so setup happens when the canvas actually mounts
+- Signal Viewer channel colors now match their designated palette — `CHANNEL_COLORS` keys corrected from PascalCase (`Flow`, `MaskPress`, `SpO2`) to camelCase (`flow`, `maskPressure`, `spo2`) matching the ResMed interpreter's output
+
 ### Improved
 
 - Import wizard now shows stage-specific progress labels and percentages during parsing, building, and storing stages (previously showed indeterminate state during CPU-intensive building)

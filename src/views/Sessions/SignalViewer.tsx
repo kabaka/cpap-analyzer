@@ -39,12 +39,12 @@ import styles from './SignalViewer.module.css';
 
 /** Chart palette — resolved at render time from CSS custom properties. */
 const CHANNEL_COLORS: Record<string, string> = {
-  Flow: 'var(--color-chart-1)',
-  MaskPress: 'var(--color-chart-2)',
-  Leak: 'var(--color-chart-3)',
-  SpO2: 'var(--color-chart-4)',
-  EPAP: 'var(--color-chart-5)',
-  IPAP: 'var(--color-chart-6)',
+  flow: 'var(--color-chart-1)',
+  maskPressure: 'var(--color-chart-2)',
+  leak: 'var(--color-chart-3)',
+  spo2: 'var(--color-chart-4)',
+  epap: 'var(--color-chart-5)',
+  ipap: 'var(--color-chart-6)',
 };
 
 /** Fallback colour if channel name isn't in the map. */
@@ -143,8 +143,9 @@ export default function SignalViewer() {
 
   // ── Refs ─────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<SignalRenderer | null>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const workerRef = useRef<WrappedWorker<DownsampleWorkerAPI> | null>(null);
   const opfsRef = useRef<OPFSService | null>(null);
 
@@ -301,10 +302,22 @@ export default function SignalViewer() {
     };
   }, [manifest, viewport, totalDurationMs, canvasSize.width]);
 
-  // ── Initialize renderer + ResizeObserver ─────────────────────
+  // ── Initialize renderer + ResizeObserver via callback ref ────
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
+  const canvasCallbackRef = useCallback((canvas: HTMLCanvasElement | null) => {
+    // Cleanup previous renderer + observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    if (rendererRef.current) {
+      rendererRef.current.dispose();
+      rendererRef.current = null;
+    }
+
+    // Update the stable ref used by event handlers
+    canvasRef.current = canvas;
+
     if (!canvas) return;
 
     const renderer = new SignalRenderer(canvas);
@@ -324,6 +337,7 @@ export default function SignalViewer() {
       }
     });
 
+    observerRef.current = observer;
     observer.observe(wrapper);
 
     // Initial size
@@ -332,12 +346,6 @@ export default function SignalViewer() {
       renderer.resize(rect.width, rect.height);
       setCanvasSize({ width: rect.width, height: rect.height });
     }
-
-    return () => {
-      observer.disconnect();
-      renderer.dispose();
-      rendererRef.current = null;
-    };
   }, []);
 
   // ── Dispose worker on unmount ────────────────────────────────
@@ -728,7 +736,7 @@ export default function SignalViewer() {
         onPointerLeave={handlePointerLeave}
       >
         <canvas
-          ref={canvasRef}
+          ref={canvasCallbackRef}
           className={styles.canvas}
           role="img"
           aria-label={`Signal waveform viewer showing ${manifest.channels.length} channels: ${manifest.channels.map((c) => c.name).join(', ')}`}
