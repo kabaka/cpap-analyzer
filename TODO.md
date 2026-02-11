@@ -30,7 +30,7 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 - [x] `src/App.test.tsx` — Verifies app renders without crashing (2 tests)
 - [x] `tests/e2e/app-loads.spec.ts` — Navigates to `/`, confirms heading visible (2 tests)
 - [x] Verify pre-commit hook works end-to-end
-- [ ] Verify all 5 CI jobs pass (audit, lint, test-unit, test-e2e, build) — local verification complete; CI run pending push
+- [x] Verify all 5 CI jobs pass (audit, lint, test-unit, test-e2e, build) — Verified: CI green on remote after push
 
 **Agents:** DevOps (all config files, CI compatibility), Frontend (index.html, main.tsx, App.tsx), Unit Tester (setup file, first test), E2E Tester (first Playwright test), QA (verify everything passes)
 
