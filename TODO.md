@@ -9,7 +9,7 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 - Every phase produces a working, testable increment.
 - QA agent reviews all code before a phase is considered complete.
 
-**Current state:** Phase 6 complete. Session list view with filterable, sortable, paginated table. Session detail with AHI/Leak/Pressure/SpO₂ metrics, event timeline, and event summary. Signal viewer with Canvas 2D multi-channel waveforms, LTTB downsampling via Web Worker, zoom/pan/crosshair, and event markers. Session comparison with side-by-side metric deltas and bar chart. Import progress now shows granular stage-level feedback. 548 unit tests and 138 E2E tests (46 × 3 browsers) pass. All pre-commit checks green.
+**Current state:** Phase 7 complete. Analysis engine with core statistical algorithms: descriptive statistics (Welford's online algorithm, percentiles, outlier detection, histograms), time-series analysis (rolling stats, trends, LOESS, PELT change-point detection, STL decomposition, ACF/PACF), and correlation analysis (Pearson, Spearman, partial, cross-correlation). Analysis pipeline with cache-first execution, Comlink Web Worker, and AbortSignal support. 778 unit tests and 249 E2E tests (83 × 3 browsers) pass. All pre-commit checks green.
 
 ---
 
@@ -242,14 +242,14 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 
 **Work items:**
 
-- [ ] **Analysis pipeline** (`src/services/analysis/AnalysisEngine.ts`) — Orchestrator: receive analysis request → check cache → fetch data from IndexedDB → dispatch to Worker → cache result → return. Invalidate cache on new imports. Support cancellation for long-running analyses.
-- [ ] **Descriptive statistics** (`src/analysis/descriptive/`) — Welford's online mean/variance (numerically stable), median (quickselect), percentiles (Type 7 interpolation), IQR + Tukey outlier detection (1.5×IQR), histogram binning (Freedman-Diaconis rule for bin width), skewness (Fisher's), kurtosis (excess), range, coefficient of variation
-- [ ] **Time-series analysis** (`src/analysis/timeseries/`) — Rolling mean/median with configurable window + 95% CI, linear trend (least squares) with p-value and R², LOESS smoothing (tricube kernel, configurable bandwidth), PELT change-point detection (L2 cost, penalty β=10), STL seasonal-trend decomposition (7-day seasonality, robust weights), ACF/PACF via Durbin-Levinson recursion
-- [ ] **Correlation analysis** (`src/analysis/correlation/`) — Pearson correlation coefficient with exact p-value (t-distribution), Spearman rank correlation, full correlation matrix for all metrics, partial correlation (matrix inversion method), cross-correlation with lag range
-- [ ] **Analysis worker** (`src/services/workers/analysis.worker.ts`) — Comlink-wrapped worker that exposes all algorithm modules, accepts typed AnalysisInput, returns AnalysisOutput with Transferable arrays
-- [ ] **Reference validation** — Pre-compute expected values for test datasets using R or scipy. Every algorithm test includes a known-correct reference answer.
-- [ ] **Edge case handling** — Empty arrays return null/NaN gracefully, single-element inputs handled, all-identical values (variance = 0) handled, NaN/Infinity values filtered, data validation before computation
-- [ ] **Unit tests** — Every algorithm tested with deterministic inputs. Welford's vs naive sum-of-squares (verify numerical stability). Rolling stats vs brute-force. Pearson r against known correlation. PELT change-point against synthetic step-function. LOESS against R output. STL decomposition components sum to original. ACF lag-0 = 1.0.
+- [x] **Analysis pipeline** (`src/services/analysis/AnalysisEngine.ts`) — Orchestrator: receive analysis request → check cache → fetch data from IndexedDB → dispatch to Worker → cache result → return. Invalidate cache on new imports. Support cancellation for long-running analyses.
+- [x] **Descriptive statistics** (`src/analysis/descriptive/`) — Welford's online mean/variance (numerically stable), median (quickselect), percentiles (Type 7 interpolation), IQR + Tukey outlier detection (1.5×IQR), histogram binning (Freedman-Diaconis rule for bin width), skewness (Fisher's), kurtosis (excess), range, coefficient of variation
+- [x] **Time-series analysis** (`src/analysis/timeseries/`) — Rolling mean/median with configurable window + 95% CI, linear trend (least squares) with p-value and R², LOESS smoothing (tricube kernel, configurable bandwidth), PELT change-point detection (L2 cost, penalty β=10), STL seasonal-trend decomposition (7-day seasonality, robust weights), ACF/PACF via Durbin-Levinson recursion
+- [x] **Correlation analysis** (`src/analysis/correlation/`) — Pearson correlation coefficient with exact p-value (t-distribution), Spearman rank correlation, full correlation matrix for all metrics, partial correlation (matrix inversion method), cross-correlation with lag range
+- [x] **Analysis worker** (`src/services/workers/analysis.worker.ts`) — Comlink-wrapped worker that exposes all algorithm modules, accepts typed AnalysisInput, returns AnalysisOutput with Transferable arrays
+- [x] **Reference validation** — Pre-compute expected values for test datasets using R or scipy. Every algorithm test includes a known-correct reference answer.
+- [x] **Edge case handling** — Empty arrays return null/NaN gracefully, single-element inputs handled, all-identical values (variance = 0) handled, NaN/Infinity values filtered, data validation before computation
+- [x] **Unit tests** — Every algorithm tested with deterministic inputs. Welford's vs naive sum-of-squares (verify numerical stability). Rolling stats vs brute-force. Pearson r against known correlation. PELT change-point against synthetic step-function. LOESS against R output. STL decomposition components sum to original. ACF lag-0 = 1.0.
 
 **Agents:** Data Science (all algorithms — primary), Performance (Worker execution, Transferable optimization, streaming for large datasets), Database (cache integration), Unit Tester (reference validation tests, edge cases), QA (review numerical correctness)
 
@@ -268,6 +268,16 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 - CI green
 
 **Depends on:** Phase 3 (Workers, storage), Phase 2 (types)
+
+### Phase 7 Notes: Deferred Refinements
+
+During QA review, two minor code-quality improvements were identified as lower-priority refinements to be addressed in future work:
+
+- **m2 — Interface immutability** (`src/analysis/*/index.ts`): Analysis output interfaces (e.g., `DescriptiveStats`, `RollingResult`, `ChangePoint`) should mark properties as `readonly` to enforce immutability, consistent with project typing conventions used elsewhere (e.g., domain types in `src/types/`).
+
+- **m3 — Math utilities consolidation** (`src/analysis/math/`): Several mathematical helper functions (e.g., `studentTCDF`, `lnGamma`, `regularizedIncompleteBeta`, `inverseNormalCDF`, `erf`, `normalCDF`, `binomCoeff`) are duplicated across `timeseries/index.ts` and `correlation/index.ts`. These should be extracted into a shared `src/analysis/math/index.ts` module to reduce duplication, improve maintainability, and centralize numerical algorithm definitions.
+
+These refinements do not affect functionality or correctness but would improve code organization. They are recommended for Phase 8 or later work.
 
 ---
 

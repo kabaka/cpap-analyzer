@@ -26,6 +26,17 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 - Empty unit parentheses for Snore/FlowLimitation channels
 - Event timing offset for multi-file sessions
 
+### Added (Phase 7: Analysis Engine — Core Algorithms)
+
+- Descriptive statistics module (`src/analysis/descriptive/`) with Welford's online algorithm for mean/variance/skewness/kurtosis, Type 7 interpolated percentiles, Tukey's fences outlier detection, and Freedman-Diaconis histogram binning
+- Time-series analysis module (`src/analysis/timeseries/`) with rolling mean/median with confidence intervals, linear trend with t-test significance, LOESS smoothing (tricube kernel), PELT change-point detection, simplified STL decomposition, and ACF/PACF (Durbin-Levinson recursion)
+- Correlation analysis module (`src/analysis/correlation/`) with Pearson and Spearman correlation coefficients, Fisher's z-transformation confidence intervals, correlation matrix computation, recursive partial correlation, and cross-correlation with configurable lag
+- Analysis pipeline engine (`src/services/analysis/AnalysisEngine.ts`) with cache-first execution, lazy Comlink worker initialization, AbortSignal support, and metric extraction from NightlyAggregate data
+- Analysis Web Worker (`src/services/workers/analysis.worker.ts`) exposing all 18 analysis functions via Comlink for off-main-thread execution
+- Barrel re-export module (`src/analysis/index.ts`) for unified analysis API access
+- 230 new unit tests (778 total) covering descriptive statistics, time-series analysis, correlation analysis, and AnalysisEngine pipeline
+- 24 new E2E tests (72 across 3 browsers, 249 total) covering analysis module loading, in-browser algorithm execution, edge cases, and integration scenarios
+
 ### Added (initial)
 
 - Initial project scaffolding and repository structure

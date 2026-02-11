@@ -15,3 +15,5 @@ export type { CreateWorkerOptions, WrappedWorker } from './createWorker';
 
 export { WorkerPool } from './WorkerPool';
 export type { WorkerPoolOptions } from './WorkerPool';
+
+export type { AnalysisWorkerAPI } from './analysis.worker';
