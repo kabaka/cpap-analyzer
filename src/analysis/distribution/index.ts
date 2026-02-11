@@ -160,6 +160,11 @@ export function qqNormal(values: number[]): QQPlotData {
  * correlation between sample order statistics and expected normal scores,
  * then converts to p-value using Royston's log-normal transformation.
  *
+ * **Implementation note**: Uses the Shapiro-Francia correlation-based variant
+ * (W = r²) rather than computing true Shapiro-Wilk coefficients a_i. This is
+ * a documented, practical approximation for production use (faster, numerically
+ * stable). Note this deviation from design doc for future consistency updates.
+ *
  * **Assumptions**: Data are i.i.d. continuous observations.
  *
  * @param values - Numeric array (non-finite values are filtered)

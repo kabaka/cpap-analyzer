@@ -76,7 +76,14 @@ function interpretRankEffect(r: number): 'negligible' | 'small' | 'medium' | 'la
   return 'negligible';
 }
 
-/** Interpret Cohen's d effect sizes. */
+/**
+ * Interpret Cohen's d effect sizes.
+ *
+ * NOTE: Design doc specifies thresholds (0.1/0.3/0.5), but implementation uses
+ * Cohen (1988) standard values (0.2/0.5/0.8). The standard thresholds are more
+ * widely accepted in the literature and better calibrated for biomedical data.
+ * Future work should update design doc for consistency.
+ */
 function interpretCohenD(d: number): 'negligible' | 'small' | 'medium' | 'large' {
   const abs = Math.abs(d);
   if (abs >= 0.8) return 'large';
