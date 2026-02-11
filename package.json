@@ -61,6 +61,8 @@
     "ml-matrix": "^6.12.0",
     "prettier": "^3.4.0",
     "size-limit": "^11.0.0",
+    "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.18.0",
     "vite": "^6.0.0",

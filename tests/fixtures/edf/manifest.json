@@ -1,0 +1,286 @@
+{
+  "brp-airsense11.edf": {
+    "description": "BRP file with AirSense 11 labels (Flow.40ms, Press.40ms, Crc16)",
+    "numSignals": 3,
+    "numRecords": 60,
+    "dataRecordDuration": 1,
+    "durationSeconds": 60,
+    "channels": [
+      {
+        "label": "Flow.40ms",
+        "mappedName": "flow",
+        "sampleRate": 25,
+        "unit": "L/s",
+        "physicalMin": -2,
+        "physicalMax": 2,
+        "totalSamples": 1500
+      },
+      {
+        "label": "Press.40ms",
+        "mappedName": "pressure",
+        "sampleRate": 25,
+        "unit": "cmH2O",
+        "physicalMin": 0,
+        "physicalMax": 25,
+        "totalSamples": 1500
+      },
+      {
+        "label": "Crc16",
+        "mappedName": null,
+        "sampleRate": 25,
+        "unit": "",
+        "physicalMin": -32768,
+        "physicalMax": 32767,
+        "totalSamples": 1500
+      }
+    ],
+    "machineInfo": {
+      "serialNumber": "23241654214",
+      "series": "AirSense 11",
+      "machineType": "cpap"
+    },
+    "expectedEvents": []
+  },
+  "pld-airsense11.edf": {
+    "description": "PLD file with 11 AirSense 11 signals at 0.5 Hz (2s interval)",
+    "numSignals": 11,
+    "numRecords": 1,
+    "dataRecordDuration": 60,
+    "durationSeconds": 60,
+    "channels": [
+      {
+        "label": "MaskPress.2s",
+        "mappedName": "maskPressure",
+        "sampleRate": 0.5,
+        "unit": "cmH2O",
+        "physicalMin": 0,
+        "physicalMax": 25,
+        "totalSamples": 30
+      },
+      {
+        "label": "Press.2s",
+        "mappedName": "pressure",
+        "sampleRate": 0.5,
+        "unit": "cmH2O",
+        "physicalMin": 0,
+        "physicalMax": 25,
+        "totalSamples": 30
+      },
+      {
+        "label": "EprPress.2s",
+        "mappedName": "eprPressure",
+        "sampleRate": 0.5,
+        "unit": "cmH2O",
+        "physicalMin": 0,
+        "physicalMax": 25,
+        "totalSamples": 30
+      },
+      {
+        "label": "Leak.2s",
+        "mappedName": "leak",
+        "sampleRate": 0.5,
+        "unit": "L/s",
+        "physicalMin": 0,
+        "physicalMax": 10,
+        "totalSamples": 30
+      },
+      {
+        "label": "RespRate.2s",
+        "mappedName": "respRate",
+        "sampleRate": 0.5,
+        "unit": "/min",
+        "physicalMin": 0,
+        "physicalMax": 60,
+        "totalSamples": 30
+      },
+      {
+        "label": "TidVol.2s",
+        "mappedName": "tidalVolume",
+        "sampleRate": 0.5,
+        "unit": "ml",
+        "physicalMin": 0,
+        "physicalMax": 3000,
+        "totalSamples": 30
+      },
+      {
+        "label": "MinVent.2s",
+        "mappedName": "minuteVent",
+        "sampleRate": 0.5,
+        "unit": "L/min",
+        "physicalMin": 0,
+        "physicalMax": 60,
+        "totalSamples": 30
+      },
+      {
+        "label": "Snore.2s",
+        "mappedName": "snore",
+        "sampleRate": 0.5,
+        "unit": "",
+        "physicalMin": 0,
+        "physicalMax": 10,
+        "totalSamples": 30
+      },
+      {
+        "label": "FlowLim.2s",
+        "mappedName": "flowLimitation",
+        "sampleRate": 0.5,
+        "unit": "",
+        "physicalMin": 0,
+        "physicalMax": 1,
+        "totalSamples": 30
+      },
+      {
+        "label": "Crc16",
+        "mappedName": null,
+        "sampleRate": 0.5,
+        "unit": "",
+        "totalSamples": 30
+      },
+      {
+        "label": "Crc16",
+        "mappedName": null,
+        "sampleRate": 0.5,
+        "unit": "",
+        "totalSamples": 30
+      }
+    ],
+    "machineInfo": {
+      "serialNumber": "23241654214",
+      "series": "AirSense 11",
+      "machineType": "cpap"
+    },
+    "expectedEvents": []
+  },
+  "eve-airsense11.edf": {
+    "description": "EVE annotation-only file with known therapy events",
+    "numSignals": 1,
+    "numRecords": 1,
+    "dataRecordDuration": 0,
+    "durationSeconds": 0,
+    "channels": [],
+    "machineInfo": {
+      "serialNumber": "23241654214",
+      "series": "AirSense 11",
+      "machineType": "cpap"
+    },
+    "expectedEvents": [
+      {
+        "type": "obstructive-apnea",
+        "onset": 120,
+        "duration": 15
+      },
+      {
+        "type": "central-apnea",
+        "onset": 300,
+        "duration": 12
+      },
+      {
+        "type": "hypopnea",
+        "onset": 500,
+        "duration": 11
+      },
+      {
+        "type": "arousal",
+        "onset": 600,
+        "duration": 0
+      },
+      {
+        "type": "mixed-apnea",
+        "onset": 800,
+        "duration": 14
+      }
+    ],
+    "notes": "Generic 'Apnea' at onset 800 maps to mixed-apnea per AASM convention. 'Recording starts' is skipped."
+  },
+  "sad-airsense11.edf": {
+    "description": "SAD file with all-zero SpO2/Pulse (no oximeter attached sentinel)",
+    "numSignals": 3,
+    "numRecords": 60,
+    "dataRecordDuration": 1,
+    "durationSeconds": 60,
+    "channels": [
+      {
+        "label": "SpO2.1s",
+        "mappedName": "spo2",
+        "sampleRate": 1,
+        "unit": "%",
+        "physicalMin": 0,
+        "physicalMax": 100,
+        "totalSamples": 60
+      },
+      {
+        "label": "Pulse.1s",
+        "mappedName": "pulse",
+        "sampleRate": 1,
+        "unit": "bpm",
+        "physicalMin": 0,
+        "physicalMax": 250,
+        "totalSamples": 60
+      },
+      {
+        "label": "Crc16",
+        "mappedName": null,
+        "sampleRate": 1,
+        "unit": "",
+        "totalSamples": 60
+      }
+    ],
+    "machineInfo": {
+      "serialNumber": "23241654214",
+      "series": "AirSense 11",
+      "machineType": "cpap"
+    },
+    "expectedEvents": [],
+    "notes": "All-zero values indicate no pulse oximeter was connected during recording."
+  },
+  "eve-empty.edf": {
+    "description": "Empty (0-byte) EVE file for error handling tests",
+    "numSignals": 0,
+    "numRecords": 0,
+    "durationSeconds": 0,
+    "channels": [],
+    "expectedEvents": [],
+    "notes": "Parser should throw or return an error for this file."
+  },
+  "brp-unknown-records.edf": {
+    "description": "BRP file with numDataRecords = -1 (unknown record count)",
+    "numSignals": 3,
+    "numRecords": -1,
+    "dataRecordDuration": 1,
+    "durationSeconds": null,
+    "channels": [
+      {
+        "label": "Flow.40ms",
+        "mappedName": "flow",
+        "sampleRate": 25,
+        "unit": "L/s",
+        "physicalMin": -2,
+        "physicalMax": 2,
+        "totalSamples": 1500
+      },
+      {
+        "label": "Press.40ms",
+        "mappedName": "pressure",
+        "sampleRate": 25,
+        "unit": "cmH2O",
+        "physicalMin": 0,
+        "physicalMax": 25,
+        "totalSamples": 1500
+      },
+      {
+        "label": "Crc16",
+        "mappedName": null,
+        "sampleRate": 25,
+        "unit": "",
+        "totalSamples": 1500
+      }
+    ],
+    "machineInfo": {
+      "serialNumber": "23241654214",
+      "series": "AirSense 11",
+      "machineType": "cpap"
+    },
+    "expectedEvents": [],
+    "notes": "Header says numDataRecords=-1, but actual data contains 60 records (same binary data as brp-airsense11.edf). Parser should infer record count from file size."
+  }
+}

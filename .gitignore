@@ -42,6 +42,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Real patient data — NEVER commit
+sample-data/
+
+# Validation scripts (dev-only)
+scripts/
+
 # Misc
 *.tgz
 .cache/

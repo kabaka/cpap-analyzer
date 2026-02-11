@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'coverage/', 'playwright-report/'] },
+  { ignores: ['dist/', 'coverage/', 'playwright-report/', 'scripts/'] },
   eslint.configs.recommended,
   ...tseslint.configs.strict,
   {
@@ -24,6 +24,17 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'warn',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       'no-console': 'warn',
+    },
+  },
+  {
+    files: [
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+      'src/test/**/*.{ts,tsx}',
+      'tests/**/*.{ts,tsx}',
+    ],
+    rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
     },
   },
 );
