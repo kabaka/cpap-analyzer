@@ -9,7 +9,7 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 - Every phase produces a working, testable increment.
 - QA agent reviews all code before a phase is considered complete.
 
-**Current state:** Phase 7 complete. Analysis engine with core statistical algorithms: descriptive statistics (Welford's online algorithm, percentiles, outlier detection, histograms), time-series analysis (rolling stats, trends, LOESS, PELT change-point detection, STL decomposition, ACF/PACF), and correlation analysis (Pearson, Spearman, partial, cross-correlation). Analysis pipeline with cache-first execution, Comlink Web Worker, and AbortSignal support. 778 unit tests and 249 E2E tests (83 × 3 browsers) pass. All pre-commit checks green.
+**Current state:** Phase 8 complete. Full analysis engine with 7 algorithm modules: descriptive statistics, time-series analysis, correlation analysis (Phase 7), hypothesis testing, distribution analysis, event analysis (clustering, false-negative detection), survival analysis, pressure analysis, and Granger causality (Phase 8). Shared math utilities module extracted (Phase 7 deferred). All analysis output interfaces marked readonly (Phase 7 deferred). 975 unit tests and 318 E2E tests (106 × 3 browsers) pass. All pre-commit checks green.
 
 ---
 
@@ -273,11 +273,11 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 
 During QA review, two minor code-quality improvements were identified as lower-priority refinements to be addressed in future work:
 
-- **m2 — Interface immutability** (`src/analysis/*/index.ts`): Analysis output interfaces (e.g., `DescriptiveStats`, `RollingResult`, `ChangePoint`) should mark properties as `readonly` to enforce immutability, consistent with project typing conventions used elsewhere (e.g., domain types in `src/types/`).
+- [x] **m2 — Interface immutability** (`src/analysis/*/index.ts`): Analysis output interfaces (e.g., `DescriptiveStats`, `RollingResult`, `ChangePoint`) should mark properties as `readonly` to enforce immutability, consistent with project typing conventions used elsewhere (e.g., domain types in `src/types/`).
 
-- **m3 — Math utilities consolidation** (`src/analysis/math/`): Several mathematical helper functions (e.g., `studentTCDF`, `lnGamma`, `regularizedIncompleteBeta`, `inverseNormalCDF`, `erf`, `normalCDF`, `binomCoeff`) are duplicated across `timeseries/index.ts` and `correlation/index.ts`. These should be extracted into a shared `src/analysis/math/index.ts` module to reduce duplication, improve maintainability, and centralize numerical algorithm definitions.
+- [x] **m3 — Math utilities consolidation** (`src/analysis/math/`): Several mathematical helper functions (e.g., `studentTCDF`, `lnGamma`, `regularizedIncompleteBeta`, `inverseNormalCDF`, `erf`, `normalCDF`, `binomCoeff`) are duplicated across `timeseries/index.ts` and `correlation/index.ts`. These should be extracted into a shared `src/analysis/math/index.ts` module to reduce duplication, improve maintainability, and centralize numerical algorithm definitions.
 
-These refinements do not affect functionality or correctness but would improve code organization. They are recommended for Phase 8 or later work.
+Both refinements were addressed at the start of Phase 8 implementation.
 
 ---
 
@@ -287,14 +287,14 @@ These refinements do not affect functionality or correctness but would improve c
 
 **Work items:**
 
-- [ ] **Hypothesis testing** (`src/analysis/hypothesis/`) — Mann-Whitney U test (exact for n ≤ 28, normal approximation with tie correction for larger n), Wilcoxon signed-rank test, effect size measures (Cohen's d, Hedges' g, rank-biserial correlation), paired before/after comparison helpers
-- [ ] **Distribution analysis** (`src/analysis/distribution/`) — QQ-normal plot data (Hazen plotting position formula), Shapiro-Wilk test (n < 5000), Kolmogorov-Smirnov test + Lilliefors correction, kernel density estimation (Gaussian kernel, Silverman bandwidth)
-- [ ] **Event analysis** (`src/analysis/events/`) — FLG-bridged clustering (Schmitt trigger hysteresis with 3 presets: strict/balanced/lenient), K-means++ clustering (Arthur & Vassilvitskii initialization, configurable k), single-link agglomerative clustering, event duration distributions by type, inter-event interval analysis
-- [ ] **Survival analysis** (`src/analysis/survival/`) — Kaplan-Meier estimator (Greenwood variance for CI, log-log transformation for confidence bands), time-to-event for apnea recurrence, censoring support
-- [ ] **Pressure analysis** (`src/analysis/pressure/`) — Titration helper (optimal pressure range estimation based on AHI minimization), pressure-response curves (AHI vs pressure scatter with regression), EPAP×IPAP effectiveness for BiPAP users, pressure variability metrics
-- [ ] **False-negative detection** (`src/analysis/events/false-negatives.ts`) — Heuristic detection of potentially missed events using FLG threshold/duration/gap analysis with 3 sensitivity presets
-- [ ] **Granger causality** (`src/analysis/correlation/granger.ts`) — VAR model estimation, F-test for causal lag relationships, AIC for lag selection
-- [ ] **Unit tests** — Mann-Whitney U against scipy.stats.mannwhitneyu reference, Shapiro-Wilk against scipy reference, KM curve against R survival::survfit reference, K-means against known cluster membership, FLG clustering against synthetic event patterns, all edge cases
+- [x] **Hypothesis testing** (`src/analysis/hypothesis/`) — Mann-Whitney U test (exact for n ≤ 28, normal approximation with tie correction for larger n), Wilcoxon signed-rank test, effect size measures (Cohen's d, Hedges' g, rank-biserial correlation), paired before/after comparison helpers
+- [x] **Distribution analysis** (`src/analysis/distribution/`) — QQ-normal plot data (Hazen plotting position formula), Shapiro-Wilk test (n < 5000), Kolmogorov-Smirnov test + Lilliefors correction, kernel density estimation (Gaussian kernel, Silverman bandwidth)
+- [x] **Event analysis** (`src/analysis/events/`) — FLG-bridged clustering (Schmitt trigger hysteresis with 3 presets: strict/balanced/lenient), K-means++ clustering (Arthur & Vassilvitskii initialization, configurable k), single-link agglomerative clustering, event duration distributions by type, inter-event interval analysis
+- [x] **Survival analysis** (`src/analysis/survival/`) — Kaplan-Meier estimator (Greenwood variance for CI, log-log transformation for confidence bands), time-to-event for apnea recurrence, censoring support
+- [x] **Pressure analysis** (`src/analysis/pressure/`) — Titration helper (optimal pressure range estimation based on AHI minimization), pressure-response curves (AHI vs pressure scatter with regression), EPAP×IPAP effectiveness for BiPAP users, pressure variability metrics
+- [x] **False-negative detection** (`src/analysis/events/false-negatives.ts`) — Heuristic detection of potentially missed events using FLG threshold/duration/gap analysis with 3 sensitivity presets
+- [x] **Granger causality** (`src/analysis/correlation/granger.ts`) — VAR model estimation, F-test for causal lag relationships, AIC for lag selection
+- [x] **Unit tests** — Mann-Whitney U against scipy.stats.mannwhitneyu reference, Shapiro-Wilk against scipy reference, KM curve against R survival::survfit reference, K-means against known cluster membership, FLG clustering against synthetic event patterns, all edge cases
 
 **Agents:** Data Science (all algorithms — primary), Performance (large-dataset profiling, Worker memory), Unit Tester (reference validation), QA (review)
 

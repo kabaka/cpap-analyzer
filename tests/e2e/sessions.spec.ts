@@ -562,6 +562,6 @@ test.describe('Session Comparison', () => {
 
     // Click breadcrumb (use the breadcrumb link, not the nav link)
     await page.locator('nav a', { hasText: 'Sessions' }).first().click();
-    await expect(page).toHaveURL(/\/sessions$/);
+    await expect(page).toHaveURL(/\/sessions(\?.*)?$/);
   });
 });

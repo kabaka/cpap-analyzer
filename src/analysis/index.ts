@@ -8,5 +8,11 @@
  */
 
 export * from './descriptive';
+export * from './math';
 export * from './timeseries';
 export * from './correlation';
+export * from './hypothesis';
+export * from './distribution';
+export * from './events';
+export * from './survival';
+export * from './pressure';

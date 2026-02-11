@@ -26,6 +26,26 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 - Empty unit parentheses for Snore/FlowLimitation channels
 - Event timing offset for multi-file sessions
 
+### Added (Phase 8: Analysis Engine — Advanced Algorithms)
+
+- Shared math utilities module (`src/analysis/math/`) extracting lnGamma, regularizedIncompleteBeta, erf, normalCDF, studentTCDF, inverseNormalCDF, percentileFromSorted, and other helpers from duplicated implementations
+- Hypothesis testing module (`src/analysis/hypothesis/`) with Mann-Whitney U test (exact DP for n ≤ 28, normal approximation with tie correction), Wilcoxon signed-rank test, Cohen's d / Hedges' g effect sizes, and paired before/after comparison helper
+- Distribution analysis module (`src/analysis/distribution/`) with QQ-normal plot (Hazen formula), Shapiro-Wilk test (Royston approximation), Kolmogorov-Smirnov test (Dallal-Wilkinson p-value), and Gaussian KDE (Silverman bandwidth)
+- Event analysis module (`src/analysis/events/`) with FLG-bridged clustering (3 presets: strict/balanced/lenient), K-means++ clustering (Arthur & Vassilvitskii 2007, deterministic PRNG), single-link agglomerative clustering, event duration distribution by type, and inter-event interval analysis
+- False-negative event detection (`src/analysis/events/false-negatives.ts`) with heuristic FLG signal analysis and 3 sensitivity presets (conservative/balanced/aggressive)
+- Survival analysis module (`src/analysis/survival/`) with Kaplan-Meier estimator, Greenwood variance, log-log transformed 95% confidence intervals, and median survival time
+- Pressure analysis module (`src/analysis/pressure/`) with titration helper (optimal pressure range estimation), pressure-response curves, BiPAP EPAP×IPAP effectiveness analysis, and pressure variability metrics
+- Granger causality analysis (`src/analysis/correlation/granger.ts`) with VAR model F-test, AIC-based optimal lag selection, and bidirectional causality testing via ml-matrix OLS
+- All analysis output interfaces across descriptive, timeseries, and correlation modules marked with `readonly` properties for immutability
+- Analysis worker updated with 16 new function exports for all Phase 8 algorithms
+- 197 new unit tests (975 total across 49 test files) covering all Phase 8 modules with scipy/R reference validation
+- 23 new E2E tests (69 across 3 browsers, 318 total) verifying Phase 8 algorithms execute correctly in real browser JavaScript engines
+
+### Fixed (Phase 8)
+
+- Granger causality F-distribution survival function formula corrected (was computing inverted p-values)
+- Session comparison breadcrumb navigation URL pattern now correctly matches URLs with query parameters
+
 ### Added (Phase 7: Analysis Engine — Core Algorithms)
 
 - Descriptive statistics module (`src/analysis/descriptive/`) with Welford's online algorithm for mean/variance/skewness/kurtosis, Type 7 interpolated percentiles, Tukey's fences outlier detection, and Freedman-Diaconis histogram binning

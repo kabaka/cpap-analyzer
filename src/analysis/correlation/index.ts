@@ -15,195 +15,47 @@
  * - Partial correlation uses recursive first-order formula
  */
 
+export * from './granger';
+
+import { twoTailedPValue } from '../math';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export interface CorrelationResult {
-  r: number;
-  rSquared: number;
-  n: number;
-  tStatistic: number;
-  pValue: number;
-  ci95Lower: number;
-  ci95Upper: number;
-  strength: 'negligible' | 'weak' | 'moderate' | 'strong' | 'very strong';
-  direction: 'positive' | 'negative' | 'none';
+  readonly r: number;
+  readonly rSquared: number;
+  readonly n: number;
+  readonly tStatistic: number;
+  readonly pValue: number;
+  readonly ci95Lower: number;
+  readonly ci95Upper: number;
+  readonly strength: 'negligible' | 'weak' | 'moderate' | 'strong' | 'very strong';
+  readonly direction: 'positive' | 'negative' | 'none';
 }
 
 export interface CorrelationMatrix {
-  labels: string[];
-  matrix: number[][]; // r values
-  pValues: number[][]; // p-values
-  n: number; // sample size
+  readonly labels: readonly string[];
+  readonly matrix: readonly (readonly number[])[]; // r values
+  readonly pValues: readonly (readonly number[])[]; // p-values
+  readonly n: number; // sample size
 }
 
 export interface PartialCorrelationResult {
-  r: number;
-  n: number;
-  pValue: number;
-  ci95Lower: number;
-  ci95Upper: number;
+  readonly r: number;
+  readonly n: number;
+  readonly pValue: number;
+  readonly ci95Lower: number;
+  readonly ci95Upper: number;
 }
 
 export interface CrossCorrelationResult {
-  lags: number[];
-  ccf: number[];
-  significanceBound: number;
-  bestLag: number;
-  bestCCF: number;
-}
-
-// ---------------------------------------------------------------------------
-// Internal math helpers
-// ---------------------------------------------------------------------------
-
-/** Safe typed array access — returns 0 for out-of-bounds. */
-function at(arr: readonly number[], i: number): number {
-  const v = arr[i];
-  return v !== undefined ? v : 0;
-}
-
-/**
- * Log-gamma function via Lanczos approximation (g = 7, n = 9).
- */
-function lnGamma(z: number): number {
-  if (z <= 0) return Infinity;
-
-  const g = 7;
-  const coefs: readonly number[] = [
-    0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
-    -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6,
-    1.5056327351493116e-7,
-  ];
-
-  if (z < 0.5) {
-    return Math.log(Math.PI / Math.sin(Math.PI * z)) - lnGamma(1 - z);
-  }
-
-  const x = z - 1;
-  let a = at(coefs, 0);
-  const t = x + g + 0.5;
-
-  for (let i = 1; i < coefs.length; i++) {
-    a += at(coefs, i) / (x + i);
-  }
-
-  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
-}
-
-/**
- * Regularized incomplete beta function I_x(a, b) via continued-fraction
- * expansion (Lentz's method). Used for small-df t-distribution CDF.
- */
-function regularizedIncompleteBeta(x: number, a: number, b: number): number {
-  if (x <= 0) return 0;
-  if (x >= 1) return 1;
-
-  if (x > (a + 1) / (a + b + 2)) {
-    return 1 - regularizedIncompleteBeta(1 - x, b, a);
-  }
-
-  const lnBeta = lnGamma(a) + lnGamma(b) - lnGamma(a + b);
-  const front = Math.exp(Math.log(x) * a + Math.log(1 - x) * b - lnBeta) / a;
-
-  const maxIter = 200;
-  const eps = 1e-14;
-  let f = 1;
-  let c = 1;
-  let d = 1 - ((a + b) * x) / (a + 1);
-  if (Math.abs(d) < eps) d = eps;
-  d = 1 / d;
-  f = d;
-
-  for (let m = 1; m <= maxIter; m++) {
-    let numerator = (m * (b - m) * x) / ((a + 2 * m - 1) * (a + 2 * m));
-    d = 1 + numerator * d;
-    if (Math.abs(d) < eps) d = eps;
-    c = 1 + numerator / c;
-    if (Math.abs(c) < eps) c = eps;
-    d = 1 / d;
-    f *= c * d;
-
-    numerator = -((a + m) * (a + b + m) * x) / ((a + 2 * m) * (a + 2 * m + 1));
-    d = 1 + numerator * d;
-    if (Math.abs(d) < eps) d = eps;
-    c = 1 + numerator / c;
-    if (Math.abs(c) < eps) c = eps;
-    d = 1 / d;
-    const delta = c * d;
-    f *= delta;
-
-    if (Math.abs(delta - 1) < eps) break;
-  }
-
-  return front * f;
-}
-
-/**
- * Error function approximation (Horner form).
- * Abramowitz & Stegun 7.1.26 — max error ~1.5 × 10⁻⁷.
- */
-function erf(x: number): number {
-  const sign = x < 0 ? -1 : 1;
-  const ax = Math.abs(x);
-
-  const p = 0.3275911;
-  const a1 = 0.254829592;
-  const a2 = -0.284496736;
-  const a3 = 1.421413741;
-  const a4 = -1.453152027;
-  const a5 = 1.061405429;
-
-  const t = 1 / (1 + p * ax);
-  const t2 = t * t;
-  const t3 = t2 * t;
-  const t4 = t3 * t;
-  const t5 = t4 * t;
-
-  const poly = a1 * t + a2 * t2 + a3 * t3 + a4 * t4 + a5 * t5;
-  return sign * (1 - poly * Math.exp(-ax * ax));
-}
-
-/** Standard normal CDF via error-function approximation. */
-function normalCDF(x: number): number {
-  return 0.5 * (1 + erf(x / Math.SQRT2));
-}
-
-/**
- * Student's t CDF approximation.
- *
- * For df > 30: normal approximation via Cornish-Fisher expansion.
- * For df ≤ 30: regularized incomplete beta relation
- *   P(T ≤ t) = 1 - 0.5 * I(df/(df+t²), df/2, 1/2)
- */
-function studentTCDF(t: number, df: number): number {
-  if (!Number.isFinite(t) || !Number.isFinite(df) || df < 1) return NaN;
-
-  if (df > 30) {
-    const g1 = (t * t + 1) / (4 * df);
-    const z = t * (1 - g1);
-    return normalCDF(z);
-  }
-
-  const x = df / (df + t * t);
-  const a = df / 2;
-  const b = 0.5;
-  const ibeta = regularizedIncompleteBeta(x, a, b);
-
-  if (t >= 0) {
-    return 1 - 0.5 * ibeta;
-  } else {
-    return 0.5 * ibeta;
-  }
-}
-
-/**
- * Two-tailed p-value from Student's t distribution.
- */
-function twoTailedPValue(t: number, df: number): number {
-  if (!Number.isFinite(t) || !Number.isFinite(df) || df < 1) return NaN;
-  return 2 * (1 - studentTCDF(Math.abs(t), df));
+  readonly lags: readonly number[];
+  readonly ccf: readonly number[];
+  readonly significanceBound: number;
+  readonly bestLag: number;
+  readonly bestCCF: number;
 }
 
 // ---------------------------------------------------------------------------

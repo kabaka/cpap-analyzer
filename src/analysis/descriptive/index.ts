@@ -16,50 +16,50 @@
 // ---------------------------------------------------------------------------
 
 export interface DescriptiveStats {
-  count: number;
-  mean: number;
-  median: number;
-  variance: number;
-  stdDev: number;
-  stdErr: number;
-  min: number;
-  max: number;
-  range: number;
-  iqr: number;
-  cv: number; // coefficient of variation (stdDev / mean)
-  skewness: number; // Fisher-Pearson
-  kurtosis: number; // excess kurtosis (subtract 3)
+  readonly count: number;
+  readonly mean: number;
+  readonly median: number;
+  readonly variance: number;
+  readonly stdDev: number;
+  readonly stdErr: number;
+  readonly min: number;
+  readonly max: number;
+  readonly range: number;
+  readonly iqr: number;
+  readonly cv: number; // coefficient of variation (stdDev / mean)
+  readonly skewness: number; // Fisher-Pearson
+  readonly kurtosis: number; // excess kurtosis (subtract 3)
 }
 
 export interface Percentiles {
-  p5: number;
-  p10: number;
-  p25: number;
-  p50: number;
-  p75: number;
-  p90: number;
-  p95: number;
+  readonly p5: number;
+  readonly p10: number;
+  readonly p25: number;
+  readonly p50: number;
+  readonly p75: number;
+  readonly p90: number;
+  readonly p95: number;
 }
 
 export interface OutlierDetection {
-  lowerFence: number;
-  upperFence: number;
-  outliers: number[];
-  outlierIndices: number[];
-  outlierCount: number;
+  readonly lowerFence: number;
+  readonly upperFence: number;
+  readonly outliers: readonly number[];
+  readonly outlierIndices: readonly number[];
+  readonly outlierCount: number;
 }
 
 export interface HistogramBin {
-  binStart: number;
-  binEnd: number;
-  count: number;
-  frequency: number; // count / total
+  readonly binStart: number;
+  readonly binEnd: number;
+  readonly count: number;
+  readonly frequency: number; // count / total
 }
 
 export interface HistogramResult {
-  bins: HistogramBin[];
-  binWidth: number;
-  totalCount: number;
+  readonly bins: readonly HistogramBin[];
+  readonly binWidth: number;
+  readonly totalCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -395,7 +395,7 @@ export function computeHistogram(data: number[], binCount?: number): HistogramRe
   const effectiveMin = dataRange > 0 ? minVal : minVal - 0.5;
 
   // --- Build bins ---------------------------------------------------------
-  const bins: HistogramBin[] = [];
+  const bins: { binStart: number; binEnd: number; count: number; frequency: number }[] = [];
   const effectiveNumBins = dataRange > 0 ? numBins : 1;
 
   for (let i = 0; i < effectiveNumBins; i++) {
@@ -414,7 +414,7 @@ export function computeHistogram(data: number[], binCount?: number): HistogramRe
     let binIdx = Math.floor((value - effectiveMin) / binWidth);
     if (binIdx >= effectiveNumBins) binIdx = effectiveNumBins - 1;
     if (binIdx < 0) binIdx = 0;
-    (bins[binIdx] as HistogramBin).count++;
+    (bins[binIdx] as { count: number }).count++;
   }
 
   // --- Compute frequencies ------------------------------------------------
@@ -423,7 +423,7 @@ export function computeHistogram(data: number[], binCount?: number): HistogramRe
   }
 
   return {
-    bins,
+    bins: bins as HistogramBin[],
     binWidth,
     totalCount: n,
   };

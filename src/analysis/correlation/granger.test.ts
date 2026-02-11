@@ -1,0 +1,227 @@
+import { describe, it, expect } from 'vitest';
+import { grangerCausality, type GrangerCausalityResult } from '@/analysis/correlation/granger';
+
+describe('grangerCausality', () => {
+  // -----------------------------------------------------------------------
+  // Happy-path: clear causal relationship
+  // -----------------------------------------------------------------------
+
+  describe('X causes Y (y ≈ 0.8 * x lagged by 1, with noise)', () => {
+    // Non-monotonic x so that lagged y is a poor predictor, but lagged x is strong
+    const x = [2, 5, 1, 4, 3, 5, 1, 4, 2, 3, 5, 1, 4, 2, 5, 3, 1, 4, 2, 5];
+    // y[t] ≈ 0.8 * x[t-1] + small noise
+    const y = [
+      2.0, 1.8, 3.9, 1.1, 3.0, 2.5, 4.2, 0.7, 3.5, 1.4, 2.5, 3.7, 1.0, 3.1, 1.9, 3.8, 2.5, 0.7, 3.4,
+      1.3,
+    ];
+
+    it('should detect causality with a low p-value', () => {
+      const result = grangerCausality(x, y, 1);
+
+      expect(result.pValue).toBeLessThan(0.05);
+    });
+
+    it('should classify causality involving X→Y', () => {
+      const result = grangerCausality(x, y, 1);
+
+      // X should Granger-cause Y
+      expect(['X causes Y', 'bidirectional']).toContain(result.causality);
+    });
+
+    it('should report a positive F-statistic', () => {
+      const result = grangerCausality(x, y, 1);
+
+      expect(result.fStatistic).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // No causality: independent series
+  // -----------------------------------------------------------------------
+
+  describe('no causality (independent series)', () => {
+    // Two series with strong but unrelated autoregressive structure:
+    // primes and Fibonacci — both highly autocorrelated but independent
+    const x = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71];
+    const y = [
+      1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765,
+    ];
+
+    it('should have a high p-value', () => {
+      const result = grangerCausality(x, y, 1);
+
+      expect(result.pValue).toBeGreaterThan(0.05);
+    });
+
+    it('should classify causality as "none"', () => {
+      const result = grangerCausality(x, y, 1);
+
+      expect(result.causality).toBe('none');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Edge cases
+  // -----------------------------------------------------------------------
+
+  describe('insufficient data', () => {
+    it('should return NaN values when arrays are shorter than 2*maxLag + 2', () => {
+      const x = [1, 2, 3, 4, 5];
+      const y = [5, 4, 3, 2, 1];
+      const maxLag = 3; // needs 2*3+2 = 8 observations
+
+      const result = grangerCausality(x, y, maxLag);
+
+      expect(result.fStatistic).toBeNaN();
+      expect(result.pValue).toBeNaN();
+      expect(result.causality).toBe('none');
+    });
+  });
+
+  describe('empty arrays', () => {
+    it('should return NaN values with causality "none"', () => {
+      const result = grangerCausality([], []);
+
+      expect(result.fStatistic).toBeNaN();
+      expect(result.pValue).toBeNaN();
+      expect(result.causality).toBe('none');
+      expect(result.confidenceLevel).toBe('low');
+    });
+  });
+
+  describe('all identical values', () => {
+    it('should return causality "none" (no predictive power)', () => {
+      const x = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
+      const y = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3];
+
+      const result = grangerCausality(x, y);
+
+      expect(result.fStatistic).toBeNaN();
+      expect(result.pValue).toBeNaN();
+      expect(result.causality).toBe('none');
+    });
+  });
+
+  describe('NaN in input', () => {
+    it('should filter out NaN-containing pairs and still compute', () => {
+      const x = [1, NaN, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+      const y = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, NaN, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+
+      const result = grangerCausality(x, y);
+
+      // After filtering NaN pairs, there are 20 valid observations — enough data
+      expect(result.causality).not.toBe(undefined);
+      expect(['X causes Y', 'Y causes X', 'bidirectional', 'none']).toContain(result.causality);
+    });
+
+    it('should return NaN result when too many NaN values leave insufficient data', () => {
+      const x = [1, NaN, NaN, NaN, 5];
+      const y = [NaN, 2, NaN, 4, NaN];
+
+      const result = grangerCausality(x, y);
+
+      expect(result.causality).toBe('none');
+      expect(result.fStatistic).toBeNaN();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // maxLag configuration
+  // -----------------------------------------------------------------------
+
+  describe('custom maxLag', () => {
+    const x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    const y = [
+      0.2, 1.1, 1.8, 3.2, 3.9, 5.1, 5.8, 7.2, 7.9, 9.1, 9.8, 11.2, 12.9, 14.1, 14.8, 16.2, 16.9,
+      18.1, 18.8, 19.2,
+    ];
+
+    it('should work with maxLag=3', () => {
+      const result = grangerCausality(x, y, 3);
+
+      expect(result.optimalLag).toBeGreaterThanOrEqual(1);
+      expect(result.optimalLag).toBeLessThanOrEqual(3);
+      expect(result.aicValues).toHaveLength(3);
+    });
+
+    it('should work with maxLag=7', () => {
+      // 20 data points, 2*7+2 = 16 → enough data
+      const result = grangerCausality(x, y, 7);
+
+      expect(result.optimalLag).toBeGreaterThanOrEqual(1);
+      expect(result.optimalLag).toBeLessThanOrEqual(7);
+      expect(result.aicValues).toHaveLength(7);
+    });
+  });
+
+  describe('default maxLag', () => {
+    it('should default to maxLag=7', () => {
+      const x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+      const y = [
+        0.2, 1.1, 1.8, 3.2, 3.9, 5.1, 5.8, 7.2, 7.9, 9.1, 9.8, 11.2, 12.9, 14.1, 14.8, 16.2, 16.9,
+        18.1, 18.8, 19.2,
+      ];
+
+      const result = grangerCausality(x, y);
+
+      expect(result.aicValues).toHaveLength(7);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Result structure validation
+  // -----------------------------------------------------------------------
+
+  describe('result structure', () => {
+    // Use noisy data with explicit maxLag to ensure valid numeric results
+    const x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+    const y = [
+      0.2, 1.1, 1.8, 3.2, 3.9, 5.1, 5.8, 7.2, 7.9, 9.1, 9.8, 11.2, 12.9, 14.1, 14.8, 16.2, 16.9,
+      18.1, 18.8, 19.2,
+    ];
+    const maxLag = 3;
+
+    it('should have fStatistic ≥ 0', () => {
+      const result = grangerCausality(x, y, maxLag);
+
+      expect(result.fStatistic).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should have pValue in [0, 1]', () => {
+      const result = grangerCausality(x, y, maxLag);
+
+      expect(result.pValue).toBeGreaterThanOrEqual(0);
+      expect(result.pValue).toBeLessThanOrEqual(1);
+    });
+
+    it('should have optimalLag ≥ 1', () => {
+      const result = grangerCausality(x, y, maxLag);
+
+      expect(result.optimalLag).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should have causality as one of the 4 valid options', () => {
+      const result = grangerCausality(x, y, maxLag);
+      const validOptions: GrangerCausalityResult['causality'][] = [
+        'X causes Y',
+        'Y causes X',
+        'bidirectional',
+        'none',
+      ];
+
+      expect(validOptions).toContain(result.causality);
+    });
+
+    it('should have confidenceLevel as "high", "moderate", or "low"', () => {
+      const result = grangerCausality(x, y, maxLag);
+
+      expect(['high', 'moderate', 'low']).toContain(result.confidenceLevel);
+    });
+
+    it('should have aicValues array with length = maxLag', () => {
+      const result = grangerCausality(x, y, maxLag);
+
+      expect(result.aicValues).toHaveLength(maxLag);
+    });
+  });
+});
