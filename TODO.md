@@ -9,7 +9,7 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 - Every phase produces a working, testable increment.
 - QA agent reviews all code before a phase is considered complete.
 
-**Current state:** Phase 2 complete. Full app shell with domain types, design system (16 components), themed layout with sidebar navigation, Zustand stores, error boundaries, and routing to 16 placeholder views. 113 unit tests and 13 E2E tests pass. All pre-commit checks green.
+**Current state:** Phase 3 complete. Storage layer (IndexedDB 7-store schema, OPFS signal storage, LRU cache, migration framework), Web Worker infrastructure (Comlink factory with timeout, priority-based worker pool), and EDF/ResMed parsing pipeline (binary parser, channel/event mapping, session builder, validator, synthetic data generator) all implemented with 227 unit tests. 340 total unit tests and 13 E2E tests pass. All pre-commit checks green.
 
 ---
 
@@ -93,18 +93,18 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 
 **Work items:**
 
-- [ ] **IndexedDB service** (`src/services/storage/IndexedDBService.ts`) — Database `cpap-analyzer`, schema version 1. 7 object stores with all indexes per storage-architecture.md: `sessions` (key: id, indexes: date, machineId), `nightly_aggregates` (key: id, indexes: date, sessionId), `events` (key: id, indexes: sessionId, timestamp, type), `analysis_results` (key: id, indexes: analysisType, dateRangeHash), `settings` (key: key), `import_history` (key: id, indexes: date, status), `integration_data` (key: id, indexes: source, date). CRUD operations, transaction management, cursor-based range queries.
-- [ ] **OPFS service** (`src/services/storage/OPFSService.ts`) — Directory structure `/cpap-analyzer/signals/{sessionId}/{channel}.f32` and `/cpap-analyzer/cache/downsampled/`. Write/read Float32Array chunks, file listing, deletion, quota checking, streaming reads.
-- [ ] **Cache service** (`src/services/storage/CacheService.ts`) — In-memory LRU cache for analysis results (max 100 entries), key generation from analysis params + date range hash, invalidation triggers on new imports
-- [ ] **Migration framework** (`src/services/storage/MigrationService.ts`) — Versioned schema migrations with up/down/verify, dependency resolution, runs on app start before any data access
-- [ ] **Comlink worker wrapper** (`src/workers/createWorker.ts`) — Typed factory for creating Comlink-wrapped workers, error marshalling across thread boundary (structured CPAPError serialization), timeout support
-- [ ] **Worker pool** (`src/services/WorkerPool.ts`) — Pool size = `navigator.hardwareConcurrency - 1` (min 2), task queue with priority, round-robin dispatch, idle timeout (30s), graceful shutdown, restart on crash
-- [ ] **EDF parser** (`src/parsers/edf/EDFParser.ts`) — Parse 256-byte fixed header (version, patient, recording, start date/time, header bytes, data format, num records, record duration, num signals). Parse per-signal headers (label, transducer, physical dim, physical min/max, digital min/max, prefiltering, num samples). Parse data records (interleaved 16-bit little-endian integers → Float32 physical values). Parse EDF+ annotations (TAL format — onset, duration, annotation text).
-- [ ] **ResMed interpreter** (`src/parsers/resmed/ResMedInterpreter.ts`) — Channel label normalization (12+ mappings: `Flow` → Flow, `Mask Pres` → MaskPressure, `Leak` → Leak, etc.), event annotation mapping (12+ types: obstructive apnea, central apnea, hypopnea, RERA, CSR, large leak, etc.), machine info extraction from patient ID field (serial number, model, series detection), capability detection (CPAP vs APAP vs BiPAP vs ASV)
-- [ ] **Session builder** (`src/parsers/resmed/SessionBuilder.ts`) — Merge multiple EDF files into sessions (BRP breathing + EVE events + STR settings + SAD SpO₂ + CSL + PLD). Time-align across files. Session boundary detection (>30 min gap). Usage time computation (mask pressure > 2 cmH₂O). Produce Session + NightlyAggregate + Event[] ready for storage.
-- [ ] **Validator** (`src/parsers/validation/Validator.ts`) — EDF header integrity (magic bytes, field ranges, consistent num records). Physiological range validation: flow [-300, 300] L/min, pressure [0, 30] cmH₂O, leak [0, 200] L/min, SpO₂ [50, 100]%. AASM event duration compliance (apnea ≥ 10s). AHI sanity check (>200 = error). Session duration minimums.
-- [ ] **Synthetic data generator** (`src/test/generators/edf-generator.ts`) — Generate valid EDF binary files with configurable: header fields, signal count/channels, sample rates, known signal values (sine waves, step functions, ramps), known annotations at exact timestamps. For deterministic unit and E2E testing.
-- [ ] **Unit tests** — IndexedDB CRUD (via fake-indexeddb), OPFS operations (mocked or abstracted), EDF parser against synthetic binaries (byte-level verification of header fields, signal value accuracy within ε), ResMed label mapping (all 12+ channels, all 12+ events), SessionBuilder merging logic, WorkerPool dispatch + queue + timeout, cache hit/miss/eviction
+- [x] **IndexedDB service** (`src/services/storage/IndexedDBService.ts`) — Database `cpap-analyzer`, schema version 1. 7 object stores with all indexes per storage-architecture.md: `sessions` (key: id, indexes: date, machineId), `nightly_aggregates` (key: id, indexes: date, sessionId), `events` (key: id, indexes: sessionId, timestamp, type), `analysis_results` (key: id, indexes: analysisType, dateRangeHash), `settings` (key: key), `import_history` (key: id, indexes: date, status), `integration_data` (key: id, indexes: source, date). CRUD operations, transaction management, cursor-based range queries.
+- [x] **OPFS service** (`src/services/storage/OPFSService.ts`) — Directory structure `/cpap-analyzer/signals/{sessionId}/{channel}.f32` and `/cpap-analyzer/cache/downsampled/`. Write/read Float32Array chunks, file listing, deletion, quota checking, streaming reads.
+- [x] **Cache service** (`src/services/storage/CacheService.ts`) — In-memory LRU cache for analysis results (max 100 entries), key generation from analysis params + date range hash, invalidation triggers on new imports
+- [x] **Migration framework** (`src/services/storage/MigrationService.ts`) — Versioned schema migrations with up/down/verify, dependency resolution, runs on app start before any data access
+- [x] **Comlink worker wrapper** (`src/workers/createWorker.ts`) — Typed factory for creating Comlink-wrapped workers, error marshalling across thread boundary (structured CPAPError serialization), timeout support
+- [x] **Worker pool** (`src/services/WorkerPool.ts`) — Pool size = `navigator.hardwareConcurrency - 1` (min 2), task queue with priority, round-robin dispatch, idle timeout (30s), graceful shutdown, restart on crash
+- [x] **EDF parser** (`src/parsers/edf/EDFParser.ts`) — Parse 256-byte fixed header (version, patient, recording, start date/time, header bytes, data format, num records, record duration, num signals). Parse per-signal headers (label, transducer, physical dim, physical min/max, digital min/max, prefiltering, num samples). Parse data records (interleaved 16-bit little-endian integers → Float32 physical values). Parse EDF+ annotations (TAL format — onset, duration, annotation text).
+- [x] **ResMed interpreter** (`src/parsers/resmed/ResMedInterpreter.ts`) — Channel label normalization (12+ mappings: `Flow` → Flow, `Mask Pres` → MaskPressure, `Leak` → Leak, etc.), event annotation mapping (12+ types: obstructive apnea, central apnea, hypopnea, RERA, CSR, large leak, etc.), machine info extraction from patient ID field (serial number, model, series detection), capability detection (CPAP vs APAP vs BiPAP vs ASV)
+- [x] **Session builder** (`src/parsers/resmed/SessionBuilder.ts`) — Merge multiple EDF files into sessions (BRP breathing + EVE events + STR settings + SAD SpO₂ + CSL + PLD). Time-align across files. Session boundary detection (>30 min gap). Usage time computation (mask pressure > 2 cmH₂O). Produce Session + NightlyAggregate + Event[] ready for storage.
+- [x] **Validator** (`src/parsers/validation/Validator.ts`) — EDF header integrity (magic bytes, field ranges, consistent num records). Physiological range validation: flow [-300, 300] L/min, pressure [0, 30] cmH₂O, leak [0, 200] L/min, SpO₂ [50, 100]%. AASM event duration compliance (apnea ≥ 10s). AHI sanity check (>200 = error). Session duration minimums.
+- [x] **Synthetic data generator** (`src/test/generators/edf-generator.ts`) — Generate valid EDF binary files with configurable: header fields, signal count/channels, sample rates, known signal values (sine waves, step functions, ramps), known annotations at exact timestamps. For deterministic unit and E2E testing.
+- [x] **Unit tests** — IndexedDB CRUD (via fake-indexeddb), OPFS operations (mocked or abstracted), EDF parser against synthetic binaries (byte-level verification of header fields, signal value accuracy within ε), ResMed label mapping (all 12+ channels, all 12+ events), SessionBuilder merging logic, WorkerPool dispatch + queue + timeout, cache hit/miss/eviction
 
 **Agents:** Database (IndexedDB, OPFS, Cache, Migrations), Performance (WorkerPool, Comlink setup, Transferable optimization), ResMed Specialist (EDF parser, ResMed interpreter, SessionBuilder, Validator), Frontend (service integration into app context), Unit Tester (all tests), Security (input validation, buffer bounds checking in parser), QA (review)
 
@@ -119,8 +119,8 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 - Cache service stores, retrieves, and evicts correctly
 - Synthetic data generator produces EDF files that round-trip through parser
 - No `any` types in parser code
-- Unit tests ≥80% coverage on new code
-- CI green
+- Unit tests ≥80% coverage on new code (227 tests covering all new modules)
+- CI green (0 type errors, 0 lint errors, 340 tests passing)
 
 **Depends on:** Phase 2 (domain types)
 
