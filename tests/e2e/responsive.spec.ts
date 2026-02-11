@@ -13,16 +13,16 @@ test.describe('Responsive Layout', () => {
     const menuToggle = page.getByRole('button', { name: /navigation menu/i });
     await expect(menuToggle).toBeHidden();
 
-    // Content should be visible
-    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+    // Content should be visible (empty DB shows EmptyState heading)
+    await expect(page.getByRole('heading', { name: /cpap analyzer/i })).toBeVisible();
   });
 
   test('should show hamburger and hide sidebar on mobile', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
 
-    // Content should still be visible
-    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+    // Content should still be visible (empty DB shows EmptyState heading)
+    await expect(page.getByRole('heading', { name: /cpap analyzer/i })).toBeVisible();
 
     // Hamburger menu toggle should be visible on mobile
     const menuToggle = page.getByRole('button', { name: /navigation menu/i });
@@ -51,7 +51,7 @@ test.describe('Responsive Layout', () => {
     await page.setViewportSize({ width: 768, height: 1024 });
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /cpap analyzer/i })).toBeVisible();
 
     // At 768px, the sidebar should be visible (breakpoint is max-width: 767px)
     const sidebar = page.locator('aside[aria-label="Main navigation"]');

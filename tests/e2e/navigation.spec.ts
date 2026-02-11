@@ -6,8 +6,8 @@ test.describe('Navigation', () => {
 
     const nav = page.getByRole('navigation');
 
-    // Verify Dashboard loads by default
-    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+    // With empty DB, Dashboard renders EmptyState with "CPAP Analyzer" heading
+    await expect(page.getByRole('heading', { name: /cpap analyzer/i })).toBeVisible();
 
     // Navigate to Sessions
     await nav.getByRole('link', { name: /sessions/i }).click();
@@ -55,7 +55,7 @@ test.describe('Navigation', () => {
   test('should navigate via direct URL to all top-level routes', async ({ page }) => {
     // Test that each route loads directly without needing sidebar navigation
     const routes = [
-      { path: '/', heading: /^dashboard$/i },
+      { path: '/', heading: /cpap analyzer/i },
       { path: '/sessions', heading: /^sessions$/i },
       { path: '/analysis', heading: /^analysis$/i },
       { path: '/reports', heading: /^reports$/i },

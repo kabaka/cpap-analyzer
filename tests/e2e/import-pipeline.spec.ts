@@ -26,7 +26,7 @@ test.describe('Import Pipeline — Route Rendering', () => {
 
   test('import wizard route renders with heading', async ({ page }) => {
     await page.goto('/data/import');
-    await expect(page.getByRole('heading', { name: /import wizard/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /import data/i })).toBeVisible();
   });
 
   test('import route is reachable via direct URL navigation', async ({ page }) => {
@@ -35,7 +35,7 @@ test.describe('Import Pipeline — Route Rendering', () => {
     await expect(page.getByRole('heading', { name: /settings/i })).toBeVisible();
 
     await page.goto('/data/import');
-    await expect(page.getByRole('heading', { name: /import wizard/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /import data/i })).toBeVisible();
   });
 });
 

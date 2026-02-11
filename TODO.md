@@ -9,7 +9,7 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 - Every phase produces a working, testable increment.
 - QA agent reviews all code before a phase is considered complete.
 
-**Current state:** Phase 4 complete. All parser bugs fixed and validated against 17 months of real ResMed AirSense 11 data (3700/3702 files parsed, computed AHI within ±0.5/hr of machine-reported values). Import pipeline with File System Access API support, Comlink-wrapped EDF parser worker, SHA-256 deduplication, progress tracking, and 100 MB file size guard. Synthetic AirSense 11 test fixtures with manifest. 424 unit tests and 27 E2E tests pass. All pre-commit checks green.
+**Current state:** Phase 5 complete. Import wizard with drag-and-drop, file picker, scanning, progress bar, and error handling. Dashboard with KPI cards (AHI with severity badge, leak rate, usage hours, compliance %), date range selector (7d/30d/90d/1y/all), sortable recent sessions table. Empty state with onboarding CTA. Data hooks (useSessionData, useSummaryStats, useImport) with IndexedDB integration. 460 unit tests and 105 E2E tests pass. All pre-commit checks green.
 
 ---
 
@@ -170,19 +170,19 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 
 **Work items:**
 
-- [ ] **Import wizard** (`src/views/DataManagement/ImportWizard/`) — Multi-step flow: file/folder selection (drag-and-drop zone + file picker button) → scanning/previewing found files → confirmation → importing with real-time progress bar → completion summary with any errors. Accessible: keyboard navigable, ARIA live region for progress.
-- [ ] **Empty state** — Welcome screen on first launch (no data): illustration/icon, explanation of what the app does, prominent "Import Data" CTA. Displayed when sessions store is empty.
-- [ ] **Dashboard view** (`src/views/Dashboard/`) —
+- [x] **Import wizard** (`src/views/DataManagement/ImportWizard/`) — Multi-step flow: file/folder selection (drag-and-drop zone + file picker button) → scanning/previewing found files → confirmation → importing with real-time progress bar → completion summary with any errors. Accessible: keyboard navigable, ARIA live region for progress.
+- [x] **Empty state** — Welcome screen on first launch (no data): illustration/icon, explanation of what the app does, prominent "Import Data" CTA. Displayed when sessions store is empty.
+- [x] **Dashboard view** (`src/views/Dashboard/`) —
   - KPI summary cards: AHI (with severity badge), Leak Rate (median + P95), Usage Hours (mean), Compliance % (nights ≥ 4h / total nights) — each with trend indicator arrow (↑↓→) and sparkline
   - Compliance gauge: Donut chart showing CMS compliance percentage (≥4h for ≥70% of nights in 30-day window)
   - 30-day AHI trend: Recharts AreaChart with severity color zones
   - 30-day usage trend: Recharts BarChart
   - Recent sessions table: Last 7–30 nights, sortable columns (date, AHI, usage, leak), click-to-navigate
   - Date range selector: Persistent across views, presets (7d, 30d, 90d, 1y, all, custom range picker)
-- [ ] **Data hooks** (`src/hooks/`) — `useSessionData(dateRange)`: fetch sessions from IndexedDB filtered by date range. `useSummaryStats(dateRange)`: compute aggregate KPIs from nightly_aggregates. `useImport()`: manage import wizard state and trigger ImportService. All hooks manage loading/error/empty states.
-- [ ] **Downsampling worker** (`src/services/workers/downsample.worker.ts`) — LTTB and min-max downsampling behind Comlink, accepts Float32Array + target point count, returns downsampled array via Transferable
-- [ ] **Unit tests** — Import wizard state machine, summary stat computations, data hooks (with mocked storage), dashboard KPI calculations, date range filtering
-- [ ] **E2E tests** — Full import flow (select synthetic EDF → dashboard renders with values), empty state → import → dashboard transition, date range preset switching, session table sort
+- [x] **Data hooks** (`src/hooks/`) — `useSessionData(dateRange)`: fetch sessions from IndexedDB filtered by date range. `useSummaryStats(dateRange)`: compute aggregate KPIs from nightly_aggregates. `useImport()`: manage import wizard state and trigger ImportService. All hooks manage loading/error/empty states.
+- [ ] **Downsampling worker** (`src/services/workers/downsample.worker.ts`) — LTTB and min-max downsampling behind Comlink, accepts Float32Array + target point count, returns downsampled array via Transferable _(deferred to Phase 6 — needed for Signal Viewer, not dashboard)_
+- [x] **Unit tests** — Import wizard state machine, summary stat computations, data hooks (with mocked storage), dashboard KPI calculations, date range filtering
+- [x] **E2E tests** — Full import flow (select synthetic EDF → dashboard renders with values), empty state → import → dashboard transition, date range preset switching, session table sort
 
 **Agents:** Frontend (ImportWizard, Dashboard, data hooks, empty state), UX (import flow design, empty state, date range UX, KPI card layout), UI Design (wizard styling, KPI cards, gauge, sparklines), Data Visualization (sparklines, compliance gauge, trend charts), Unit Tester, E2E Tester, QA
 

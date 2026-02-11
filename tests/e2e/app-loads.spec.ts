@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Application Shell', () => {
-  test('should load the application and display the Dashboard', async ({ page }) => {
+  test('should load the application and display the landing page', async ({ page }) => {
     await page.goto('/');
 
-    // Verify the Dashboard view heading is visible
-    await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible();
+    // With empty DB, the Dashboard renders EmptyState with "CPAP Analyzer" heading
+    await expect(page.getByRole('heading', { name: /cpap analyzer/i })).toBeVisible();
 
     // Verify the app name appears in the sidebar
     const sidebar = page.getByRole('complementary', { name: /main navigation/i });

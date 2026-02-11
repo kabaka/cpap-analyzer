@@ -1,0 +1,58 @@
+.wrapper {
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+}
+
+.sortableHead {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sortableHead:hover {
+  color: var(--color-text-primary);
+}
+
+.sortableHead:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+
+.headContent {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.sortArrow {
+  font-size: var(--font-size-xs);
+  opacity: 0.7;
+}
+
+.clickableRow {
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.clickableRow:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.clickableRow:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.mono {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+}
+
+.empty {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}

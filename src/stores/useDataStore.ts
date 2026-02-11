@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
+import { getDB } from '@/services/storage/getDB';
 
 /** Lightweight session metadata for lists (not the full Session type). */
 interface SessionMetadata {
@@ -25,6 +26,25 @@ interface SummaryStatistics {
   complianceRate: number;
 }
 
+/** Format a Date as YYYY-MM-DD. */
+function formatDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Compute the median of a numeric array. */
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 !== 0) {
+    return sorted[mid] ?? 0;
+  }
+  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+}
+
 interface DataState {
   // Session metadata cache
   sessions: Map<string, SessionMetadata>;
@@ -35,6 +55,7 @@ interface DataState {
   // Summary statistics
   summaryStats: { range: { start: Date; end: Date }; stats: SummaryStatistics } | null;
   summaryStatsLoading: boolean;
+  summaryStatsError: string | null;
   loadSummaryStats: (range: { start: Date; end: Date }) => Promise<void>;
 
   // Data freshness
@@ -53,20 +74,102 @@ export const useDataStore = create<DataState>()(
       sessionsLoading: false,
       sessionsError: null,
       loadSessions: async (range) => {
-        void range; // Will be used for IndexedDB query in Phase 5+
         set({ sessionsLoading: true, sessionsError: null }, undefined, 'loadSessions/start');
-        await Promise.resolve();
-        set({ sessionsLoading: false }, undefined, 'loadSessions/end');
+        try {
+          const db = await getDB();
+          const start = formatDate(range.start);
+          const end = formatDate(range.end);
+          const sessions = await db.getSessionsByDateRange(start, end);
+          const aggregates = await db.getNightlyAggregatesByDateRange(start, end);
+
+          // Build a lookup from sessionId → aggregate
+          const aggMap = new Map(aggregates.map((a) => [a.sessionId, a]));
+
+          const map = new Map<string, SessionMetadata>();
+          for (const s of sessions) {
+            const agg = aggMap.get(s.id);
+            map.set(s.id, {
+              id: s.id,
+              date: s.date,
+              machineModel: s.machineModel,
+              durationMinutes: s.durationMinutes,
+              usageMinutes: s.usageMinutes,
+              ahi: agg?.ahi ?? 0,
+              leakMedian: agg?.leakMedian ?? 0,
+              eventCount: agg?.eventCount ?? 0,
+              complianceStatus: agg?.complianceStatus ?? 'non-compliant',
+            });
+          }
+          set({ sessions: map, sessionsLoading: false }, undefined, 'loadSessions/end');
+        } catch (err) {
+          set(
+            {
+              sessionsError: err instanceof Error ? err.message : 'Failed to load sessions',
+              sessionsLoading: false,
+            },
+            undefined,
+            'loadSessions/error',
+          );
+        }
       },
 
       // Summary statistics
       summaryStats: null,
       summaryStatsLoading: false,
+      summaryStatsError: null,
       loadSummaryStats: async (range) => {
-        void range; // Will be used for computation in Phase 5+
-        set({ summaryStatsLoading: true }, undefined, 'loadSummaryStats/start');
-        await Promise.resolve();
-        set({ summaryStatsLoading: false }, undefined, 'loadSummaryStats/end');
+        set(
+          { summaryStatsLoading: true, summaryStatsError: null },
+          undefined,
+          'loadSummaryStats/start',
+        );
+        try {
+          const db = await getDB();
+          const start = formatDate(range.start);
+          const end = formatDate(range.end);
+          const aggregates = await db.getNightlyAggregatesByDateRange(start, end);
+
+          const ahiValues = aggregates.map((a) => a.ahi);
+          const leakValues = aggregates.map((a) => a.leakMedian);
+          const usageValues = aggregates.map((a) => a.usageHours);
+          const compliantCount = aggregates.filter(
+            (a) => a.complianceStatus === 'compliant',
+          ).length;
+
+          const totalSessions = aggregates.length;
+          const meanAHI =
+            totalSessions > 0 ? ahiValues.reduce((sum, v) => sum + v, 0) / totalSessions : 0;
+          const meanLeak =
+            totalSessions > 0 ? leakValues.reduce((sum, v) => sum + v, 0) / totalSessions : 0;
+          const meanUsageHours =
+            totalSessions > 0 ? usageValues.reduce((sum, v) => sum + v, 0) / totalSessions : 0;
+          const complianceRate = totalSessions > 0 ? compliantCount / totalSessions : 0;
+
+          const stats: SummaryStatistics = {
+            totalSessions,
+            dateRange: { start, end },
+            meanAHI,
+            medianAHI: median(ahiValues),
+            meanLeak,
+            meanUsageHours,
+            complianceRate,
+          };
+
+          set(
+            { summaryStats: { range, stats }, summaryStatsLoading: false },
+            undefined,
+            'loadSummaryStats/end',
+          );
+        } catch (err) {
+          set(
+            {
+              summaryStatsError: err instanceof Error ? err.message : 'Failed to load statistics',
+              summaryStatsLoading: false,
+            },
+            undefined,
+            'loadSummaryStats/error',
+          );
+        }
       },
 
       // Data freshness
@@ -83,6 +186,7 @@ export const useDataStore = create<DataState>()(
             sessionsError: null,
             summaryStats: null,
             summaryStatsLoading: false,
+            summaryStatsError: null,
             lastImportAt: null,
           },
           undefined,
