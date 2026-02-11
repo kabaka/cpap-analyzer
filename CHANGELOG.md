@@ -77,6 +77,15 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 - Signal Viewer canvas now renders waveform data correctly — ResizeObserver/renderer setup used a `[]`-dependency `useEffect` that ran on mount when the canvas was not in the DOM (loading skeleton shown instead); converted to a callback ref pattern so setup happens when the canvas actually mounts
 - Signal Viewer channel colors now match their designated palette — `CHANNEL_COLORS` keys corrected from PascalCase (`Flow`, `MaskPress`, `SpO2`) to camelCase (`flow`, `maskPressure`, `spo2`) matching the ResMed interpreter's output
+- Signal Viewer zoom no longer truncates viewport at duration boundary — clamping logic corrected
+- Signal Viewer pan no longer desyncs viewport start/end — pointer drag delta applied consistently
+- Signal Viewer vertical scrolling no longer blocked — Ctrl/Cmd modifier required for wheel zoom, plain scroll passes through to overflow container
+
+### Added (Phase 6 QA fixes)
+
+- Multi-channel crosshair values on hover — hovering over the signal canvas shows interpolated physical values for all visible channels with coloured readout badges
+- Loading indicator for signal data — semi-transparent overlay with spinner shown while channel data is being fetched/downsampled
+- Clickable channel legend with persistence — legend buttons toggle channel visibility, hidden state persisted in localStorage per session
 
 ### Improved
 

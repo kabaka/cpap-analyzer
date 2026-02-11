@@ -159,7 +159,6 @@ export default function SignalViewer() {
 
   // Interaction state
   const [crosshairX, setCrosshairX] = useState<number | null>(null);
-  const [crosshairY, setCrosshairY] = useState<number | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ x: number; viewport: ViewportRange } | null>(null);
 
@@ -169,7 +168,27 @@ export default function SignalViewer() {
     height: 0,
   });
 
-  // ── Derived values ───────────────────────────────────────────
+  // Wrapper width from ResizeObserver (for content-driven canvas height)
+  const [wrapperWidth, setWrapperWidth] = useState(0);
+
+  // Hidden channels for legend toggle
+  const [hiddenChannels, setHiddenChannels] = useState<Set<string>>(() => {
+    if (!sessionId) return new Set();
+    const stored = localStorage.getItem(`signal-viewer-hidden-${sessionId}`);
+    if (stored) {
+      try {
+        return new Set(JSON.parse(stored) as string[]);
+      } catch {
+        /* ignore */
+      }
+    }
+    return new Set();
+  });
+
+  // Loading state for channel data
+  const [channelsLoading, setChannelsLoading] = useState(false);
+
+  // ── Derived values ───────────────────────────────────────────────
 
   const sessionStartMs = useMemo(
     () => (session ? new Date(session.startTime).getTime() : 0),
@@ -177,6 +196,11 @@ export default function SignalViewer() {
   );
 
   const opfsSupported = useMemo(() => OPFSService.isSupported(), []);
+
+  const visibleChannelCount = useMemo(() => {
+    if (!manifest) return 0;
+    return manifest.channels.filter((ch) => !hiddenChannels.has(ch.name)).length;
+  }, [manifest, hiddenChannels]);
 
   // ── Initialize OPFS + load manifest ──────────────────────────
 
@@ -232,6 +256,8 @@ export default function SignalViewer() {
       const m = manifest;
       if (!opfs || !m) return;
 
+      setChannelsLoading(true);
+
       // Convert viewport offsets (relative to signal start) to epoch ms
       const epochStart = m.startTime + viewport.startTime;
       const epochEnd = m.startTime + viewport.endTime;
@@ -240,15 +266,20 @@ export default function SignalViewer() {
         // Calculate target downsample points
         const targetPoints = Math.max(100, Math.round(canvasSize.width * DOWNSAMPLE_MULTIPLIER));
 
+        // Only load visible (non-hidden) channels
+        const visibleChannels = m.channels.filter((ch) => !hiddenChannels.has(ch.name));
+
         // Load all channels in parallel
         const results = await Promise.all(
-          m.channels.map(async (chDesc): Promise<ChannelData> => {
+          visibleChannels.map(async (chDesc): Promise<ChannelData> => {
             const rawData = await opfs.readTimeRange(
               m.sessionId,
               chDesc.name,
               epochStart,
               epochEnd,
             );
+
+            const viewDurationMs = viewport.endTime - viewport.startTime;
 
             // Downsample if needed
             if (rawData.length > targetPoints && targetPoints > 0) {
@@ -265,7 +296,6 @@ export default function SignalViewer() {
               }
 
               const downsampled = await workerRef.current.proxy.lttb(rawData, targetPoints);
-              const viewDurationMs = viewport.endTime - viewport.startTime;
               const effectiveRate =
                 viewDurationMs > 0
                   ? (downsampled.length / viewDurationMs) * 1000
@@ -277,7 +307,8 @@ export default function SignalViewer() {
             return {
               descriptor: chDesc,
               data: rawData,
-              effectiveSampleRate: chDesc.sampleRate,
+              effectiveSampleRate:
+                viewDurationMs > 0 ? (rawData.length / viewDurationMs) * 1000 : chDesc.sampleRate,
             };
           }),
         );
@@ -293,6 +324,10 @@ export default function SignalViewer() {
         if (!cancelled) {
           setDataError(err instanceof Error ? err.message : 'Failed to load signal data');
         }
+      } finally {
+        if (!cancelled) {
+          setChannelsLoading(false);
+        }
       }
     }
 
@@ -300,7 +335,7 @@ export default function SignalViewer() {
     return () => {
       cancelled = true;
     };
-  }, [manifest, viewport, totalDurationMs, canvasSize.width]);
+  }, [manifest, viewport, totalDurationMs, canvasSize.width, hiddenChannels]);
 
   // ── Initialize renderer + ResizeObserver via callback ref ────
 
@@ -329,10 +364,9 @@ export default function SignalViewer() {
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0) {
-          renderer.resize(width, height);
-          setCanvasSize({ width, height });
+        const { width } = entry.contentRect;
+        if (width > 0) {
+          setWrapperWidth(width);
         }
       }
     });
@@ -342,9 +376,8 @@ export default function SignalViewer() {
 
     // Initial size
     const rect = wrapper.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      renderer.resize(rect.width, rect.height);
-      setCanvasSize({ width: rect.width, height: rect.height });
+    if (rect.width > 0) {
+      setWrapperWidth(rect.width);
     }
   }, []);
 
@@ -357,6 +390,30 @@ export default function SignalViewer() {
     };
   }, []);
 
+  // ── Persist hidden channels ──────────────────────────────────────
+
+  useEffect(() => {
+    if (sessionId) {
+      localStorage.setItem(
+        `signal-viewer-hidden-${sessionId}`,
+        JSON.stringify([...hiddenChannels]),
+      );
+    }
+  }, [hiddenChannels, sessionId]);
+
+  // ── Content-driven canvas sizing ─────────────────────────────
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || wrapperWidth <= 0) return;
+
+    const contentHeight = PADDING.top + visibleChannelCount * CHANNEL_HEIGHT + PADDING.bottom;
+    const finalHeight = Math.max(contentHeight, 100);
+
+    renderer.resize(wrapperWidth, finalHeight);
+    setCanvasSize({ width: wrapperWidth, height: finalHeight });
+  }, [wrapperWidth, visibleChannelCount]);
+
   // ── Build render data and trigger render ─────────────────────
 
   useEffect(() => {
@@ -366,7 +423,7 @@ export default function SignalViewer() {
     const container = containerRef.current;
 
     const channels: SignalChannel[] = manifest.channels
-      .filter((ch) => channelDataMap.has(ch.name))
+      .filter((ch) => channelDataMap.has(ch.name) && !hiddenChannels.has(ch.name))
       .map((ch) => {
         const cd = channelDataMap.get(ch.name);
         if (!cd) return null;
@@ -394,7 +451,6 @@ export default function SignalViewer() {
     const options: RenderOptions = {
       showCrosshair: crosshairX !== null,
       crosshairX,
-      crosshairY,
       showGrid: true,
       eventMarkers,
       channelHeight: CHANNEL_HEIGHT,
@@ -409,14 +465,30 @@ export default function SignalViewer() {
     events,
     sessionStartMs,
     crosshairX,
-    crosshairY,
     canvasSize,
+    hiddenChannels,
   ]);
+
+  // ── Toggle channel visibility ────────────────────────────────
+
+  const toggleChannel = useCallback((channelName: string) => {
+    setHiddenChannels((prev) => {
+      const next = new Set(prev);
+      if (next.has(channelName)) {
+        next.delete(channelName);
+      } else {
+        next.add(channelName);
+      }
+      return next;
+    });
+  }, []);
 
   // ── Zoom handler (mouse wheel) ───────────────────────────────
 
   const handleWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {
+      // Only zoom on Ctrl/Cmd+wheel; let regular wheel scroll vertically
+      if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       if (totalDurationMs <= 0) return;
 
@@ -484,9 +556,7 @@ export default function SignalViewer() {
 
       // Update crosshair position
       const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
       setCrosshairX(x);
-      setCrosshairY(y);
 
       // Pan if dragging
       if (isPanning && panStartRef.current) {
@@ -524,7 +594,6 @@ export default function SignalViewer() {
 
   const handlePointerLeave = useCallback(() => {
     setCrosshairX(null);
-    setCrosshairY(null);
     if (isPanning) {
       setIsPanning(false);
       panStartRef.current = null;
@@ -739,8 +808,17 @@ export default function SignalViewer() {
           ref={canvasCallbackRef}
           className={styles.canvas}
           role="img"
-          aria-label={`Signal waveform viewer showing ${manifest.channels.length} channels: ${manifest.channels.map((c) => c.name).join(', ')}`}
+          aria-label={`Signal waveform viewer showing ${visibleChannelCount} channels: ${manifest.channels
+            .filter((c) => !hiddenChannels.has(c.name))
+            .map((c) => c.name)
+            .join(', ')}`}
         />
+        {channelsLoading && (
+          <div className={styles.channelLoadingOverlay} role="status" aria-live="polite">
+            <div className={styles.loadingSpinner} />
+            <span>Loading signal data…</span>
+          </div>
+        )}
       </div>
 
       {/* ── Status bar ────────────────────────────────────────── */}
@@ -748,7 +826,14 @@ export default function SignalViewer() {
         <div className={styles.statusLeft}>
           <div className={styles.channelLegend}>
             {channelLegend.map((ch) => (
-              <span key={ch.name} className={styles.legendItem}>
+              <button
+                key={ch.name}
+                className={`${styles.legendItem} ${hiddenChannels.has(ch.name) ? styles.legendItemHidden : ''}`}
+                onClick={() => toggleChannel(ch.name)}
+                aria-pressed={!hiddenChannels.has(ch.name)}
+                title={`Toggle ${ch.name} visibility`}
+                type="button"
+              >
                 <span
                   className={styles.legendSwatch}
                   ref={(el) => {
@@ -758,7 +843,7 @@ export default function SignalViewer() {
                   }}
                 />
                 {ch.name} ({ch.unit})
-              </span>
+              </button>
             ))}
           </div>
         </div>

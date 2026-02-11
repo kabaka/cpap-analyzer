@@ -60,8 +60,6 @@ export interface RenderOptions {
   readonly showCrosshair: boolean;
   /** Canvas X coordinate of the crosshair, or `null` when hidden. */
   readonly crosshairX: number | null;
-  /** Canvas Y coordinate of the crosshair, or `null` when hidden. */
-  readonly crosshairY: number | null;
   /** Whether to draw grid lines. */
   readonly showGrid: boolean;
   /** Event markers to render as semi-transparent rectangles. */
@@ -285,6 +283,44 @@ export class SignalRenderer {
     return null;
   }
 
+  /**
+   * Get the physical value and Y position for ALL channels at a given canvas X coordinate.
+   */
+  getValuesAtTime(
+    x: number,
+    viewport: ViewportState,
+    options: RenderOptions,
+  ): { channel: string; value: number; unit: string; color: string; y: number }[] {
+    const time = this.getTimeAtX(x, viewport, options);
+    const results: { channel: string; value: number; unit: string; color: string; y: number }[] =
+      [];
+
+    for (let i = 0; i < viewport.channels.length; i++) {
+      const ch = viewport.channels[i];
+      if (!ch || ch.data.length === 0) continue;
+
+      const durationMs = viewport.endTime - viewport.startTime;
+      if (durationMs <= 0) continue;
+
+      const msPerSample = durationMs / ch.data.length;
+      const sampleIdx = Math.round((time - viewport.startTime) / msPerSample);
+      if (sampleIdx < 0 || sampleIdx >= ch.data.length) continue;
+
+      const value = ch.data[sampleIdx] ?? 0;
+
+      const stripTop = options.padding.top + i * options.channelHeight;
+      const innerTop = stripTop + 16;
+      const innerBottom = stripTop + options.channelHeight - 8;
+      const physRange = ch.physicalMax - ch.physicalMin;
+      const normY = physRange > 0 ? (value - ch.physicalMin) / physRange : 0.5;
+      const y = innerBottom - normY * (innerBottom - innerTop);
+
+      results.push({ channel: ch.name, value, unit: ch.unit, color: ch.color, y });
+    }
+
+    return results;
+  }
+
   /** Cancel any pending frame and release references. */
   dispose(): void {
     if (this.pendingFrame !== null) {
@@ -404,10 +440,9 @@ export class SignalRenderer {
     const physRange = ch.physicalMax - ch.physicalMin;
     if (physRange <= 0) return;
 
-    // Determine which samples fall in the viewport.
     // The data array covers the viewport time range (already sliced/downsampled).
-    const totalDataDurationMs = (data.length / sampleRate) * 1000;
-    const msPerSample = totalDataDurationMs / data.length;
+    // Map data points directly to fill the viewport width.
+    const msPerSample = durationMs / data.length;
 
     ctx.save();
     ctx.beginPath();
@@ -639,13 +674,13 @@ export class SignalRenderer {
     plotWidth: number,
   ): void {
     const { ctx } = this;
-    const { crosshairX, crosshairY, channelHeight, padding } = options;
+    const { crosshairX, channelHeight, padding } = options;
 
     if (crosshairX === null) return;
 
     const totalHeight = padding.top + viewport.channels.length * channelHeight;
 
-    // Vertical line
+    // Vertical crosshair line
     ctx.save();
     ctx.strokeStyle = CROSSHAIR_COLOR;
     ctx.lineWidth = 1;
@@ -656,36 +691,55 @@ export class SignalRenderer {
     ctx.lineTo(crosshairX, totalHeight);
     ctx.stroke();
 
-    // Horizontal line per channel at cursor Y
-    if (crosshairY !== null) {
-      for (let i = 0; i < viewport.channels.length; i++) {
-        const stripTop = padding.top + i * channelHeight;
-        const stripBottom = stripTop + channelHeight;
-
-        if (crosshairY >= stripTop && crosshairY <= stripBottom) {
-          ctx.beginPath();
-          ctx.moveTo(plotLeft, crosshairY);
-          ctx.lineTo(plotLeft + plotWidth, crosshairY);
-          ctx.stroke();
-          break;
-        }
-      }
-    }
-
     // Time readout at top
     const time = this.getTimeAtX(crosshairX, viewport, options);
     if (time >= viewport.startTime && time <= viewport.endTime) {
       this.drawReadoutBadge(crosshairX, padding.top - 2, formatTimeLabel(time), 'bottom');
     }
 
-    // Value readout per channel
-    if (crosshairY !== null) {
-      const hit = this.getValueAtPosition(crosshairX, crosshairY, viewport, options);
-      if (hit) {
-        const label = `${hit.value.toFixed(2)} ${viewport.channels.find((c) => c.name === hit.channel)?.unit ?? ''}`;
-        this.drawReadoutBadge(plotLeft + plotWidth + 4, crosshairY, label, 'left');
-      }
+    // Value readouts + intersection dots for ALL channels
+    const values = this.getValuesAtTime(crosshairX, viewport, options);
+    for (const v of values) {
+      // Intersection dot on the waveform
+      ctx.fillStyle = v.color;
+      ctx.beginPath();
+      ctx.arc(crosshairX, v.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Coloured readout badge at the right edge
+      const label = `${v.value.toFixed(2)} ${v.unit}`;
+      this.drawColoredReadoutBadge(plotLeft + plotWidth + 4, v.y, label, v.color);
     }
+
+    ctx.restore();
+  }
+
+  /** Draw a small coloured text badge at the given position. */
+  private drawColoredReadoutBadge(x: number, y: number, text: string, color: string): void {
+    const { ctx } = this;
+    ctx.save();
+
+    ctx.font = `${READOUT_FONT_SIZE}px ${this.fontFamily()}`;
+    const metrics = ctx.measureText(text);
+    const pw = 4;
+    const ph = 2;
+    const boxW = metrics.width + pw * 2;
+    const boxH = READOUT_FONT_SIZE + ph * 2;
+
+    const bx = Math.max(0, Math.min(x, this.logicalWidth - boxW));
+    const by = Math.max(0, y - boxH / 2);
+
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, boxW, boxH, 3);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+
+    ctx.fillStyle = READOUT_FG;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.fillText(text, bx + pw, by + ph);
 
     ctx.restore();
   }

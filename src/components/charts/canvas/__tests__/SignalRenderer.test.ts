@@ -212,7 +212,7 @@ describe('SignalRenderer', () => {
     return {
       showCrosshair: false,
       crosshairX: null,
-      crosshairY: null,
+
       showGrid: false,
       eventMarkers: [],
       channelHeight: 100,
@@ -363,6 +363,108 @@ describe('SignalRenderer', () => {
       // X far to the left => time before startTime
       const result = renderer.getValueAtPosition(-100, defaultPadding.top + 50, viewport, options);
       expect(result).toBeNull();
+    });
+  });
+
+  describe('getValuesAtTime', () => {
+    it('should return values for all channels at a given X position', () => {
+      const ch1 = makeChannel({ name: 'Flow', unit: 'L/min', color: '#ff0000' });
+      const ch2 = makeChannel({
+        name: 'Leak',
+        unit: 'L/min',
+        color: '#00ff00',
+        physicalMin: 0,
+        physicalMax: 100,
+        data: new Float32Array([10, 20, 30, 40, 50]),
+      });
+      const viewport = makeViewport({ channels: [ch1, ch2] });
+      const options = makeOptions();
+
+      // Pick an X in the middle of the plot area
+      const plotLeft = defaultPadding.left;
+      const plotRight = 800 - defaultPadding.right;
+      const midX = (plotLeft + plotRight) / 2;
+
+      const results = renderer.getValuesAtTime(midX, viewport, options);
+      expect(results).toHaveLength(2);
+      expect(results[0]!.channel).toBe('Flow');
+      expect(results[0]!.unit).toBe('L/min');
+      expect(results[0]!.color).toBe('#ff0000');
+      expect(typeof results[0]!.value).toBe('number');
+      expect(typeof results[0]!.y).toBe('number');
+      expect(results[1]!.channel).toBe('Leak');
+      expect(results[1]!.unit).toBe('L/min');
+      expect(results[1]!.color).toBe('#00ff00');
+    });
+
+    it('should return empty array for empty viewport / no channels', () => {
+      const viewport = makeViewport({ channels: [] });
+      const options = makeOptions();
+
+      const results = renderer.getValuesAtTime(400, viewport, options);
+      expect(results).toEqual([]);
+    });
+
+    it('should return empty array when durationMs <= 0', () => {
+      const ch = makeChannel();
+      const viewport = makeViewport({ startTime: 5000, endTime: 5000, channels: [ch] });
+      const options = makeOptions();
+
+      const results = renderer.getValuesAtTime(400, viewport, options);
+      expect(results).toEqual([]);
+    });
+
+    it('should skip channels with empty data', () => {
+      const ch1 = makeChannel({ name: 'Flow' });
+      const ch2 = makeChannel({
+        name: 'EmptyChannel',
+        data: new Float32Array(0),
+      });
+      const ch3 = makeChannel({ name: 'Leak', physicalMin: 0, physicalMax: 100 });
+      const viewport = makeViewport({ channels: [ch1, ch2, ch3] });
+      const options = makeOptions();
+
+      const plotLeft = defaultPadding.left;
+      const plotRight = 800 - defaultPadding.right;
+      const midX = (plotLeft + plotRight) / 2;
+
+      const results = renderer.getValuesAtTime(midX, viewport, options);
+      // ch2 has empty data, so should be skipped
+      expect(results).toHaveLength(2);
+      expect(results.map((r) => r.channel)).toEqual(['Flow', 'Leak']);
+    });
+
+    it('should return empty results for out-of-range X position', () => {
+      const ch = makeChannel();
+      const viewport = makeViewport({ startTime: 1000, endTime: 5000, channels: [ch] });
+      const options = makeOptions();
+
+      // X far to the left — maps to time well before startTime; sampleIdx will be negative
+      const results = renderer.getValuesAtTime(-500, viewport, options);
+      expect(results).toEqual([]);
+    });
+
+    it('should return correct Y position within the channel strip', () => {
+      // A channel with data at the midpoint of its physical range
+      const midValue = 20; // midpoint of -20..60
+      const ch = makeChannel({
+        data: new Float32Array([midValue, midValue, midValue, midValue, midValue]),
+      });
+      const viewport = makeViewport({ channels: [ch] });
+      const options = makeOptions();
+
+      const plotLeft = defaultPadding.left;
+      const plotRight = 800 - defaultPadding.right;
+      const midX = (plotLeft + plotRight) / 2;
+
+      const results = renderer.getValuesAtTime(midX, viewport, options);
+      expect(results).toHaveLength(1);
+
+      // Y should be within the channel strip area
+      const stripTop = defaultPadding.top;
+      const stripBottom = stripTop + options.channelHeight;
+      expect(results[0]!.y).toBeGreaterThanOrEqual(stripTop);
+      expect(results[0]!.y).toBeLessThanOrEqual(stripBottom);
     });
   });
 
