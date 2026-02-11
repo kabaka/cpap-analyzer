@@ -212,8 +212,11 @@ function withTimeout<T>(target: Remote<T>, timeoutMs: number): Remote<T> {
  *
  * @typeParam T  The interface exposed by the worker via `Comlink.expose`.
  *
- * @param workerUrl  The URL produced by
- *   `new URL('./myWorker.ts', import.meta.url)`.
+ * @param workerUrlOrFactory  Either a `URL` produced by
+ *   `new URL('./myWorker.ts', import.meta.url)`, or a **factory function**
+ *   that returns a `Worker`.  Prefer passing a factory when the call site
+ *   needs Vite to statically detect the `new Worker(new URL(…))` pattern
+ *   for production bundling.
  * @param options    Optional configuration.
  * @returns A {@link WrappedWorker} whose `proxy` supports typed RPC
  *   calls with automatic timeout.
@@ -224,20 +227,24 @@ function withTimeout<T>(target: Remote<T>, timeoutMs: number): Remote<T> {
  *   parse(buf: ArrayBuffer): Promise<ParsedResult>;
  * }
  *
+ * // Using a factory (preferred – Vite bundles the worker correctly):
  * const { proxy, dispose } = createWorker<ParserAPI>(
+ *   () => new Worker(
+ *     new URL('./parserWorker.ts', import.meta.url),
+ *     { type: 'module', name: 'edf-parser' },
+ *   ),
+ *   { timeoutMs: 10_000 },
+ * );
+ *
+ * // Using a URL (still supported for backward compatibility):
+ * const w = createWorker<ParserAPI>(
  *   new URL('./parserWorker.ts', import.meta.url),
  *   { timeoutMs: 10_000, name: 'edf-parser' },
  * );
- *
- * try {
- *   const result = await proxy.parse(buffer);
- * } finally {
- *   dispose();
- * }
  * ```
  */
 export function createWorker<T>(
-  workerUrl: URL,
+  workerUrlOrFactory: URL | (() => Worker),
   options: CreateWorkerOptions = {},
 ): WrappedWorker<T> {
   const { timeoutMs = 30_000, name } = options;
@@ -245,17 +252,23 @@ export function createWorker<T>(
   let worker: Worker;
 
   try {
-    worker = new Worker(workerUrl, {
-      type: 'module',
-      name: name ?? workerUrl.pathname.split('/').pop() ?? 'cpap-worker',
-    });
+    if (typeof workerUrlOrFactory === 'function') {
+      worker = workerUrlOrFactory();
+    } else {
+      worker = new Worker(workerUrlOrFactory, {
+        type: 'module',
+        name: name ?? workerUrlOrFactory.pathname.split('/').pop() ?? 'cpap-worker',
+      });
+    }
   } catch (err) {
+    const label =
+      typeof workerUrlOrFactory === 'function' ? 'worker factory' : workerUrlOrFactory.href;
     throw buildWorkerError(
       'WORKER_CREATION_FAILED',
       'Worker Creation Failed',
-      `Failed to create Worker from ${workerUrl.href}`,
+      `Failed to create Worker from ${label}`,
       ErrorSeverity.FATAL,
-      { workerUrl: workerUrl.href },
+      typeof workerUrlOrFactory === 'function' ? undefined : { workerUrl: workerUrlOrFactory.href },
       err instanceof Error ? err : new Error(String(err)),
     );
   }

@@ -54,11 +54,12 @@ interface UseImportResult {
 function makeWorkerFactory(): EDFWorkerFactory {
   return () =>
     createWorker<EDFParserWorkerAPI>(
-      new URL('../services/workers/edfParser.worker.ts', import.meta.url),
-      {
-        name: 'edf-parser',
-        timeoutMs: 60_000,
-      },
+      () =>
+        new Worker(new URL('../services/workers/edfParser.worker.ts', import.meta.url), {
+          type: 'module',
+          name: 'edf-parser',
+        }),
+      { timeoutMs: 60_000 },
     );
 }
 
