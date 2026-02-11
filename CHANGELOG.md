@@ -58,3 +58,4 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 - SessionBuilder channel merge now prefers channels with more samples (not just higher sample rate)
 - Validator now accepts `dataRecordDuration = 0` for annotation-only files
 - Synthetic EDF generator TAL format corrected to match EDF+ specification
+- GitHub Pages deployment now works correctly — configured Vite base path, React Router basename, and 404.html fallback for SPA routing on `/cpap-analyzer/` subpath
