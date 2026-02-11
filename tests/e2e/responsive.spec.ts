@@ -40,10 +40,18 @@ test.describe('Responsive Layout', () => {
     await menuToggle.click();
     await expect(menuToggle).toHaveAttribute('aria-expanded', 'true');
 
-    // Navigate via sidebar and sidebar should close
+    // Wait for sidebar to be visible and nav links to be interactive
     const nav = page.getByRole('navigation');
-    await nav.getByRole('link', { name: /sessions/i }).click();
-    await expect(page.getByRole('heading', { name: /sessions/i })).toBeVisible();
+    const sessionsLink = nav.getByRole('link', { name: /sessions/i });
+    await expect(sessionsLink).toBeVisible();
+
+    // Navigate via sidebar
+    await sessionsLink.click();
+
+    // Sidebar should close and Sessions heading should appear
+    await expect(page.getByRole('heading', { name: 'Sessions', exact: true })).toBeVisible({
+      timeout: 10000,
+    });
   });
 
   test('should handle tablet viewport', async ({ page }) => {

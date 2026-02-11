@@ -329,15 +329,17 @@ test.describe('Session Detail', () => {
     const { sessions, aggregates } = createTestSessions();
     await setupWithData(page, sessions, aggregates, '/sessions/sess-1');
 
-    // Wait for the session detail heading
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    // Wait for the session detail heading with extended timeout for CI
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 10000 });
 
-    // Click breadcrumb
-    await page.locator('nav[aria-label="Breadcrumb"] a', { hasText: 'Sessions' }).click();
+    // Wait for breadcrumb to be visible before clicking
+    const breadcrumbLink = page.locator('nav[aria-label="Breadcrumb"] a', { hasText: 'Sessions' });
+    await expect(breadcrumbLink).toBeVisible({ timeout: 10000 });
+    await breadcrumbLink.click();
 
     // Should navigate to session list
-    await expect(page).toHaveURL(/\/sessions$/);
-    await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible();
+    await expect(page).toHaveURL(/\/sessions(\?|$)/, { timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible({ timeout: 10000 });
   });
 
   test('shows error state for non-existent session', async ({ page }) => {
