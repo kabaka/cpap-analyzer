@@ -140,9 +140,14 @@ export class ImportService {
 
     const worker = this.workerFactory();
     try {
-      for (const df of discovered) {
+      for (let fileIdx = 0; fileIdx < discovered.length; fileIdx++) {
+        const df = discovered[fileIdx];
+        if (!df) continue;
         try {
-          emit({ currentFileName: df.relativePath });
+          emit({
+            currentFileName: df.relativePath,
+            currentStage: `Parsing file ${fileIdx + 1} of ${discovered.length}`,
+          });
 
           if (df.file.size > MAX_FILE_SIZE) {
             errors.push({
@@ -201,14 +206,21 @@ export class ImportService {
     }
 
     // --- 3. Group & build sessions ----------------------------------------
-    emit({ status: 'building' });
-
     const dayGroups = this.groupByDay(discovered);
+    emit({
+      status: 'building',
+      currentStage: 'Building sessions from parsed data...',
+      totalDayGroups: dayGroups.length,
+      dayGroupsProcessed: 0,
+    });
+
     const allBuildResults: BuildResult[] = [];
     /** Maps session ID → set of file relative paths that contributed. */
     const sessionFileMap = new Map<string, Set<string>>();
 
-    for (const dayGroup of dayGroups) {
+    for (let i = 0; i < dayGroups.length; i++) {
+      const dayGroup = dayGroups[i];
+      if (!dayGroup) continue;
       try {
         const dayInterpretations = this.collectDayInterpretations(dayGroup, interpretations);
         if (dayInterpretations.length === 0) continue;
@@ -228,10 +240,24 @@ export class ImportService {
           recoverable: true,
         });
       }
+
+      emit({
+        dayGroupsProcessed: i + 1,
+        currentStage: `Building sessions: day ${i + 1} of ${dayGroups.length}`,
+      });
+
+      // Yield to the browser every 5 day groups so the UI can repaint
+      if ((i + 1) % 5 === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
     }
 
     // --- 4. Validate built sessions ---------------------------------------
-    for (const br of allBuildResults) {
+    emit({ currentStage: 'Validating sessions...', sessionsValidated: 0 });
+
+    for (let i = 0; i < allBuildResults.length; i++) {
+      const br = allBuildResults[i];
+      if (!br) continue;
       const sessionValidation = this.validator.validateSession(br);
       for (const w of sessionValidation.warnings) {
         warnings.push(`Session ${br.session.date}: ${w.message}`);
@@ -239,16 +265,24 @@ export class ImportService {
       for (const e of sessionValidation.errors) {
         warnings.push(`Session ${br.session.date} [error]: ${e.message}`);
       }
+      emit({ sessionsValidated: i + 1 });
     }
 
     // --- 5. Store ---------------------------------------------------------
-    emit({ status: 'storing' });
+    emit({
+      status: 'storing',
+      totalSessionsToStore: allBuildResults.length,
+      sessionsStored: 0,
+      currentStage: 'Storing sessions...',
+    });
 
     let sessionsCreated = 0;
     let sessionsSkipped = 0;
     const allFileHashes: string[] = [];
 
-    for (const br of allBuildResults) {
+    for (let storeIdx = 0; storeIdx < allBuildResults.length; storeIdx++) {
+      const br = allBuildResults[storeIdx];
+      if (!br) continue;
       try {
         // Compute session sourceHash from contributing file hashes
         const contributing = sessionFileMap.get(br.session.id) ?? new Set<string>();
@@ -261,6 +295,10 @@ export class ImportService {
         if (skipDuplicates && existingHashes.has(sessionSourceHash)) {
           warnings.push(`Session ${br.session.date}: skipped (duplicate)`);
           sessionsSkipped++;
+          emit({
+            sessionsStored: storeIdx + 1,
+            currentStage: `Storing session ${storeIdx + 1} of ${allBuildResults.length}`,
+          });
           continue;
         }
 
@@ -273,12 +311,20 @@ export class ImportService {
           contributing,
         );
         sessionsCreated++;
-        emit({ sessionsCreated });
+        emit({
+          sessionsCreated,
+          sessionsStored: storeIdx + 1,
+          currentStage: `Storing session ${storeIdx + 1} of ${allBuildResults.length}`,
+        });
       } catch (err) {
         errors.push({
           fileName: `session-${br.session.date}`,
           error: `Storage failed: ${err instanceof Error ? err.message : String(err)}`,
           recoverable: true,
+        });
+        emit({
+          sessionsStored: storeIdx + 1,
+          currentStage: `Storing session ${storeIdx + 1} of ${allBuildResults.length}`,
         });
       }
     }
@@ -532,6 +578,12 @@ export class ImportService {
       errors: [],
       startTime: 0,
       warnings: [],
+      currentStage: '',
+      dayGroupsProcessed: 0,
+      totalDayGroups: 0,
+      sessionsValidated: 0,
+      sessionsStored: 0,
+      totalSessionsToStore: 0,
     };
   }
 

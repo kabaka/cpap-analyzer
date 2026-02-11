@@ -1,8 +1,768 @@
+/**
+ * Signal Viewer — interactive multi-channel waveform display.
+ *
+ * Renders high-frequency (25–50 Hz) CPAP signal data (Flow, MaskPressure,
+ * Leak, SpO₂) as stacked Canvas 2D waveforms with zoom, pan, and crosshair
+ * controls.
+ *
+ * Data flow:
+ * 1. Session metadata + events loaded from IndexedDB via hooks.
+ * 2. Signal data loaded from OPFS via {@link OPFSService} for the current viewport.
+ * 3. Downsampled to canvas resolution via Web Worker ({@link DownsampleWorkerAPI}).
+ * 4. Rendered by {@link SignalRenderer} on a Canvas element.
+ *
+ * @module views/Sessions/SignalViewer
+ */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+
+import { SignalRenderer } from '@/components/charts/canvas/SignalRenderer';
+import type {
+  EventMarker,
+  RenderOptions,
+  SignalChannel,
+  ViewportState,
+} from '@/components/charts/canvas/SignalRenderer';
+import { Button, Skeleton } from '@/components/ui';
+import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
+import type { SignalManifest, ChannelDescriptor } from '@/services/storage/OPFSService';
+import { OPFSService } from '@/services/storage/OPFSService';
+import { createWorker } from '@/services/workers/createWorker';
+import type { WrappedWorker } from '@/services/workers/createWorker';
+import type { DownsampleWorkerAPI } from '@/services/workers/downsample.worker';
+import type { Event as TherapyEvent } from '@/types';
+
+import styles from './SignalViewer.module.css';
+
+// ── Constants ────────────────────────────────────────────────────
+
+/** Chart palette — resolved at render time from CSS custom properties. */
+const CHANNEL_COLORS: Record<string, string> = {
+  Flow: 'var(--color-chart-1)',
+  MaskPress: 'var(--color-chart-2)',
+  Leak: 'var(--color-chart-3)',
+  SpO2: 'var(--color-chart-4)',
+  EPAP: 'var(--color-chart-5)',
+  IPAP: 'var(--color-chart-6)',
+};
+
+/** Fallback colour if channel name isn't in the map. */
+const DEFAULT_CHANNEL_COLOR = 'var(--color-chart-7)';
+
+/** Event type → colour mapping (matches SessionDetail). */
+const EVENT_COLORS: Record<string, string> = {
+  ObstructiveApnea: 'var(--color-status-severe)',
+  CentralApnea: 'var(--color-status-moderate)',
+  MixedApnea: 'var(--color-status-moderate)',
+  Hypopnea: 'var(--color-status-mild)',
+  RERA: 'var(--color-chart-4)',
+  FlowLimitation: 'var(--color-chart-5)',
+  LargeLeak: 'var(--color-chart-6)',
+  PeriodicBreathing: 'var(--color-chart-5)',
+  ClearAirway: 'var(--color-chart-3)',
+  Vibratory: 'var(--color-text-muted)',
+  ChecksumError: 'var(--color-text-muted)',
+};
+
+/** Zoom presets: label → duration in ms. */
+const ZOOM_PRESETS: readonly { label: string; ms: number | null }[] = [
+  { label: '1m', ms: 60_000 },
+  { label: '5m', ms: 300_000 },
+  { label: '30m', ms: 1_800_000 },
+  { label: '1h', ms: 3_600_000 },
+  { label: 'All', ms: null },
+];
+
+/** Zoom factor per wheel notch. */
+const ZOOM_FACTOR = 1.5;
+
+/** Minimum visible time window in ms (0.5 second). */
+const MIN_VIEWPORT_MS = 500;
+
+/** Pixel height per channel strip. */
+const CHANNEL_HEIGHT = 150;
+
+/** Canvas padding. */
+const PADDING = { top: 20, right: 24, bottom: 28, left: 56 } as const;
+
+/** Number of viewport pixels to downsample target. */
+const DOWNSAMPLE_MULTIPLIER = 2;
+
+// ── Types ────────────────────────────────────────────────────────
+
+interface ChannelData {
+  descriptor: ChannelDescriptor;
+  data: Float32Array;
+  effectiveSampleRate: number;
+}
+
+interface ViewportRange {
+  startTime: number; // ms offset from session signal start
+  endTime: number; // ms offset from session signal start
+}
+
+// ── Resolve CSS custom property to a computed colour value ────────
+
+function resolveColor(el: HTMLElement | null, varExpr: string): string {
+  if (!el) return varExpr;
+  // Extract var name: "var(--color-chart-1)" → "--color-chart-1"
+  const match = /^var\(([^)]+)\)$/.exec(varExpr);
+  if (!match) return varExpr;
+
+  const resolved = getComputedStyle(el)
+    .getPropertyValue(match[1] ?? '')
+    .trim();
+  return resolved || varExpr;
+}
+
+// ── Build event markers from therapy events ──────────────────────
+
+function buildEventMarkers(
+  events: TherapyEvent[],
+  sessionStartMs: number,
+  containerEl: HTMLElement | null,
+): EventMarker[] {
+  return events.map((evt) => ({
+    startTime: evt.timestamp - sessionStartMs,
+    duration: evt.duration * 1000, // seconds → ms
+    type: evt.type,
+    color: resolveColor(containerEl, EVENT_COLORS[evt.type] ?? 'var(--color-chart-7)'),
+  }));
+}
+
+// ── Component ────────────────────────────────────────────────────
+
 export default function SignalViewer() {
+  const { sessionId } = useParams<{ sessionId: string }>();
+  const navigate = useNavigate();
+
+  // ── Session + event data from IndexedDB ──────────────────────
+  const { session, loading: sessionLoading, error: sessionError } = useSessionDetail(sessionId);
+  const { events, loading: eventsLoading, error: eventsError } = useEventData(sessionId);
+
+  // ── Refs ─────────────────────────────────────────────────────
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<SignalRenderer | null>(null);
+  const workerRef = useRef<WrappedWorker<DownsampleWorkerAPI> | null>(null);
+  const opfsRef = useRef<OPFSService | null>(null);
+
+  // ── State ────────────────────────────────────────────────────
+  const [manifest, setManifest] = useState<SignalManifest | null>(null);
+  const [channelDataMap, setChannelDataMap] = useState<Map<string, ChannelData>>(new Map());
+  const [viewport, setViewport] = useState<ViewportRange>({ startTime: 0, endTime: 0 });
+  const [totalDurationMs, setTotalDurationMs] = useState(0);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
+
+  // Interaction state
+  const [crosshairX, setCrosshairX] = useState<number | null>(null);
+  const [crosshairY, setCrosshairY] = useState<number | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{ x: number; viewport: ViewportRange } | null>(null);
+
+  // Canvas dimensions
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
+
+  // ── Derived values ───────────────────────────────────────────
+
+  const sessionStartMs = useMemo(
+    () => (session ? new Date(session.startTime).getTime() : 0),
+    [session],
+  );
+
+  const opfsSupported = useMemo(() => OPFSService.isSupported(), []);
+
+  // ── Initialize OPFS + load manifest ──────────────────────────
+
+  useEffect(() => {
+    if (!sessionId || !opfsSupported) return;
+
+    let cancelled = false;
+    const sid = sessionId;
+
+    async function init() {
+      setDataLoading(true);
+      setDataError(null);
+
+      try {
+        const opfs = new OPFSService();
+        await opfs.initialize();
+        opfsRef.current = opfs;
+
+        const m = await opfs.readManifest(sid);
+        if (cancelled) return;
+
+        setManifest(m);
+        const duration = m.durationSeconds * 1000;
+        setTotalDurationMs(duration);
+        setViewport({ startTime: 0, endTime: duration });
+      } catch (err) {
+        if (!cancelled) {
+          setDataError(err instanceof Error ? err.message : 'Failed to load signal manifest');
+        }
+      } finally {
+        if (!cancelled) {
+          setDataLoading(false);
+        }
+      }
+    }
+
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, opfsSupported]);
+
+  // ── Load signal data for current viewport ────────────────────
+
+  useEffect(() => {
+    if (!manifest || !opfsRef.current || totalDurationMs <= 0) return;
+    if (viewport.endTime <= viewport.startTime) return;
+
+    let cancelled = false;
+
+    async function loadChannels() {
+      const opfs = opfsRef.current;
+      const m = manifest;
+      if (!opfs || !m) return;
+
+      // Convert viewport offsets (relative to signal start) to epoch ms
+      const epochStart = m.startTime + viewport.startTime;
+      const epochEnd = m.startTime + viewport.endTime;
+
+      try {
+        // Calculate target downsample points
+        const targetPoints = Math.max(100, Math.round(canvasSize.width * DOWNSAMPLE_MULTIPLIER));
+
+        // Load all channels in parallel
+        const results = await Promise.all(
+          m.channels.map(async (chDesc): Promise<ChannelData> => {
+            const rawData = await opfs.readTimeRange(
+              m.sessionId,
+              chDesc.name,
+              epochStart,
+              epochEnd,
+            );
+
+            // Downsample if needed
+            if (rawData.length > targetPoints && targetPoints > 0) {
+              // Lazy-create the downsample worker
+              if (!workerRef.current) {
+                workerRef.current = createWorker<DownsampleWorkerAPI>(
+                  () =>
+                    new Worker(
+                      new URL('../../services/workers/downsample.worker.ts', import.meta.url),
+                      { type: 'module', name: 'signal-downsample' },
+                    ),
+                  { timeoutMs: 30_000 },
+                );
+              }
+
+              const downsampled = await workerRef.current.proxy.lttb(rawData, targetPoints);
+              const viewDurationMs = viewport.endTime - viewport.startTime;
+              const effectiveRate =
+                viewDurationMs > 0
+                  ? (downsampled.length / viewDurationMs) * 1000
+                  : chDesc.sampleRate;
+
+              return { descriptor: chDesc, data: downsampled, effectiveSampleRate: effectiveRate };
+            }
+
+            return {
+              descriptor: chDesc,
+              data: rawData,
+              effectiveSampleRate: chDesc.sampleRate,
+            };
+          }),
+        );
+
+        if (!cancelled) {
+          const newMap = new Map<string, ChannelData>();
+          for (const r of results) {
+            newMap.set(r.descriptor.name, r);
+          }
+          setChannelDataMap(newMap);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setDataError(err instanceof Error ? err.message : 'Failed to load signal data');
+        }
+      }
+    }
+
+    void loadChannels();
+    return () => {
+      cancelled = true;
+    };
+  }, [manifest, viewport, totalDurationMs, canvasSize.width]);
+
+  // ── Initialize renderer + ResizeObserver ─────────────────────
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const renderer = new SignalRenderer(canvas);
+    rendererRef.current = renderer;
+
+    // Size the canvas to its container
+    const wrapper = canvas.parentElement;
+    if (!wrapper) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          renderer.resize(width, height);
+          setCanvasSize({ width, height });
+        }
+      }
+    });
+
+    observer.observe(wrapper);
+
+    // Initial size
+    const rect = wrapper.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      renderer.resize(rect.width, rect.height);
+      setCanvasSize({ width: rect.width, height: rect.height });
+    }
+
+    return () => {
+      observer.disconnect();
+      renderer.dispose();
+      rendererRef.current = null;
+    };
+  }, []);
+
+  // ── Dispose worker on unmount ────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      workerRef.current?.dispose();
+      workerRef.current = null;
+    };
+  }, []);
+
+  // ── Build render data and trigger render ─────────────────────
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || channelDataMap.size === 0 || !manifest) return;
+
+    const container = containerRef.current;
+
+    const channels: SignalChannel[] = manifest.channels
+      .filter((ch) => channelDataMap.has(ch.name))
+      .map((ch) => {
+        const cd = channelDataMap.get(ch.name);
+        if (!cd) return null;
+        const colorVar = CHANNEL_COLORS[ch.name] ?? DEFAULT_CHANNEL_COLOR;
+        return {
+          name: ch.name,
+          data: cd.data,
+          sampleRate: cd.effectiveSampleRate,
+          unit: ch.unit,
+          color: resolveColor(container, colorVar),
+          physicalMin: ch.physicalMin,
+          physicalMax: ch.physicalMax,
+        };
+      })
+      .filter((ch): ch is SignalChannel => ch !== null);
+
+    const viewportState: ViewportState = {
+      startTime: viewport.startTime,
+      endTime: viewport.endTime,
+      channels,
+    };
+
+    const eventMarkers = buildEventMarkers(events, sessionStartMs, container);
+
+    const options: RenderOptions = {
+      showCrosshair: crosshairX !== null,
+      crosshairX,
+      crosshairY,
+      showGrid: true,
+      eventMarkers,
+      channelHeight: CHANNEL_HEIGHT,
+      padding: PADDING,
+    };
+
+    renderer.render(viewportState, options);
+  }, [
+    channelDataMap,
+    manifest,
+    viewport,
+    events,
+    sessionStartMs,
+    crosshairX,
+    crosshairY,
+    canvasSize,
+  ]);
+
+  // ── Zoom handler (mouse wheel) ───────────────────────────────
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      if (totalDurationMs <= 0) return;
+
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      // Cursor position as fraction of the plot area
+      const cursorX = e.clientX - rect.left;
+      const plotLeft = PADDING.left;
+      const plotWidth = rect.width - PADDING.left - PADDING.right;
+      if (plotWidth <= 0) return;
+
+      const cursorFrac = Math.max(0, Math.min(1, (cursorX - plotLeft) / plotWidth));
+      const cursorTime = viewport.startTime + cursorFrac * (viewport.endTime - viewport.startTime);
+
+      // Zoom direction
+      const zoomIn = e.deltaY < 0;
+      const factor = zoomIn ? 1 / ZOOM_FACTOR : ZOOM_FACTOR;
+
+      const currentDuration = viewport.endTime - viewport.startTime;
+      let newDuration = currentDuration * factor;
+
+      // Clamp
+      newDuration = Math.max(MIN_VIEWPORT_MS, Math.min(totalDurationMs, newDuration));
+
+      // Center around cursor
+      let newStart = cursorTime - cursorFrac * newDuration;
+      let newEnd = newStart + newDuration;
+
+      // Clamp to valid range
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = newDuration;
+      }
+      if (newEnd > totalDurationMs) {
+        newEnd = totalDurationMs;
+        newStart = Math.max(0, newEnd - newDuration);
+      }
+
+      setViewport({ startTime: newStart, endTime: newEnd });
+    },
+    [viewport, totalDurationMs],
+  );
+
+  // ── Pan handlers ─────────────────────────────────────────────
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // Only primary button (left click)
+      if (e.button !== 0) return;
+
+      setIsPanning(true);
+      panStartRef.current = { x: e.clientX, viewport: { ...viewport } };
+
+      // Capture pointer for smooth dragging outside the element
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [viewport],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      // Update crosshair position
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setCrosshairX(x);
+      setCrosshairY(y);
+
+      // Pan if dragging
+      if (isPanning && panStartRef.current) {
+        const dx = e.clientX - panStartRef.current.x;
+        const plotWidth = rect.width - PADDING.left - PADDING.right;
+        if (plotWidth <= 0) return;
+
+        const startVP = panStartRef.current.viewport;
+        const vpDuration = startVP.endTime - startVP.startTime;
+        const timeDelta = -(dx / plotWidth) * vpDuration;
+
+        let newStart = startVP.startTime + timeDelta;
+        let newEnd = startVP.endTime + timeDelta;
+
+        // Clamp to valid range
+        if (newStart < 0) {
+          newStart = 0;
+          newEnd = vpDuration;
+        }
+        if (newEnd > totalDurationMs) {
+          newEnd = totalDurationMs;
+          newStart = Math.max(0, newEnd - vpDuration);
+        }
+
+        setViewport({ startTime: newStart, endTime: newEnd });
+      }
+    },
+    [isPanning, totalDurationMs],
+  );
+
+  const handlePointerUp = useCallback(() => {
+    setIsPanning(false);
+    panStartRef.current = null;
+  }, []);
+
+  const handlePointerLeave = useCallback(() => {
+    setCrosshairX(null);
+    setCrosshairY(null);
+    if (isPanning) {
+      setIsPanning(false);
+      panStartRef.current = null;
+    }
+  }, [isPanning]);
+
+  // ── Zoom presets ─────────────────────────────────────────────
+
+  const handleZoomPreset = useCallback(
+    (durationMs: number | null) => {
+      if (totalDurationMs <= 0) return;
+
+      if (durationMs === null) {
+        // "All" — show full session
+        setViewport({ startTime: 0, endTime: totalDurationMs });
+        return;
+      }
+
+      // Center the requested duration around the current viewport center
+      const currentCenter = (viewport.startTime + viewport.endTime) / 2;
+      const halfDuration = Math.min(durationMs, totalDurationMs) / 2;
+
+      let newStart = currentCenter - halfDuration;
+      let newEnd = currentCenter + halfDuration;
+
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = Math.min(durationMs, totalDurationMs);
+      }
+      if (newEnd > totalDurationMs) {
+        newEnd = totalDurationMs;
+        newStart = Math.max(0, newEnd - durationMs);
+      }
+
+      setViewport({ startTime: newStart, endTime: newEnd });
+    },
+    [viewport, totalDurationMs],
+  );
+
+  // ── Active zoom preset detection ─────────────────────────────
+
+  const activePreset = useMemo(() => {
+    const currentDuration = viewport.endTime - viewport.startTime;
+    if (totalDurationMs <= 0) return null;
+
+    // Check "All" — within 1% tolerance
+    if (Math.abs(currentDuration - totalDurationMs) / totalDurationMs < 0.01) {
+      return null; // "All" preset
+    }
+
+    for (const preset of ZOOM_PRESETS) {
+      if (preset.ms !== null && Math.abs(currentDuration - preset.ms) / preset.ms < 0.05) {
+        return preset.label;
+      }
+    }
+    return undefined; // not matching any preset
+  }, [viewport, totalDurationMs]);
+
+  // ── Viewport time readout for status bar ─────────────────────
+
+  const viewportLabel = useMemo(() => {
+    const durMs = viewport.endTime - viewport.startTime;
+    if (durMs <= 0) return '';
+
+    const totalSec = Math.round(durMs / 1000);
+    if (totalSec < 60) return `${totalSec}s`;
+    if (totalSec < 3600) return `${Math.round(totalSec / 60)}m`;
+
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.round((totalSec % 3600) / 60);
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  }, [viewport]);
+
+  // ── Channel info for status bar legend ───────────────────────
+
+  const channelLegend = useMemo(() => {
+    if (!manifest) return [];
+    return manifest.channels.map((ch) => ({
+      name: ch.name,
+      unit: ch.unit,
+      colorVar: CHANNEL_COLORS[ch.name] ?? DEFAULT_CHANNEL_COLOR,
+    }));
+  }, [manifest]);
+
+  // ── Conditional rendering ────────────────────────────────────
+
+  const loading = sessionLoading || eventsLoading || dataLoading;
+  const error = sessionError ?? eventsError ?? dataError;
+
+  if (!opfsSupported) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.errorState} role="alert">
+          <span className={styles.errorIcon} aria-hidden="true">
+            ⚠
+          </span>
+          <h2 className={styles.errorTitle}>Browser Not Supported</h2>
+          <p className={styles.errorMessage}>
+            The Origin Private File System (OPFS) is not available in this browser. Signal data
+            requires a modern browser with OPFS support (Chrome 86+, Firefox 111+, Safari 15.2+).
+          </p>
+          <Button variant="secondary" onClick={() => navigate(-1)}>
+            Go back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading && !manifest) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.loadingState}>
+          <div className={styles.loadingSkeletons}>
+            <Skeleton width="100%" height={CHANNEL_HEIGHT} variant="rect" />
+            <Skeleton width="100%" height={CHANNEL_HEIGHT} variant="rect" />
+            <Skeleton width="100%" height={CHANNEL_HEIGHT} variant="rect" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.errorState} role="alert">
+          <span className={styles.errorIcon} aria-hidden="true">
+            ⚠
+          </span>
+          <h2 className={styles.errorTitle}>Failed to load signals</h2>
+          <p className={styles.errorMessage}>{error}</p>
+          <Button variant="secondary" onClick={() => navigate(-1)}>
+            Go back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!manifest || manifest.channels.length === 0) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.emptyState}>
+          <span className={styles.emptyIcon} aria-hidden="true">
+            📊
+          </span>
+          <h2 className={styles.emptyTitle}>No Signal Data</h2>
+          <p className={styles.emptyMessage}>
+            This session does not contain any high-frequency signal data. Signal data is typically
+            found in the DATALOG EDF files.
+          </p>
+          <Button variant="secondary" onClick={() => navigate(-1)}>
+            Go back
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      <h1>Signal Viewer</h1>
-      <p>Coming soon</p>
+    <div className={styles.container} ref={containerRef}>
+      {/* ── Toolbar ───────────────────────────────────────────── */}
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarLeft}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={styles.backButton}
+            onClick={() => navigate(`/sessions/${sessionId}`)}
+          >
+            ← Back
+          </Button>
+          <span className={styles.title}>Signal Viewer{session ? ` — ${session.date}` : ''}</span>
+        </div>
+
+        <div className={styles.toolbarRight}>
+          <div className={styles.zoomPresets}>
+            <span>Zoom:</span>
+            {ZOOM_PRESETS.map((preset) => {
+              const isActive =
+                (preset.ms === null && activePreset === null) || activePreset === preset.label;
+
+              return (
+                <Button
+                  key={preset.label}
+                  variant={isActive ? 'primary' : 'ghost'}
+                  size="sm"
+                  className={isActive ? styles.presetButtonActive : styles.presetButton}
+                  onClick={() => handleZoomPreset(preset.ms)}
+                  aria-pressed={isActive}
+                >
+                  {preset.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Canvas ────────────────────────────────────────────── */}
+      <div
+        className={styles.canvasWrapper}
+        data-panning={isPanning}
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
+      >
+        <canvas
+          ref={canvasRef}
+          className={styles.canvas}
+          role="img"
+          aria-label={`Signal waveform viewer showing ${manifest.channels.length} channels: ${manifest.channels.map((c) => c.name).join(', ')}`}
+        />
+      </div>
+
+      {/* ── Status bar ────────────────────────────────────────── */}
+      <div className={styles.statusBar}>
+        <div className={styles.statusLeft}>
+          <div className={styles.channelLegend}>
+            {channelLegend.map((ch) => (
+              <span key={ch.name} className={styles.legendItem}>
+                <span
+                  className={styles.legendSwatch}
+                  ref={(el) => {
+                    if (el) {
+                      el.style.backgroundColor = resolveColor(containerRef.current, ch.colorVar);
+                    }
+                  }}
+                />
+                {ch.name} ({ch.unit})
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className={styles.statusRight}>
+          {events.length > 0 && (
+            <span>
+              {events.length} event{events.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          <span>Showing {viewportLabel}</span>
+        </div>
+      </div>
     </div>
   );
 }

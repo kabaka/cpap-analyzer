@@ -311,8 +311,29 @@ function ScanningStep({ progress }: { progress: ImportProgress }) {
 // ── Importing Step ──
 
 function ImportingStep({ progress }: { progress: ImportProgress }) {
-  const percent =
-    progress.totalFiles > 0 ? Math.round((progress.filesProcessed / progress.totalFiles) * 100) : 0;
+  // Compute percentage based on current stage
+  let percent = 0;
+  let stageLabel = '';
+
+  if (progress.status === 'parsing') {
+    percent =
+      progress.totalFiles > 0
+        ? Math.round((progress.filesProcessed / progress.totalFiles) * 100)
+        : 0;
+    stageLabel = `Parsing files: ${progress.filesProcessed} of ${progress.totalFiles}`;
+  } else if (progress.status === 'building') {
+    percent =
+      progress.totalDayGroups > 0
+        ? Math.round((progress.dayGroupsProcessed / progress.totalDayGroups) * 100)
+        : 0;
+    stageLabel = `Building sessions: day ${progress.dayGroupsProcessed} of ${progress.totalDayGroups}`;
+  } else if (progress.status === 'storing') {
+    percent =
+      progress.totalSessionsToStore > 0
+        ? Math.round((progress.sessionsStored / progress.totalSessionsToStore) * 100)
+        : 0;
+    stageLabel = `Storing sessions: ${progress.sessionsStored} of ${progress.totalSessionsToStore}`;
+  }
 
   const fillRef = useRef<HTMLDivElement>(null);
 
@@ -339,14 +360,12 @@ function ImportingStep({ progress }: { progress: ImportProgress }) {
           </div>
         </div>
         <div className={styles.statsRow} aria-live="polite">
-          <span>
-            {progress.filesProcessed} / {progress.totalFiles} files
-          </span>
+          <span>{stageLabel}</span>
           <span>{percent}%</span>
         </div>
-        {progress.currentFileName && (
+        {progress.currentStage && (
           <p className={styles.currentFile} aria-live="polite">
-            Processing: <code>{progress.currentFileName}</code>
+            {progress.currentStage}
           </p>
         )}
         <div className={styles.statsRow}>

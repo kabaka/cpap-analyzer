@@ -59,3 +59,20 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 - Validator now accepts `dataRecordDuration = 0` for annotation-only files
 - Synthetic EDF generator TAL format corrected to match EDF+ specification
 - GitHub Pages deployment now works correctly — configured Vite base path, React Router basename, and 404.html fallback for SPA routing on `/cpap-analyzer/` subpath
+
+### Added (Phase 6: Session Views + Signal Viewer)
+
+- Session list view (`src/views/Sessions/SessionList.tsx`) with filterable search, sortable columns (date, duration, usage, AHI, leak, events), pagination (25/page), and AHI severity badges
+- Session detail view (`src/views/Sessions/SessionDetail.tsx`) with AHI breakdown (obstructive/central/mixed/hypopnea/RERA), leak metrics (median/P95/max/duration), pressure metrics (mean/median/P95/max with bilevel support), SpO₂ metrics (mean/min/<90%/ODI), event timeline, and event summary table
+- Signal viewer (`src/views/Sessions/SignalViewer.tsx`) with Canvas 2D multi-channel waveform rendering, zoom (mouse wheel + presets: 1m/5m/30m/1h/All), pan (pointer drag), crosshair with time + value readout, event marker overlays, and OPFS signal streaming
+- Canvas signal rendering engine (`src/components/charts/canvas/SignalRenderer.ts`) with DPI-aware rendering, multi-channel stacked display, grid lines, dynamic time axis formatting, and requestAnimationFrame coalescing
+- Session comparison view (`src/views/Sessions/SessionComparison.tsx`) with session pickers, side-by-side metric table with delta columns (absolute + percentage), color-coded improvement direction, and CSS bar chart
+- LTTB (Largest Triangle Three Buckets) downsampling Web Worker (`src/services/workers/downsample.worker.ts`) with min-max downsampling, Comlink.transfer() for zero-copy results
+- Signal data hooks (`src/hooks/useSignalData.ts`): `useSessionDetail(sessionId)`, `useEventData(sessionId)`, `useSignalData(params)` with cached OPFS service and lazy worker creation
+- Granular import progress reporting during parsing, building, and storing stages with per-file/per-session detail and setTimeout yields for UI repainting
+- 80 new unit tests (548 total): LTTB/min-max downsampling correctness, SignalRenderer helper functions and spatial queries, session comparison delta calculations
+- 19 new E2E tests (46 total, 138 across 3 browsers): session list rendering/filtering/sorting, session detail metrics and navigation, signal viewer chrome and controls, session comparison flow with deltas, full navigation journey
+
+### Improved
+
+- Import wizard now shows stage-specific progress labels and percentages during parsing, building, and storing stages (previously showed indeterminate state during CPU-intensive building)

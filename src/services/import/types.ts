@@ -26,6 +26,18 @@ export interface ImportProgress {
   readonly errors: readonly ImportError[];
   readonly startTime: number;
   readonly warnings: readonly string[];
+  /** Current sub-stage description for user feedback during long operations */
+  readonly currentStage: string;
+  /** Number of day groups processed during building stage */
+  readonly dayGroupsProcessed: number;
+  /** Total number of day groups to process during building stage */
+  readonly totalDayGroups: number;
+  /** Number of sessions validated so far */
+  readonly sessionsValidated: number;
+  /** Number of sessions stored so far */
+  readonly sessionsStored: number;
+  /** Total sessions to store */
+  readonly totalSessionsToStore: number;
 }
 
 /** A single error encountered during import. */

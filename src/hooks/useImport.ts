@@ -31,6 +31,12 @@ const IDLE_PROGRESS: ImportProgress = {
   errors: [],
   startTime: 0,
   warnings: [],
+  currentStage: '',
+  dayGroupsProcessed: 0,
+  totalDayGroups: 0,
+  sessionsValidated: 0,
+  sessionsStored: 0,
+  totalSessionsToStore: 0,
 };
 
 interface UseImportResult {
