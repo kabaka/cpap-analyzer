@@ -155,20 +155,24 @@ export function qqNormal(values: number[]): QQPlotData {
 /**
  * Shapiro-Wilk normality test using Royston's (1995) approximation.
  *
- * For n < 3 returns NaN (insufficient data). For n ≥ 5000 delegates to
- * the Kolmogorov-Smirnov test. For 3 ≤ n < 5000 computes W as the squared
+ * For $n < 3$ returns NaN (insufficient data). For $n \geq 5000$ delegates to
+ * the Kolmogorov-Smirnov test. For $3 \leq n < 5000$ computes $W$ as the squared
  * correlation between sample order statistics and expected normal scores,
- * then converts to p-value using Royston's log-normal transformation.
+ * then converts to $p$-value using Royston's log-normal transformation.
+ *
+ * Test statistic: $W = r^2$ where $r$ is the Pearson correlation between
+ * sorted data and expected normal order statistics via Blom's formula:
+ * $m_i = \Phi^{-1}\left(\frac{i - 3/8}{n + 1/4}\right)$
  *
  * **Implementation note**: Uses the Shapiro-Francia correlation-based variant
- * (W = r²) rather than computing true Shapiro-Wilk coefficients a_i. This is
+ * ($W = r^2$) rather than computing true Shapiro-Wilk coefficients $a_i$. This is
  * a documented, practical approximation for production use (faster, numerically
  * stable). Note this deviation from design doc for future consistency updates.
  *
  * **Assumptions**: Data are i.i.d. continuous observations.
  *
  * @param values - Numeric array (non-finite values are filtered)
- * @returns Test result with W statistic, p-value, and normality decision at α = 0.05
+ * @returns Test result with W statistic, p-value, and normality decision at $\alpha = 0.05$
  *
  * @example
  * ```ts
@@ -307,13 +311,18 @@ function clamp01(p: number): number {
  *
  * Tests whether data come from a normal distribution when the mean and
  * standard deviation are estimated from the sample (composite hypothesis).
- * Uses the Dallal-Wilkinson (1986) formula for p-value approximation
+ *
+ * Test statistic:
+ * $$D = \max_i \left| F_n(z_i) - \Phi(z_i) \right|$$
+ * where $F_n$ is the empirical CDF and $\Phi$ is the standard normal CDF.
+ *
+ * Uses the Dallal-Wilkinson (1986) formula for $p$-value approximation
  * with Lilliefors critical value thresholds as fallback.
  *
- * **Assumptions**: Data are i.i.d. continuous observations, n ≥ 4.
+ * **Assumptions**: Data are i.i.d. continuous observations, $n \geq 4$.
  *
  * @param values - Numeric array (non-finite values are filtered)
- * @returns Test result with D statistic, p-value, and normality decision at α = 0.05
+ * @returns Test result with D statistic, p-value, and normality decision at $\alpha = 0.05$
  *
  * @example
  * ```ts
@@ -413,8 +422,12 @@ function lillieforsP(D: number, n: number): number {
  * Kernel Density Estimation using a Gaussian kernel.
  *
  * Estimates the probability density function from sample data using kernel
- * smoothing. The default bandwidth follows Silverman's rule of thumb:
- * `h = 0.9 × min(σ, IQR/1.34) × n^(-1/5)`.
+ * smoothing. Each data point contributes a Gaussian bump:
+ *
+ * $$\hat{f}(x) = \frac{1}{nh}\sum_{i=1}^{n} K\!\left(\frac{x - x_i}{h}\right), \quad K(u) = \frac{1}{\sqrt{2\pi}}e^{-u^2/2}$$
+ *
+ * The default bandwidth follows Silverman's rule of thumb:
+ * $h = 0.9 \cdot \min(\sigma, \text{IQR}/1.34) \cdot n^{-1/5}$.
  *
  * @param values - Numeric array (non-finite values are filtered)
  * @param nPoints - Number of evaluation grid points (default 100)

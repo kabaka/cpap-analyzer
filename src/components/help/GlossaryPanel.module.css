@@ -271,6 +271,16 @@
   line-height: var(--line-height-relaxed);
 }
 
+.termFormula {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  overflow-x: auto;
+  text-align: center;
+}
+
 .depthLinks {
   margin-top: var(--space-2);
 }

@@ -2,6 +2,7 @@ import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { helpArticles, articleMap } from '../../content/help';
 import { GlossaryPanel } from '../../components/help/GlossaryPanel';
+import { MathText } from '../../components/ui/MathEquation';
 import styles from './HelpArticle.module.css';
 
 /** Generate a URL-friendly anchor id from a heading string. */
@@ -124,7 +125,7 @@ export default function HelpArticle() {
               <h2 className={styles.sectionHeading}>{section.heading}</h2>
               {section.paragraphs.map((p, j) => (
                 <p key={j} className={styles.paragraph}>
-                  {p}
+                  <MathText text={p} />
                 </p>
               ))}
             </section>

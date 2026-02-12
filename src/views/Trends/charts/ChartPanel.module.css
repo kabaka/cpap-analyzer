@@ -1,0 +1,24 @@
+.panel {
+  background: var(--color-surface-primary);
+  border-top: 1px solid var(--color-border-subtle);
+  padding: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+}
+
+.title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: var(--line-height-tight);
+}
+
+.chartArea {
+  width: 100%;
+}

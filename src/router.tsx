@@ -12,6 +12,7 @@ const SessionList = lazy(() => import('@/views/Sessions/SessionList'));
 const SessionDetail = lazy(() => import('@/views/Sessions/SessionDetail'));
 const SignalViewer = lazy(() => import('@/views/Sessions/SignalViewer'));
 const SessionComparison = lazy(() => import('@/views/Sessions/SessionComparison'));
+const Trends = lazy(() => import('@/views/Trends/Trends'));
 const AnalysisHub = lazy(() => import('@/views/Analysis/AnalysisHub'));
 const StatisticalAnalysis = lazy(() => import('@/views/Analysis/StatisticalAnalysis'));
 const EventAnalysis = lazy(() => import('@/views/Analysis/EventAnalysis'));
@@ -23,6 +24,7 @@ const ImportWizard = lazy(() => import('@/views/DataManagement/ImportWizard'));
 const Settings = lazy(() => import('@/views/Settings/Settings'));
 const HelpHome = lazy(() => import('@/views/Help/HelpHome'));
 const HelpArticle = lazy(() => import('@/views/Help/HelpArticle'));
+const KeyboardShortcutsPage = lazy(() => import('@/views/Help/KeyboardShortcutsPage'));
 
 export const router = createBrowserRouter(
   [
@@ -76,6 +78,14 @@ export const router = createBrowserRouter(
               ),
             },
           ],
+        },
+        {
+          path: 'trends',
+          element: (
+            <SuspenseWrapper>
+              <Trends />
+            </SuspenseWrapper>
+          ),
         },
         {
           path: 'analysis',
@@ -167,6 +177,14 @@ export const router = createBrowserRouter(
               element: (
                 <SuspenseWrapper>
                   <HelpHome />
+                </SuspenseWrapper>
+              ),
+            },
+            {
+              path: 'keyboard-shortcuts',
+              element: (
+                <SuspenseWrapper>
+                  <KeyboardShortcutsPage />
                 </SuspenseWrapper>
               ),
             },

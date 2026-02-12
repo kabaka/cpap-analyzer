@@ -81,7 +81,7 @@ const ThemedBarChart = React.memo(function ThemedBarChart({
       <BarChart
         data={data}
         layout={isHorizontal ? 'vertical' : 'horizontal'}
-        margin={{ top: 8, right: 16, bottom: 24, left: 16 }}
+        margin={{ top: 8, right: 16, bottom: 32, left: 16 }}
       >
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
 

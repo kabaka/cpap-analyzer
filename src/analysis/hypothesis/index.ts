@@ -274,9 +274,13 @@ function wilcoxonExactP(w: number, n: number): number {
  *
  * Non-parametric test for whether two independent samples come from the
  * same distribution. Uses exact permutation distribution for small samples
- * (n1 × n2 ≤ 784) and normal approximation with tie correction otherwise.
+ * ($n_1 \times n_2 \leq 784$) and normal approximation with tie correction otherwise.
  *
- * Effect size is rank-biserial correlation r_rb = 1 − 2U/(n1·n2).
+ * Test statistic: $U = R_1 - \frac{n_1(n_1 + 1)}{2}$ where $R_1$ is the rank sum
+ * of the first sample.
+ *
+ * Effect size is rank-biserial correlation: $r_{rb} = 1 - \frac{2U}{n_1 \cdot n_2}$.
+ *
  * Location shift estimated via Hodges-Lehmann estimator (median of all
  * pairwise differences).
  *
@@ -385,10 +389,12 @@ export function mannWhitneyU(group1: number[], group2: number[]): MannWhitneyRes
  * Wilcoxon signed-rank test for paired samples.
  *
  * Non-parametric test for whether matched pairs have symmetric difference
- * distribution around zero. Uses exact distribution for n ≤ 25 and normal
+ * distribution around zero. Uses exact distribution for $n \leq 25$ and normal
  * approximation for larger samples.
  *
- * Effect size is r = Z / √n (Rosenthal, 1991).
+ * Test statistic: $W^+ = \sum_{d_i > 0} R_i$ (sum of positive-difference ranks).
+ *
+ * Effect size: $r = \frac{Z}{\sqrt{n}}$ (Rosenthal, 1991).
  *
  * Reference: Wilcoxon, F. (1945). Individual comparisons by ranking
  * methods. Biometrics Bulletin, 1(6), 80-83.

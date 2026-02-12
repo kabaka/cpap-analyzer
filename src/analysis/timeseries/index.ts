@@ -183,7 +183,10 @@ function strAt(arr: string[], i: number, fallback = ''): string {
  *
  * For each date index i, computes statistics over the window
  * [i - window + 1, i] using pairwise deletion (only finite values).
- * CI via normal approximation: x̄ ± z(α/2) · s/√n.
+ *
+ * $$\bar{x}_t = \frac{1}{k}\sum_{i=0}^{k-1} x_{t-i}$$
+ *
+ * CI via normal approximation: $\bar{x} \pm z_{\alpha/2} \cdot \frac{s}{\sqrt{n}}$.
  *
  * @param dates - ISO date strings (must be aligned with values)
  * @param values - Numeric observations
@@ -335,9 +338,12 @@ function medianCIBounds(n: number, alpha: number): { lower: number; upper: numbe
 /**
  * Compute linear trend via ordinary least squares on day-indexed dates.
  *
- * Converts date strings to day offsets from the first date, then fits
- * y = slope·x + intercept. Computes Pearson r, r², and p-value via
- * the t-distribution (t = r · √((n-2) / (1-r²))).
+ * Fits the model $y = \beta_0 + \beta_1 x + \varepsilon$ where $x$ is the day offset.
+ *
+ * Slope estimator:
+ * $$\hat{\beta}_1 = \frac{\sum(x_i - \bar{x})(y_i - \bar{y})}{\sum(x_i - \bar{x})^2}$$
+ *
+ * Significance via $t = r \sqrt{\frac{n-2}{1-r^2}}$ with $n-2$ d.f.
  *
  * @param dates - ISO date strings
  * @param values - Numeric observations (parallel to dates)

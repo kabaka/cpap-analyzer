@@ -33,6 +33,10 @@ export type {
 export { SessionBuilder } from './resmed/SessionBuilder';
 export type { BuildResult } from './resmed/SessionBuilder';
 
+// STR Parser
+export { STRParser } from './resmed/STRParser';
+export type { STRDayRecord, STRParseResult } from './resmed/STRParser';
+
 // Validator
 export { Validator } from './validation/Validator';
 export type { ValidationIssue, ValidationResult } from './validation/Validator';

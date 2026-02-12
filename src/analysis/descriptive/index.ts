@@ -85,6 +85,15 @@ export function filterFinite(data: number[]): number[] {
  * computation of mean and variance. Skewness and kurtosis are computed
  * using the Fisher-Pearson and excess-kurtosis formulas respectively.
  *
+ * Key formulas:
+ * - Mean: $\bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i$
+ * - Sample variance (Bessel-corrected): $s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i - \bar{x})^2$
+ * - Standard deviation: $s = \sqrt{s^2}$
+ * - Standard error: $\text{SE} = \frac{s}{\sqrt{n}}$
+ * - Coefficient of variation: $\text{CV} = \frac{s}{|\bar{x}|}$
+ * - Skewness (Fisher-Pearson): $g_1 = \frac{\frac{1}{n}\sum(x_i - \bar{x})^3}{\sigma^3}$
+ * - Excess kurtosis: $g_2 = \frac{\frac{1}{n}\sum(x_i - \bar{x})^4}{\sigma^4} - 3$
+ *
  * @param data - Array of numeric values (NaN/Infinity are filtered)
  * @returns DescriptiveStats object; fields are NaN/0 when data is insufficient
  */
@@ -214,8 +223,8 @@ function computeMedian(sorted: number[]): number {
 /**
  * Compute the p-th percentile of data using Type 7 (R default) interpolation.
  *
- * Type 7 formula: h = (n - 1) * p/100 + 1, then linear interpolation
- * between floor(h) and ceil(h) positions (1-indexed).
+ * Type 7 formula:
+ * $$h = (n - 1) \cdot \frac{p}{100}, \quad P_p = x_{\lfloor h \rfloor} + (h - \lfloor h \rfloor)(x_{\lceil h \rceil} - x_{\lfloor h \rfloor})$$
  *
  * @param data - Array of numeric values (will be sorted internally if needed)
  * @param p - Percentile in range [0, 100]
@@ -281,8 +290,8 @@ export function computePercentiles(data: number[]): Percentiles {
 /**
  * Detect outliers using Tukey's fences (1.5 × IQR rule).
  *
- * Lower fence = Q1 - 1.5 * IQR
- * Upper fence = Q3 + 1.5 * IQR
+ * $$\text{Lower fence} = Q_1 - 1.5 \cdot \text{IQR}$$
+ * $$\text{Upper fence} = Q_3 + 1.5 \cdot \text{IQR}$$
  *
  * Outlier indices refer to positions in the **original** (unfiltered) array,
  * but only finite values are considered.
@@ -345,8 +354,8 @@ export function detectOutliers(data: number[]): OutlierDetection {
  * Compute a histogram with automatic or manual bin count selection.
  *
  * Automatic binning:
- * - Primary: Freedman-Diaconis rule — h = 2 × IQR × n^(-1/3)
- * - Fallback (IQR = 0): Sturges' rule — ceil(log2(n) + 1)
+ * - Primary: Freedman-Diaconis rule — $h = 2 \cdot \text{IQR} \cdot n^{-1/3}$
+ * - Fallback (IQR = 0): Sturges' rule — $\lceil \log_2(n) + 1 \rceil$
  * - Bin count clamped to [5, 50]
  *
  * @param data - Array of numeric values (NaN/Infinity are filtered)

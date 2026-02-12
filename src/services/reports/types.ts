@@ -132,8 +132,20 @@ export interface SessionCSVRow {
   complianceStatus: string;
 }
 
+/** Descriptive statistics for a single metric. */
+export interface DescriptiveStats {
+  min: number;
+  q1: number;
+  median: number;
+  mean: number;
+  q3: number;
+  max: number;
+  stdDev: number;
+}
+
 /** Aggregate statistics used in reports. */
 export interface ReportStatistics {
+  // ── Existing fields ──
   totalSessions: number;
   dateRange: { start: string; end: string };
   meanAHI: number;
@@ -147,6 +159,52 @@ export interface ReportStatistics {
   complianceRate: number;
   compliantNights: number;
   nonCompliantNights: number;
+
+  // ── Extended fields for enhanced reports ──
+  medianUsageHours: number;
+  meanLeakP95: number;
+  meanPressureP95: number;
+  meanPressureMax: number;
+  meanLeakMax: number;
+  meanLeakDurationMinutes: number;
+
+  /** Descriptive statistics per metric. */
+  descriptive: {
+    ahi: DescriptiveStats;
+    usageHours: DescriptiveStats;
+    leakMedian: DescriptiveStats;
+    leakP95: DescriptiveStats;
+    pressureMean: DescriptiveStats;
+    pressureP95: DescriptiveStats;
+    spo2Mean: DescriptiveStats | null;
+  };
+
+  /** Event totals across all sessions. */
+  eventTotals: {
+    obstructive: number;
+    central: number;
+    mixed: number;
+    hypopnea: number;
+    rera: number;
+    flowLimitation: number;
+    largeLeak: number;
+    periodicBreathing: number;
+  };
+
+  /** Pearson correlations between key metrics. */
+  correlations: {
+    ahiVsUsage: number;
+    ahiVsLeak: number;
+    leakVsPressure: number;
+  };
+
+  /** Usage tier counts. */
+  nightsAbove4Hours: number;
+  nightsAbove6Hours: number;
+  nightsAbove8Hours: number;
+
+  /** Whether the 30-day CMS compliance threshold is met. */
+  cmsCompliant: boolean;
 }
 
 /** Result of a report generation operation. */

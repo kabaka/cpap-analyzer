@@ -10,11 +10,13 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui';
-import type { Session } from '@/types';
+import type { Session, NightlyAggregate } from '@/types';
 import styles from './SessionsTable.module.css';
 
 interface SessionsTableProps {
   sessions: Session[];
+  /** Nightly aggregates to join with sessions for AHI/leak/events columns. */
+  aggregates?: NightlyAggregate[];
   /** Maximum rows to display. @default 10 */
   limit?: number;
 }
@@ -25,22 +27,52 @@ type SortDirection = 'asc' | 'desc';
 interface ColumnDef {
   key: SortField;
   label: string;
-  format: (session: Session) => string;
+  format: (session: Session, aggMap: Map<string, NightlyAggregate>) => string;
 }
 
 const COLUMNS: ColumnDef[] = [
   { key: 'date', label: 'Date', format: (s) => formatSessionDate(s.date) },
   { key: 'durationMinutes', label: 'Duration', format: (s) => formatMinutes(s.durationMinutes) },
   { key: 'usageMinutes', label: 'Usage', format: (s) => formatHours(s.usageMinutes) },
-  { key: 'ahi', label: 'AHI', format: () => 'N/A' },
-  { key: 'leakMedian', label: 'Leak (median)', format: () => 'N/A' },
-  { key: 'eventCount', label: 'Events', format: () => 'N/A' },
+  {
+    key: 'ahi',
+    label: 'AHI',
+    format: (s, m) => {
+      const agg = m.get(s.date);
+      return agg ? agg.ahi.toFixed(1) : '—';
+    },
+  },
+  {
+    key: 'leakMedian',
+    label: 'Leak (median)',
+    format: (s, m) => {
+      const agg = m.get(s.date);
+      return agg ? `${agg.leakMedian.toFixed(1)} L/min` : '—';
+    },
+  },
+  {
+    key: 'eventCount',
+    label: 'Events',
+    format: (s, m) => {
+      const agg = m.get(s.date);
+      return agg ? String(agg.eventCount) : '—';
+    },
+  },
 ];
 
-export function SessionsTable({ sessions, limit = 10 }: SessionsTableProps) {
+export function SessionsTable({ sessions, aggregates = [], limit = 10 }: SessionsTableProps) {
   const navigate = useNavigate();
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  /** Map session date → NightlyAggregate for O(1) lookup. */
+  const aggMap = useMemo(() => {
+    const map = new Map<string, NightlyAggregate>();
+    for (const agg of aggregates) {
+      map.set(agg.date, agg);
+    }
+    return map;
+  }, [aggregates]);
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -67,6 +99,15 @@ export function SessionsTable({ sessions, limit = 10 }: SessionsTableProps) {
         case 'usageMinutes':
           cmp = a.usageMinutes - b.usageMinutes;
           break;
+        case 'ahi':
+          cmp = (aggMap.get(a.date)?.ahi ?? 0) - (aggMap.get(b.date)?.ahi ?? 0);
+          break;
+        case 'leakMedian':
+          cmp = (aggMap.get(a.date)?.leakMedian ?? 0) - (aggMap.get(b.date)?.leakMedian ?? 0);
+          break;
+        case 'eventCount':
+          cmp = (aggMap.get(a.date)?.eventCount ?? 0) - (aggMap.get(b.date)?.eventCount ?? 0);
+          break;
         default:
           cmp = a.date.localeCompare(b.date);
           break;
@@ -74,7 +115,7 @@ export function SessionsTable({ sessions, limit = 10 }: SessionsTableProps) {
       return sortDirection === 'asc' ? cmp : -cmp;
     });
     return sorted.slice(0, limit);
-  }, [sessions, sortField, sortDirection, limit]);
+  }, [sessions, sortField, sortDirection, limit, aggMap]);
 
   const handleRowClick = useCallback(
     (sessionId: string) => {
@@ -150,10 +191,14 @@ export function SessionsTable({ sessions, limit = 10 }: SessionsTableProps) {
               <TableCell>{formatMinutes(session.durationMinutes)}</TableCell>
               <TableCell>{formatHours(session.usageMinutes)}</TableCell>
               <TableCell>
-                <AHIBadge session={session} />
+                <AHIBadge ahi={aggMap.get(session.date)?.ahi} />
               </TableCell>
-              <TableCell className={styles.mono}>—</TableCell>
-              <TableCell className={styles.mono}>—</TableCell>
+              <TableCell className={styles.mono}>
+                {COLUMNS[4]?.format(session, aggMap) ?? '—'}
+              </TableCell>
+              <TableCell className={styles.mono}>
+                {COLUMNS[5]?.format(session, aggMap) ?? '—'}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -162,11 +207,25 @@ export function SessionsTable({ sessions, limit = 10 }: SessionsTableProps) {
   );
 }
 
-/** Display AHI with a severity badge (data not yet joined — placeholder). */
-function AHIBadge({ session }: { session: Session }) {
-  // Until we join NightlyAggregate data, show a placeholder
-  void session;
-  return <span className={styles.mono}>—</span>;
+/** Display AHI with a severity badge. */
+function AHIBadge({ ahi }: { ahi?: number }) {
+  if (ahi === undefined) {
+    return <span className={styles.mono}>—</span>;
+  }
+
+  let severity: string;
+  if (ahi < 5) severity = 'normal';
+  else if (ahi < 15) severity = 'mild';
+  else if (ahi < 30) severity = 'moderate';
+  else severity = 'severe';
+
+  return (
+    <span
+      className={`${styles.mono} ${styles[`ahi${severity.charAt(0).toUpperCase()}${severity.slice(1)}`] ?? ''}`}
+    >
+      {ahi.toFixed(1)}
+    </span>
+  );
 }
 
 function formatSessionDate(dateStr: string): string {

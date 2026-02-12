@@ -31,10 +31,29 @@ const mockJsPDFInstance = {
   line: vi.fn(),
   addPage: vi.fn(),
   output: vi.fn().mockReturnValue(new Blob(['%PDF'], { type: 'application/pdf' })),
+  setProperties: vi.fn(),
+  setTextColor: vi.fn(),
+  setFillColor: vi.fn(),
+  setDrawColor: vi.fn(),
+  roundedRect: vi.fn(),
+  rect: vi.fn(),
+  addImage: vi.fn(),
+  getTextWidth: vi.fn().mockReturnValue(10),
 };
 
 vi.mock('jspdf', () => ({
   jsPDF: vi.fn(() => mockJsPDFInstance),
+}));
+
+// ---------------------------------------------------------------------------
+// Mock: pdf/charts — canvas is not available in jsdom
+// ---------------------------------------------------------------------------
+
+vi.mock('../pdf/charts', () => ({
+  drawLineChart: vi.fn().mockReturnValue('data:image/png;base64,AAAA'),
+  drawBarChart: vi.fn().mockReturnValue('data:image/png;base64,AAAA'),
+  drawHorizontalBarChart: vi.fn().mockReturnValue('data:image/png;base64,AAAA'),
+  drawStackedAreaChart: vi.fn().mockReturnValue('data:image/png;base64,AAAA'),
 }));
 
 // ---------------------------------------------------------------------------
@@ -126,6 +145,9 @@ function makeAggregate(overrides: Partial<NightlyAggregate> = {}): NightlyAggreg
     usageHours: 7,
     maskOnTimeMinutes: 420,
     complianceStatus: 'compliant',
+    configuredMinPressure: null,
+    configuredMaxPressure: null,
+    eprLevel: null,
     notes: '',
     tags: [],
     ...overrides,

@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { glossaryEntries, glossaryCategoryOrder, GLOSSARY_CATEGORIES } from '@/content/help';
 import type { GlossaryEntry, GlossaryCategory } from '@/content/help';
+import { MathEquation } from '@/components/ui/MathEquation';
 import styles from './GlossaryPanel.module.css';
 
 interface GlossaryPanelProps {
@@ -240,6 +241,12 @@ export function GlossaryPanel({ initialTermId, standalone = false }: GlossaryPan
                         aria-label={`Definition of ${entry.term}`}
                       >
                         <p className={styles.termDefinition}>{getTermContent(entry)}</p>
+
+                        {entry.formula && (
+                          <div className={styles.termFormula}>
+                            <MathEquation math={entry.formula} display />
+                          </div>
+                        )}
 
                         {depthLevel !== 'detailed' && (
                           <div className={styles.depthLinks}>

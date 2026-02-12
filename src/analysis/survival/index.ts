@@ -157,27 +157,29 @@ const EMPTY_RESULT: KaplanMeierResult = Object.freeze({
  *
  * ## Algorithm
  *
- * For each distinct event time t_i (times where at least one event occurred):
+ * For each distinct event time $t_i$ (times where at least one event occurred):
  *
- *   S(t) = Π_{t_i ≤ t} (1 − d_i / n_i)
+ * $$\hat{S}(t) = \prod_{t_i \leq t} \left(1 - \frac{d_i}{n_i}\right)$$
  *
- * where d_i is the number of events at t_i and n_i is the number of subjects
- * still at risk just before t_i.
+ * where $d_i$ is the number of events at $t_i$ and $n_i$ is the number of subjects
+ * still at risk just before $t_i$.
  *
  * ### Variance — Greenwood's formula
  *
- *   Var(S(t)) = S(t)² × Σ_{t_i ≤ t} d_i / (n_i × (n_i − d_i))
+ * $$\text{Var}(\hat{S}(t)) = \hat{S}(t)^2 \sum_{t_i \leq t} \frac{d_i}{n_i(n_i - d_i)}$$
  *
  * ### Confidence intervals — log-log transformation
  *
- * The log-log transform guarantees CIs stay in [0, 1]:
- *   W(t) = ln(−ln(S(t)))
- *   SE(W) = √Var(S(t)) / (S(t) × |ln(S(t))|)
- *   Back-transform: CI = exp(−exp(W ± z × SE(W)))
+ * The log-log transform guarantees CIs stay in $[0, 1]$:
+ *
+ * $W(t) = \ln(-\ln(\hat{S}(t)))$,
+ * $\text{SE}(W) = \frac{\sqrt{\text{Var}(\hat{S}(t))}}{\hat{S}(t) \cdot |\ln(\hat{S}(t))|}$
+ *
+ * Back-transform: $\text{CI} = \exp(-\exp(W \pm z \cdot \text{SE}(W)))$
  *
  * ### Median survival time
  *
- * The smallest t where S(t) ≤ 0.5, or null if S never reaches 0.5.
+ * The smallest $t$ where $\hat{S}(t) \leq 0.5$, or null if $\hat{S}$ never reaches 0.5.
  *
  * @param durations - Observed time for each subject (e.g. hours, days).
  * @param events    - Whether the event of interest occurred (true) or the

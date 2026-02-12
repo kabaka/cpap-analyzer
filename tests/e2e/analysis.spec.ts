@@ -52,6 +52,7 @@ function makeSession(id: string, date: string) {
     signalChunkIds: [],
     hasOximetry: false,
     deleted: false,
+    machineSettings: null,
   };
 }
 
@@ -102,6 +103,9 @@ function makeAggregate(id: string, sessionId: string, date: string, ahi = 3.2) {
     usageHours: 7.0,
     maskOnTimeMinutes: 420,
     complianceStatus: 'compliant' as const,
+    configuredMinPressure: null,
+    configuredMaxPressure: null,
+    eprLevel: null,
     notes: '',
     tags: [],
   };

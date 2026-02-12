@@ -6,7 +6,13 @@
  */
 
 // Session & nightly summary types
-export type { ChannelMetadata, MachineType, NightlyAggregate, Session } from './session';
+export type {
+  ChannelMetadata,
+  MachineSettings,
+  MachineType,
+  NightlyAggregate,
+  Session,
+} from './session';
 
 // Therapy event types
 export type { Event, EventType } from './events';

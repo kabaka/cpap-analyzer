@@ -9,6 +9,39 @@
 export type MachineType = 'cpap' | 'apap' | 'bipap' | 'vpap' | 'asv';
 
 /**
+ * Machine configuration settings extracted from the STR.edf summary file.
+ *
+ * Each field is nullable because settings may not be present in all
+ * firmware versions or machine models.
+ */
+export interface MachineSettings {
+  /** Configured minimum pressure in cmH2O (APAP lower bound). */
+  readonly minPressure: number | null;
+  /** Configured maximum pressure in cmH2O (APAP upper bound). */
+  readonly maxPressure: number | null;
+  /** EPR (Expiratory Pressure Relief) level, 0–3. */
+  readonly eprLevel: number | null;
+  /** EPR application type. */
+  readonly eprType: string | null;
+  /** Ramp time in minutes (0 = auto, -1 = off). */
+  readonly rampTime: number | null;
+  /** Ramp start pressure in cmH2O. */
+  readonly rampPressure: number | null;
+  /** Therapy mode string (e.g., 'CPAP', 'APAP', 'BiPAP'). */
+  readonly therapyMode: string | null;
+  /** Mask type setting. */
+  readonly maskType: string | null;
+  /** Humidifier level, 0–8. */
+  readonly humidifierLevel: number | null;
+  /** Whether automatic climate control is enabled. */
+  readonly climateControl: boolean | null;
+  /** Whether an antibacterial filter is installed. */
+  readonly antibacterialFilter: boolean | null;
+  /** Whether SmartStart (auto-start on breathing) is enabled. */
+  readonly smartStart: boolean | null;
+}
+
+/**
  * Describes one signal channel within an EDF recording.
  *
  * Each channel contains the metadata needed to interpret the
@@ -70,6 +103,8 @@ export interface Session {
   readonly hasOximetry: boolean;
   /** Soft delete flag. */
   readonly deleted: boolean;
+  /** Machine configuration settings from STR.edf; null if STR data unavailable. */
+  readonly machineSettings: MachineSettings | null;
 }
 
 /**
@@ -174,6 +209,14 @@ export interface NightlyAggregate {
   readonly maskOnTimeMinutes: number;
   /** CMS compliance status. */
   readonly complianceStatus: 'compliant' | 'non-compliant' | 'partial';
+
+  // Configured machine settings (from STR.edf)
+  /** Configured minimum pressure (cmH2O); null if STR data unavailable. */
+  readonly configuredMinPressure: number | null;
+  /** Configured maximum pressure (cmH2O); null if STR data unavailable. */
+  readonly configuredMaxPressure: number | null;
+  /** EPR level (0–3); null if STR data unavailable. */
+  readonly eprLevel: number | null;
 
   // User notes
   /** Free-text notes for this night. */

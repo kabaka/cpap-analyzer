@@ -11,12 +11,39 @@ vi.mock('@/hooks/useSummaryStats', () => ({
   useSummaryStats: vi.fn(),
 }));
 
+vi.mock('@/hooks/useNightlyAggregates', () => ({
+  useNightlyAggregates: vi.fn(),
+}));
+
 import Dashboard from '@/views/Dashboard/Dashboard';
 import { useSessionData } from '@/hooks/useSessionData';
 import { useSummaryStats } from '@/hooks/useSummaryStats';
+import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 
 const mockUseSessionData = vi.mocked(useSessionData);
 const mockUseSummaryStats = vi.mocked(useSummaryStats);
+const mockUseNightlyAggregates = vi.mocked(useNightlyAggregates);
+
+/** Default mock stats with all required fields. */
+function makeMockStats(overrides: Partial<ReturnType<typeof useSummaryStats>['stats']> = {}) {
+  return {
+    meanAHI: 5.2,
+    medianAHI: 4.8,
+    meanLeak: 8.1,
+    leakP95: 14.0,
+    meanUsageHours: 7.0,
+    meanPressureP95: 12.3,
+    complianceRate: 0.85,
+    totalSessions: 1,
+    trendAHIPercent: -10,
+    trendLeakPercent: 2,
+    trendUsagePercent: 5,
+    trendCompliancePercent: 3,
+    trendPressureP95Percent: 0,
+    trendData: [],
+    ...overrides,
+  };
+}
 
 describe('Dashboard', () => {
   beforeEach(() => {
@@ -27,6 +54,14 @@ describe('Dashboard', () => {
     const start = new Date();
     start.setDate(start.getDate() - 30);
     useAppStore.setState({ dateRange: { start, end } });
+
+    // Default aggregates mock
+    mockUseNightlyAggregates.mockReturnValue({
+      aggregates: [],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
   });
 
   it('should render empty state when no sessions exist and not loading', () => {
@@ -69,6 +104,7 @@ describe('Dashboard', () => {
           signalChunkIds: [],
           hasOximetry: false,
           deleted: false,
+          machineSettings: null,
         },
       ],
       loading: false,
@@ -76,16 +112,7 @@ describe('Dashboard', () => {
       refetch: vi.fn(),
     });
     mockUseSummaryStats.mockReturnValue({
-      stats: {
-        meanAHI: 5.2,
-        medianAHI: 4.8,
-        meanLeak: 8.1,
-        leakP95: 14.0,
-        meanUsageHours: 7.0,
-        complianceRate: 0.85,
-        totalSessions: 1,
-        trendData: [],
-      },
+      stats: makeMockStats(),
       loading: false,
       error: null,
     });
@@ -94,12 +121,13 @@ describe('Dashboard', () => {
 
     // Dashboard heading and KPI section
     expect(screen.getByText('Dashboard')).toBeInTheDocument();
-    // "AHI" appears in both KPI card title and table column header
+    // "AHI" appears in KPI card title and possibly table column header
     expect(screen.getAllByText('AHI').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Leak Rate')).toBeInTheDocument();
     // "Usage" appears as both KPI title and table column header
     expect(screen.getAllByText('Usage').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Compliance')).toBeInTheDocument();
+    expect(screen.getByText('Pressure P95')).toBeInTheDocument();
 
     // KPI values should be displayed
     expect(screen.getByText('5.2')).toBeInTheDocument();
@@ -127,6 +155,7 @@ describe('Dashboard', () => {
           signalChunkIds: [],
           hasOximetry: false,
           deleted: false,
+          machineSettings: null,
         },
       ],
       loading: false,
@@ -134,16 +163,7 @@ describe('Dashboard', () => {
       refetch: vi.fn(),
     });
     mockUseSummaryStats.mockReturnValue({
-      stats: {
-        meanAHI: 5.2,
-        medianAHI: 4.8,
-        meanLeak: 8.1,
-        leakP95: 14.0,
-        meanUsageHours: 7.0,
-        complianceRate: 0.85,
-        totalSessions: 1,
-        trendData: [],
-      },
+      stats: makeMockStats(),
       loading: false,
       error: null,
     });
@@ -151,7 +171,6 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     expect(screen.getByText('Recent Sessions')).toBeInTheDocument();
-    expect(screen.getByText('1 total')).toBeInTheDocument();
   });
 
   it('should not render empty state while loading', () => {
@@ -165,6 +184,12 @@ describe('Dashboard', () => {
       stats: null,
       loading: true,
       error: null,
+    });
+    mockUseNightlyAggregates.mockReturnValue({
+      aggregates: [],
+      loading: true,
+      error: null,
+      refetch: vi.fn(),
     });
 
     render(<Dashboard />);

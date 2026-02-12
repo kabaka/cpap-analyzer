@@ -14,6 +14,8 @@ export interface GlossaryEntry {
   readonly quick: string;
   readonly standard: string;
   readonly detailed: string;
+  /** Optional LaTeX formula for mathematical terms. Rendered with KaTeX. */
+  readonly formula?: string;
   readonly aliases?: readonly string[];
   readonly relatedTerms?: readonly string[];
 }
@@ -41,6 +43,8 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'AHI counts the total number of breathing interruptions (apneas and hypopneas) per hour of sleep. It is the standard clinical measure for diagnosing and monitoring obstructive sleep apnea. An AHI below 5 is considered normal; 5–14 is mild, 15–29 is moderate, and 30 or above is severe.',
     detailed:
       'AHI = (Total Apnea Events + Total Hypopnea Events) / Total Sleep Time (hours). Per AASM 2012 guidelines, an apnea is a ≥90% reduction in airflow lasting ≥10 seconds, while a hypopnea is a ≥30% reduction in airflow for ≥10 seconds accompanied by ≥3% oxygen desaturation or an arousal. CPAP machines report "residual AHI," which reflects events that persist despite therapy. Severity classification: Normal (< 5), Mild (5–14), Moderate (15–29), Severe (≥ 30). Important: AHI does not capture event severity, desaturation depth, or sleep fragmentation — always review alongside SpO₂ and event clustering data.',
+    formula:
+      '\\text{AHI} = \\frac{\\text{Total Apneas} + \\text{Total Hypopneas}}{\\text{Total Sleep Time (hours)}}',
     relatedTerms: ['apnea', 'hypopnea', 'residual-ahi', 'odi'],
   },
   {
@@ -180,6 +184,8 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'CPAP compliance is measured as usage hours per night and the percentage of nights meeting minimum criteria. The standard threshold (per Medicare and most insurers) is ≥4 hours/night for ≥70% of nights (21 out of 30 days) during a consecutive 30-day window. Falling below this threshold can result in loss of insurance coverage for equipment.',
     detailed:
       'The 4-hour/70% threshold was established for Medicare reimbursement (CMS LCD). However, clinical benefits are dose-dependent — more usage yields greater improvement in sleepiness, blood pressure, and cardiovascular outcomes. Research suggests ≥6 hours/night is optimal for cardiovascular benefit. CPAP Analyzer calculates compliance using actual mask-on time (excluding ramp time) recorded by the machine. Usage patterns (early-night dropoff, intermittent removal) are clinically informative. Compliance rates in clinical practice range from 30–60% at 1 year, making it one of the most significant challenges in sleep apnea treatment.',
+    formula:
+      '\\text{Compliance Rate} = \\frac{\\text{Nights} \\geq 4\\text{h}}{N_{\\text{total}}} \\times 100\\%',
     relatedTerms: ['usage-hours', 'cpap'],
   },
   {
@@ -268,6 +274,8 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Residual AHI is the number of apneas and hypopneas per hour that persist while using CPAP. A well-treated patient typically has a residual AHI below 5. The residual AHI is the primary metric for assessing therapy effectiveness. It is lower than the diagnostic AHI because the CPAP is preventing most events.',
     detailed:
       'Residual AHI is calculated from device data as total machine-scored events divided by mask-on time. Important caveats: (1) Machine-scored AHI uses different algorithmic criteria than PSG-scored AHI and may differ by 10–30%; (2) Residual AHI during subtherapeutic ramp periods should be excluded; (3) Leak-affected periods may have unreliable event scoring; (4) A sudden increase in residual AHI may indicate weight gain, positional changes, medication effects, or mask issues rather than failed therapy. Target: < 5.0 events/hr; optimal: < 2.0 events/hr.',
+    formula:
+      '\\text{Residual AHI} = \\frac{\\text{Machine-Scored Events}}{\\text{Mask-On Time (hours)}}',
     relatedTerms: ['ahi', 'cpap', 'compliance'],
   },
   {
@@ -335,6 +343,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'ODI measures how frequently oxygen levels dip during sleep. A 3% ODI counts drops of ≥3% from baseline SpO₂, while a 4% ODI counts drops of ≥4%. ODI correlates with AHI but specifically captures the physiological impact of breathing events — events that cause significant desaturation are more clinically concerning than those without.',
     detailed:
       'ODI is calculated as the number of desaturation events per hour of recording. Two thresholds are commonly used: 3% ODI (more sensitive, aligns with AASM hypopnea definition) and 4% ODI (more specific, aligns with Medicare hypopnea definition). ODI may diverge from AHI when: (1) many events cause arousal without desaturation (ODI < AHI); (2) oxygen stores are depleted in REM/supine position causing desaturations from minor events (ODI > AHI). ODI is a stronger predictor of cardiovascular outcomes than AHI in some studies (Wisconsin Cohort, SHHS). CPAP machines that include oximetry can calculate ODI; otherwise it requires separate pulse oximetry.',
+    formula: '\\text{ODI} = \\frac{\\text{Desaturation Events}}{\\text{Hours of Recording}}',
     relatedTerms: ['spo2', 'desaturation', 'ahi'],
   },
   {
@@ -438,6 +447,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'The mean is calculated by adding all values and dividing by the number of values. It is the most common measure of central tendency. In CPAP analysis, mean values are used for AHI, pressure, leak rate, and SpO₂. The mean is sensitive to outliers — a single extremely high or low value can shift the mean significantly.',
     detailed:
       'Mean = Σxᵢ / n, where xᵢ are the individual values and n is the count. Properties: uniquely minimizes the sum of squared deviations (least squares). Limitations: sensitive to outliers and skewed distributions (common in CPAP data, as AHI and leak distributions are typically right-skewed). For skewed CPAP data, the median or trimmed mean may better represent "typical" values. The mean is appropriate for approximately normal distributions (e.g., SpO₂ in well-treated patients, pressure in fixed CPAP). Always consider the mean alongside the standard deviation and the shape of the distribution.',
+    formula: '\\bar{x} = \\frac{1}{n}\\sum_{i=1}^{n} x_i',
     relatedTerms: ['median', 'standard-deviation'],
   },
   {
@@ -449,6 +459,8 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'The median is the middle value when all observations are arranged in order. Unlike the mean, the median is robust to outliers and skewed distributions. For leak rate and AHI data (which tend to be right-skewed), the median often better represents the "typical" value than the mean. The median is the 50th percentile.',
     detailed:
       'For n values sorted in ascending order: Median = x₍₍ₙ₊₁₎/₂₎ if n is odd; average of x₍ₙ/₂₎ and x₍ₙ/₂₊₁₎ if n is even. Properties: uniquely minimizes the sum of absolute deviations; breakdown point of 0.5 (50% of data can be corrupted without affecting the median). In CPAP data, median leak rate is preferred over mean because large spikes (e.g., mask removal) would disproportionately inflate the mean. ResMed reports use median leak rate as the primary leak metric. The median is a special case of a quantile (the 0.5 quantile or P50).',
+    formula:
+      '\\tilde{x} = \\begin{cases} x_{(n+1)/2} & \\text{if } n \\text{ is odd} \\\\ \\frac{x_{n/2} + x_{n/2+1}}{2} & \\text{if } n \\text{ is even} \\end{cases}',
     relatedTerms: ['mean', 'percentile'],
   },
   {
@@ -461,6 +473,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Standard deviation quantifies the dispersion of a dataset. A small standard deviation means values are clustered near the mean; a large one means they are spread out. In CPAP analysis, high AHI standard deviation across nights suggests inconsistent therapy, while low standard deviation suggests stable control.',
     detailed:
       "SD = √(Σ(xᵢ − x̄)² / (n − 1)) for sample standard deviation (Bessel's correction). Properties: same units as the data; for normal distributions, ~68% of values fall within ±1 SD, ~95% within ±2 SD, ~99.7% within ±3 SD. Coefficient of variation (CV = SD/mean × 100%) enables comparison of variability between metrics with different scales. In CPAP data: AHI SD < 2 across nights indicates stable therapy; pressure SD in APAP mode indicates how much the machine adjusts (high SD = variable airway). SD assumes a symmetric distribution — for skewed CPAP data, consider interquartile range (IQR) instead.",
+    formula: 's = \\sqrt{\\frac{1}{n-1}\\sum_{i=1}^{n}(x_i - \\bar{x})^2}',
     relatedTerms: ['mean', 'normal-distribution', 'percentile'],
   },
   {
@@ -474,6 +487,8 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'A percentile indicates the relative standing of a value within a dataset. The 95th percentile (P95) means 95% of values are at or below that point. In CPAP data, P95 leak rate indicates the leak level that is exceeded only 5% of the time — useful for identifying the worst-case leak without being skewed by brief spikes. ResMed devices commonly report 90th and 95th percentile values.',
     detailed:
       'The p-th percentile Pₚ is the value such that p% of observations fall at or below it. Calculation methods vary (linear interpolation, nearest rank, etc.). Common CPAP percentiles: P50 (median) for typical values; P90 for upper range; P95 for worst-case assessment; P5 for lower range. Interpretation example: An APAP P95 pressure of 14 cmH₂O means the machine was above 14 for only 5% of the night, suggesting 14 cmH₂O would be an appropriate fixed CPAP setting. Percentile-based statistics are robust to outliers and do not assume any distributional form, making them ideal for the skewed distributions common in sleep data.',
+    formula:
+      'h = (n - 1) \\cdot \\frac{p}{100}, \\quad P_p = x_{\\lfloor h \\rfloor} + (h - \\lfloor h \\rfloor)(x_{\\lceil h \\rceil} - x_{\\lfloor h \\rfloor})',
     relatedTerms: ['median', 'standard-deviation'],
   },
   {
@@ -498,6 +513,8 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Correlation quantifies the strength and direction of the linear relationship between two variables. Values range from -1 (perfect negative) to +1 (perfect positive); 0 indicates no linear relationship. In CPAP analysis, you might examine the correlation between leak rate and AHI, or between usage hours and daytime sleepiness scores.',
     detailed:
       'Pearson correlation r = Σ(xᵢ − x̄)(yᵢ − ȳ) / √(Σ(xᵢ − x̄)² × Σ(yᵢ − ȳ)²). Assumptions: linearity, bivariate normality, no significant outliers. For non-normal data (common in CPAP data), use Spearman rank correlation ρ (monotonic relationships) or Kendall τ (ordinal). Effect size interpretation (Cohen): |r| < 0.1 negligible, 0.1–0.3 small, 0.3–0.5 medium, > 0.5 large. Correlation does NOT imply causation — a correlation between mask type and AHI may reflect selection bias (patients with severe OSA may use specific masks). Always visualize the relationship alongside the correlation coefficient.',
+    formula:
+      'r = \\frac{\\sum_{i=1}^{n}(x_i - \\bar{x})(y_i - \\bar{y})}{\\sqrt{\\sum_{i=1}^{n}(x_i - \\bar{x})^2 \\cdot \\sum_{i=1}^{n}(y_i - \\bar{y})^2}}',
     relatedTerms: ['regression', 'p-value'],
   },
   {
@@ -511,6 +528,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'A 95% confidence interval means that if we were to collect data and compute the interval many times, 95% of those intervals would contain the true value. CI width reflects precision — narrow intervals indicate a precise estimate, wide intervals indicate uncertainty. In CPAP analysis, confidence intervals around trend slopes help assess whether changes in AHI over time are reliable.',
     detailed:
       'For a mean: CI = x̄ ± t₍α/2, n−1₎ × (s/√n). Width depends on: sample size (larger n → narrower CI), variability (lower s → narrower CI), and confidence level (99% CI > 95% CI). For proportions (e.g., compliance rate): CI = p̂ ± z × √(p̂(1−p̂)/n). Bootstrap confidence intervals are non-parametric alternatives that make no distributional assumptions — appropriate for the skewed distributions common in CPAP data. Report: "Mean AHI was 3.2 (95% CI: 2.8–3.6)" rather than just "Mean AHI was 3.2" to communicate precision.',
+    formula: '\\text{CI} = \\bar{x} \\pm t_{\\alpha/2,\\, n-1} \\cdot \\frac{s}{\\sqrt{n}}',
     relatedTerms: ['p-value', 'standard-deviation', 'statistical-significance'],
   },
   {
@@ -524,6 +542,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'A rolling (or moving) average calculates the mean over a fixed-size window that "slides" through the data over time. For example, a 7-day rolling average of AHI averages each night with the 6 preceding nights. This smooths out night-to-night variability and reveals underlying trends more clearly than raw daily values.',
     detailed:
       'Simple Moving Average (SMA): MA_t = (1/k) × Σ x_{t-i} for i = 0 to k−1. Exponential Moving Average (EMA/EWMA) gives exponentially decreasing weights to older observations: EMA_t = α × x_t + (1−α) × EMA_{t−1}, where α = 2/(k+1). EMA responds faster to recent changes. Common windows in CPAP analysis: 7-day (weekly pattern smoothing), 14-day (two-week trend), 30-day (monthly average). Considerations: window size trades off smoothness vs. responsiveness; missing nights should be handled (skip or interpolate); edge effects at the start of the time series where full window is unavailable.',
+    formula: '\\text{MA}_t = \\frac{1}{k}\\sum_{i=0}^{k-1} x_{t-i}',
     relatedTerms: ['trend', 'loess', 'mean'],
   },
   {
@@ -561,6 +580,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'The normal (Gaussian) distribution is the most common probability distribution in statistics — the familiar bell curve. Many statistical tests assume normality. In CPAP data, variables like SpO₂ and pressure in fixed-CPAP mode often approximate normality, while AHI and leak rate are typically right-skewed and are NOT normally distributed.',
     detailed:
       'PDF: f(x) = (1/(σ√(2π))) × e^(-(x-μ)²/(2σ²)). Characterized by mean (μ) and standard deviation (σ). Properties: symmetric about the mean; 68-95-99.7 rule; mean = median = mode. Central Limit Theorem: the mean of sufficiently large random samples will be approximately normal regardless of the underlying distribution. This is why confidence intervals and hypothesis tests often work well even for non-normal data when sample sizes are adequate (n ≥ 30 as a rough guideline). For CPAP data: test normality with Shapiro-Wilk test; use non-parametric methods (Mann-Whitney, Kruskal-Wallis) when normality is violated.',
+    formula: 'f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}}\\, e^{-\\frac{(x - \\mu)^2}{2\\sigma^2}}',
     relatedTerms: ['mean', 'standard-deviation'],
   },
   {
@@ -574,6 +594,8 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       "Effect size quantifies the practical significance of a finding, independent of sample size. While a p-value tells you IF an effect exists, effect size tells you HOW BIG it is. Cohen's d (for differences between means) is interpreted as: small (0.2), medium (0.5), large (0.8). In CPAP analysis, a statistically significant AHI improvement might be clinically trivial if the effect size is small.",
     detailed:
       "Cohen's d = (M₁ - M₂) / SD_pooled, where SD_pooled = √((SD₁² + SD₂²) / 2). Other measures: r (correlation), η² (eta-squared, proportion of variance explained), Odds Ratio (for categorical outcomes). For paired data (same patients before/after): d_z = mean_diff / SD_diff. Clinical significance thresholds for CPAP data are domain-specific: AHI reduction > 50% or to < 5 is clinically significant regardless of statistical effect size. Always report effect sizes alongside p-values to prevent overinterpretation of statistically significant but clinically meaningless differences.",
+    formula:
+      'd = \\frac{M_1 - M_2}{s_{\\text{pooled}}}, \\quad s_{\\text{pooled}} = \\sqrt{\\frac{s_1^2 + s_2^2}{2}}',
     relatedTerms: ['p-value', 'statistical-significance'],
   },
   {
@@ -599,6 +621,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'The Kaplan-Meier estimator creates a "survival curve" showing the probability of remaining event-free over time. In CPAP analysis, it can be used to visualize time-to-first-event analysis: how long into the night before the first apnea occurs, or what percentage of nights remain above a compliance threshold. The step-down curve shows when events happen.',
     detailed:
       'KM estimator: Ŝ(t) = Π_{tᵢ≤t} (nᵢ − dᵢ) / nᵢ, where nᵢ = number at risk at time tᵢ, dᵢ = number of events at tᵢ. Handles censored observations (e.g., nights where the patient removed the mask before an event would have occurred). Log-rank test compares survival curves between groups (e.g., different mask types, pressure settings). In CPAP data: time-to-first-event analysis characterizes event clustering and therapy effectiveness during different sleep periods. Hazard rates can identify when during the night events are most likely (e.g., supine REM periods).',
+    formula: '\\hat{S}(t) = \\prod_{t_i \\leq t} \\frac{n_i - d_i}{n_i}',
     relatedTerms: ['trend', 'p-value'],
   },
   {
@@ -638,6 +661,8 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Regression fits a model (often a straight line) to data, quantifying the relationship between variables. Linear regression produces a slope (rate of change) and intercept. In CPAP analysis, regression can model AHI trend over time (slope = AHI change per day/week/month), or how pressure relates to AHI.',
     detailed:
       'Simple linear regression: y = β₀ + β₁x + ε. β₁ (slope) estimated by least squares: β̂₁ = Σ(xᵢ − x̄)(yᵢ − ȳ) / Σ(xᵢ − x̄)². Assumptions: linearity, independence, normality of residuals, homoscedasticity. R² (coefficient of determination) = proportion of variance explained (0 to 1). Multiple regression extends to multiple predictors: y = β₀ + β₁x₁ + β₂x₂ + ... + ε. For time series CPAP data, autocorrelation violates the independence assumption — consider ARIMA models or GEE (Generalized Estimating Equations). Robust regression (M-estimators, quantile regression) is less sensitive to outliers common in CPAP data.',
+    formula:
+      'y = \\beta_0 + \\beta_1 x + \\varepsilon, \\quad \\hat{\\beta}_1 = \\frac{\\sum(x_i - \\bar{x})(y_i - \\bar{y})}{\\sum(x_i - \\bar{x})^2}',
     relatedTerms: ['correlation', 'trend', 'loess'],
   },
 

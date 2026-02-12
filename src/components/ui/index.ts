@@ -14,3 +14,4 @@ export { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '.
 export { Tabs } from './Tabs';
 export { ToastProvider, useToast } from './Toast';
 export { Tooltip, TooltipProvider } from './Tooltip';
+export { MathEquation, MathText } from './MathEquation';

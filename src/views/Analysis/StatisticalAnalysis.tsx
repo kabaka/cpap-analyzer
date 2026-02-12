@@ -340,7 +340,15 @@ interface CorrelationMatrixResult {
 }
 
 const CorrelationSection = React.memo(function CorrelationSection() {
-  const correlationMetrics = ['ahi', 'leakMedian', 'pressureMean', 'usageHours'];
+  const correlationMetrics = [
+    'ahi',
+    'leakMedian',
+    'pressureMean',
+    'usageHours',
+    'configuredMinPressure',
+    'configuredMaxPressure',
+    'eprLevel',
+  ];
   const { data, loading, error, metadata, refetch } = useAnalysis<CorrelationMatrixResult>({
     type: 'correlation-matrix',
     parameters: { metrics: correlationMetrics },
@@ -363,6 +371,9 @@ const CorrelationSection = React.memo(function CorrelationSection() {
     leakMedian: 'Leak (median)',
     pressureMean: 'Pressure (mean)',
     usageHours: 'Usage (hours)',
+    configuredMinPressure: 'Min Pressure (cfg)',
+    configuredMaxPressure: 'Max Pressure (cfg)',
+    eprLevel: 'EPR Level',
   };
 
   const displayLabels = data.labels.map((l) => labelMap[l] ?? l);

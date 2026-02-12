@@ -141,7 +141,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'KPI cards',
         paragraphs: [
-          'The top of the dashboard displays cards for your most important metrics: AHI (Apnea-Hypopnea Index), Usage Hours (average per night), Compliance Rate (% of nights ≥ 4 hours), and Leak Rate (median). Each card shows the current period value, a comparison to the previous period, and a clinical status indicator (green/yellow/orange/red).',
+          'The top of the dashboard displays cards for your most important metrics: AHI ($\\text{AHI} = \\frac{\\text{apneas} + \\text{hypopneas}}{\\text{hours}}$), Usage Hours (average per night), Compliance Rate ($\\frac{\\text{nights} \\geq 4\\text{h}}{N} \\times 100\\%$), and Leak Rate (median). Each card shows the current period value, a comparison to the previous period, and a clinical status indicator (green/yellow/orange/red).',
           'Hover over any metric label to see its definition and interpretation guide. Click "View Details" on a card to navigate to the relevant analysis view.',
         ],
       },
@@ -221,28 +221,28 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Descriptive statistics',
         paragraphs: [
-          'For each metric, you will see: mean, median, standard deviation, interquartile range (IQR), and key percentiles (P5, P25, P75, P95). These give a complete picture of both the central tendency and the spread of your data.',
-          'The mean is the arithmetic average; the median is the middle value. When these differ substantially (common with AHI data), the distribution is skewed. In skewed distributions, the median often better represents the "typical" night than the mean.',
+          'For each metric, you will see: mean ($\\bar{x}$), median ($\\tilde{x}$), standard deviation ($s$), interquartile range (IQR), and key percentiles ($P_5$, $P_{25}$, $P_{75}$, $P_{95}$). These give a complete picture of both the central tendency and the spread of your data.',
+          'The mean is the arithmetic average: $\\bar{x} = \\frac{1}{n}\\sum_{i=1}^{n} x_i$. The median is the middle value. When these differ substantially (common with AHI data), the distribution is skewed. In skewed distributions, the median often better represents the "typical" night than the mean.',
         ],
       },
       {
         heading: 'Trend analysis',
         paragraphs: [
-          'Trend analysis determines whether your metrics are improving, worsening, or stable over time. The analysis uses linear regression (for overall direction), Mann-Kendall test (a non-parametric trend test that handles non-normal data), and LOESS smoothing (to reveal non-linear trends).',
-          'Results include: slope (rate of change per day/week), p-value (statistical significance of the trend), and confidence interval for the slope. A statistically significant downward AHI trend is good news — it suggests therapy is progressively improving.',
+          'Trend analysis determines whether your metrics are improving, worsening, or stable over time. The analysis uses linear regression ($y = \\beta_0 + \\beta_1 x$, for overall direction), Mann-Kendall test (a non-parametric trend test that handles non-normal data), and LOESS smoothing (to reveal non-linear trends).',
+          'Results include: slope $\\hat{\\beta}_1$ (rate of change per day/week), $p$-value (statistical significance of the trend), and confidence interval for the slope. A statistically significant downward AHI trend is good news — it suggests therapy is progressively improving.',
         ],
       },
       {
         heading: 'Distribution analysis',
         paragraphs: [
           'Histograms and box plots show the shape of your data distribution. Is AHI consistently low, or does it vary widely? Are there distinct "good night" and "bad night" clusters? The distribution view helps answer these questions visually.',
-          "The Shapiro-Wilk test checks whether your data follows a normal (bell curve) distribution. This matters because some statistical methods assume normality — CPAP Analyzer automatically selects appropriate methods based on your data's actual distribution.",
+          "The Shapiro-Wilk test checks whether your data follows a normal distribution, $f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}} e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}$. This matters because some statistical methods assume normality — CPAP Analyzer automatically selects appropriate methods based on your data's actual distribution.",
         ],
       },
       {
         heading: 'Correlation analysis',
         paragraphs: [
-          'The correlation matrix shows relationships between metrics. For example: Is higher leak associated with higher AHI? Does AHI vary with usage hours? Correlations are displayed as a heatmap with Pearson and Spearman coefficients.',
+          'The correlation matrix shows relationships between metrics. For example: Is higher leak associated with higher AHI? Does AHI vary with usage hours? Correlations are displayed as a heatmap with Pearson ($r$) and Spearman ($\\rho$) coefficients.',
           'Important: correlation does not imply causation. A correlation between two metrics means they tend to move together, but not necessarily that one causes the other. Use correlations as starting points for investigation, not as conclusions.',
         ],
       },
@@ -286,7 +286,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Time-to-event analysis',
         paragraphs: [
-          'A Kaplan-Meier survival curve shows the probability of remaining event-free as time passes during the night. This reveals patterns like: events concentrated in the first 2 hours (ramp/acclimation), events concentrated in early morning (REM-dominant), or events evenly distributed.',
+          'A Kaplan-Meier survival curve shows the probability of remaining event-free as time passes during the night. The estimator is computed as $$\\hat{S}(t) = \\prod_{t_i \\leq t} \\frac{n_i - d_i}{n_i}$$ where $n_i$ is the number at risk and $d_i$ is the number of events at time $t_i$. This reveals patterns like: events concentrated in the first 2 hours (ramp/acclimation), events concentrated in early morning (REM-dominant), or events evenly distributed.',
           'The hazard rate plot complements this by showing the instantaneous risk of an event at each time point during the night.',
         ],
       },

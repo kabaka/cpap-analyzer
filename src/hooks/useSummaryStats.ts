@@ -18,8 +18,15 @@ export interface SummaryStats {
   meanLeak: number;
   leakP95: number;
   meanUsageHours: number;
+  meanPressureP95: number;
   complianceRate: number;
   totalSessions: number;
+  /** Percent change: first 7-day avg vs last 7-day avg. */
+  trendAHIPercent: number;
+  trendLeakPercent: number;
+  trendUsagePercent: number;
+  trendCompliancePercent: number;
+  trendPressureP95Percent: number;
   /** Daily values for sparkline/trend charts (last 30 entries). */
   trendData: TrendDataPoint[];
 }
@@ -30,6 +37,15 @@ export interface TrendDataPoint {
   ahi: number;
   leakMedian: number;
   usageHours: number;
+  pressureP95: number;
+  complianceStatus: string;
+  eventsByType: {
+    obstructive: number;
+    central: number;
+    mixed: number;
+    hypopnea: number;
+    rera: number;
+  };
 }
 
 interface UseSummaryStatsResult {
@@ -94,8 +110,14 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
       meanLeak: 0,
       leakP95: 0,
       meanUsageHours: 0,
+      meanPressureP95: 0,
       complianceRate: 0,
       totalSessions: 0,
+      trendAHIPercent: 0,
+      trendLeakPercent: 0,
+      trendUsagePercent: 0,
+      trendCompliancePercent: 0,
+      trendPressureP95Percent: 0,
       trendData: [],
     };
   }
@@ -104,6 +126,7 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
   const leakValues = aggregates.map((a) => a.leakMedian);
   const leakP95Values = aggregates.map((a) => a.leakP95);
   const usageValues = aggregates.map((a) => a.usageHours);
+  const pressureP95Values = aggregates.map((a) => a.pressureP95);
   const compliantCount = aggregates.filter((a) => a.complianceStatus === 'compliant').length;
 
   const meanAHI = mean(ahiValues);
@@ -111,6 +134,7 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
   const meanLeak = mean(leakValues);
   const leakP95 = mean(leakP95Values);
   const meanUsageHours = mean(usageValues);
+  const meanPressureP95 = mean(pressureP95Values);
   const complianceRate = compliantCount / aggregates.length;
 
   // Build trend data from the last 30 days of aggregates, sorted by date
@@ -121,7 +145,25 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
     ahi: a.ahi,
     leakMedian: a.leakMedian,
     usageHours: a.usageHours,
+    pressureP95: a.pressureP95,
+    complianceStatus: a.complianceStatus,
+    eventsByType: {
+      obstructive: a.eventsByType.obstructive,
+      central: a.eventsByType.central,
+      mixed: a.eventsByType.mixed,
+      hypopnea: a.eventsByType.hypopnea,
+      rera: a.eventsByType.rera,
+    },
   }));
+
+  // Compute trend percents: compare first 7-day avg vs last 7-day avg
+  const trendAHIPercent = computeTrendPercent(trendSlice.map((a) => a.ahi));
+  const trendLeakPercent = computeTrendPercent(trendSlice.map((a) => a.leakMedian));
+  const trendUsagePercent = computeTrendPercent(trendSlice.map((a) => a.usageHours));
+  const trendCompliancePercent = computeTrendPercent(
+    trendSlice.map((a) => (a.complianceStatus === 'compliant' ? 1 : 0)),
+  );
+  const trendPressureP95Percent = computeTrendPercent(trendSlice.map((a) => a.pressureP95));
 
   return {
     meanAHI,
@@ -129,10 +171,29 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
     meanLeak,
     leakP95,
     meanUsageHours,
+    meanPressureP95,
     complianceRate,
     totalSessions: aggregates.length,
+    trendAHIPercent,
+    trendLeakPercent,
+    trendUsagePercent,
+    trendCompliancePercent,
+    trendPressureP95Percent,
     trendData,
   };
+}
+
+/**
+ * Compute percent change between the first 7 values' average and the last 7 values' average.
+ * Returns 0 if not enough data.
+ */
+function computeTrendPercent(values: number[]): number {
+  if (values.length < 2) return 0;
+  const n = Math.min(7, Math.floor(values.length / 2));
+  const firstAvg = mean(values.slice(0, n));
+  const lastAvg = mean(values.slice(-n));
+  if (firstAvg === 0) return lastAvg === 0 ? 0 : 100;
+  return ((lastAvg - firstAvg) / firstAvg) * 100;
 }
 
 function mean(values: number[]): number {

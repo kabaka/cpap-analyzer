@@ -273,11 +273,23 @@ const ClusterSection = React.memo(function ClusterSection({
 
   const scatterData = useMemo<ScatterDataPoint[]>(() => {
     if (!clusterResult) return [];
+
+    // Find the earliest event timestamp to compute relative offsets
+    let minTimestamp = Infinity;
+    for (const cluster of clusterResult.clusters) {
+      for (const evt of cluster.events) {
+        if (evt.timestamp < minTimestamp) minTimestamp = evt.timestamp;
+      }
+    }
+    for (const evt of clusterResult.unclustered) {
+      if (evt.timestamp < minTimestamp) minTimestamp = evt.timestamp;
+    }
+
     const points: ScatterDataPoint[] = [];
     for (const cluster of clusterResult.clusters) {
       for (const evt of cluster.events) {
         points.push({
-          x: evt.timestamp / 1000, // seconds
+          x: Number(((evt.timestamp - minTimestamp) / 3_600_000).toFixed(2)), // hours into range
           y: evt.duration,
           category: cluster.id,
         });
@@ -286,7 +298,7 @@ const ClusterSection = React.memo(function ClusterSection({
     // Add unclustered events
     for (const evt of clusterResult.unclustered) {
       points.push({
-        x: evt.timestamp / 1000,
+        x: Number(((evt.timestamp - minTimestamp) / 3_600_000).toFixed(2)),
         y: evt.duration,
         category: 'unclustered',
       });
@@ -327,7 +339,7 @@ const ClusterSection = React.memo(function ClusterSection({
       <ChartContainer title="Event Clusters (time vs. duration)" height={400}>
         <ThemedScatterPlot
           data={scatterData}
-          xLabel="Time (epoch seconds)"
+          xLabel="Time (hours into range)"
           yLabel="Duration (seconds)"
           categoryKey="category"
           height={350}

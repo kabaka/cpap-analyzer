@@ -23,6 +23,7 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     signalChunkIds: [],
     hasOximetry: false,
     deleted: false,
+    machineSettings: null,
     ...overrides,
   };
 }

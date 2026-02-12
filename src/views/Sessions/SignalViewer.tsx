@@ -201,6 +201,9 @@ export default function SignalViewer() {
     return new Set();
   });
 
+  /** Channels detected as having no meaningful data (all NaN/zero). */
+  const [emptyChannels, setEmptyChannels] = useState<Set<string>>(new Set());
+
   // ── Derived values ───────────────────────────────────────────────
 
   const sessionStartMs = useMemo(
@@ -212,8 +215,10 @@ export default function SignalViewer() {
 
   const visibleChannelCount = useMemo(() => {
     if (!manifest) return 0;
-    return manifest.channels.filter((ch) => !hiddenChannels.has(ch.name)).length;
-  }, [manifest, hiddenChannels]);
+    return manifest.channels.filter(
+      (ch) => !hiddenChannels.has(ch.name) && !emptyChannels.has(ch.name),
+    ).length;
+  }, [manifest, hiddenChannels, emptyChannels]);
 
   // ── Initialize OPFS + preload all session data into memory ───
 
@@ -255,6 +260,29 @@ export default function SignalViewer() {
 
         if (!cancelled) {
           fullDataRef.current = newFullData;
+
+          // Detect channels with no meaningful data (all NaN or all zero)
+          const detectedEmpty = new Set<string>();
+          for (const [name, fcd] of newFullData) {
+            const data = fcd.data;
+            if (data.length === 0) {
+              detectedEmpty.add(name);
+              continue;
+            }
+            let hasMeaningful = false;
+            for (let i = 0; i < data.length; i++) {
+              const v = data[i];
+              if (!Number.isNaN(v) && v !== 0) {
+                hasMeaningful = true;
+                break;
+              }
+            }
+            if (!hasMeaningful) {
+              detectedEmpty.add(name);
+            }
+          }
+          setEmptyChannels(detectedEmpty);
+
           setFullDataReady(true);
         }
       } catch (err) {
@@ -353,7 +381,12 @@ export default function SignalViewer() {
     const targetPoints = Math.max(100, Math.round(canvasSize.width * DOWNSAMPLE_MULTIPLIER));
 
     const channels: SignalChannel[] = manifest.channels
-      .filter((ch) => fullDataRef.current.has(ch.name) && !hiddenChannels.has(ch.name))
+      .filter(
+        (ch) =>
+          fullDataRef.current.has(ch.name) &&
+          !hiddenChannels.has(ch.name) &&
+          !emptyChannels.has(ch.name),
+      )
       .map((ch) => {
         const fcd = fullDataRef.current.get(ch.name);
         if (!fcd) return null;
@@ -421,6 +454,7 @@ export default function SignalViewer() {
     sessionStartMs,
     canvasSize,
     hiddenChannels,
+    emptyChannels,
   ]);
 
   // ── Toggle channel visibility ────────────────────────────────
@@ -652,12 +686,14 @@ export default function SignalViewer() {
 
   const channelLegend = useMemo(() => {
     if (!manifest) return [];
-    return manifest.channels.map((ch) => ({
-      name: ch.name,
-      unit: ch.unit,
-      colorVar: CHANNEL_COLORS[ch.name] ?? DEFAULT_CHANNEL_COLOR,
-    }));
-  }, [manifest]);
+    return manifest.channels
+      .filter((ch) => !emptyChannels.has(ch.name))
+      .map((ch) => ({
+        name: ch.name,
+        unit: ch.unit,
+        colorVar: CHANNEL_COLORS[ch.name] ?? DEFAULT_CHANNEL_COLOR,
+      }));
+  }, [manifest, emptyChannels]);
 
   // ── Event types present in this session (for legend) ─────────
 
@@ -843,7 +879,7 @@ export default function SignalViewer() {
           className={styles.canvas}
           role="img"
           aria-label={`Signal waveform viewer showing ${visibleChannelCount} channels: ${manifest.channels
-            .filter((c) => !hiddenChannels.has(c.name))
+            .filter((c) => !hiddenChannels.has(c.name) && !emptyChannels.has(c.name))
             .map((c) => c.name)
             .join(', ')}`}
         />

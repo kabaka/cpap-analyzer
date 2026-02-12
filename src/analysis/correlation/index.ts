@@ -194,6 +194,13 @@ function rankData(data: readonly number[]): number[] {
  * Compute Pearson product-moment correlation coefficient between two
  * numeric arrays, with full inferential statistics.
  *
+ * $$r = \frac{\sum_{i=1}^{n}(x_i - \bar{x})(y_i - \bar{y})}{\sqrt{\sum_{i=1}^{n}(x_i - \bar{x})^2 \cdot \sum_{i=1}^{n}(y_i - \bar{y})^2}}$$
+ *
+ * Test statistic: $t = r \sqrt{\frac{n-2}{1-r^2}}$ with $n-2$ degrees of freedom.
+ *
+ * Confidence interval via Fisher z-transformation:
+ * $z = \frac{1}{2}\ln\frac{1+r}{1-r}$, $\text{SE}(z) = \frac{1}{\sqrt{n-3}}$
+ *
  * Pairs where either value is NaN or ±Infinity are removed (pairwise
  * deletion). The function is numerically stable: it uses the
  * two-pass formula to avoid catastrophic cancellation.

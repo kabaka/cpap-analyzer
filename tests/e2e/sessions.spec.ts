@@ -51,6 +51,7 @@ function makeSession(id: string, date: string, durationMinutes = 480, usageMinut
     signalChunkIds: [],
     hasOximetry: false,
     deleted: false,
+    machineSettings: null,
   };
 }
 
@@ -111,6 +112,9 @@ function makeAggregate(
     complianceStatus: (usageHours >= 4 ? 'compliant' : 'non-compliant') as
       | 'compliant'
       | 'non-compliant',
+    configuredMinPressure: null,
+    configuredMaxPressure: null,
+    eprLevel: null,
     notes: '',
     tags: [],
   };

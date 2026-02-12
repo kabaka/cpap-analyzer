@@ -30,6 +30,7 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     hasOximetry: false,
     deleted: false,
     importedAt: '2026-01-16T08:00:00.000Z',
+    machineSettings: null,
     ...overrides,
   };
 }
@@ -81,6 +82,9 @@ function makeAggregate(overrides: Partial<StoredNightlyAggregate> = {}): StoredN
     usageHours: 7,
     maskOnTimeMinutes: 420,
     complianceStatus: 'compliant',
+    configuredMinPressure: null,
+    configuredMaxPressure: null,
+    eprLevel: null,
     notes: '',
     tags: [],
     ...overrides,

@@ -11,7 +11,7 @@
  */
 
 import type { Event } from '@/types/events';
-import type { Session, NightlyAggregate, ChannelMetadata } from '@/types/session';
+import type { Session, NightlyAggregate, ChannelMetadata, MachineSettings } from '@/types/session';
 import type { ResMedInterpretation, StandardChannel } from './ResMedInterpreter';
 
 // ---------------------------------------------------------------------------
@@ -65,13 +65,17 @@ export class SessionBuilder {
    * and computing aggregates and therapy events.
    *
    * @param interpretations - Interpreted EDF files from `ResMedInterpreter`.
+   * @param strSettingsByDate - Optional map from ISO date to machine settings from STR.edf.
    * @returns Array of build results, one per detected session.
    */
-  buildSessions(interpretations: readonly ResMedInterpretation[]): BuildResult[] {
+  buildSessions(
+    interpretations: readonly ResMedInterpretation[],
+    strSettingsByDate?: ReadonlyMap<string, MachineSettings>,
+  ): BuildResult[] {
     if (interpretations.length === 0) return [];
 
     const groups = this.detectSessionBoundaries(interpretations);
-    return groups.map((group) => this.buildFromGroup(group));
+    return groups.map((group) => this.buildFromGroup(group, strSettingsByDate));
   }
 
   /**
@@ -122,7 +126,10 @@ export class SessionBuilder {
   // Private: Build a session from a group of interpretations
   // ---------------------------------------------------------------------------
 
-  private buildFromGroup(group: readonly ResMedInterpretation[]): BuildResult {
+  private buildFromGroup(
+    group: readonly ResMedInterpretation[],
+    strSettingsByDate?: ReadonlyMap<string, MachineSettings>,
+  ): BuildResult {
     const sessionId = crypto.randomUUID();
     const aggregateId = crypto.randomUUID();
 
@@ -194,6 +201,10 @@ export class SessionBuilder {
     // the import pipeline should compute this from raw file bytes)
     const sourceHash = sessionId; // Placeholder; real hash computed at import time
 
+    // Look up machine settings from STR data by session date
+    const sessionDate = this.formatDate(startTime);
+    const machineSettings = strSettingsByDate?.get(sessionDate) ?? null;
+
     const session: Session = {
       id: sessionId,
       date: this.formatDate(startTime),
@@ -211,6 +222,7 @@ export class SessionBuilder {
       hasOximetry: channelMap.has('spo2'),
       deleted: false,
       importedAt: new Date().toISOString(),
+      machineSettings,
     };
 
     // Compute metrics
@@ -278,6 +290,9 @@ export class SessionBuilder {
       usageHours,
       maskOnTimeMinutes: usageSeconds / 60,
       complianceStatus,
+      configuredMinPressure: machineSettings?.minPressure ?? null,
+      configuredMaxPressure: machineSettings?.maxPressure ?? null,
+      eprLevel: machineSettings?.eprLevel ?? null,
       notes: '',
       tags: [],
     };

@@ -11,6 +11,8 @@
 
 import type { ResMedInterpretation, StandardChannel } from '@/parsers/resmed/ResMedInterpreter';
 import { SessionBuilder, type BuildResult } from '@/parsers/resmed/SessionBuilder';
+import { STRParser } from '@/parsers/resmed/STRParser';
+import type { MachineSettings } from '@/types/session';
 import { Validator } from '@/parsers/validation/Validator';
 import type { IndexedDBService, StoredNightlyAggregate } from '@/services/storage/IndexedDBService';
 import type { OPFSService } from '@/services/storage/OPFSService';
@@ -53,7 +55,7 @@ const RESMED_FILENAME_RE = /^(\d{8}_\d{6})_([A-Z]{2,3})\.edf$/i;
 const DAY_FOLDER_RE = /^\d{8}$/;
 
 /** Known EDF file type suffixes. */
-const KNOWN_TYPES = new Set<string>(['BRP', 'EVE', 'PLD', 'SAD', 'CSL']);
+const KNOWN_TYPES = new Set<string>(['BRP', 'EVE', 'PLD', 'SAD', 'CSL', 'STR']);
 
 /** Maximum allowed file size (100 MB). Prevents excessive memory allocation. */
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
@@ -131,6 +133,8 @@ export class ImportService {
     const fileHashes = new Map<string, string>();
     const interpretations = new Map<string, ResMedInterpretation>();
     const signalDataByFile = new Map<string, ReadonlyMap<string, StandardChannel>>();
+    /** Raw EDF parse results for STR files (channels have original labels). */
+    const strEDFResults = new Map<string, ParseResult>();
     const errors: ImportError[] = [];
     const warnings: string[] = [];
     let bytesRead = 0;
@@ -180,6 +184,11 @@ export class ImportService {
 
           interpretations.set(df.relativePath, result.interpretation);
 
+          // Save raw EDF parse result for STR files
+          if (df.fileType === 'STR') {
+            strEDFResults.set(df.relativePath, result);
+          }
+
           // Track channel data for OPFS storage
           const channelMap = new Map<string, StandardChannel>();
           for (const ch of result.interpretation.channels) {
@@ -205,7 +214,34 @@ export class ImportService {
       worker.dispose();
     }
 
-    // --- 3. Group & build sessions ----------------------------------------
+    // --- 3. Extract STR settings -----------------------------------------
+    const strParser = new STRParser();
+    let strSettingsByDate: ReadonlyMap<string, MachineSettings> = new Map();
+
+    for (const [filePath, parseResult] of strEDFResults) {
+      try {
+        // Use raw EDF signals which retain original STR channel labels
+        // (the ResMed interpreter skips most STR-specific channels)
+        const rawChannels = parseResult.edf.signals.map((sig) => ({
+          label: sig.label,
+          samples: sig.samples,
+        }));
+        const numRecords = parseResult.edf.header.numDataRecords;
+        const startDate = parseResult.edf.startTime;
+
+        const result = strParser.parseFromRawChannels(rawChannels, startDate, numRecords);
+
+        if (result.settingsByDate.size > 0) {
+          strSettingsByDate = result.settingsByDate;
+        }
+      } catch (err) {
+        warnings.push(
+          `STR.edf parsing (${filePath}): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    // --- 4. Group & build sessions ----------------------------------------
     const dayGroups = this.groupByDay(discovered);
     emit({
       status: 'building',
@@ -225,7 +261,7 @@ export class ImportService {
         const dayInterpretations = this.collectDayInterpretations(dayGroup, interpretations);
         if (dayInterpretations.length === 0) continue;
 
-        const results = this.sessionBuilder.buildSessions(dayInterpretations);
+        const results = this.sessionBuilder.buildSessions(dayInterpretations, strSettingsByDate);
 
         // Map each build result back to contributing files for sourceHash
         for (const result of results) {

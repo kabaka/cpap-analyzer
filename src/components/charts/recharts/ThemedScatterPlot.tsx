@@ -156,7 +156,7 @@ const ThemedScatterPlot = React.memo(function ThemedScatterPlot({
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart margin={{ top: 8, right: 16, bottom: 24, left: 16 }}>
+      <ComposedChart margin={{ top: 8, right: 16, bottom: 32, left: 16 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
         <XAxis
           dataKey="x"

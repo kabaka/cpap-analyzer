@@ -1,48 +1,85 @@
 /**
- * Main dashboard view.
+ * Main dashboard view — "Control Room" redesign.
  *
- * Shows an empty state when no data is imported, or the full dashboard
- * with KPI cards, date range selector, and recent sessions table.
+ * Dense, information-rich dashboard with KPI sparklines, therapy charts,
+ * event distribution, machine settings, auto-insights, and recent sessions.
  *
  * @module views/Dashboard/Dashboard
  */
 
+import { useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useSessionData } from '@/hooks/useSessionData';
 import { useSummaryStats } from '@/hooks/useSummaryStats';
+import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
-import { KPICard } from '@/components/domain/KPICard';
-import { SessionsTable } from '@/components/domain/SessionsTable';
 import { Card } from '@/components/ui';
+import { generateInsights } from './insights';
 import { EmptyState } from './EmptyState';
+import KPIRow from './panels/KPIRow';
+import TherapyOverview from './panels/TherapyOverview';
+import EventDistribution from './panels/EventDistribution';
+import InsightsPanel from './panels/InsightsPanel';
+import MachineSettingsPanel from './panels/MachineSettingsPanel';
+import RecentSessions from './panels/RecentSessions';
 import styles from './Dashboard.module.css';
-
-/** Map AHI value to clinical severity. */
-function ahiSeverity(ahi: number): 'normal' | 'mild' | 'moderate' | 'severe' {
-  if (ahi < 5) return 'normal';
-  if (ahi < 15) return 'mild';
-  if (ahi < 30) return 'moderate';
-  return 'severe';
-}
+import type { MachineSettings } from '@/types';
 
 export default function Dashboard() {
   const dateRange = useAppStore((s) => s.dateRange);
   const { sessions, loading: sessionsLoading, error: sessionsError } = useSessionData(dateRange);
   const { stats, loading: statsLoading, error: statsError } = useSummaryStats(dateRange);
+  const { aggregates, loading: aggLoading, error: aggError } = useNightlyAggregates(dateRange);
 
-  const error = sessionsError ?? statsError;
+  const error = sessionsError ?? statsError ?? aggError;
+  const loading = statsLoading || sessionsLoading || aggLoading;
+
+  // Machine settings from the most recent session
+  const machineSettings: MachineSettings | null = useMemo(() => {
+    if (sessions.length === 0) return null;
+    // Sessions are sorted newest-first by useSessionData
+    return sessions[0]?.machineSettings ?? null;
+  }, [sessions]);
+
+  // Detect settings changes in aggregates
+  const settingsChangeDate = useMemo(() => {
+    if (aggregates.length < 2) return null;
+    const sorted = [...aggregates].sort((a, b) => a.date.localeCompare(b.date));
+    const latest = sorted[sorted.length - 1];
+    if (!latest) return null;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const agg = sorted[i];
+      if (!agg) continue;
+      if (
+        agg.configuredMinPressure !== latest.configuredMinPressure ||
+        agg.configuredMaxPressure !== latest.configuredMaxPressure ||
+        agg.eprLevel !== latest.eprLevel
+      ) {
+        return sorted[i + 1]?.date ?? agg.date;
+      }
+    }
+    return null;
+  }, [aggregates]);
+
+  // Generate insights
+  const insights = useMemo(() => {
+    if (!stats || aggregates.length === 0) return [];
+    return generateInsights(aggregates, stats);
+  }, [aggregates, stats]);
+
+  // Trend data for charts
+  const trendData = stats?.trendData ?? [];
 
   // Show empty state if no sessions, not loading, and no errors
-  const hasData = sessions.length > 0 || statsLoading || sessionsLoading;
+  const hasData = sessions.length > 0 || loading;
 
   if (!hasData && !error) {
     return <EmptyState />;
   }
 
-  const loading = statsLoading || sessionsLoading;
-
   return (
     <div className={styles.dashboard}>
+      {/* Header */}
       <div className={styles.header}>
         <h1 className={styles.title}>Dashboard</h1>
         <DateRangeSelector />
@@ -56,47 +93,27 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* KPI Cards */}
-      <section className={styles.kpiGrid} aria-label="Key performance indicators">
-        <KPICard
-          title="AHI"
-          value={stats ? stats.meanAHI.toFixed(1) : '—'}
-          unit="events/hr"
-          severity={stats ? ahiSeverity(stats.meanAHI) : undefined}
-          loading={loading}
-        />
-        <KPICard
-          title="Leak Rate"
-          value={stats ? stats.meanLeak.toFixed(1) : '—'}
-          unit="L/min"
-          loading={loading}
-        />
-        <KPICard
-          title="Usage"
-          value={stats ? stats.meanUsageHours.toFixed(1) : '—'}
-          unit="hrs/night"
-          loading={loading}
-        />
-        <KPICard
-          title="Compliance"
-          value={stats ? `${(stats.complianceRate * 100).toFixed(0)}` : '—'}
-          unit="%"
-          loading={loading}
-        />
-      </section>
+      {/* KPI Row */}
+      <KPIRow stats={stats} loading={loading} />
 
-      {/* Recent Sessions */}
-      <section className={styles.sessionsSection}>
-        <Card>
-          <div className={styles.sectionHeader}>
-            <h2 className={styles.sectionTitle}>Recent Sessions</h2>
-            <span className={styles.sessionCount}>
-              {stats ? `${stats.totalSessions} total` : ''}
-            </span>
-          </div>
-          <SessionsTable sessions={sessions} limit={10} />
-        </Card>
-      </section>
+      {/* Therapy Overview Charts */}
+      <TherapyOverview trendData={trendData} loading={loading} />
+
+      {/* Event Distribution + Insights */}
+      <div className={styles.analyticsRow}>
+        <EventDistribution trendData={trendData} loading={loading} />
+        <InsightsPanel insights={insights} loading={loading} />
+      </div>
+
+      {/* Machine Settings + Recent Sessions */}
+      <div className={styles.bottomRow}>
+        <MachineSettingsPanel
+          settings={machineSettings}
+          settingsChangeDate={settingsChangeDate}
+          loading={loading}
+        />
+        <RecentSessions sessions={sessions} aggregates={aggregates} loading={loading} />
+      </div>
     </div>
   );
 }
