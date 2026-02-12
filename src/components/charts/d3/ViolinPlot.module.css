@@ -1,0 +1,43 @@
+.container {
+  width: 100%;
+  font-family: var(--font-family-sans);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.violinPath {
+  fill-opacity: 0.25;
+  stroke-width: 1.5;
+}
+
+.boxRect {
+  stroke-width: 1;
+  fill-opacity: 0.6;
+}
+
+.medianLine {
+  stroke-width: 2;
+}
+
+.whiskerLine {
+  stroke-width: 1;
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  fill: var(--color-text-secondary);
+  text-anchor: middle;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

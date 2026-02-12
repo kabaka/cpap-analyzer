@@ -1,0 +1,56 @@
+.container {
+  width: 100%;
+  font-family: var(--font-family-sans);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.stepLine {
+  fill: none;
+  stroke-width: 2;
+}
+
+.confidenceBand {
+  fill-opacity: 0.15;
+}
+
+.censorTick {
+  stroke-width: 2;
+}
+
+.referenceLine {
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+}
+
+.referenceLabel {
+  font-size: 10px;
+  fill: var(--color-text-muted);
+}
+
+.axisLabel {
+  font-size: var(--font-size-xs);
+  fill: var(--color-chart-axis);
+}
+
+.tick text {
+  font-size: 11px;
+  fill: var(--color-chart-axis);
+}
+
+.tick line {
+  stroke: var(--color-chart-grid);
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

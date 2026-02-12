@@ -1,0 +1,9 @@
+.tooltip {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  background-color: var(--color-chart-tooltip-bg);
+  border: 1px solid var(--color-chart-tooltip-border);
+}

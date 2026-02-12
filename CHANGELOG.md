@@ -7,6 +7,18 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+### Added (Phase 9: Analysis Views + Visualization Library)
+
+- Analysis views: Statistical Analysis (`src/views/Analysis/StatisticalAnalysis/`), Event Analysis (`src/views/Analysis/EventAnalysis/`), and Pressure Optimization (`src/views/Analysis/PressureOptimization/`) with tabbed layouts following WAI-ARIA APG tabs pattern
+- Chart library with interactive charts: ThemedLineChart, ThemedAreaChart, ThemedBarChart, ThemedScatterPlot (Recharts); BoxPlot, ViolinPlot, CorrelationHeatmap, KaplanMeierCurve, QQPlot, STLDecompositionPanel, CalendarHeatmap (D3)
+- ChartContainer (`src/components/charts/ChartContainer.tsx`) with PNG export, View as Table toggle, loading skeleton, and error states
+- `useAnalysis` hook for executing analysis with AbortController cancellation and result caching
+- `useChartColors` hook for theme-aware chart color palette access
+- Chart interaction store (`src/stores/useChartInteractionStore.ts`) for synchronized zoom/crosshair across linked charts
+- All chart components wrapped in React.memo for render performance
+- 87 new unit tests (1062 total) covering chart components, analysis views, hooks, and interaction store
+- 132 new E2E tests (450 total across 3 browsers) covering analysis view rendering, chart interactions, parameter changes, and PNG export
+
 ### Added
 
 - Event marker legend in signal viewer

@@ -1,0 +1,62 @@
+.container {
+  width: 100%;
+  font-family: var(--font-family-sans);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.boxRect {
+  stroke-width: 1.5;
+}
+
+.whiskerLine {
+  stroke-width: 1.5;
+}
+
+.medianLine {
+  stroke-width: 2;
+}
+
+.outlier {
+  fill-opacity: 0.6;
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  fill: var(--color-text-secondary);
+  text-anchor: middle;
+}
+
+.medianLabel {
+  font-size: 10px;
+  fill: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+  text-anchor: middle;
+}
+
+.axisLabel {
+  font-size: var(--font-size-xs);
+  fill: var(--color-chart-axis);
+}
+
+.tick text {
+  font-size: 11px;
+  fill: var(--color-chart-axis);
+}
+
+.tick line {
+  stroke: var(--color-chart-grid);
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

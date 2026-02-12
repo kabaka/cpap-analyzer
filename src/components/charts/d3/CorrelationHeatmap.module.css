@@ -1,0 +1,46 @@
+.container {
+  width: 100%;
+  font-family: var(--font-family-sans);
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.cell {
+  stroke: var(--color-surface-primary);
+  stroke-width: 1;
+}
+
+.cellLabel {
+  font-size: 11px;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+.rowLabel,
+.colLabel {
+  font-size: var(--font-size-xs);
+  fill: var(--color-text-secondary);
+}
+
+.rowLabel {
+  text-anchor: end;
+  dominant-baseline: central;
+}
+
+.colLabel {
+  text-anchor: middle;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

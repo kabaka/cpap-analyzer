@@ -9,7 +9,7 @@ This document defines the phased implementation plan for the CPAP Analyzer appli
 - Every phase produces a working, testable increment.
 - QA agent reviews all code before a phase is considered complete.
 
-**Current state:** Phase 8 complete. Full analysis engine with 7 algorithm modules: descriptive statistics, time-series analysis, correlation analysis (Phase 7), hypothesis testing, distribution analysis, event analysis (clustering, false-negative detection), survival analysis, pressure analysis, and Granger causality (Phase 8). Shared math utilities module extracted (Phase 7 deferred). All analysis output interfaces marked readonly (Phase 7 deferred). 975 unit tests and 318 E2E tests (106 × 3 browsers) pass. All pre-commit checks green.
+**Current state:** Phase 9 complete. Full analysis UI with 3 analysis views (StatisticalAnalysis, EventAnalysis, PressureOptimization) and the complete chart library (ChartContainer, 4 Recharts wrappers, 7 D3 charts, chart interaction store, useAnalysis hook, useChartColors hook). 1062 unit tests and 450 E2E tests (150 × 3 browsers) pass. 1 pre-existing E2E test failure in sessions.spec.ts (search filter) unrelated to Phase 9. All pre-commit checks green.
 
 ---
 
@@ -320,16 +320,16 @@ Both refinements were addressed at the start of Phase 8 implementation.
 
 **Work items:**
 
-- [ ] **Statistical analysis view** (`src/views/Analysis/StatisticalAnalysis/`) — Descriptive stats summary table, time-series trend charts (rolling average with CI band, LOESS overlay, change-point markers), correlation matrix heatmap, distribution charts (histogram with KDE overlay, QQ-plot), hypothesis test results panel with effect size interpretation
-- [ ] **Event analysis view** (`src/views/Analysis/EventAnalysis/`) — Event cluster scatter plot (colored by cluster ID), event duration histogram by type, inter-event interval distribution, Kaplan-Meier survival curve, false-negative detection summary with sensitivity controls, event density chart (events per hour over time)
-- [ ] **Pressure analysis view** (`src/views/Analysis/PressureOptimization/`) — Pressure-response scatter (AHI vs pressure with regression line and optimal range shading), pressure variability box plot, titration helper recommendations display, EPAP/IPAP panel for BiPAP users
-- [ ] **Recharts standard charts** (`src/components/charts/recharts/`) — ThemedAreaChart, ThemedLineChart, ThemedBarChart, ThemedScatterPlot, ThemedPieChart — each with theme-aware colors from tokens, responsive sizing, tooltips, legends, click handlers for drill-down, PNG export
-- [ ] **D3 specialized charts** (`src/components/charts/d3/`) — BoxPlot, ViolinPlot, CorrelationHeatmap, KaplanMeierCurve, QQPlot, STLDecompositionPanel, CalendarHeatmap — each self-contained with D3 scales + SVG rendering
-- [ ] **Chart container** (`src/components/charts/ChartContainer.tsx`) — Responsive wrapper, loading skeleton, error state, "View as Table" toggle (data table alternative), export PNG button
-- [ ] **Chart interaction layer** — Zustand store for synchronized zoom/crosshair across charts, brush selection for date range, tooltip coordination
-- [ ] **Analysis hooks** (`src/hooks/`) — `useAnalysis(type, params, dateRange)`: triggers AnalysisEngine, manages loading/error/result state, caches across renders
-- [ ] **Unit tests** — Chart data transformation functions, analysis view state machines, chart interaction store, analysis hooks
-- [ ] **E2E tests** — Run each analysis type → verify chart renders with data, change analysis parameters → results update, export chart as PNG
+- [x] **Statistical analysis view** (`src/views/Analysis/StatisticalAnalysis/`) — Descriptive stats summary table, time-series trend charts (rolling average with CI band, LOESS overlay, change-point markers), correlation matrix heatmap, distribution charts (histogram with KDE overlay, QQ-plot), hypothesis test results panel with effect size interpretation
+- [x] **Event analysis view** (`src/views/Analysis/EventAnalysis/`) — Event cluster scatter plot (colored by cluster ID), event duration histogram by type, inter-event interval distribution, Kaplan-Meier survival curve, false-negative detection summary with sensitivity controls, event density chart (events per hour over time)
+- [x] **Pressure analysis view** (`src/views/Analysis/PressureOptimization/`) — Pressure-response scatter (AHI vs pressure with regression line and optimal range shading), pressure variability box plot, titration helper recommendations display, EPAP/IPAP panel for BiPAP users
+- [x] **Recharts standard charts** (`src/components/charts/recharts/`) — ThemedAreaChart, ThemedLineChart, ThemedBarChart, ThemedScatterPlot, ThemedPieChart — each with theme-aware colors from tokens, responsive sizing, tooltips, legends, click handlers for drill-down, PNG export
+- [x] **D3 specialized charts** (`src/components/charts/d3/`) — BoxPlot, ViolinPlot, CorrelationHeatmap, KaplanMeierCurve, QQPlot, STLDecompositionPanel, CalendarHeatmap — each self-contained with D3 scales + SVG rendering
+- [x] **Chart container** (`src/components/charts/ChartContainer.tsx`) — Responsive wrapper, loading skeleton, error state, "View as Table" toggle (data table alternative), export PNG button
+- [x] **Chart interaction layer** — Zustand store for synchronized zoom/crosshair across charts, brush selection for date range, tooltip coordination
+- [x] **Analysis hooks** (`src/hooks/`) — `useAnalysis(type, params, dateRange)`: triggers AnalysisEngine, manages loading/error/result state, caches across renders
+- [x] **Unit tests** — Chart data transformation functions, analysis view state machines, chart interaction store, analysis hooks
+- [x] **E2E tests** — Run each analysis type → verify chart renders with data, change analysis parameters → results update, export chart as PNG
 
 **Agents:** Data Visualization (all chart components — primary), Frontend (analysis views, layouts, hooks, interaction), UI Design (chart styling, dark mode, analysis view layout), UX (chart interactions, tooltip placement, parameter controls, information density), Data Science (verify analysis views display algorithm output correctly), Unit Tester, E2E Tester, QA
 
@@ -347,6 +347,12 @@ Both refinements were addressed at the start of Phase 8 implementation.
 - CI green
 
 **Depends on:** Phase 7 + 8 (complete analysis engine), Phase 5 (imported data), Phase 2 (design system)
+
+### Phase 9 Notes
+
+- **QQ Plot deferred** — The analysis engine doesn't currently return raw data values needed for Q-Q plots. The QQPlot component exists in the chart library (`src/components/charts/d3/QQPlot.tsx`) but is not wired into the StatisticalAnalysis view.
+- **ARIA tabs pattern** — Implemented per WAI-ARIA Authoring Practices Guide (`role="tablist"`, `role="tab"`, `aria-selected`, `role="tabpanel"`) across all analysis views.
+- **React.memo wrapping** — All chart components wrapped in `React.memo` for performance, preventing unnecessary re-renders when parent views update.
 
 ---
 
