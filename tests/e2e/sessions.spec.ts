@@ -22,16 +22,14 @@ const MACHINE_MODEL = 'AirSense 11 AutoSet';
 
 // ── Test Data Factories ──
 
-/** Format a Date as YYYY-MM-DD. */
-function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-/** Return a YYYY-MM-DD string for N days before today. */
+/** Return a YYYY-MM-DD string for N days before today (local time). */
 function daysAgoStr(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return formatDate(d);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /** Build a minimal Session record. */
@@ -245,14 +243,10 @@ test.describe('Session List', () => {
 
     // Type a portion of the first session's date into the filter
     const filterInput = page.getByRole('searchbox', { name: /filter/i });
-    // Use the raw date string portion (year) — all share it, so use month+day
-    // Instead, filter for something that narrows results
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() - 2);
-    const monthStr = targetDate.toLocaleDateString(undefined, { month: 'short' });
-    const dayStr = String(targetDate.getDate());
+    // Use the raw YYYY-MM-DD date string which the filter matches against dateRaw
+    const filterStr = daysAgoStr(2);
 
-    await filterInput.fill(`${monthStr} ${dayStr}`);
+    await filterInput.fill(filterStr);
 
     // Should show fewer results (likely 1)
     await expect(rows.first()).toBeVisible();

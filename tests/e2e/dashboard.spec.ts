@@ -22,16 +22,14 @@ const MACHINE_MODEL = 'AirSense 11 AutoSet';
 
 // ── Test Data Factories ──
 
-/** Format a Date as YYYY-MM-DD. */
-function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-/** Return a YYYY-MM-DD string for N days before today. */
+/** Return a YYYY-MM-DD string for N days before today (local time). */
 function daysAgoStr(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return formatDate(d);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /** Build a minimal Session record. */

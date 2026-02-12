@@ -24,10 +24,14 @@ const DB_VERSION = 1;
 
 // ── Test Data Factories ──
 
+/** Return a YYYY-MM-DD string for N days before today (local time). */
 function daysAgoStr(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function makeSession(id: string, date: string) {
