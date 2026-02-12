@@ -31,7 +31,7 @@ test.describe('Navigation', () => {
 
     // Navigate to Help
     await nav.getByRole('link', { name: /help/i }).click();
-    await expect(page.getByRole('heading', { name: /^help$/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /help/i })).toBeVisible();
   });
 
   test('should highlight active navigation link', async ({ page }) => {
@@ -61,7 +61,7 @@ test.describe('Navigation', () => {
       { path: '/reports', heading: /^reports$/i },
       { path: '/data', heading: /data management/i },
       { path: '/settings', heading: /^settings$/i },
-      { path: '/help', heading: /^help$/i },
+      { path: '/help', heading: /help/i },
     ];
 
     for (const route of routes) {

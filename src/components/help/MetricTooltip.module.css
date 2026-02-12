@@ -1,0 +1,53 @@
+.trigger {
+  all: unset;
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-bottom: 1px dotted var(--color-text-muted);
+  font: inherit;
+  color: inherit;
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.tooltipContent {
+  max-width: 320px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.label {
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.unit {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.description {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-normal);
+}
+
+.interpretation {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+  font-style: italic;
+}
