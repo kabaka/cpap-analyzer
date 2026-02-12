@@ -110,13 +110,23 @@ interface StorageInfo {
 }
 
 async function fetchStorageInfo(): Promise<StorageInfo> {
-  const estimate = await navigator.storage.estimate();
+  let usage = 0;
+  let quota = 0;
+  try {
+    if (navigator.storage && typeof navigator.storage.estimate === 'function') {
+      const estimate = await navigator.storage.estimate();
+      usage = estimate.usage ?? 0;
+      quota = estimate.quota ?? 0;
+    }
+  } catch {
+    // Storage API not available (e.g. WebKit in some environments)
+  }
   const db = await getDB();
   const sessions = await db.getAllSessions();
   const imports = await db.getAllImportRecords();
   return {
-    usage: estimate.usage ?? 0,
-    quota: estimate.quota ?? 0,
+    usage,
+    quota,
     sessionCount: sessions.length,
     importCount: imports.length,
   };
