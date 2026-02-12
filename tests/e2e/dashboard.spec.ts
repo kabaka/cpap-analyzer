@@ -256,8 +256,7 @@ test.describe('Dashboard — KPI Values After Import', () => {
     await expect(kpiSection.getByText('hrs/night')).toBeVisible();
 
     // Compliance card — 1 compliant session out of 1 = 100%
-    await expect(kpiSection.getByText('100')).toBeVisible();
-    await expect(kpiSection.getByText('%')).toBeVisible();
+    await expect(kpiSection.getByRole('article', { name: /Compliance: 100 %/ })).toBeVisible();
   });
 
   test('shows Recent Sessions section with session table', async ({ page }) => {
@@ -269,9 +268,6 @@ test.describe('Dashboard — KPI Values After Import', () => {
 
     // Recent Sessions heading
     await expect(page.getByRole('heading', { name: 'Recent Sessions' })).toBeVisible();
-
-    // Session count
-    await expect(page.getByText('1 total')).toBeVisible();
 
     // Table should be rendered with column headers
     await expect(page.getByRole('columnheader', { name: 'Date' })).toBeVisible();
@@ -339,7 +335,7 @@ test.describe('Dashboard — Date Range Preset Switching', () => {
     await setupDashboardWithData(page, sessions, aggregates);
 
     // Default is "Last 30 days" → 4 sessions
-    await expect(page.getByText('4 total')).toBeVisible();
+    await expect(page.locator('tbody tr')).toHaveCount(4);
   });
 
   test('switching to "Last 7 days" reduces session count', async ({ page }) => {
@@ -347,14 +343,14 @@ test.describe('Dashboard — Date Range Preset Switching', () => {
     await setupDashboardWithData(page, sessions, aggregates);
 
     // Default shows 4 sessions
-    await expect(page.getByText('4 total')).toBeVisible();
+    await expect(page.locator('tbody tr')).toHaveCount(4);
 
     // Open the date range selector and switch to "Last 7 days"
     await page.getByRole('combobox', { name: 'Date range' }).click();
     await page.getByRole('option', { name: 'Last 7 days' }).click();
 
     // Should now show only 2 sessions
-    await expect(page.getByText('2 total')).toBeVisible();
+    await expect(page.locator('tbody tr')).toHaveCount(2);
   });
 
   test('switching to "All time" shows all sessions', async ({ page }) => {
@@ -362,14 +358,14 @@ test.describe('Dashboard — Date Range Preset Switching', () => {
     await setupDashboardWithData(page, sessions, aggregates);
 
     // Default shows 4 sessions
-    await expect(page.getByText('4 total')).toBeVisible();
+    await expect(page.locator('tbody tr')).toHaveCount(4);
 
     // Switch to "All time"
     await page.getByRole('combobox', { name: 'Date range' }).click();
     await page.getByRole('option', { name: 'All time' }).click();
 
     // Should show all 5 sessions
-    await expect(page.getByText('5 total')).toBeVisible();
+    await expect(page.locator('tbody tr')).toHaveCount(5);
   });
 
   test('switching presets updates table row count', async ({ page }) => {
