@@ -2357,7 +2357,7 @@ concurrency:
 - `2026.02.1` — Second release of February 2026
 - `2026.03.0` — First release of March 2026
 
-**Rationale** (from `.github/skills/calver-release/SKILL.md`):
+**Rationale** (from `.claude/skills/calver-release/SKILL.md`):
 
 - Time-based versioning suits continuous delivery model
 - No semantic meaning required (no external API consumers)
@@ -4742,10 +4742,10 @@ permissions:
 - [Frontend Architecture](frontend-architecture.md)
 - [Security Architecture](security-architecture.md)
 - [Performance Strategy](performance-strategy.md)
-- [Pre-commit Checks Skill](.github/skills/pre-commit-checks/SKILL.md)
-- [CalVer Release Skill](.github/skills/calver-release/SKILL.md)
-- [Playwright Testing Skill](.github/skills/playwright-testing/SKILL.md)
-- [Copilot Instructions](.github/copilot-instructions.md)
+- [Pre-commit Checks Skill](.claude/skills/pre-commit-checks/SKILL.md)
+- [CalVer Release Skill](.claude/skills/calver-release/SKILL.md)
+- [Playwright Testing Skill](.claude/skills/playwright-testing/SKILL.md)
+- [Project Instructions (CLAUDE.md)](CLAUDE.md)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [Vite Build Documentation](https://vitejs.dev/guide/build.html)
 - [Vitest Configuration](https://vitest.dev/config/)
