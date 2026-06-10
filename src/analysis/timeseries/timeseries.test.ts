@@ -470,6 +470,58 @@ describe('detectChangePoints', () => {
     expect(result.changePoints).toHaveLength(0);
     expect(result.segments).toHaveLength(1);
   });
+
+  // -------------------------------------------------------------------------
+  // Scale-aware default penalty (β = 2·ln(n)·σ̂²).
+  //
+  // The L2 cost is scale-dependent, so the omitted-penalty default must adapt
+  // to the metric's units. The SAME mean-shift signal expressed on two scales
+  // (×10) must yield the SAME segmentation under the default, whereas a fixed
+  // raw penalty would behave completely differently across scales.
+  // -------------------------------------------------------------------------
+  describe('scale-aware default penalty', () => {
+    const makeStep = (scale: number): number[] => [
+      // low-noise step from 0 → 10·scale at index 15
+      ...Array.from({ length: 15 }, (_, i) => (i % 2 === 0 ? 0.1 : -0.1) * scale),
+      ...Array.from({ length: 15 }, (_, i) => (10 + (i % 2 === 0 ? 0.1 : -0.1)) * scale),
+    ];
+
+    it('should be invariant to a global rescale of the data (default penalty)', () => {
+      const small = makeStep(1); // e.g. AHI-scale
+      const large = makeStep(10); // e.g. leak-rate-scale (×10)
+      const dates = makeDates(30);
+
+      const rSmall = detectChangePoints(small, dates); // omit penalty → default
+      const rLarge = detectChangePoints(large, dates);
+
+      // Same number of change points and same locations regardless of scale.
+      const idxSmall = rSmall.changePoints.map((c) => c.index);
+      const idxLarge = rLarge.changePoints.map((c) => c.index);
+      expect(idxLarge).toEqual(idxSmall);
+      // And it should find the single genuine step near index 15.
+      expect(idxSmall.some((i) => i >= 14 && i <= 16)).toBe(true);
+    });
+
+    it('should detect no change points for constant data under the default', () => {
+      const values = new Array<number>(20).fill(7);
+      const dates = makeDates(20);
+      const result = detectChangePoints(values, dates); // default penalty
+      expect(result.changePoints).toHaveLength(0);
+    });
+
+    it('should still honor an explicit penalty as a raw L2 penalty', () => {
+      // An explicit huge penalty suppresses all change points regardless of
+      // scale; an explicit tiny penalty admits many. This confirms explicit
+      // values bypass the scale-aware default (backward compatible).
+      const values = makeStep(1);
+      const dates = makeDates(30);
+
+      expect(detectChangePoints(values, dates, 1e9).changePoints).toHaveLength(0);
+      expect(detectChangePoints(values, dates, 0.0001).changePoints.length).toBeGreaterThanOrEqual(
+        1,
+      );
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

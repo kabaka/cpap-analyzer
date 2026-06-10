@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { getDB } from '@/services/storage/getDB';
+import { formatDate } from '@/utils/formatDate';
 
 /** Lightweight session metadata for lists (not the full Session type). */
 interface SessionMetadata {
@@ -26,14 +27,6 @@ interface SummaryStatistics {
   complianceRate: number;
 }
 
-/** Format a Date as YYYY-MM-DD. */
-function formatDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 /** Compute the median of a numeric array. */
 function median(values: number[]): number {
   if (values.length === 0) return 0;
@@ -48,6 +41,8 @@ function median(values: number[]): number {
 interface DataState {
   // Session metadata cache
   sessions: Map<string, SessionMetadata>;
+  /** The date range that produced the current `sessions` map, if any. */
+  sessionsRange: { start: Date; end: Date } | null;
   sessionsLoading: boolean;
   sessionsError: string | null;
   loadSessions: (range: { start: Date; end: Date }) => Promise<void>;
@@ -66,14 +61,30 @@ interface DataState {
   clearCache: () => void;
 }
 
+// ---------------------------------------------------------------------------
+// Request sequencing
+// ---------------------------------------------------------------------------
+//
+// `loadSessions` and `loadSummaryStats` are fire-and-forget. Without
+// sequencing, a slow earlier request can resolve AFTER a newer one and
+// overwrite current state with stale data. Each action captures a monotonic
+// token before awaiting and only commits its result if it is still the latest
+// request for that action. Tokens are module-scoped (one store instance per
+// app), keeping the public store shape unchanged.
+
+let sessionsRequestId = 0;
+let summaryStatsRequestId = 0;
+
 export const useDataStore = create<DataState>()(
   devtools(
     (set) => ({
       // Sessions
       sessions: new Map<string, SessionMetadata>(),
+      sessionsRange: null,
       sessionsLoading: false,
       sessionsError: null,
       loadSessions: async (range) => {
+        const requestId = ++sessionsRequestId;
         set({ sessionsLoading: true, sessionsError: null }, undefined, 'loadSessions/start');
         try {
           const db = await getDB();
@@ -81,6 +92,9 @@ export const useDataStore = create<DataState>()(
           const end = formatDate(range.end);
           const sessions = await db.getSessionsByDateRange(start, end);
           const aggregates = await db.getNightlyAggregatesByDateRange(start, end);
+
+          // A newer request superseded this one while it was in flight; discard.
+          if (requestId !== sessionsRequestId) return;
 
           // Build a lookup from sessionId → aggregate
           const aggMap = new Map(aggregates.map((a) => [a.sessionId, a]));
@@ -100,8 +114,14 @@ export const useDataStore = create<DataState>()(
               complianceStatus: agg?.complianceStatus ?? 'non-compliant',
             });
           }
-          set({ sessions: map, sessionsLoading: false }, undefined, 'loadSessions/end');
+          set(
+            { sessions: map, sessionsRange: range, sessionsLoading: false },
+            undefined,
+            'loadSessions/end',
+          );
         } catch (err) {
+          // Ignore errors from superseded requests.
+          if (requestId !== sessionsRequestId) return;
           set(
             {
               sessionsError: err instanceof Error ? err.message : 'Failed to load sessions',
@@ -118,6 +138,7 @@ export const useDataStore = create<DataState>()(
       summaryStatsLoading: false,
       summaryStatsError: null,
       loadSummaryStats: async (range) => {
+        const requestId = ++summaryStatsRequestId;
         set(
           { summaryStatsLoading: true, summaryStatsError: null },
           undefined,
@@ -128,6 +149,9 @@ export const useDataStore = create<DataState>()(
           const start = formatDate(range.start);
           const end = formatDate(range.end);
           const aggregates = await db.getNightlyAggregatesByDateRange(start, end);
+
+          // A newer request superseded this one while it was in flight; discard.
+          if (requestId !== summaryStatsRequestId) return;
 
           const ahiValues = aggregates.map((a) => a.ahi);
           const leakValues = aggregates.map((a) => a.leakMedian);
@@ -161,6 +185,8 @@ export const useDataStore = create<DataState>()(
             'loadSummaryStats/end',
           );
         } catch (err) {
+          // Ignore errors from superseded requests.
+          if (requestId !== summaryStatsRequestId) return;
           set(
             {
               summaryStatsError: err instanceof Error ? err.message : 'Failed to load statistics',
@@ -182,6 +208,7 @@ export const useDataStore = create<DataState>()(
         set(
           {
             sessions: new Map<string, SessionMetadata>(),
+            sessionsRange: null,
             sessionsLoading: false,
             sessionsError: null,
             summaryStats: null,

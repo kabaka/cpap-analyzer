@@ -15,6 +15,7 @@ import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
 import { Card } from '@/components/ui';
 import { generateInsights } from './insights';
+import { findFirstSettingsChangeDate } from '@/views/Trends/utils/detectSettingsChanges';
 import { EmptyState } from './EmptyState';
 import KPIRow from './panels/KPIRow';
 import TherapyOverview from './panels/TherapyOverview';
@@ -42,24 +43,7 @@ export default function Dashboard() {
   }, [sessions]);
 
   // Detect settings changes in aggregates
-  const settingsChangeDate = useMemo(() => {
-    if (aggregates.length < 2) return null;
-    const sorted = [...aggregates].sort((a, b) => a.date.localeCompare(b.date));
-    const latest = sorted[sorted.length - 1];
-    if (!latest) return null;
-    for (let i = 0; i < sorted.length - 1; i++) {
-      const agg = sorted[i];
-      if (!agg) continue;
-      if (
-        agg.configuredMinPressure !== latest.configuredMinPressure ||
-        agg.configuredMaxPressure !== latest.configuredMaxPressure ||
-        agg.eprLevel !== latest.eprLevel
-      ) {
-        return sorted[i + 1]?.date ?? agg.date;
-      }
-    }
-    return null;
-  }, [aggregates]);
+  const settingsChangeDate = useMemo(() => findFirstSettingsChangeDate(aggregates), [aggregates]);
 
   // Generate insights
   const insights = useMemo(() => {

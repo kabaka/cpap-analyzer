@@ -25,6 +25,7 @@ import type {
   TitrationResult,
   BiPAPEffectivenessResult,
 } from '@/analysis/pressure';
+import { formatDate } from '@/utils/formatDate';
 import styles from './PressureOptimization.module.css';
 
 // ---------------------------------------------------------------------------
@@ -37,13 +38,6 @@ type TimeGrouping = 'weekly' | 'monthly';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 /** Get week-of-year key for grouping. */
 function weekKey(dateStr: string): string {
   const d = new Date(dateStr);
@@ -55,6 +49,12 @@ function weekKey(dateStr: string): string {
 /** Get YYYY-MM key for monthly grouping. */
 function monthKey(dateStr: string): string {
   return dateStr.slice(0, 7);
+}
+
+/** Arithmetic mean of a numeric array; 0 for an empty array. */
+function mean(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
 function stabilityBadgeClass(
@@ -351,6 +351,19 @@ const BiPAPSection = React.memo(function BiPAPSection({
     return bipapEffectiveness(epapValues, ipapValues, ahiValues);
   }, [aggregates, hasBiPAP]);
 
+  // Mean of the nightly EPAP/IPAP medians across nights that report them.
+  // These are arithmetic means (matching the neighbouring "Mean Pressure" and
+  // "Mean Pressure Support" cards), not medians-of-medians.
+  const meanEPAP = useMemo(
+    () => mean(aggregates.map((a) => a.epapMedian).filter((v): v is number => v !== null)),
+    [aggregates],
+  );
+
+  const meanIPAP = useMemo(
+    () => mean(aggregates.map((a) => a.ipapMedian).filter((v): v is number => v !== null)),
+    [aggregates],
+  );
+
   if (!hasBiPAP) return null;
 
   return (
@@ -360,24 +373,12 @@ const BiPAPSection = React.memo(function BiPAPSection({
         <h3 className={styles.bipapTitle}>BiPAP Pressure Support Analysis</h3>
         <div className={styles.summaryGrid}>
           <div className={styles.summaryCard}>
-            <p className={styles.summaryCardLabel}>Median EPAP</p>
-            <p className={styles.summaryCardValue}>
-              {aggregates
-                .filter((a) => a.epapMedian !== null)
-                .reduce((sum, a, _, arr) => sum + (a.epapMedian ?? 0) / arr.length, 0)
-                .toFixed(1)}{' '}
-              cmH₂O
-            </p>
+            <p className={styles.summaryCardLabel}>Mean EPAP</p>
+            <p className={styles.summaryCardValue}>{meanEPAP.toFixed(1)} cmH₂O</p>
           </div>
           <div className={styles.summaryCard}>
-            <p className={styles.summaryCardLabel}>Median IPAP</p>
-            <p className={styles.summaryCardValue}>
-              {aggregates
-                .filter((a) => a.ipapMedian !== null)
-                .reduce((sum, a, _, arr) => sum + (a.ipapMedian ?? 0) / arr.length, 0)
-                .toFixed(1)}{' '}
-              cmH₂O
-            </p>
+            <p className={styles.summaryCardLabel}>Mean IPAP</p>
+            <p className={styles.summaryCardValue}>{meanIPAP.toFixed(1)} cmH₂O</p>
           </div>
         </div>
         {result && (

@@ -440,6 +440,12 @@ function CompleteStep({
               <span className={styles.summaryValue}>{result.sessionsSkipped}</span>
               <span className={styles.summaryLabel}>Skipped (duplicates)</span>
             </div>
+            {progress.filesSkippedEmpty > 0 && (
+              <div className={styles.summaryItem}>
+                <span className={styles.summaryValue}>{progress.filesSkippedEmpty}</span>
+                <span className={styles.summaryLabel}>Empty files skipped</span>
+              </div>
+            )}
             {progress.warnings.length > 0 && (
               <div className={styles.summaryItem}>
                 <span className={styles.summaryValue}>{progress.warnings.length}</span>

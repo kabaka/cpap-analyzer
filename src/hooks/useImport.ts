@@ -10,9 +10,10 @@
 import { useState, useCallback, useRef } from 'react';
 import type { ImportProgress } from '@/services/import/types';
 import { ImportService } from '@/services/import/ImportService';
-import type { EDFWorkerFactory } from '@/services/import/ImportService';
+import type { EDFWorkerFactory, EDFWorkerPoolFactory } from '@/services/import/ImportService';
 import type { EDFParserWorkerAPI } from '@/services/workers/edfParser.worker';
 import { createWorker } from '@/services/workers/createWorker';
+import { WorkerPool } from '@/services/workers/WorkerPool';
 import { getDB } from '@/services/storage/getDB';
 import { OPFSService } from '@/services/storage/OPFSService';
 import { useAppStore } from '@/stores/useAppStore';
@@ -37,7 +38,15 @@ const IDLE_PROGRESS: ImportProgress = {
   sessionsValidated: 0,
   sessionsStored: 0,
   totalSessionsToStore: 0,
+  filesSkippedEmpty: 0,
 };
+
+/**
+ * Upper bound on parser-pool workers. Parsing is CPU + allocation bound, so
+ * scaling past the physical core count yields diminishing returns while
+ * inflating peak memory (each in-flight file holds its transferred buffers).
+ */
+const MAX_POOL_WORKERS = 8;
 
 interface UseImportResult {
   /** Start importing from an array of Files (drag-drop / file input). */
@@ -56,17 +65,48 @@ interface UseImportResult {
   reset: () => void;
 }
 
-/** Create an EDF worker factory for the ImportService. */
+/** The Vite-statically-analyzable worker URL for the EDF parser. */
+function edfWorkerUrl(): URL {
+  return new URL('../services/workers/edfParser.worker.ts', import.meta.url);
+}
+
+/** Create an EDF worker factory for the ImportService (single-worker fallback). */
 function makeWorkerFactory(): EDFWorkerFactory {
   return () =>
     createWorker<EDFParserWorkerAPI>(
       () =>
-        new Worker(new URL('../services/workers/edfParser.worker.ts', import.meta.url), {
+        new Worker(edfWorkerUrl(), {
           type: 'module',
           name: 'edf-parser',
         }),
       { timeoutMs: 60_000 },
     );
+}
+
+/**
+ * Recommended parser-pool size: `navigator.hardwareConcurrency`, capped at
+ * {@link MAX_POOL_WORKERS} and floored at 1. Falls back to 4 where the API is
+ * unavailable (matching {@link WorkerPool}'s own default).
+ */
+function recommendedPoolSize(): number {
+  const hw =
+    typeof navigator !== 'undefined' && typeof navigator.hardwareConcurrency === 'number'
+      ? navigator.hardwareConcurrency
+      : 4;
+  return Math.max(1, Math.min(hw, MAX_POOL_WORKERS));
+}
+
+/** Create an EDF worker-pool factory for the ImportService (parallel parsing). */
+function makeWorkerPoolFactory(): EDFWorkerPoolFactory {
+  return () => {
+    const maxWorkers = recommendedPoolSize();
+    return new WorkerPool<EDFParserWorkerAPI>({
+      workerUrl: edfWorkerUrl(),
+      minWorkers: 1,
+      maxWorkers,
+      taskTimeoutMs: 60_000,
+    });
+  };
 }
 
 /** Create an OPFSService if the API is available. */
@@ -126,7 +166,8 @@ export function useImport(): UseImportResult {
         const db = await getDB();
         const opfs = await getOPFS();
         const workerFactory = makeWorkerFactory();
-        const service = new ImportService(db, opfs, workerFactory);
+        const workerPoolFactory = makeWorkerPoolFactory();
+        const service = new ImportService(db, opfs, workerFactory, workerPoolFactory);
 
         const record = await importFn(service);
 

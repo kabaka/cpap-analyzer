@@ -1,0 +1,5 @@
+# The import directory tree is generated fresh at E2E runtime (with a recent,
+# date-stamped recording date) by tests/fixtures/generators/fixture-generator.ts
+# and tests/e2e/import-wizard.spec.ts. It is reproducible on demand and its
+# folder name drifts daily, so it is not committed.
+import-tree/

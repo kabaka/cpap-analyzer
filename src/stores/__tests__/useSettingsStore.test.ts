@@ -171,6 +171,27 @@ describe('useSettingsStore', () => {
       expect(state.display).toEqual(defaultDisplay);
       expect(state.integrations).toEqual(defaultIntegrations);
     });
+
+    it('should deep-clone defaults so mutations after a reset never leak into later resets', () => {
+      // Reset, then mutate a NESTED default-derived object. If resetToDefaults
+      // aliased the shared module-level constant, this mutation would corrupt
+      // the defaults and the second reset would observe the mutated value.
+      useSettingsStore.getState().resetToDefaults();
+      useSettingsStore.getState().updateAnalysisParam('ahi', { mildThreshold: 42 });
+      useSettingsStore.getState().updateIntegration('fitbit', {
+        enabled: true,
+        accessToken: 'leaked-token',
+      });
+
+      useSettingsStore.getState().resetToDefaults();
+
+      const state = useSettingsStore.getState();
+      expect(state.analysisParams.ahi.mildThreshold).toBe(5);
+      expect(state.integrations.fitbit).toEqual({ enabled: false, accessToken: null });
+      // Full structural equality confirms no nested aliasing crept in.
+      expect(state.analysisParams).toEqual(defaultAnalysisParams);
+      expect(state.integrations).toEqual(defaultIntegrations);
+    });
   });
 
   describe('persistence', () => {

@@ -6,7 +6,7 @@
  * @module views/Dashboard/EmptyState
  */
 
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useCallback } from 'react';
 import { Button } from '@/components/ui';
 import styles from './EmptyState.module.css';
@@ -45,9 +45,9 @@ export function EmptyState() {
           <Button variant="primary" size="lg" onClick={handleImport}>
             Import Your Data
           </Button>
-          <a href="/help" className={styles.learnMore}>
+          <Link to="/help" className={styles.learnMore}>
             Learn More
-          </a>
+          </Link>
         </div>
       </div>
     </div>

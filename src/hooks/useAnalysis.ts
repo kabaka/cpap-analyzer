@@ -16,6 +16,7 @@ import type { AnalysisMetadata, AnalysisOutput } from '@/types';
 import { AnalysisEngine } from '@/services/analysis/AnalysisEngine';
 import { createDataProviderAdapter } from '@/services/analysis/createDataProviderAdapter';
 import { useAppStore } from '@/stores/useAppStore';
+import { formatDate } from '@/utils/formatDate';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,14 +49,6 @@ export interface UseAnalysisResult<T = unknown> {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Format a Date as YYYY-MM-DD for the AnalysisEngine. */
-function formatDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 /** Stable JSON representation for dependency comparison. */
 function stableKey(value: unknown): string {

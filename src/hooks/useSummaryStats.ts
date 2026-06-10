@@ -10,6 +10,7 @@
 import { useState, useEffect } from 'react';
 import type { NightlyAggregate } from '@/types';
 import { getDB } from '@/services/storage/getDB';
+import { formatDate } from '@/utils/formatDate';
 
 /** Computed summary statistics for a date range. */
 export interface SummaryStats {
@@ -209,12 +210,4 @@ function median(values: number[]): number {
     return sorted[mid] ?? 0;
   }
   return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
-}
-
-/** Format a Date as YYYY-MM-DD for IndexedDB date range queries. */
-function formatDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }

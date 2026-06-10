@@ -223,5 +223,83 @@ describe('grangerCausality', () => {
 
       expect(result.aicValues).toHaveLength(maxLag);
     });
+
+    it('should expose selectionAffected and stationarityWarning fields', () => {
+      const result = grangerCausality(x, y, maxLag);
+
+      expect(typeof result.selectionAffected).toBe('boolean');
+      expect(
+        result.stationarityWarning === null || typeof result.stationarityWarning === 'string',
+      ).toBe(true);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Post-selection inference: selectionAffected flag
+  // -----------------------------------------------------------------------
+
+  describe('post-selection inference flagging', () => {
+    // Non-monotonic, mean-stationary inputs to avoid the trend warning.
+    const x = [2, 5, 1, 4, 3, 5, 1, 4, 2, 3, 5, 1, 4, 2, 5, 3, 1, 4, 2, 5];
+    const y = [
+      2.0, 1.8, 3.9, 1.1, 3.0, 2.5, 4.2, 0.7, 3.5, 1.4, 2.5, 3.7, 1.0, 3.1, 1.9, 3.8, 2.5, 0.7, 3.4,
+      1.3,
+    ];
+
+    it('should set selectionAffected=true when the lag is AIC-selected (no fixed lag)', () => {
+      const result = grangerCausality(x, y, 5);
+      expect(result.selectionAffected).toBe(true);
+    });
+
+    it('should set selectionAffected=false when a fixed lag is supplied', () => {
+      const result = grangerCausality(x, y, 5, { lag: 1 });
+      expect(result.selectionAffected).toBe(false);
+      // The reported lag must equal the fixed lag, not an AIC-selected one.
+      expect(result.optimalLag).toBe(1);
+    });
+
+    it('should compute the F-test at the supplied fixed lag', () => {
+      const atLag2 = grangerCausality(x, y, 5, { lag: 2 });
+      expect(atLag2.optimalLag).toBe(2);
+      expect(atLag2.selectionAffected).toBe(false);
+      // aicValues are still reported for all candidate lags as diagnostics.
+      expect(atLag2.aicValues).toHaveLength(5);
+    });
+
+    it('should ignore an out-of-range fixed lag and fall back to AIC selection', () => {
+      // lag=99 > maxLag=5 is invalid → treated as unspecified.
+      const result = grangerCausality(x, y, 5, { lag: 99 });
+      expect(result.selectionAffected).toBe(true);
+      expect(result.optimalLag).toBeGreaterThanOrEqual(1);
+      expect(result.optimalLag).toBeLessThanOrEqual(5);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Stationarity guard
+  // -----------------------------------------------------------------------
+
+  describe('stationarity guard', () => {
+    it('should warn when both inputs carry a strong deterministic trend', () => {
+      // Two independent but strongly trending series. A shared trend is the
+      // classic spurious-Granger setup, so the result must carry a warning.
+      const x = Array.from({ length: 24 }, (_, i) => i + Math.sin(i));
+      const y = Array.from({ length: 24 }, (_, i) => 2 * i + Math.cos(i * 1.3));
+
+      const result = grangerCausality(x, y, 3);
+
+      expect(result.stationarityWarning).not.toBeNull();
+      expect(result.stationarityWarning).toContain('trend');
+    });
+
+    it('should not warn for mean-stationary (trendless) inputs', () => {
+      // Oscillating, zero-trend inputs.
+      const x = [2, 5, 1, 4, 3, 5, 1, 4, 2, 3, 5, 1, 4, 2, 5, 3, 1, 4, 2, 5, 3, 1, 4, 2];
+      const y = [3, 1, 4, 2, 5, 1, 4, 2, 3, 5, 1, 4, 3, 5, 1, 4, 2, 5, 1, 4, 2, 3, 5, 1];
+
+      const result = grangerCausality(x, y, 3);
+
+      expect(result.stationarityWarning).toBeNull();
+    });
   });
 });

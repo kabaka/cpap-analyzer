@@ -167,6 +167,43 @@ describe('math utilities', () => {
       expect(studentTCDF(2.776, 4)).toBeCloseTo(0.975, 2);
     });
 
+    // -----------------------------------------------------------------------
+    // Tail accuracy for df > 30.
+    //
+    // The previous implementation used a Cornish-Fisher normal approximation
+    // for df > 30 that had 6–15% relative error in the small-p tails (e.g. at
+    // df=40, t=3.5 the upper-tail probability was 6.63e-4 vs the exact
+    // 5.79e-4 — a 14.6% over-estimate). The incomplete-beta path is exact, so
+    // these tests pin the tail to 6-decimal reference values.
+    //
+    // Reference values (high-precision Lentz incomplete-beta evaluation,
+    // matching R's pt(): pt(3, 40) = 0.9976849301, etc.):
+    //   df=40,  t=3   → CDF = 0.9976849301
+    //   df=40,  t=3.5 → CDF = 0.9994211467
+    //   df=100, t=3   → CDF = 0.9982960423
+    //   df=100, t=3.5 → CDF = 0.9996517861
+    //   df=200, t=4   → CDF = 0.9999554345
+    // -----------------------------------------------------------------------
+    it('should be accurate in the upper tail for df = 40 (was Cornish-Fisher)', () => {
+      expect(studentTCDF(3, 40)).toBeCloseTo(0.9976849301, 6);
+      expect(studentTCDF(3.5, 40)).toBeCloseTo(0.9994211467, 6);
+    });
+
+    it('should be accurate in the upper tail for df = 100', () => {
+      expect(studentTCDF(3, 100)).toBeCloseTo(0.9982960423, 6);
+      expect(studentTCDF(3.5, 100)).toBeCloseTo(0.9996517861, 6);
+    });
+
+    it('should be accurate in the extreme tail for df = 200', () => {
+      expect(studentTCDF(4, 200)).toBeCloseTo(0.9999554345, 7);
+    });
+
+    it('should be symmetric: F(-t; df) = 1 - F(t; df) in the tail', () => {
+      const df = 50;
+      const t = 4;
+      expect(studentTCDF(-t, df)).toBeCloseTo(1 - studentTCDF(t, df), 12);
+    });
+
     it('should return NaN for df < 1', () => {
       expect(studentTCDF(1, 0)).toBeNaN();
       expect(studentTCDF(1, -5)).toBeNaN();
@@ -214,6 +251,13 @@ describe('math utilities', () => {
 
     it('should return ≈ 0.05 for df = 10, t = 2.228', () => {
       expect(twoTailedPValue(2.228, 10)).toBeCloseTo(0.05, 2);
+    });
+
+    it('should be accurate in the tail for df > 30 (incomplete-beta path)', () => {
+      // Reference (R: 2*pt(3, 40, lower.tail=FALSE) = 0.004630140):
+      expect(twoTailedPValue(3, 40)).toBeCloseTo(0.00463014, 6);
+      // Reference (R: 2*pt(3.5, 100, lower.tail=FALSE) = 0.0006964277):
+      expect(twoTailedPValue(3.5, 100)).toBeCloseTo(0.0006964277, 7);
     });
 
     it('should return NaN for invalid inputs', () => {

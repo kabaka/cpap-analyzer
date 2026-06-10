@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 
-import { qqNormal, shapiroWilk, kolmogorovSmirnov, kernelDensityEstimation } from './index';
+import {
+  qqNormal,
+  shapiroFrancia,
+  shapiroWilk,
+  kolmogorovSmirnov,
+  kernelDensityEstimation,
+} from './index';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -127,60 +133,60 @@ describe('qqNormal', () => {
 });
 
 // ---------------------------------------------------------------------------
-// shapiroWilk
+// shapiroFrancia (formerly mislabelled "Shapiro-Wilk")
 // ---------------------------------------------------------------------------
 
-describe('shapiroWilk', () => {
+describe('shapiroFrancia', () => {
   it('should return high W for normal-like data', () => {
     const data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    const result = shapiroWilk(data);
+    const result = shapiroFrancia(data);
 
     expect(result.statistic).toBeGreaterThanOrEqual(0.9);
-    expect(result.testName).toBe('Shapiro-Wilk');
+    expect(result.testName).toBe('Shapiro-Francia');
   });
 
   it('should return isNormal=true for a generated normal sample', () => {
     const data = seededNormals(100, 0, 1);
-    const result = shapiroWilk(data);
+    const result = shapiroFrancia(data);
 
     expect(result.statistic).toBeGreaterThan(0.95);
     // p-value approximation may vary, but W > 0.95 is clearly normal-shaped
-    expect(result.testName).toBe('Shapiro-Wilk');
+    expect(result.testName).toBe('Shapiro-Francia');
   });
 
   it('should return lower W for clearly non-normal data', () => {
     // Highly skewed / outlier-driven
     const data = [1, 1, 1, 1, 1, 100];
-    const result = shapiroWilk(data);
+    const result = shapiroFrancia(data);
 
     expect(result.statistic).toBeLessThan(0.9);
-    expect(result.testName).toBe('Shapiro-Wilk');
+    expect(result.testName).toBe('Shapiro-Francia');
   });
 
   it('should handle small n=3 (minimum valid input)', () => {
-    const result = shapiroWilk([1, 2, 3]);
+    const result = shapiroFrancia([1, 2, 3]);
 
-    expect(result.testName).toBe('Shapiro-Wilk');
+    expect(result.testName).toBe('Shapiro-Francia');
     expect(result.statistic).toBeGreaterThanOrEqual(0);
     expect(result.statistic).toBeLessThanOrEqual(1);
     expect(Number.isFinite(result.pValue)).toBe(true);
   });
 
   it('should return NaN statistic for n < 3', () => {
-    const result2 = shapiroWilk([1, 2]);
+    const result2 = shapiroFrancia([1, 2]);
     expect(result2.statistic).toBeNaN();
     expect(result2.pValue).toBeNaN();
     expect(result2.isNormal).toBe(false);
 
-    const result1 = shapiroWilk([1]);
+    const result1 = shapiroFrancia([1]);
     expect(result1.statistic).toBeNaN();
 
-    const result0 = shapiroWilk([]);
+    const result0 = shapiroFrancia([]);
     expect(result0.statistic).toBeNaN();
   });
 
   it('should handle all identical values gracefully', () => {
-    const result = shapiroWilk([5, 5, 5, 5, 5]);
+    const result = shapiroFrancia([5, 5, 5, 5, 5]);
 
     // Zero variance — degenerate case. Implementation returns W=1.
     expect(result.statistic).toBe(1);
@@ -188,9 +194,9 @@ describe('shapiroWilk', () => {
     expect(result.isNormal).toBe(true);
   });
 
-  it('should have testName "Shapiro-Wilk"', () => {
-    const result = shapiroWilk([1, 2, 3, 4, 5]);
-    expect(result.testName).toBe('Shapiro-Wilk');
+  it('should have testName "Shapiro-Francia"', () => {
+    const result = shapiroFrancia([1, 2, 3, 4, 5]);
+    expect(result.testName).toBe('Shapiro-Francia');
   });
 
   it('should produce W statistic in [0, 1]', () => {
@@ -202,7 +208,7 @@ describe('shapiroWilk', () => {
     ];
 
     for (const data of datasets) {
-      const result = shapiroWilk(data);
+      const result = shapiroFrancia(data);
       if (Number.isFinite(result.statistic)) {
         expect(result.statistic).toBeGreaterThanOrEqual(0);
         expect(result.statistic).toBeLessThanOrEqual(1);
@@ -212,21 +218,70 @@ describe('shapiroWilk', () => {
 
   it('should detect normality for a large normal sample', () => {
     const data = seededNormals(100, 0, 1);
-    const result = shapiroWilk(data);
+    const result = shapiroFrancia(data);
 
     expect(result.statistic).toBeGreaterThan(0.9);
-    expect(result.testName).toBe('Shapiro-Wilk');
+    expect(result.testName).toBe('Shapiro-Francia');
   });
 
   it('should filter NaN values before testing', () => {
     const data = [1, NaN, 2, NaN, 3, 4, 5];
-    const result = shapiroWilk(data);
+    const result = shapiroFrancia(data);
 
     // After filtering: [1,2,3,4,5] → n=5, valid
-    expect(result.testName).toBe('Shapiro-Wilk');
+    expect(result.testName).toBe('Shapiro-Francia');
     expect(Number.isFinite(result.statistic)).toBe(true);
     expect(result.statistic).toBeGreaterThanOrEqual(0);
     expect(result.statistic).toBeLessThanOrEqual(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // Reference values
+  //
+  // The Shapiro-Francia statistic W' = corr(x_(i), m_i)² with Blom scores
+  //   m_i = Φ⁻¹((i − 3/8) / (n + 1/4))
+  // is exactly reproducible. For a perfectly linear (equally spaced) sample
+  // the order statistics are a strictly increasing affine sequence, so the
+  // correlation with the (non-equally-spaced) Blom scores is high but < 1.
+  //
+  // Reference (R, nortest::sf.test, which reports the same correlation-based
+  // statistic): sf.test(1:10)$statistic == 0.9865766, using R's exact qnorm.
+  // This module uses the Abramowitz & Stegun 26.2.23 probit approximation
+  // (≈4.5e-4 accuracy), giving W' = 0.986508 — within ~1e-4 of R's value.
+  // We assert to 3 decimals to accommodate the probit approximation.
+  // -------------------------------------------------------------------------
+  it('should match the R nortest::sf.test statistic for 1:10 (within probit approx)', () => {
+    const result = shapiroFrancia([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    // R reference: 0.9865766; module (A&S probit): 0.986508
+    expect(result.statistic).toBeCloseTo(0.9866, 3);
+  });
+
+  it('should reject normality for a strongly right-skewed sample (n=20)', () => {
+    // Exponential-like ranks: heavy right skew. R sf.test gives p ≪ 0.05.
+    const data = [
+      0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9, 1.2, 1.5, 2.0, 2.6, 3.4, 4.5, 6.0, 8.0, 11.0,
+      15.0, 25.0,
+    ];
+    const result = shapiroFrancia(data);
+    expect(result.isNormal).toBe(false);
+    expect(result.pValue).toBeLessThan(0.05);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shapiroWilk (deprecated alias)
+// ---------------------------------------------------------------------------
+
+describe('shapiroWilk (deprecated alias)', () => {
+  it('should delegate to shapiroFrancia and report testName "Shapiro-Francia"', () => {
+    const data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const viaAlias = shapiroWilk(data);
+    const viaCanonical = shapiroFrancia(data);
+
+    expect(viaAlias.testName).toBe('Shapiro-Francia');
+    expect(viaAlias.statistic).toBe(viaCanonical.statistic);
+    expect(viaAlias.pValue).toBe(viaCanonical.pValue);
+    expect(viaAlias.isNormal).toBe(viaCanonical.isNormal);
   });
 });
 

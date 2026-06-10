@@ -35,7 +35,7 @@ export type { BuildResult } from './resmed/SessionBuilder';
 
 // STR Parser
 export { STRParser } from './resmed/STRParser';
-export type { STRDayRecord, STRParseResult } from './resmed/STRParser';
+export type { MaskInterval, STRDayRecord, STRParseResult } from './resmed/STRParser';
 
 // Validator
 export { Validator } from './validation/Validator';

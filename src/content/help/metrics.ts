@@ -46,9 +46,10 @@ export const metricDefinitions: readonly MetricDefinition[] = [
     id: 'usage-hours',
     label: 'Usage Hours',
     unit: 'hours',
-    tooltip: 'Total mask-on time at therapeutic pressure during the session, excluding ramp time.',
+    tooltip:
+      "Mask-on time during the session, from the machine's recorded mask-on/off intervals (STR.edf) when available, otherwise a hysteresis detector; subtherapeutic ramp excluded for compliance.",
     interpretation:
-      'Compliance target: ≥ 4 hours/night. Optimal for cardiovascular benefit: ≥ 6 hours. More usage = greater clinical benefit.',
+      'Compliance target: ≥ 4 hours/night. Optimal for cardiovascular benefit: ≥ 6 hours. More usage = greater clinical benefit. This is the denominator for AHI, ODI, and leak-duration metrics.',
     glossaryId: 'usage-hours',
   },
   {
@@ -110,10 +111,41 @@ export const metricDefinitions: readonly MetricDefinition[] = [
     id: 'odi',
     label: 'ODI',
     unit: 'events/hr',
-    tooltip: 'Oxygen Desaturation Index — the number of ≥ 3% oxygen desaturation events per hour.',
+    tooltip:
+      'Oxygen Desaturation Index — discrete desaturation events (≥ 3% below a rolling baseline, lasting ≥ 10 s, counted once each) per hour of valid oximetry.',
     interpretation:
-      'Normal: < 5. ODI correlates with AHI but specifically captures the physiological impact. ODI > AHI may indicate prolonged or deep desaturations.',
+      'Normal: < 5. ODI correlates with AHI but specifically captures the physiological impact. ODI > AHI may indicate prolonged or deep desaturations. Read alongside oximetry coverage %.',
     glossaryId: 'odi',
+  },
+  {
+    id: 'rdi',
+    label: 'RDI',
+    unit: 'events/hr',
+    tooltip:
+      'Respiratory Disturbance Index — apneas + hypopneas + RERAs per hour (AHI plus the RERA index). Always ≥ AHI.',
+    interpretation:
+      'Captures sleep-disordered breathing that AHI misses. A normal AHI with a notably higher RDI may suggest upper airway resistance syndrome (UARS). Device RERA counts are proxy estimates, so RDI is approximate.',
+    glossaryId: 'rdi',
+  },
+  {
+    id: 't90',
+    label: 'T90',
+    unit: '%',
+    tooltip:
+      'Percentage of analyzed time with SpO₂ below 90% (time-based; oximetry dropouts excluded).',
+    interpretation:
+      'Lower is better. Elevated T90 reflects nocturnal hypoxic burden. Interpret together with oximetry coverage % — a low T90 over little valid signal is not reassuring.',
+    glossaryId: 't90',
+  },
+  {
+    id: 'spo2-coverage',
+    label: 'SpO₂ Coverage',
+    unit: '%',
+    tooltip:
+      'Fraction of analyzed time with a valid pulse-oximetry signal — a data-quality denominator for all SpO₂ metrics.',
+    interpretation:
+      'Higher is better for confidence. Mean/min SpO₂, T90, and ODI are computed over valid-oximetry time only, so low coverage means those numbers rest on little data.',
+    glossaryId: 'spo2-coverage',
   },
   {
     id: 'central-ai',

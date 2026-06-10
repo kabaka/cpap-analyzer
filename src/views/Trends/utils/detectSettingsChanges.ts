@@ -1,8 +1,10 @@
 /**
- * Detects machine settings changes between consecutive nightly aggregates.
+ * Detects machine settings changes between nightly aggregates.
  *
  * Compares configuredMinPressure, configuredMaxPressure, and eprLevel
- * between consecutive nights to find dates where settings were adjusted.
+ * between nights to find dates where settings were adjusted. This module is
+ * the single source of truth for "settings changed" detection across the app
+ * (Trends markers, Dashboard banner, and Dashboard auto-insights).
  *
  * @module views/Trends/utils/detectSettingsChanges
  */
@@ -22,6 +24,50 @@ export interface SettingsChange {
 }
 
 /**
+ * Whether two aggregates have different configured machine settings.
+ *
+ * Compares configured min/max pressure and EPR level. This is the shared
+ * predicate behind every "settings changed" feature; keep it the only place
+ * the comparison fields are enumerated so the three call sites stay in sync.
+ */
+export function settingsDiffer(a: NightlyAggregate, b: NightlyAggregate): boolean {
+  return (
+    a.configuredMinPressure !== b.configuredMinPressure ||
+    a.configuredMaxPressure !== b.configuredMaxPressure ||
+    a.eprLevel !== b.eprLevel
+  );
+}
+
+/**
+ * Find the date of the first night on which machine settings changed,
+ * scanning oldest-to-newest.
+ *
+ * Returns the date of the first night whose configuration DIFFERS FROM ITS
+ * IMMEDIATE PREDECESSOR — i.e. the first night the new settings took effect —
+ * or `null` when there are fewer than two nights or no change is found. This is
+ * exactly the date {@link detectSettingsChanges} assigns to its first change
+ * entry, so the Dashboard settings banner and the auto-insights generator (which
+ * both report a single change date) stay consistent with the Trends change list.
+ */
+export function findFirstSettingsChangeDate(aggregates: NightlyAggregate[]): string | null {
+  if (aggregates.length < 2) return null;
+
+  const sorted = [...aggregates].sort((a, b) => a.date.localeCompare(b.date));
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    if (!prev || !curr) continue;
+    if (settingsDiffer(prev, curr)) {
+      // First night under the new settings.
+      return curr.date;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Scan sorted aggregates for settings changes between consecutive nights.
  */
 export function detectSettingsChanges(aggregates: NightlyAggregate[]): SettingsChange[] {
@@ -35,11 +81,7 @@ export function detectSettingsChanges(aggregates: NightlyAggregate[]): SettingsC
     const curr = sorted[i];
     if (!prev || !curr) continue;
 
-    if (
-      prev.configuredMinPressure !== curr.configuredMinPressure ||
-      prev.configuredMaxPressure !== curr.configuredMaxPressure ||
-      prev.eprLevel !== curr.eprLevel
-    ) {
+    if (settingsDiffer(prev, curr)) {
       changes.push({
         date: curr.date,
         from: {

@@ -22,6 +22,7 @@ import {
   CUSTOM_DEFAULT_SECTIONS,
 } from '@/services/reports';
 import type { ReportContentSelection, ReportSections, ReportTemplate } from '@/services/reports';
+import { formatDate } from '@/utils/formatDate';
 import styles from './Reports.module.css';
 
 // ── Section labels ───────────────────────────────────────────────
@@ -40,13 +41,6 @@ const SECTION_LABELS: Record<keyof ReportSections, string> = {
 const SECTION_KEYS = Object.keys(SECTION_LABELS) as (keyof ReportSections)[];
 
 // ── Helpers ──────────────────────────────────────────────────────
-
-function formatDateForInput(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 function getDefaultSections(template: ReportTemplate): ReportSections {
   switch (template) {
@@ -76,8 +70,8 @@ export default function Reports() {
   const [template, setTemplate] = useState<ReportTemplate>('physician-summary');
 
   // Date range
-  const [startDate, setStartDate] = useState(() => formatDateForInput(globalDateRange.start));
-  const [endDate, setEndDate] = useState(() => formatDateForInput(globalDateRange.end));
+  const [startDate, setStartDate] = useState(() => formatDate(globalDateRange.start));
+  const [endDate, setEndDate] = useState(() => formatDate(globalDateRange.end));
 
   // Sections
   const [sections, setSections] = useState<ReportSections>(() =>

@@ -478,7 +478,18 @@ export function partialCorrelation(
  * where sx, sy are the (population) standard deviations of the full
  * series and the sum runs over the (n - |k|) overlapping indices.
  *
- * The significance bound at the 95 % level is ±1.96/√n.
+ * **Normalisation convention.** The denominator uses the full-series SDs
+ * (the standard Box & Jenkins sample CCF estimator) while the cross-product
+ * sum uses only the overlapping window. As |k| → n the overlap shrinks and
+ * this estimator is no longer guaranteed to lie in [−1, 1]; we therefore
+ * clamp each ccf(k) to [−1, 1]. To keep that clamping rare and the estimates
+ * stable, `bestLag`/`bestCCF` are selected only over lags whose overlap is at
+ * least `n/2` (equivalently |k| ≤ n/2), which suppresses spurious large-lag
+ * spikes driven by a handful of overlapping points. The full ccf array for
+ * every lag in [−maxLag, maxLag] is still returned for plotting.
+ *
+ * The significance bound at the 95 % level is ±1.96/√n (Bartlett's
+ * approximation under the white-noise null).
  *
  * @param x      - First time-series (ordered, equally spaced)
  * @param y      - Second time-series (same length & spacing as x)
@@ -541,6 +552,12 @@ export function crossCorrelation(
 
   const effectiveMaxLag = Math.min(maxLag, n - 1);
 
+  // Restrict best-lag selection to lags with adequate overlap (≥ n/2 points,
+  // i.e. |k| ≤ n/2). At larger lags the overlap-only estimator becomes noisy
+  // and can produce spurious extrema, so those lags are still reported in the
+  // ccf array but excluded from bestLag/bestCCF.
+  const bestLagBound = Math.floor(n / 2);
+
   for (let k = -effectiveMaxLag; k <= effectiveMaxLag; k++) {
     lags.push(k);
 
@@ -558,10 +575,14 @@ export function crossCorrelation(
       sum += xi * yi;
     }
 
-    const r = sum / (overlapN * sx * sy);
+    // Clamp to [-1, 1]: the overlap-only sum over full-series SDs can exceed
+    // unity at large lags where overlap is small.
+    let r = sum / (overlapN * sx * sy);
+    if (r > 1) r = 1;
+    else if (r < -1) r = -1;
     ccf.push(r);
 
-    if (Math.abs(r) > bestAbsCCF) {
+    if (absK <= bestLagBound && Math.abs(r) > bestAbsCCF) {
       bestAbsCCF = Math.abs(r);
       bestCCFValue = r;
       bestLag = k;

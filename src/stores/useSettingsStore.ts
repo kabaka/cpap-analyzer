@@ -142,7 +142,10 @@ export const useSettingsStore = create<SettingsState>()(
             'updateIntegration',
           ),
 
-        resetToDefaults: () => set({ ...defaultSettings }, undefined, 'resetToDefaults'),
+        // Deep clone so the reset can never alias (and later mutate) the
+        // module-level `defaultSettings` constant through its nested objects
+        // (analysisParams.*, integrations.*).
+        resetToDefaults: () => set(structuredClone(defaultSettings), undefined, 'resetToDefaults'),
       }),
       { name: 'cpap-settings' },
     ),

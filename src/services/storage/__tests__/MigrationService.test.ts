@@ -3,6 +3,7 @@ import {
   MigrationService,
   MigrationError,
   MIGRATION_001_INITIAL_SCHEMA,
+  MIGRATION_002_NONUNIQUE_MACHINE_DATE,
 } from '@/services/storage/MigrationService';
 import type {
   Migration,
@@ -250,6 +251,34 @@ describe('MigrationService', () => {
       };
 
       const result = await MIGRATION_001_INITIAL_SCHEMA.verify(context);
+      expect(result.success).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Built-in MIGRATION_002
+  // -----------------------------------------------------------------------
+
+  describe('MIGRATION_002_NONUNIQUE_MACHINE_DATE', () => {
+    it('should have version 2 depending on version 1', () => {
+      expect(MIGRATION_002_NONUNIQUE_MACHINE_DATE.version).toBe(2);
+      expect(MIGRATION_002_NONUNIQUE_MACHINE_DATE.dependencies).toEqual([1]);
+    });
+
+    it('should verify the machineId_date indexes are non-unique', async () => {
+      // `idb` is opened by IndexedDBService at the current DB_VERSION (>= 2),
+      // so its machineId_date indexes are already non-unique.
+      const raw = (idb as unknown as { db: IDBDatabase }).db;
+      const context: MigrationContext = {
+        db: raw,
+        opfsRoot: null,
+        progress: { setTotal: vi.fn(), setProgress: vi.fn(), setMessage: vi.fn() },
+        signal: new AbortController().signal,
+        storage: new Map(),
+      };
+
+      const result = await MIGRATION_002_NONUNIQUE_MACHINE_DATE.verify(context);
       expect(result.success).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
