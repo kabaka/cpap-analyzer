@@ -4633,7 +4633,7 @@ function exportPerformanceLog(): Blob {
 - [storage-architecture.md](storage-architecture.md) — IndexedDB and OPFS design
 - [resmed-machine-support.md](resmed-machine-support.md) — EDF file parsing
 - [frontend-architecture.md](frontend-architecture.md) — UI and state management
-- [plugin-architecture.md](.github/skills/plugin-architecture/SKILL.md) — Plugin system design
+- [plugin-architecture.md](.claude/skills/plugin-architecture/SKILL.md) — Plugin system design
 - [data-analysis.md](data-analysis.md) — Analysis pipeline architecture
 
 ---

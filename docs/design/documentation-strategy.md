@@ -1017,7 +1017,7 @@ This category documents the application's internal architecture for the AI agent
 
 **Maintenance**: ADRs are immutable once accepted; new decisions supersede old ones
 
-See: `.github/skills/adr-authoring/SKILL.md` for ADR writing guidelines
+See: `.claude/skills/adr-authoring/SKILL.md` for ADR writing guidelines
 
 #### 2.3.4 Contributing Guide
 
@@ -1028,7 +1028,7 @@ See: `.github/skills/adr-authoring/SKILL.md` for ADR writing guidelines
 - Project overview and vision
 - Agent team structure (see `AGENTS.md`)
 - Development workflow
-- Coding standards (see `.github/copilot-instructions.md`)
+- Coding standards (see `CLAUDE.md`)
 - Commit message format (Conventional Commits)
 - Testing requirements
 - Pull request process
@@ -1094,7 +1094,7 @@ and this project adheres to [Calendar Versioning](https://calver.org/) (YYYY.0M.
 
 **Maintenance**: Updated by Orchestrator before each release
 
-**Versioning**: CalVer `YYYY.0M.MICRO` (see `.github/skills/calver-release/SKILL.md`)
+**Versioning**: CalVer `YYYY.0M.MICRO` (see `.claude/skills/calver-release/SKILL.md`)
 
 ---
 

@@ -48,6 +48,9 @@ sample-data/
 # Validation scripts (dev-only)
 scripts/
 
+# Claude Code — local-only settings (.claude/agents/ and .claude/skills/ are committed)
+.claude/settings.local.json
+
 # Misc
 *.tgz
 .cache/

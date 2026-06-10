@@ -2031,7 +2031,7 @@ async function importWithMemoryLimit(files: File[]): Promise<void> {
 
 ### 7.2 Performance Implications of Plugin System
 
-**Plugin Architecture** (see [plugin-architecture](/.github/skills/plugin-architecture/SKILL.md)):
+**Plugin Architecture** (see [plugin-architecture](/.claude/skills/plugin-architecture/SKILL.md)):
 
 **Performance Risks**:
 
@@ -2418,7 +2418,7 @@ jobs:
 - **Data Analysis**: [docs/design/data-analysis.md](data-analysis.md)
 - **Data Visualization**: [docs/design/data-visualization.md](data-visualization.md)
 - **ResMed Machine Support**: [docs/design/resmed-machine-support.md](resmed-machine-support.md)
-- **Plugin Architecture**: [.github/skills/plugin-architecture/SKILL.md](/.github/skills/plugin-architecture/SKILL.md)
+- **Plugin Architecture**: [.claude/skills/plugin-architecture/SKILL.md](/.claude/skills/plugin-architecture/SKILL.md)
 - **Architecture Decision Record**: [docs/decisions/0001-client-side-architecture.md](../decisions/0001-client-side-architecture.md)
 
 ---
