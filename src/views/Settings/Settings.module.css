@@ -174,6 +174,33 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* Integration details (status + action) */
+.integrationDetails {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.integrationStatus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+}
+
+.integrationStatValue {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.integrationStatLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
 /* Privacy notice */
 .privacyNotice {
   display: flex;

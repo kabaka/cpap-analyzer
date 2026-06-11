@@ -8,7 +8,7 @@
  */
 
 /** How the import data was provided by the user. */
-export type ImportSourceType = 'sd-card' | 'folder' | 'file';
+export type ImportSourceType = 'sd-card' | 'folder' | 'file' | 'google-health';
 
 // ---------------------------------------------------------------------------
 // Progress tracking
@@ -51,6 +51,25 @@ export interface ImportError {
   readonly fileName: string;
   readonly error: string;
   readonly recoverable: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Google Health import progress
+// ---------------------------------------------------------------------------
+
+/** Observable state of an in-progress Google Health import. */
+export interface GoogleHealthImportProgress {
+  readonly status: 'idle' | 'scanning' | 'parsing' | 'storing' | 'complete' | 'error';
+  readonly currentDataType: string;
+  readonly dataTypesTotal: number;
+  readonly dataTypesProcessed: number;
+  readonly recordsProcessed: number;
+  readonly recordsTotal: number;
+  readonly recordsSkipped: number;
+  readonly errors: readonly ImportError[];
+  readonly warnings: readonly string[];
+  readonly startTime: number;
+  readonly currentStage: string;
 }
 
 // ---------------------------------------------------------------------------

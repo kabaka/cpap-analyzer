@@ -73,7 +73,12 @@ export type LLMProvider = 'openai' | 'anthropic';
 export interface IntegrationConfig {
   readonly fitbit: {
     readonly enabled: boolean;
-    readonly accessToken: string | null;
+    /** Data types the user has chosen to display in views. */
+    readonly visibleDataTypes: readonly string[];
+    /** ISO 8601 timestamp of the last import. */
+    readonly lastImportAt: string | null;
+    /** Number of records imported. */
+    readonly recordCount: number;
   };
   readonly weather: {
     readonly enabled: boolean;

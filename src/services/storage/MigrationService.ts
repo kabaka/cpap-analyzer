@@ -774,3 +774,107 @@ export const MIGRATION_002_NONUNIQUE_MACHINE_DATE: Migration = {
     return { success: errors.length === 0, errors, warnings };
   },
 };
+
+/**
+ * Migration 3: add integration_timeseries and integration_import_history stores;
+ * add dataType indexes to integration_data.
+ *
+ * The schema changes (new stores, new indexes, dropped source_date index) are
+ * applied by `IndexedDBService.upgradeSchema()` inside `onupgradeneeded`. This
+ * migration record maintains the settings-store ledger and verifies the on-disk
+ * schema matches the expected v3 layout.
+ */
+export const MIGRATION_003_INTEGRATION_STORES: Migration = {
+  version: 3,
+  description:
+    'Add integration_timeseries and integration_import_history stores; add dataType indexes to integration_data',
+  estimatedDurationMs: 200,
+  dependencies: [2],
+
+  async up(context: MigrationContext): Promise<void> {
+    context.progress.setMessage('Recording integration store additions...');
+    // Schema changes are applied by IndexedDBService.upgradeSchema() during
+    // onupgradeneeded. Nothing to do here beyond advancing the version record.
+  },
+
+  async down(): Promise<void> {
+    // Cannot drop object stores outside versionchange. No-op.
+  },
+
+  async verify(context: MigrationContext): Promise<MigrationVerificationResult> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Verify new stores exist
+    for (const storeName of ['integration_timeseries', 'integration_import_history']) {
+      if (!context.db.objectStoreNames.contains(storeName)) {
+        errors.push(`Missing object store: ${storeName}`);
+      }
+    }
+
+    // Verify integration_data has the new indexes
+    if (context.db.objectStoreNames.contains('integration_data')) {
+      try {
+        const tx = context.db.transaction('integration_data', 'readonly');
+        const store = tx.objectStore('integration_data');
+        if (!store.indexNames.contains('source_dataType_date')) {
+          errors.push('Missing index source_dataType_date on integration_data');
+        }
+        if (!store.indexNames.contains('dataType')) {
+          errors.push('Missing index dataType on integration_data');
+        }
+        if (store.indexNames.contains('source_date')) {
+          warnings.push('Legacy index source_date still present on integration_data');
+        }
+        tx.abort();
+      } catch (error) {
+        errors.push(
+          `Failed to inspect integration_data indexes: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    // Verify integration_timeseries indexes
+    if (context.db.objectStoreNames.contains('integration_timeseries')) {
+      try {
+        const tx = context.db.transaction('integration_timeseries', 'readonly');
+        const store = tx.objectStore('integration_timeseries');
+        if (!store.indexNames.contains('source_dataType_date')) {
+          errors.push('Missing index source_dataType_date on integration_timeseries');
+        }
+        if (!store.indexNames.contains('date')) {
+          errors.push('Missing index date on integration_timeseries');
+        }
+        if (!store.indexNames.contains('dataType')) {
+          errors.push('Missing index dataType on integration_timeseries');
+        }
+        tx.abort();
+      } catch (error) {
+        errors.push(
+          `Failed to inspect integration_timeseries indexes: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    // Verify integration_import_history indexes
+    if (context.db.objectStoreNames.contains('integration_import_history')) {
+      try {
+        const tx = context.db.transaction('integration_import_history', 'readonly');
+        const store = tx.objectStore('integration_import_history');
+        if (!store.indexNames.contains('source')) {
+          errors.push('Missing index source on integration_import_history');
+        }
+        if (!store.indexNames.contains('importedAt')) {
+          errors.push('Missing index importedAt on integration_import_history');
+        }
+        tx.abort();
+      } catch (error) {
+        errors.push(
+          `Failed to inspect integration_import_history indexes: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    return { success: errors.length === 0, errors, warnings };
+  },
+};

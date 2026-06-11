@@ -174,7 +174,7 @@ describe('IndexedDBService', () => {
   // -----------------------------------------------------------------------
 
   describe('database initialization', () => {
-    it('should create all 7 object stores', async () => {
+    it('should create all 9 object stores', async () => {
       const raw = (db as unknown as { db: IDBDatabase }).db;
       const storeNames = Array.from(raw.objectStoreNames);
       expect(storeNames).toContain('sessions');
@@ -184,7 +184,9 @@ describe('IndexedDBService', () => {
       expect(storeNames).toContain('settings');
       expect(storeNames).toContain('import_history');
       expect(storeNames).toContain('integration_data');
-      expect(storeNames).toHaveLength(7);
+      expect(storeNames).toContain('integration_timeseries');
+      expect(storeNames).toContain('integration_import_history');
+      expect(storeNames).toHaveLength(9);
     });
 
     it('should create correct indexes on sessions store', async () => {

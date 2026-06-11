@@ -12,6 +12,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useSessionData } from '@/hooks/useSessionData';
 import { useSummaryStats } from '@/hooks/useSummaryStats';
 import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
+import { useWearableSummary } from '@/hooks/useWearableSummary';
 import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
 import { Card } from '@/components/ui';
 import { generateInsights } from './insights';
@@ -23,6 +24,7 @@ import EventDistribution from './panels/EventDistribution';
 import InsightsPanel from './panels/InsightsPanel';
 import MachineSettingsPanel from './panels/MachineSettingsPanel';
 import RecentSessions from './panels/RecentSessions';
+import WearableOverview from './panels/WearableOverview';
 import styles from './Dashboard.module.css';
 import type { MachineSettings } from '@/types';
 
@@ -31,6 +33,7 @@ export default function Dashboard() {
   const { sessions, loading: sessionsLoading, error: sessionsError } = useSessionData(dateRange);
   const { stats, loading: statsLoading, error: statsError } = useSummaryStats(dateRange);
   const { aggregates, loading: aggLoading, error: aggError } = useNightlyAggregates(dateRange);
+  const { summary: wearableSummary } = useWearableSummary();
 
   const error = sessionsError ?? statsError ?? aggError;
   const loading = statsLoading || sessionsLoading || aggLoading;
@@ -88,6 +91,13 @@ export default function Dashboard() {
         <EventDistribution trendData={trendData} loading={loading} />
         <InsightsPanel insights={insights} loading={loading} />
       </div>
+
+      {/* Wearable Data Overview (when available) */}
+      {wearableSummary?.hasData && (
+        <div className={styles.wearableRow}>
+          <WearableOverview summary={wearableSummary} />
+        </div>
+      )}
 
       {/* Machine Settings + Recent Sessions */}
       <div className={styles.bottomRow}>

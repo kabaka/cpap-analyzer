@@ -39,6 +39,7 @@ export {
   MigrationService,
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_NONUNIQUE_MACHINE_DATE,
+  MIGRATION_003_INTEGRATION_STORES,
   type Migration,
   type MigrationCheckpoint,
   type MigrationContext,

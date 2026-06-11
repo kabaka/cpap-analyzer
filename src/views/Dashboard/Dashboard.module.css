@@ -33,6 +33,11 @@
   gap: var(--space-lg);
 }
 
+/* Wearable data row */
+.wearableRow {
+  grid-column: 1 / -1;
+}
+
 /* Bottom row: Machine Settings + Recent Sessions */
 .bottomRow {
   grid-column: 1 / -1;

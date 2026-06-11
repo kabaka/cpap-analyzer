@@ -15,7 +15,10 @@ import {
   type CPAPError,
   type Event,
   type ImportRecord,
+  type IntegrationDailySummary,
   type IntegrationData,
+  type IntegrationImportRecord,
+  type IntegrationTimeseries,
   type NightlyAggregate,
   type Session,
 } from '@/types';
@@ -51,7 +54,9 @@ type StoreName =
   | 'analysis_results'
   | 'settings'
   | 'import_history'
-  | 'integration_data';
+  | 'integration_data'
+  | 'integration_timeseries'
+  | 'integration_import_history';
 
 // ---------------------------------------------------------------------------
 // Error helper
@@ -125,8 +130,11 @@ const DB_NAME = 'cpap-analyzer';
  * - v2: change `sessions.machineId_date` and `nightly_aggregates.machineId_date`
  *   from UNIQUE to non-unique (multiple sessions per machine per calendar day
  *   are legitimate). See `upgradeSchema()` and `MIGRATION_002_NONUNIQUE_MACHINE_DATE`.
+ * - v3: add `integration_timeseries` and `integration_import_history` stores;
+ *   add `dataType` and `source_dataType_date` indexes to `integration_data`;
+ *   remove legacy `source_date` unique index from `integration_data`.
  */
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
@@ -968,17 +976,20 @@ export class IndexedDBService {
   /**
    * Look up a single integration data entry by source and date.
    *
-   * Uses the compound unique `[source, date]` index.
+   * Queries the `date` index and filters by source in memory. Prior to v3,
+   * this used the (now removed) `source_date` compound index.
    */
   async getIntegrationDataBySourceAndDate(
     source: string,
     date: string,
   ): Promise<IntegrationData | null> {
     try {
-      const store = this.readStore('integration_data');
-      const index = store.index('source_date');
-      const result: IntegrationData | undefined = await this.wrapRequest(index.get([source, date]));
-      return result ?? null;
+      const results = await this.cursorQuery<IntegrationData>(
+        'integration_data',
+        'date',
+        IDBKeyRange.only(date),
+      );
+      return results.find((r) => r.source === source) ?? null;
     } catch (error) {
       throw this.wrapError(
         'STORAGE_READ_FAILED',
@@ -1036,6 +1047,348 @@ export class IndexedDBService {
         'delete integration data',
         'integration_data',
         id,
+        error,
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Integration Daily Summaries (integration_data store, typed)
+  // -----------------------------------------------------------------------
+
+  /** Insert a new integration daily summary record. */
+  async addIntegrationDailySummary(data: IntegrationDailySummary): Promise<void> {
+    try {
+      const store = this.writeStore('integration_data');
+      await this.wrapRequest(store.add(data));
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        'add integration daily summary',
+        'integration_data',
+        data.id,
+        error,
+      );
+    }
+  }
+
+  /** Retrieve integration daily summaries within a date range (inclusive, YYYY-MM-DD). */
+  async getIntegrationDailySummariesByDateRange(
+    start: string,
+    end: string,
+  ): Promise<IntegrationDailySummary[]> {
+    try {
+      return await this.cursorQuery<IntegrationDailySummary>(
+        'integration_data',
+        'date',
+        IDBKeyRange.bound(start, end),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration daily summaries by date range',
+        'integration_data',
+        undefined,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Retrieve integration daily summaries for a specific source and data type.
+   *
+   * Queries the `source` index and filters by `dataType` in memory.
+   */
+  async getIntegrationDailySummariesBySourceAndType(
+    source: string,
+    dataType: string,
+  ): Promise<IntegrationDailySummary[]> {
+    try {
+      const all = await this.cursorQuery<IntegrationDailySummary>(
+        'integration_data',
+        'source',
+        IDBKeyRange.only(source),
+      );
+      return all.filter((r) => r.dataType === dataType);
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration daily summaries by source and type',
+        'integration_data',
+        `${source}:${dataType}`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Look up a single integration daily summary by its unique compound key.
+   *
+   * Uses the `source_dataType_date` unique index for O(1) lookup.
+   */
+  async getIntegrationDailySummaryByKey(
+    source: string,
+    dataType: string,
+    date: string,
+  ): Promise<IntegrationDailySummary | null> {
+    try {
+      const store = this.readStore('integration_data');
+      const index = store.index('source_dataType_date');
+      const result: IntegrationDailySummary | undefined = await this.wrapRequest(
+        index.get([source, dataType, date]),
+      );
+      return result ?? null;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration daily summary by key',
+        'integration_data',
+        `${source}:${dataType}:${date}`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Atomically insert multiple integration daily summary records in a single transaction.
+   *
+   * @param records - Records to insert. Uses `add`, so duplicates throw ConstraintError.
+   */
+  async bulkAddIntegrationDailySummaries(
+    records: readonly IntegrationDailySummary[],
+  ): Promise<void> {
+    if (records.length === 0) return;
+    try {
+      const db = this.getDB();
+      const tx = db.transaction('integration_data', 'readwrite');
+      const store = tx.objectStore('integration_data');
+      for (const record of records) {
+        store.add(record);
+      }
+      await this.wrapTransaction(tx);
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        `bulk add ${String(records.length)} integration daily summaries`,
+        'integration_data',
+        undefined,
+        error,
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Integration Timeseries
+  // -----------------------------------------------------------------------
+
+  /** Insert a new integration timeseries record. */
+  async addIntegrationTimeseries(data: IntegrationTimeseries): Promise<void> {
+    try {
+      const store = this.writeStore('integration_timeseries');
+      await this.wrapRequest(store.add(data));
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        'add integration timeseries',
+        'integration_timeseries',
+        data.id,
+        error,
+      );
+    }
+  }
+
+  /** Retrieve integration timeseries records within a date range (inclusive, YYYY-MM-DD). */
+  async getIntegrationTimeseriesByDateRange(
+    start: string,
+    end: string,
+  ): Promise<IntegrationTimeseries[]> {
+    try {
+      return await this.cursorQuery<IntegrationTimeseries>(
+        'integration_timeseries',
+        'date',
+        IDBKeyRange.bound(start, end),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration timeseries by date range',
+        'integration_timeseries',
+        undefined,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Look up a single integration timeseries record by its unique compound key.
+   *
+   * Uses the `source_dataType_date` unique index for O(1) lookup.
+   */
+  async getIntegrationTimeseriesByKey(
+    source: string,
+    dataType: string,
+    date: string,
+  ): Promise<IntegrationTimeseries | null> {
+    try {
+      const store = this.readStore('integration_timeseries');
+      const index = store.index('source_dataType_date');
+      const result: IntegrationTimeseries | undefined = await this.wrapRequest(
+        index.get([source, dataType, date]),
+      );
+      return result ?? null;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration timeseries by key',
+        'integration_timeseries',
+        `${source}:${dataType}:${date}`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Atomically insert multiple integration timeseries records in a single transaction.
+   *
+   * @param records - Records to insert. Uses `add`, so duplicates throw ConstraintError.
+   */
+  async bulkAddIntegrationTimeseries(records: readonly IntegrationTimeseries[]): Promise<void> {
+    if (records.length === 0) return;
+    try {
+      const db = this.getDB();
+      const tx = db.transaction('integration_timeseries', 'readwrite');
+      const store = tx.objectStore('integration_timeseries');
+      for (const record of records) {
+        store.add(record);
+      }
+      await this.wrapTransaction(tx);
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        `bulk add ${String(records.length)} integration timeseries`,
+        'integration_timeseries',
+        undefined,
+        error,
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Integration Import History
+  // -----------------------------------------------------------------------
+
+  /** Insert a new integration import record. */
+  async addIntegrationImportRecord(record: IntegrationImportRecord): Promise<void> {
+    try {
+      const store = this.writeStore('integration_import_history');
+      await this.wrapRequest(store.add(record));
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        'add integration import record',
+        'integration_import_history',
+        record.id,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Retrieve integration import records, optionally filtered by source.
+   *
+   * @param source - If provided, only records for this source are returned.
+   *                 If omitted, all integration import records are returned.
+   */
+  async getIntegrationImportRecords(source?: string): Promise<IntegrationImportRecord[]> {
+    try {
+      if (source) {
+        return await this.cursorQuery<IntegrationImportRecord>(
+          'integration_import_history',
+          'source',
+          IDBKeyRange.only(source),
+        );
+      }
+      const store = this.readStore('integration_import_history');
+      return await this.wrapRequest(store.getAll());
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration import records',
+        'integration_import_history',
+        source,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Retrieve the most recent integration import record for a source.
+   *
+   * Opens a reverse cursor on the `importedAt` index and returns the first
+   * record matching the given source. Efficient: reads at most a handful of
+   * records (the most-recent entries until one matches the source).
+   */
+  async getLatestIntegrationImportRecord(source: string): Promise<IntegrationImportRecord | null> {
+    try {
+      const store = this.readStore('integration_import_history');
+      const index = store.index('importedAt');
+
+      return await new Promise<IntegrationImportRecord | null>((resolve, reject) => {
+        const request = index.openCursor(null, 'prev');
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) {
+            resolve(null);
+            return;
+          }
+          const record = cursor.value as IntegrationImportRecord;
+          if (record.source === source) {
+            resolve(record);
+          } else {
+            cursor.continue();
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get latest integration import record',
+        'integration_import_history',
+        source,
+        error,
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Integration Utility
+  // -----------------------------------------------------------------------
+
+  /**
+   * Check whether any integration data exists for a given source.
+   *
+   * Opens a cursor on the `source` index of `integration_data` and returns
+   * `true` if at least one record is found. Efficient: reads at most 1 record.
+   */
+  async hasIntegrationData(source: string): Promise<boolean> {
+    try {
+      const store = this.readStore('integration_data');
+      const index = store.index('source');
+
+      return await new Promise<boolean>((resolve, reject) => {
+        const request = index.openCursor(IDBKeyRange.only(source));
+        request.onsuccess = () => {
+          resolve(request.result !== null);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'check integration data existence',
+        'integration_data',
+        source,
         error,
       );
     }
@@ -1113,6 +1466,13 @@ export class IndexedDBService {
     if (oldVersion < 2 && tx) {
       this.migrateV1ToV2(db, tx);
     }
+
+    // v2 -> v3: add integration_timeseries and integration_import_history
+    // stores; add dataType-aware indexes to integration_data and remove the
+    // legacy source_date unique index.
+    if (oldVersion < 3) {
+      this.migrateV2ToV3(db, tx);
+    }
   }
 
   /**
@@ -1131,6 +1491,40 @@ export class IndexedDBService {
 
     fixIndex('sessions');
     fixIndex('nightly_aggregates');
+  }
+
+  /**
+   * v2 -> v3 migration: add integration stores and dataType-aware indexes.
+   *
+   * Creates two new object stores (`integration_timeseries`,
+   * `integration_import_history`) and updates the existing `integration_data`
+   * store by replacing the `source_date` unique index with the more granular
+   * `source_dataType_date` compound index and adding a `dataType` index.
+   */
+  private migrateV2ToV3(db: IDBDatabase, tx: IDBTransaction | null): void {
+    // Create new stores
+    const timeseries = db.createObjectStore('integration_timeseries', { keyPath: 'id' });
+    timeseries.createIndex('source_dataType_date', ['source', 'dataType', 'date'], {
+      unique: true,
+    });
+    timeseries.createIndex('date', 'date', { unique: false });
+    timeseries.createIndex('dataType', 'dataType', { unique: false });
+
+    const integrationImports = db.createObjectStore('integration_import_history', {
+      keyPath: 'id',
+    });
+    integrationImports.createIndex('source', 'source', { unique: false });
+    integrationImports.createIndex('importedAt', 'importedAt', { unique: false });
+
+    // Update integration_data store indexes
+    if (tx && db.objectStoreNames.contains('integration_data')) {
+      const store = tx.objectStore('integration_data');
+      if (store.indexNames.contains('source_date')) {
+        store.deleteIndex('source_date');
+      }
+      store.createIndex('dataType', 'dataType', { unique: false });
+      store.createIndex('source_dataType_date', ['source', 'dataType', 'date'], { unique: true });
+    }
   }
 
   private createSchema(db: IDBDatabase): void {
@@ -1173,11 +1567,29 @@ export class IndexedDBService {
     imports.createIndex('machineId', 'machineId', { unique: false });
     imports.createIndex('importedAt', 'importedAt', { unique: false });
 
-    // integration_data
+    // integration_data (v3: dataType-aware indexes replace legacy source_date)
     const integration = db.createObjectStore('integration_data', { keyPath: 'id' });
     integration.createIndex('source', 'source', { unique: false });
     integration.createIndex('date', 'date', { unique: false });
-    integration.createIndex('source_date', ['source', 'date'], { unique: true });
+    integration.createIndex('dataType', 'dataType', { unique: false });
+    integration.createIndex('source_dataType_date', ['source', 'dataType', 'date'], {
+      unique: true,
+    });
+
+    // integration_timeseries
+    const timeseries = db.createObjectStore('integration_timeseries', { keyPath: 'id' });
+    timeseries.createIndex('source_dataType_date', ['source', 'dataType', 'date'], {
+      unique: true,
+    });
+    timeseries.createIndex('date', 'date', { unique: false });
+    timeseries.createIndex('dataType', 'dataType', { unique: false });
+
+    // integration_import_history
+    const integrationImports = db.createObjectStore('integration_import_history', {
+      keyPath: 'id',
+    });
+    integrationImports.createIndex('source', 'source', { unique: false });
+    integrationImports.createIndex('importedAt', 'importedAt', { unique: false });
   }
 
   // -----------------------------------------------------------------------

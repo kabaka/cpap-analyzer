@@ -29,7 +29,8 @@ export type ArticleIcon =
   | 'pressure'
   | 'reports'
   | 'settings'
-  | 'clinical';
+  | 'clinical'
+  | 'integrations';
 
 export const helpArticles: readonly HelpArticle[] = [
   // ─── GETTING STARTED ──────────────────────────────────────────────
@@ -78,7 +79,8 @@ export const helpArticles: readonly HelpArticle[] = [
   {
     slug: 'importing-data',
     title: 'Importing Data',
-    summary: 'How to get your CPAP data from the SD card into the analyzer.',
+    summary:
+      'How to import CPAP data from your SD card and wearable data from Google Health (Fitbit).',
     icon: 'import',
     sections: [
       {
@@ -120,6 +122,33 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Re-importing and updates',
         paragraphs: [
           'You can re-import at any time to add new nights. CPAP Analyzer will detect which sessions already exist and only import new data. Existing data is not duplicated.',
+        ],
+      },
+      {
+        heading: 'Google Health (Fitbit) import',
+        paragraphs: [
+          'CPAP Analyzer can import wearable health data exported from Google Takeout under the "Google Health" category (formerly Fitbit). This enables cross-source analysis — correlating your CPAP therapy metrics with sleep, activity, and physiological data from your wearable device.',
+          'To export your data from Google: (1) Visit takeout.google.com. (2) Click "Deselect all," then select only "Google Health" (this contains your Fitbit data). (3) Choose your export format and click "Create export." (4) When the export is ready, download and extract the ZIP archive. (5) In CPAP Analyzer, open the Import Wizard, select "Google Health" as the source, and point the file picker at the extracted folder (the one containing subdirectories like "Sleep," "Heart Rate," etc.).',
+          'The Import Wizard validates the folder structure before parsing. If it does not recognize the directory layout, verify that you selected the correct top-level folder from the extracted archive.',
+        ],
+      },
+      {
+        heading: 'Supported Google Health data types',
+        paragraphs: [
+          "The following data types are imported when present in the export: Sleep Sessions (start/end times, duration, efficiency), Sleep Scores (composite sleep quality metric, 0--100), Sleep Stages (wake, light, deep, REM durations and transitions), SpO\\u2082 — daily summary and per-minute intraday readings (peripheral oxygen saturation measured by the wearable's red/infrared sensor), HRV — daily summary and detailed intraday readings (heart rate variability, measured as RMSSD in milliseconds), Respiratory Rate (breaths per minute during sleep), Resting Heart Rate (daily resting BPM), Readiness Score (recovery/readiness composite, 0--100), Stress Score (stress management composite), Skin Temperature (nightly deviation from personal baseline in degrees), Daily Activity (steps, active minutes, calories), and Snoring (detected snoring episodes and duration).",
+          'Not every Fitbit device records every data type. Older trackers may lack SpO\\u2082, HRV, or skin temperature sensors. The importer processes whatever data is present and silently skips missing categories.',
+        ],
+      },
+      {
+        heading: 'Incremental import and duplicate detection',
+        paragraphs: [
+          'Re-importing the same Google Health export — or a newer export that overlaps with previously imported dates — is safe. The importer detects duplicates by matching on data type, date, and timestamp. Records that already exist in the local database are skipped; only genuinely new records are added. This means you can periodically re-export from Google Takeout and re-import without manually tracking which dates you have already loaded.',
+        ],
+      },
+      {
+        heading: 'Data privacy for Google Health imports',
+        paragraphs: [
+          'Google Health data is processed entirely in your browser, using the same client-side architecture as CPAP SD card imports. No data is uploaded to any server during or after the import. The parsed records are stored locally in IndexedDB alongside your CPAP data. The original export files on your computer are read but never modified.',
         ],
       },
     ],
@@ -542,6 +571,79 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Disclaimer',
         paragraphs: [
           'CPAP Analyzer is intended for informational and educational purposes only. It is not a medical device and is not FDA-cleared for diagnostic or therapeutic use. The analysis provided should not be used as a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider with questions about your sleep apnea therapy.',
+        ],
+      },
+    ],
+  },
+
+  // ─── CROSS-SOURCE ANALYSIS ────────────────────────────────────────
+  {
+    slug: 'cross-source-analysis',
+    title: 'Cross-Source Analysis',
+    summary:
+      'Correlating CPAP therapy data with wearable health metrics to discover relationships and track holistic sleep health.',
+    icon: 'integrations',
+    sections: [
+      {
+        heading: 'What cross-source analysis does',
+        paragraphs: [
+          'Cross-Source Analysis correlates metrics from your CPAP machine with metrics from your wearable device (e.g., Fitbit via Google Health). By aligning nightly CPAP data (AHI, leak, pressure, usage) with wearable data (HRV, SpO₂, sleep stages, activity, resting heart rate, readiness), you can explore questions like: Does higher daytime activity predict lower AHI? Does poor HRV correlate with more respiratory events? How does sleep efficiency from the wearable compare to CPAP usage duration?',
+          'These analyses are exploratory. They surface candidate relationships for you to investigate — they do not establish causation and are not clinical diagnoses. Treat every finding as a hypothesis, not a conclusion.',
+        ],
+      },
+      {
+        heading: 'Correlation Explorer tab',
+        paragraphs: [
+          'The Correlation Explorer lets you select any two metrics — one from each data source, or both from the same source — and visualize their relationship with a scatter plot and regression line. For each pair the Explorer reports:',
+          'Correlation coefficient ($r$ or $\\rho$): A value between $-1$ and $+1$ measuring the strength and direction of the linear (Pearson $r$) or monotonic (Spearman $\\rho$) relationship. Values near $\\pm 1$ indicate a strong relationship; values near $0$ indicate little or no relationship.',
+          'P-value: The probability of observing a correlation this extreme if the two metrics were actually unrelated ($H_0\\colon r = 0$). A small $p$-value (conventionally $< 0.05$) suggests the observed correlation is unlikely to be due to chance alone — but see the caveats below.',
+          '95% confidence interval: The range within which the true population correlation likely falls, given your sample size. Narrow intervals indicate a more precise estimate; wide intervals mean less certainty.',
+          'Strength classification: A plain-language label (negligible, weak, moderate, strong, very strong) based on the absolute value of the coefficient. This follows standard thresholds: $|r| < 0.1$ negligible, $0.1$–$0.3$ weak, $0.3$–$0.5$ moderate, $0.5$–$0.7$ strong, $> 0.7$ very strong.',
+        ],
+      },
+      {
+        heading: 'Correlation Matrix tab',
+        paragraphs: [
+          'The Correlation Matrix displays pairwise correlations for all available metrics as a color-coded heatmap. Cells are colored on a diverging scale: deep blue for strong negative correlations, white for near-zero, and deep red for strong positive correlations. Statistically significant cells ($p < 0.05$) are marked to distinguish them from non-significant results.',
+          'How to read the matrix: scan the row and column headers to find the metric pair of interest. The cell value is the Pearson $r$ (or Spearman $\\rho$, depending on your settings). Focus first on cells that are both strongly colored and marked significant — these are the most likely to reflect real relationships rather than noise.',
+          'With many metric pairs in the matrix, some will appear significant by chance alone (the multiple comparisons problem). If you test 50 independent pairs at $\\alpha = 0.05$, you expect roughly 2–3 false positives. Use the matrix as a discovery tool: note the interesting pairs, then investigate them individually in the Correlation Explorer with domain knowledge in mind.',
+        ],
+      },
+      {
+        heading: 'Metric Comparison tab',
+        paragraphs: [
+          'The Metric Comparison tab provides two advanced analysis modes for pairs of metrics: Bland-Altman agreement analysis and lagged cross-correlation.',
+          'Bland-Altman analysis: When two sources measure the same underlying quantity (e.g., SpO₂ from the wearable vs. SpO₂ estimated from CPAP flow signals, or sleep duration from the wearable vs. CPAP usage hours), a Bland-Altman plot assesses how well they agree. It plots the difference between the two measurements ($y$-axis) against their average ($x$-axis). If the measurements agree perfectly, all points lie on the zero line. The plot shows the mean bias (systematic offset), 95% limits of agreement (mean $\\pm$ 1.96 SD of the differences), and whether the bias is proportional (larger at higher values). A small mean bias and narrow limits of agreement indicate good agreement between the two sources.',
+          'Lagged cross-correlation: This analysis shifts one time series forward or backward relative to the other by 0 to $N$ days and computes the correlation at each lag. It answers: "Does a change in metric X today predict a change in metric Y tomorrow (or two days later, etc.)?" For example, you might find that high step counts on day $t$ correlate with lower AHI on day $t+1$, suggesting a one-day delayed relationship. The lag with the highest absolute correlation is highlighted, along with its statistical significance. Be cautious: testing multiple lags inflates false-positive risk, so treat the optimal lag as exploratory.',
+        ],
+      },
+      {
+        heading: 'Statistical methods',
+        paragraphs: [
+          'Pearson correlation ($r$) measures the linear relationship between two continuous variables. It assumes both variables are approximately normally distributed and that the relationship is linear. It is sensitive to outliers — a single extreme night can inflate or deflate $r$.',
+          'Spearman rank correlation ($\\rho$) measures the monotonic relationship between two variables (whether one tends to increase as the other increases, not necessarily linearly). It operates on ranks rather than raw values, making it robust to outliers and applicable to non-normal data. CPAP Analyzer defaults to Spearman when either variable fails a normality check.',
+          'Partial correlation measures the association between two variables after removing the influence of one or more confounding variables. For example, the partial correlation between AHI and HRV controlling for usage hours tells you whether the AHI–HRV relationship persists after accounting for the fact that both may be influenced by how long you wore the CPAP mask.',
+          'P-values: In this context, a $p$-value answers: "If these two metrics had zero true correlation in the population, how likely is it that I would observe a sample correlation at least this large?" A small $p$ (typically $< 0.05$) is conventionally called "statistically significant," meaning the result is unlikely under the null hypothesis. However, statistical significance does not guarantee clinical importance — a weak correlation can be significant with enough data points, and a strong correlation can fail to reach significance with too few. Always consider effect size (the coefficient itself) alongside $p$.',
+        ],
+      },
+      {
+        heading: 'Correlation does not imply causation',
+        paragraphs: [
+          'This is the single most important caveat for cross-source analysis. A statistically significant correlation between two metrics means they tend to move together — it does not mean one causes the other. There are several reasons a spurious correlation can appear:',
+          'Confounders: A third variable drives both metrics. For example, seasonal changes can simultaneously affect sleep quality, AHI, and activity levels, creating apparent correlations between metrics that are actually independent once season is controlled for.',
+          'Reverse causation: The direction of influence may be opposite to what you assume. A correlation between poor sleep (low HRV) and high AHI could mean untreated apnea worsens HRV, or that poor autonomic function worsens apnea, or both.',
+          'Coincidence and multiple testing: When you examine many metric pairs, some will correlate by chance. With 20 pairs at $\\alpha = 0.05$, you expect one false positive on average.',
+          'These analyses are designed to help you generate hypotheses — for example, "I should discuss my exercise-AHI pattern with my sleep physician" — not to reach clinical conclusions independently.',
+        ],
+      },
+      {
+        heading: 'Key caveats and limitations',
+        paragraphs: [
+          'Self-reported vs. device-measured data: Some Fitbit metrics (e.g., sleep logs) can be manually edited by the user, which may introduce inaccuracies. Device-measured metrics (e.g., heart rate, SpO₂) are generally more reliable but still subject to sensor limitations (motion artifact, poor fit, skin tone effects on optical sensors).',
+          'Confounders: Many variables that affect sleep and health are not captured by either device — medication changes, alcohol consumption, stress, illness, travel, altitude, and ambient temperature can all influence both CPAP and wearable metrics simultaneously.',
+          'Small sample sizes: If you have only a few weeks of overlapping data, correlation estimates are imprecise (wide confidence intervals) and significance tests have low statistical power — you may miss real relationships or find spurious ones. As a rough guideline, at least 30 overlapping nights are needed for reasonably stable correlation estimates, and 60+ are preferable for lagged analyses.',
+          'Measurement differences: The wearable and CPAP machine may define "sleep" differently (wearable uses actigraphy and heart rate; CPAP uses mask-on time). Timestamps may differ by minutes. These discrepancies are generally small but can introduce noise into the correlations.',
+          'Ecological inference: Nightly aggregates obscure within-night dynamics. A night with 4 hours of excellent therapy followed by 4 hours of poor therapy looks the same in the summary as a uniformly mediocre night.',
         ],
       },
     ],

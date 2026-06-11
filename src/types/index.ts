@@ -44,6 +44,39 @@ export type {
 export { ErrorCategory, ErrorSeverity } from './errors';
 export type { CPAPError } from './errors';
 
+// Fitbit / Google Health types
+export type {
+  FitbitActivityDaily,
+  FitbitBodyWeight,
+  FitbitDailyPayloadMap,
+  FitbitDailyType,
+  FitbitDataType,
+  FitbitHRVDaily,
+  FitbitHRVDetail,
+  FitbitHRVDetailInterval,
+  FitbitReadiness,
+  FitbitRespiratoryRate,
+  FitbitRestingHeartRate,
+  FitbitSleepProfile,
+  FitbitSleepScore,
+  FitbitSleepSession,
+  FitbitSleepStages,
+  FitbitSleepStageTransition,
+  FitbitSnoringDaily,
+  FitbitSnoringSegment,
+  FitbitSnoringSegments,
+  FitbitSpO2Daily,
+  FitbitSpO2Intraday,
+  FitbitStress,
+  FitbitTemperature,
+  FitbitTimeseriesPayloadMap,
+  FitbitTimeseriesType,
+  FitbitVO2Max,
+  GoogleHealthDataTypeInfo,
+  GoogleHealthScanResult,
+} from './fitbit';
+export { FITBIT_DATA_TIERS, FITBIT_DATA_TYPE_LABEL, FITBIT_DATA_TYPE_TIER } from './fitbit';
+
 // Settings types
 export type {
   AnalysisParams,
@@ -57,4 +90,13 @@ export type {
 } from './settings';
 
 // Storage types
-export type { DataProvider, ImportError, ImportRecord, IntegrationData } from './storage';
+export type {
+  DataProvider,
+  ImportError,
+  ImportRecord,
+  IntegrationDailySummary,
+  IntegrationData,
+  IntegrationImportRecord,
+  IntegrationSource,
+  IntegrationTimeseries,
+} from './storage';

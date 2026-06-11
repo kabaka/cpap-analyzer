@@ -12,10 +12,11 @@ import {
   MigrationService,
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_NONUNIQUE_MACHINE_DATE,
+  MIGRATION_003_INTEGRATION_STORES,
 } from './MigrationService';
 
 /** Current target schema version. Must match `DB_VERSION` in IndexedDBService. */
-const TARGET_SCHEMA_VERSION = 2;
+const TARGET_SCHEMA_VERSION = 3;
 
 let instance: IndexedDBService | null = null;
 let openPromise: Promise<IndexedDBService> | null = null;
@@ -31,7 +32,11 @@ let openPromise: Promise<IndexedDBService> | null = null;
  */
 function buildMigrationService(): MigrationService {
   const service = new MigrationService();
-  service.registerAll([MIGRATION_001_INITIAL_SCHEMA, MIGRATION_002_NONUNIQUE_MACHINE_DATE]);
+  service.registerAll([
+    MIGRATION_001_INITIAL_SCHEMA,
+    MIGRATION_002_NONUNIQUE_MACHINE_DATE,
+    MIGRATION_003_INTEGRATION_STORES,
+  ]);
   return service;
 }
 

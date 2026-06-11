@@ -25,7 +25,9 @@ interface DisplayPreferences {
 
 interface FitbitIntegration {
   enabled: boolean;
-  accessToken: string | null;
+  visibleDataTypes: string[];
+  lastImportAt: string | null;
+  recordCount: number;
 }
 
 interface WeatherIntegration {
@@ -97,7 +99,7 @@ const defaultSettings: Pick<SettingsState, 'analysisParams' | 'display' | 'integ
     chartAnimations: true,
   },
   integrations: {
-    fitbit: { enabled: false, accessToken: null },
+    fitbit: { enabled: false, visibleDataTypes: [], lastImportAt: null, recordCount: 0 },
     weather: { enabled: false, apiKey: null, location: '' },
     llm: { enabled: false, provider: null, apiKey: null },
   },
