@@ -9,6 +9,7 @@ export default defineConfig(({ command, isPreview }) => ({
   plugins: [react(), tsconfigPaths(), cspMetaPlugin()],
   build: {
     target: 'es2020',
+    assetsInlineLimit: 0,
     rollupOptions: {
       output: {
         manualChunks: {
