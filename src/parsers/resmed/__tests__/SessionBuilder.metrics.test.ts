@@ -2,7 +2,9 @@
  * Tests for SessionBuilder clinical-metric correctness:
  * - AHI excludes RERA; RDI = AHI + RERA index (AASM 2012 / ICSD-3)
  * - ODI via discrete desaturation-event detection (AASM SpO₂ scoring)
- * - Usage: STR mask-interval path (authoritative) + pressure hysteresis fallback
+ * - Usage: STR mask intervals are authoritative ONLY when they yield strictly
+ *   positive overlap for the session; an empty/non-overlapping STR overlap
+ *   falls back PER-SESSION to the pressure-hysteresis detector (regression fix)
  * - T90 time-based + SpO₂ coverage
  * - Sentinel/gap handling does not bias pressure/leak stats toward zero
  * - Percentile values are unchanged by the sort-once refactor
@@ -17,6 +19,7 @@ import type {
   StandardChannel,
   StandardEvent,
 } from '@/parsers/resmed/ResMedInterpreter';
+import { STRParser } from '@/parsers/resmed/STRParser';
 import type { MaskInterval } from '@/parsers/resmed/STRParser';
 import type { EventType } from '@/types/events';
 
@@ -166,14 +169,106 @@ describe('usage detection', () => {
     expect(agg.maskOnTimeMinutes).toBeCloseTo(300, 3);
   });
 
-  it('STR path counts zero usage when intervals are empty (authoritative)', () => {
+  it('falls back to the pressure detector when STR intervals are EMPTY but a mask-pressure channel is present (regression fix)', () => {
+    // Regression: previously an empty STR array was "authoritative zero", which
+    // zeroed usage even though the pressure channel proves the mask was worn.
+    // Now an empty/non-positive STR overlap falls back to the pressure detector
+    // PER SESSION, so a real night of therapy is never silently destroyed.
+    const events: StandardEvent[] = [
+      evt('ObstructiveApnea', 100),
+      evt('Hypopnea', 200),
+      evt('CentralApnea', 300),
+      evt('MixedApnea', 400),
+      evt('Hypopnea', 500),
+    ];
     const interp = interpretation({
       durationSeconds: 3600,
-      channels: [maskPressure(3600)], // pressure says "on", but STR says no usage
+      channels: [maskPressure(3600)], // constant 10 cmH₂O → mask worn the full hour
+      events,
+    });
+    const byDate = new Map<string, MaskInterval[]>([['2026-01-15', []]]);
+    const agg = builder.buildSessions([interp], undefined, byDate)[0]!.aggregate;
+
+    // Pressure detector recovers the full hour of usage.
+    expect(agg.usageHours).toBeCloseTo(1, 5);
+    expect(agg.maskOnTimeMinutes).toBeCloseTo(60, 3);
+    // AHI is now computed against real usage (5 events / 1 h), NOT zeroed out.
+    expect(agg.ahi).toBeCloseTo(5, 5);
+    expect(agg.ahi).toBeGreaterThan(0);
+    // 1 h of usage is below the 4 h CMS bar but above 1 h → partial, not the
+    // bogus 0 h "non-compliant" the old foot-gun produced.
+    expect(agg.complianceStatus).toBe('partial');
+  });
+
+  it('falls back to the pressure detector when STR intervals exist for the night but do NOT overlap this session window', () => {
+    // STR data is present for the date, but its (mis-decoded / mis-keyed)
+    // intervals land entirely outside the session window. The clipped overlap
+    // is zero, so usage must fall back to the pressure detector — not zero.
+    const start = new Date(2026, 0, 15, 22, 0, 0);
+    const interp = interpretation({
+      startTime: start,
+      durationSeconds: 8 * 3600, // 22:00 → 06:00
+      channels: [maskPressure(8 * 3600)],
+      events: [evt('ObstructiveApnea', 100), evt('Hypopnea', 200)],
+    });
+    // Intervals sit in the afternoon BEFORE the window opens → no overlap.
+    const nonOverlapping: MaskInterval[] = [
+      { start: new Date(2026, 0, 15, 13, 0, 0), end: new Date(2026, 0, 15, 15, 0, 0) },
+    ];
+    const byDate = new Map<string, MaskInterval[]>([['2026-01-15', nonOverlapping]]);
+    const agg = builder.buildSessions([interp], undefined, byDate)[0]!.aggregate;
+
+    // Full 8 h recovered from the pressure detector; STR is ignored for THIS
+    // session because its overlap is zero.
+    expect(agg.usageHours).toBeCloseTo(8, 5);
+    expect(agg.ahi).toBeGreaterThan(0);
+    expect(agg.complianceStatus).toBe('compliant');
+  });
+
+  it('keeps a genuinely-unworn night at ~0 usage (empty STR + flat near-ambient pressure)', () => {
+    // The fallback must not invent usage: a truly-unworn night reads near
+    // ambient (~0.5 cmH₂O, below the ON threshold) on the pressure channel, so
+    // even with the fallback engaged usage stays ~0. Legitimate zeros stay zero.
+    const interp = interpretation({
+      durationSeconds: 3600,
+      channels: [maskPressure(3600, 0.5)], // constant 0.5 cmH₂O, never crosses ON=2.0
     });
     const byDate = new Map<string, MaskInterval[]>([['2026-01-15', []]]);
     const agg = builder.buildSessions([interp], undefined, byDate)[0]!.aggregate;
     expect(agg.usageHours).toBe(0);
+    expect(agg.complianceStatus).toBe('non-compliant');
+  });
+
+  it('uses STR as authoritative when its overlap is strictly positive (pressure ignored)', () => {
+    // Mask physically worn the whole window (constant 10 → detector would say
+    // 8 h), but STR records only 5 h of actual mask-on. STR wins.
+    const start = new Date(2026, 0, 15, 22, 0, 0);
+    const interp = interpretation({
+      startTime: start,
+      durationSeconds: 8 * 3600,
+      channels: [maskPressure(8 * 3600)],
+    });
+    const intervals: MaskInterval[] = [
+      { start: new Date(2026, 0, 15, 22, 0, 0), end: new Date(2026, 0, 16, 1, 0, 0) }, // 3h
+      { start: new Date(2026, 0, 16, 3, 0, 0), end: new Date(2026, 0, 16, 5, 0, 0) }, // 2h
+    ];
+    const byDate = new Map<string, MaskInterval[]>([['2026-01-15', intervals]]);
+    const agg = builder.buildSessions([interp], undefined, byDate)[0]!.aggregate;
+    // STR's 5 h, not the detector's 8 h.
+    expect(agg.usageHours).toBeCloseTo(5, 5);
+    expect(agg.maskOnTimeMinutes).toBeCloseTo(300, 3);
+  });
+
+  it('uses the pressure detector when no STR map is supplied at all (older firmware, backward compatible)', () => {
+    const interp = interpretation({
+      durationSeconds: 3600,
+      channels: [maskPressure(3600)],
+      events: [evt('ObstructiveApnea', 100)],
+    });
+    // No third argument → no STR intervals anywhere.
+    const agg = builder.buildSessions([interp])[0]!.aggregate;
+    expect(agg.usageHours).toBeCloseTo(1, 5);
+    expect(agg.ahi).toBeCloseTo(1, 5);
   });
 
   it('fallback hysteresis counts usage despite per-breath exhalation dips below 1.5', () => {
@@ -400,5 +495,105 @@ describe('percentile values unchanged by sort-once refactor', () => {
     const agg = builder.buildSessions([interp])[0]!.aggregate;
     expect(agg.leakP95).toBeCloseTo((95 / 100) * (n - 1), 4);
     expect(agg.leakMax).toBe(499);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration: STRParser noon-anchored decode → SessionBuilder usage/overlap.
+// This is the exact path the user's real sessions exercise: a raw STR record is
+// decoded into noon-anchored mask intervals, then matched against an EDF
+// session window by date and clipped to compute usage.
+// ---------------------------------------------------------------------------
+
+/** ResMed Excel-serial day value for a local calendar date. */
+function strDayValue(year: number, month1: number, day: number): number {
+  const epoch = Date.UTC(1899, 11, 30);
+  return Math.round((Date.UTC(year, month1 - 1, day) - epoch) / 86_400_000);
+}
+
+/** Flatten a single 10-slot record into a Float32Array. */
+function maskSlots(values: number[]): Float32Array {
+  const out = new Float32Array(10).fill(-1);
+  values.forEach((v, i) => (out[i] = v));
+  return out;
+}
+
+describe('STR decode → SessionBuilder integration (noon-anchored)', () => {
+  const strParser = new STRParser();
+
+  it('cross-midnight STR record overlaps a 22:00→06:00 EDF session and yields positive usage, AHI, and compliance', () => {
+    // STR record dated 2026-01-15. One mask interval: MaskOn=600 (noon+10h =
+    // 22:00, keyed under 2026-01-15) → MaskOff=960 (noon+16h = next-day 04:00).
+    // The interval start lands at 22:00, so it keys under 2026-01-15.
+    const dv = strDayValue(2026, 1, 15);
+    const edfStart = new Date(2026, 0, 15, 12, 0, 0); // STR.edf recording start
+    const parsed = strParser.parseFromRawChannels(
+      [
+        { label: 'Date', samples: new Float32Array([dv]), samplesPerRecord: 1 },
+        { label: 'MaskOn', samples: maskSlots([600]), samplesPerRecord: 10 },
+        { label: 'MaskOff', samples: maskSlots([960]), samplesPerRecord: 10 },
+      ],
+      edfStart,
+      1,
+    );
+
+    // Confirm the decode keyed the interval under the start date (2026-01-15).
+    expect(parsed.maskIntervalsByDate.get('2026-01-15')).toHaveLength(1);
+
+    // EDF session window 22:00 → 06:00 (8 h), with 4 apnea/hypopnea events.
+    const sessionStart = new Date(2026, 0, 15, 22, 0, 0);
+    const interp = interpretation({
+      startTime: sessionStart,
+      durationSeconds: 8 * 3600,
+      channels: [maskPressure(8 * 3600)],
+      events: [
+        evt('ObstructiveApnea', 100),
+        evt('Hypopnea', 200),
+        evt('CentralApnea', 300),
+        evt('Hypopnea', 400),
+      ],
+    });
+
+    const agg = builder.buildSessions([interp], undefined, parsed.maskIntervalsByDate)[0]!
+      .aggregate;
+
+    // STR overlap with [22:00, 06:00] is 22:00 → 04:00 = 6 h exactly.
+    expect(agg.usageHours).toBeCloseTo(6, 5);
+    expect(agg.maskOnTimeMinutes).toBeCloseTo(360, 3);
+    // AHI = 4 events / 6 h ≈ 0.667, non-zero.
+    expect(agg.ahi).toBeCloseTo(4 / 6, 5);
+    expect(agg.ahi).toBeGreaterThan(0);
+    // 6 h ≥ 4 h CMS bar → compliant.
+    expect(agg.complianceStatus).toBe('compliant');
+  });
+
+  it('a value above 1440 still decodes and overlaps a daytime session (no longer discarded)', () => {
+    // MaskOn=1500 (noon+25h = next-day 13:00), MaskOff=1620 (next-day 15:00).
+    // Under the old > 1440 reject this whole session vanished. A 13:00→16:00
+    // EDF nap window on 2026-01-16 must now pick it up.
+    const dv = strDayValue(2026, 1, 15);
+    const edfStart = new Date(2026, 0, 15, 12, 0, 0);
+    const parsed = strParser.parseFromRawChannels(
+      [
+        { label: 'Date', samples: new Float32Array([dv]), samplesPerRecord: 1 },
+        { label: 'MaskOn', samples: maskSlots([1500]), samplesPerRecord: 10 },
+        { label: 'MaskOff', samples: maskSlots([1620]), samplesPerRecord: 10 },
+      ],
+      edfStart,
+      1,
+    );
+    // Keyed under 2026-01-16 (the start wall-clock's date).
+    expect(parsed.maskIntervalsByDate.get('2026-01-16')).toHaveLength(1);
+
+    const napStart = new Date(2026, 0, 16, 13, 0, 0);
+    const interp = interpretation({
+      startTime: napStart,
+      durationSeconds: 3 * 3600, // 13:00 → 16:00
+      channels: [maskPressure(3 * 3600)],
+    });
+    const agg = builder.buildSessions([interp], undefined, parsed.maskIntervalsByDate)[0]!
+      .aggregate;
+    // Interval 13:00 → 15:00 fully inside the 13:00 → 16:00 window → 2 h usage.
+    expect(agg.usageHours).toBeCloseTo(2, 5);
   });
 });

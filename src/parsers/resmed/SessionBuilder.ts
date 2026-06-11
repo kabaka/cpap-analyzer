@@ -130,9 +130,12 @@ export class SessionBuilder {
    * @param strSettingsByDate - Optional map from ISO date to machine settings from STR.edf.
    * @param strMaskIntervalsByDate - Optional map from ISO date to the machine-
    *   recorded mask-on/off intervals (from {@link STRParser.parseFromRawChannels}).
-   *   When supplied, usage time is computed authoritatively from the overlap of
-   *   these intervals with each session window. When omitted, usage falls back
-   *   to a hysteresis detector on mask pressure (backward compatible).
+   *   When supplied, usage time is computed from the overlap of these intervals
+   *   with each session window — but only when that overlap is strictly
+   *   positive. If the STR intervals do not overlap a given session (no data
+   *   for the night, or a decode/keying mismatch), usage for THAT session falls
+   *   back to a hysteresis detector on mask pressure. When the map is omitted
+   *   entirely, all sessions use the pressure detector (backward compatible).
    * @returns Array of build results, one per detected session.
    */
   buildSessions(
@@ -229,8 +232,18 @@ export class SessionBuilder {
     }
 
     // Compute usage time. Prefer the machine's own recorded mask-on/off
-    // intervals from STR (authoritative). Fall back to a pressure hysteresis
-    // detector when STR intervals are not supplied for this session's date(s).
+    // intervals from STR, but ONLY where they actually overlap this session's
+    // window and yield positive usage. If STR yields zero overlap for this
+    // night (no intervals, or a decoding/keying mismatch that lands the
+    // intervals on the wrong wall-clock time) we fall back to the proven
+    // pressure-hysteresis detector whenever a mask-pressure channel exists.
+    //
+    // Rationale: a genuinely-unworn night still measures ~0 from the pressure
+    // detector, so legitimately-zero nights stay zero — but an STR decode/
+    // overlap miss can no longer silently destroy a real night of therapy.
+    // The decision is per-session, never per-import: one night's STR miss
+    // does not affect any other night, and a night with good STR overlap
+    // still uses the authoritative machine-recorded intervals.
     const sessionDateForUsage = this.formatDate(startTime);
     const maskIntervals = this.maskIntervalsForWindow(
       strMaskIntervalsByDate,
@@ -238,10 +251,10 @@ export class SessionBuilder {
       endTime,
       sessionDateForUsage,
     );
+    const strUsageSeconds =
+      maskIntervals !== null ? this.computeUsageFromIntervals(maskIntervals, startMs, endMs) : 0;
     const usageSeconds =
-      maskIntervals !== null
-        ? this.computeUsageFromIntervals(maskIntervals, startMs, endMs)
-        : this.computeUsageSeconds(channelMap);
+      strUsageSeconds > 0 ? strUsageSeconds : this.computeUsageSeconds(channelMap);
 
     // Build machine info from first interpretation
     const firstInterp = group[0];
@@ -396,10 +409,14 @@ export class SessionBuilder {
    * returns only those intervals that overlap the [start, end] window at all.
    *
    * @returns The overlapping intervals (possibly empty) when an STR map was
-   *   supplied, or `null` when no STR map was provided (signalling the caller
-   *   to fall back to pressure-based detection). Note: an empty array means
-   *   "STR is authoritative and recorded zero usage", which is distinct from
-   *   `null` ("no STR data; use the fallback").
+   *   supplied, or `null` when no STR map was provided. Note: unlike earlier
+   *   revisions, an empty array is NOT treated as "authoritative zero usage".
+   *   The caller uses STR usage only when the clipped overlap is strictly
+   *   positive; an empty/zero overlap (whether a genuinely-unworn night or an
+   *   STR decode/keying mismatch) falls back to the pressure-hysteresis
+   *   detector, which itself measures ~0 for a truly-unworn night. This keeps
+   *   STR authoritative where it overlaps without letting a decoding miss zero
+   *   out a real night of therapy.
    */
   private maskIntervalsForWindow(
     byDate: ReadonlyMap<string, readonly MaskInterval[]> | undefined,
