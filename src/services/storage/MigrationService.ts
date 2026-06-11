@@ -826,7 +826,6 @@ export const MIGRATION_003_INTEGRATION_STORES: Migration = {
         if (store.indexNames.contains('source_date')) {
           warnings.push('Legacy index source_date still present on integration_data');
         }
-        tx.abort();
       } catch (error) {
         errors.push(
           `Failed to inspect integration_data indexes: ${error instanceof Error ? error.message : String(error)}`,
@@ -848,7 +847,6 @@ export const MIGRATION_003_INTEGRATION_STORES: Migration = {
         if (!store.indexNames.contains('dataType')) {
           errors.push('Missing index dataType on integration_timeseries');
         }
-        tx.abort();
       } catch (error) {
         errors.push(
           `Failed to inspect integration_timeseries indexes: ${error instanceof Error ? error.message : String(error)}`,
@@ -867,7 +865,6 @@ export const MIGRATION_003_INTEGRATION_STORES: Migration = {
         if (!store.indexNames.contains('importedAt')) {
           errors.push('Missing index importedAt on integration_import_history');
         }
-        tx.abort();
       } catch (error) {
         errors.push(
           `Failed to inspect integration_import_history indexes: ${error instanceof Error ? error.message : String(error)}`,

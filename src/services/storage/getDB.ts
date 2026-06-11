@@ -58,6 +58,12 @@ export async function getDB(): Promise<IndexedDBService> {
       instance = db;
       return db;
     })();
+
+    // If the open/migration fails, clear the cached promise so subsequent
+    // calls can retry instead of returning a permanently-rejected promise.
+    openPromise.catch(() => {
+      openPromise = null;
+    });
   }
 
   return openPromise;
