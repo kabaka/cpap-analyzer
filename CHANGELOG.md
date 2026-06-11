@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+### Fixed
+
+- Help pages (Help home and Help articles) now render their intended card, input, button, and divider borders in both light and dark themes. These borders referenced an undefined `--color-border` design token and were silently invisible; they now use the defined `--color-border-default` token.
+
 ### Fixed (Phase 10: Correctness, Performance & UX pass)
 
 - Import no longer fails to store sessions with a "machineId_date uniqueness" error. Multiple sessions on the same calendar day (e.g. a nap plus an overnight, or mask removal and reapplication) are now stored independently instead of colliding. Root cause was a wrongly-unique database index; a v1→v2 schema migration auto-upgrades existing databases losslessly on first launch — no re-import required.
