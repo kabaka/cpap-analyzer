@@ -4,6 +4,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useThemeEffect } from '@/hooks/useTheme';
 import { useURLStateSync } from '@/hooks/useURLState';
 import { RouteErrorBoundary } from '@/components/errors';
+import { TooltipProvider } from '@/components/ui';
 import { StatusBar } from './StatusBar';
 import styles from './RootLayout.module.css';
 
@@ -46,82 +47,84 @@ export default function RootLayout() {
   }, [theme, setTheme]);
 
   return (
-    <div className={styles.layout}>
-      {/* Mobile overlay */}
-      <div
-        className={`${styles.overlay} ${sidebarOpen ? styles.overlayVisible : ''}`}
-        onClick={closeSidebar}
-        aria-hidden="true"
-      />
+    <TooltipProvider>
+      <div className={styles.layout}>
+        {/* Mobile overlay */}
+        <div
+          className={`${styles.overlay} ${sidebarOpen ? styles.overlayVisible : ''}`}
+          onClick={closeSidebar}
+          aria-hidden="true"
+        />
 
-      {/* Sidebar */}
-      <aside
-        className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}
-        aria-label="Main navigation"
-      >
-        <div className={styles.sidebarHeader}>
-          <span className={styles.logo}>CPAP Analyzer</span>
-        </div>
-        <nav className={styles.nav}>
-          <ul className={styles.navList}>
-            {NAV_ITEMS.map((item) => (
-              <li key={item.to}>
-                <NavLink
-                  to={item.to}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
-                    `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
-                  }
-                  onClick={closeSidebar}
-                >
-                  <span className={styles.navIcon} aria-hidden="true">
-                    {item.icon}
-                  </span>
-                  {item.label}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </aside>
-
-      {/* Content area */}
-      <div className={styles.content}>
-        <header className={styles.header}>
-          <div className={styles.headerActions}>
-            <button
-              className={styles.menuToggle}
-              onClick={toggleSidebar}
-              aria-label={sidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
-              aria-expanded={sidebarOpen}
-            >
-              ☰
-            </button>
-            <span className={styles.headerTitle}>CPAP Analyzer</span>
+        {/* Sidebar */}
+        <aside
+          className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''}`}
+          aria-label="Main navigation"
+        >
+          <div className={styles.sidebarHeader}>
+            <span className={styles.logo}>CPAP Analyzer</span>
           </div>
-          <nav className={styles.utilityNav} aria-label="Utility navigation">
-            <NavLink to="/help" className={styles.utilityButton} aria-label="Help">
-              ?
-            </NavLink>
-            <NavLink to="/settings" className={styles.utilityButton} aria-label="Settings">
-              ⚙
-            </NavLink>
-            <button
-              className={styles.themeToggle}
-              onClick={cycleTheme}
-              aria-label={`Switch theme (current: ${theme})`}
-            >
-              {resolvedTheme === 'dark' ? '☀️' : '🌙'}
-            </button>
+          <nav className={styles.nav}>
+            <ul className={styles.navList}>
+              {NAV_ITEMS.map((item) => (
+                <li key={item.to}>
+                  <NavLink
+                    to={item.to}
+                    end={item.to === '/'}
+                    className={({ isActive }) =>
+                      `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
+                    }
+                    onClick={closeSidebar}
+                  >
+                    <span className={styles.navIcon} aria-hidden="true">
+                      {item.icon}
+                    </span>
+                    {item.label}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
           </nav>
-        </header>
-        <main className={styles.main}>
-          <RouteErrorBoundary resetKeys={[location.pathname]}>
-            <Outlet />
-          </RouteErrorBoundary>
-        </main>
-        <StatusBar />
+        </aside>
+
+        {/* Content area */}
+        <div className={styles.content}>
+          <header className={styles.header}>
+            <div className={styles.headerActions}>
+              <button
+                className={styles.menuToggle}
+                onClick={toggleSidebar}
+                aria-label={sidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                aria-expanded={sidebarOpen}
+              >
+                ☰
+              </button>
+              <span className={styles.headerTitle}>CPAP Analyzer</span>
+            </div>
+            <nav className={styles.utilityNav} aria-label="Utility navigation">
+              <NavLink to="/help" className={styles.utilityButton} aria-label="Help">
+                ?
+              </NavLink>
+              <NavLink to="/settings" className={styles.utilityButton} aria-label="Settings">
+                ⚙
+              </NavLink>
+              <button
+                className={styles.themeToggle}
+                onClick={cycleTheme}
+                aria-label={`Switch theme (current: ${theme})`}
+              >
+                {resolvedTheme === 'dark' ? '☀️' : '🌙'}
+              </button>
+            </nav>
+          </header>
+          <main className={styles.main}>
+            <RouteErrorBoundary resetKeys={[location.pathname]}>
+              <Outlet />
+            </RouteErrorBoundary>
+          </main>
+          <StatusBar />
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
