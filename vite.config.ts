@@ -2,9 +2,11 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
 
+import { cspMetaPlugin } from './src/buildtime/csp';
+
 export default defineConfig(({ command, isPreview }) => ({
   base: command === 'serve' && !isPreview ? '/' : '/cpap-analyzer/',
-  plugins: [react(), tsconfigPaths()],
+  plugins: [react(), tsconfigPaths(), cspMetaPlugin()],
   build: {
     target: 'es2020',
     rollupOptions: {

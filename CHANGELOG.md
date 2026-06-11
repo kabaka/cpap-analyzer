@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+### Security
+
+- Added an app-wide Content-Security-Policy to production builds, injected as a `<meta http-equiv>` tag at build time (GitHub Pages cannot set HTTP headers). Restricts scripts, styles, workers, connections, and embeds to same-origin; blocks external network calls until opt-in integrations are enabled.
+
 ### Fixed
 
 - Help pages (Help home and Help articles) now render their intended card, input, button, and divider borders in both light and dark themes. These borders referenced an undefined `--color-border` design token and were silently invisible; they now use the defined `--color-border-default` token.
