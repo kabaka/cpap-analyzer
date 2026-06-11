@@ -1,6 +1,14 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!--
+      Content-Security-Policy is intentionally NOT here. It is injected at build
+      time as a <meta http-equiv="Content-Security-Policy"> tag by the
+      cspMetaPlugin in vite.config.ts (apply: 'build'), so it lands in
+      dist/index.html and dist/404.html but stays out of the dev server (where a
+      strict CSP would block Vite/React-Refresh HMR). The policy is omitted here
+      on purpose — see vite.config.ts for the full directive list.
+    -->
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CPAP Analyzer</title>
