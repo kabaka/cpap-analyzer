@@ -24,7 +24,7 @@ const defaultDisplay = {
 };
 
 const defaultIntegrations = {
-  fitbit: { enabled: false, accessToken: null },
+  fitbit: { enabled: false, visibleDataTypes: [], lastImportAt: null, recordCount: 0 },
   weather: { enabled: false, apiKey: null, location: '' },
   llm: { enabled: false, provider: null, apiKey: null },
 };
@@ -124,11 +124,13 @@ describe('useSettingsStore', () => {
     it('should update fitbit integration', () => {
       useSettingsStore.getState().updateIntegration('fitbit', {
         enabled: true,
-        accessToken: 'abc-123',
+        recordCount: 1500,
       });
       expect(useSettingsStore.getState().integrations.fitbit).toEqual({
         enabled: true,
-        accessToken: 'abc-123',
+        visibleDataTypes: [],
+        lastImportAt: null,
+        recordCount: 1500,
       });
     });
 
@@ -180,14 +182,19 @@ describe('useSettingsStore', () => {
       useSettingsStore.getState().updateAnalysisParam('ahi', { mildThreshold: 42 });
       useSettingsStore.getState().updateIntegration('fitbit', {
         enabled: true,
-        accessToken: 'leaked-token',
+        recordCount: 9999,
       });
 
       useSettingsStore.getState().resetToDefaults();
 
       const state = useSettingsStore.getState();
       expect(state.analysisParams.ahi.mildThreshold).toBe(5);
-      expect(state.integrations.fitbit).toEqual({ enabled: false, accessToken: null });
+      expect(state.integrations.fitbit).toEqual({
+        enabled: false,
+        visibleDataTypes: [],
+        lastImportAt: null,
+        recordCount: 0,
+      });
       // Full structural equality confirms no nested aliasing crept in.
       expect(state.analysisParams).toEqual(defaultAnalysisParams);
       expect(state.integrations).toEqual(defaultIntegrations);

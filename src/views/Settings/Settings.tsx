@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { Accordion, Button, Card, Dialog, Input, Select, Switch, Tabs } from '@/components/ui';
@@ -250,18 +251,27 @@ function AnalysisSection() {
 function IntegrationsSection() {
   const integrations = useSettingsStore((s) => s.integrations);
   const updateIntegration = useSettingsStore((s) => s.updateIntegration);
+  const navigate = useNavigate();
+
+  const fitbitTriggerLabel = (() => {
+    if (!integrations.fitbit.enabled) return 'Google Health (Fitbit) — Disabled';
+    if (integrations.fitbit.recordCount > 0)
+      return `Google Health (Fitbit) — ${integrations.fitbit.recordCount.toLocaleString()} records`;
+    return 'Google Health (Fitbit) — Enabled';
+  })();
 
   const accordionItems = [
     {
       value: 'fitbit',
-      trigger: `Fitbit — ${integrations.fitbit.enabled ? 'Enabled' : 'Disabled'}`,
+      trigger: fitbitTriggerLabel,
       content: (
         <div className={styles.integrationPanel}>
           <div className={styles.switchRow}>
             <div className={styles.switchInfo}>
-              <span className={styles.switchLabel}>Enable Fitbit integration</span>
+              <span className={styles.switchLabel}>Enable Google Health integration</span>
               <span className={styles.switchDescription}>
-                Import sleep and activity data from your Fitbit account.
+                Import sleep, heart rate, SpO&#8322;, HRV, activity, and more from your Google
+                Health (Fitbit) data export. Data is processed locally — nothing is uploaded.
               </span>
             </div>
             <Switch
@@ -270,24 +280,32 @@ function IntegrationsSection() {
             />
           </div>
           {integrations.fitbit.enabled && (
-            <>
-              <span className={styles.comingSoon}>
-                Coming soon — Integration will be available in a future release
-              </span>
-              <Input
-                label="Access token"
-                type="password"
-                placeholder="Enter Fitbit access token"
-                value={integrations.fitbit.accessToken ?? ''}
-                onChange={(e) =>
-                  updateIntegration('fitbit', {
-                    accessToken: e.target.value || null,
-                  })
-                }
-                disabled
-                hint="Configuration will be available when integration launches"
-              />
-            </>
+            <div className={styles.integrationDetails}>
+              <div className={styles.integrationStatus}>
+                {integrations.fitbit.lastImportAt ? (
+                  <>
+                    <span className={styles.integrationStatValue}>
+                      {integrations.fitbit.recordCount.toLocaleString()} records imported
+                    </span>
+                    <span className={styles.integrationStatLabel}>
+                      Last imported:{' '}
+                      {new Date(integrations.fitbit.lastImportAt).toLocaleDateString(undefined, {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </>
+                ) : (
+                  <span className={styles.integrationStatLabel}>No data imported yet</span>
+                )}
+              </div>
+              <Button variant="primary" onClick={() => void navigate('/import')}>
+                Import Data
+              </Button>
+            </div>
           )}
         </div>
       ),

@@ -17,6 +17,7 @@ function iconFor(icon: HelpArticle['icon']): string {
     reports: '📄',
     settings: '⚙️',
     clinical: '🏥',
+    integrations: '🔗',
   };
   return map[icon];
 }

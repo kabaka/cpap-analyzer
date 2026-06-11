@@ -7,6 +7,19 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+### Added
+
+- **Google Health (Fitbit) data import.** Import sleep, heart rate, SpO₂, HRV, respiratory rate, activity, and more from a Google Takeout "Google Health" export. The import wizard now offers two source cards (CPAP SD Card / Google Health), with a scan-and-preview step that shows discovered data types grouped by tier, record counts, and date ranges. Incremental import with duplicate detection is supported. All parsing runs client-side — no data leaves the browser.
+- **Cross-Source Analysis view.** New analysis view at Analysis → Integration Analysis with three tabs: Correlation Explorer (Pearson/Spearman with confidence intervals), Correlation Matrix (heatmap of CPAP × wearable metrics with significance highlighting), and Metric Comparison (Bland-Altman agreement analysis and lagged cross-correlation). Includes statistical interpretation text and caveats about correlation vs. causation.
+- **Wearable data on the Dashboard.** When wearable data is available, a new panel shows key metrics (Sleep Score, HRV, Resting HR, SpO₂, Readiness, Steps) with 7-day trend indicators, plus a link to the Cross-Source Analysis view.
+- **Help documentation for integrations.** Updated the "Importing Data" help article with Google Health instructions and supported data types. Added a new "Cross-Source Analysis" help article explaining correlation methods, interpretation guidance, and statistical caveats.
+- **IndexedDB schema v3.** New `integration_timeseries` and `integration_import_history` object stores, plus compound indexes for efficient date-range and type-filtered queries. Automatic migration from v2.
+
+### Changed
+
+- The Settings → Integrations → Fitbit section now reflects the file-based Google Health import (no longer shows an OAuth access token field). Shows import status, record count, and a link to the import wizard.
+- The Analysis Hub's "Integration Analysis" card is no longer disabled/coming-soon.
+
 ### Security
 
 - Added an app-wide Content-Security-Policy to production builds, injected as a `<meta http-equiv>` tag at build time (GitHub Pages cannot set HTTP headers). Restricts scripts, styles, workers, connections, and embeds to same-origin; blocks external network calls until opt-in integrations are enabled.

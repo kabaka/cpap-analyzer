@@ -56,8 +56,6 @@ const CARDS: readonly AnalysisCard[] = [
     path: '/analysis/integrations',
     iconClass: styles.iconIntegration,
     iconLabel: '🔗',
-    disabled: true,
-    badge: 'Coming soon',
   },
 ];
 

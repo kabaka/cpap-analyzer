@@ -1,0 +1,494 @@
+/* ---------------------------------------------------------------------------
+ * IntegrationAnalysis — Cross-Source Analysis view
+ * --------------------------------------------------------------------------- */
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+/* --- Header ---------------------------------------------------------------- */
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.heading {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+/* --- Data availability banner --------------------------------------------- */
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-6);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.bannerStat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.bannerValue {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.bannerSeparator {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border-default);
+}
+
+/* --- Tab content area ----------------------------------------------------- */
+
+.tabContent {
+  margin-top: var(--space-4);
+}
+
+/* --- Empty state ---------------------------------------------------------- */
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-16) var(--space-6);
+  gap: var(--space-4);
+}
+
+.emptyIcon {
+  font-size: var(--font-size-4xl);
+  line-height: 1;
+  opacity: 0.5;
+}
+
+.emptyTitle {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.emptyDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  max-width: 480px;
+  line-height: var(--line-height-relaxed);
+  margin: 0;
+}
+
+.emptyLink {
+  color: var(--color-text-link);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+}
+
+.emptyLink:hover {
+  color: var(--color-text-link-hover);
+  text-decoration: underline;
+}
+
+.emptyLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* --- Controls row (shared by all tabs) ------------------------------------ */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4);
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+}
+
+.controlGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 160px;
+}
+
+.controlLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* --- Toggle button group -------------------------------------------------- */
+
+.toggleGroup {
+  display: inline-flex;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.toggleButton {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  border: none;
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.toggleButton:not(:last-child) {
+  border-right: 1px solid var(--color-border-default);
+}
+
+.toggleButton:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.toggleButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.toggleButtonActive {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.toggleButtonActive:hover {
+  background: var(--color-primary-hover);
+}
+
+/* --- Result card ---------------------------------------------------------- */
+
+.resultCard {
+  padding: var(--space-6);
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+}
+
+/* --- Correlation result --------------------------------------------------- */
+
+.resultGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.resultItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.resultLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.resultValue {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+}
+
+.resultSmall {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+}
+
+.interpretation {
+  padding: var(--space-4);
+  background: var(--color-info-bg);
+  border-left: 3px solid var(--color-info);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-relaxed);
+}
+
+/* --- Direction indicator -------------------------------------------------- */
+
+.directionPositive {
+  color: var(--color-chart-1);
+}
+
+.directionNegative {
+  color: var(--color-chart-2);
+}
+
+.directionNone {
+  color: var(--color-text-muted);
+}
+
+/* --- Correlation matrix --------------------------------------------------- */
+
+.matrixWrapper {
+  overflow-x: auto;
+  margin-bottom: var(--space-6);
+}
+
+.matrixTable {
+  border-collapse: collapse;
+  font-size: var(--font-size-xs);
+  min-width: 100%;
+}
+
+.matrixTable th {
+  padding: var(--space-2) var(--space-3);
+  font-weight: var(--font-weight-medium);
+  text-align: left;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.matrixTable th.columnHeader {
+  text-align: center;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  max-height: 120px;
+  min-width: 50px;
+  padding: var(--space-3) var(--space-1);
+}
+
+.matrixTable td {
+  padding: var(--space-1);
+  text-align: center;
+  min-width: 50px;
+}
+
+.matrixCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: default;
+  transition: outline var(--transition-fast);
+  border: 2px solid transparent;
+}
+
+.matrixCell:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.matrixCellSignificant {
+  border: 2px solid var(--color-text-primary);
+  font-weight: var(--font-weight-bold);
+}
+
+.matrixRowHeader {
+  white-space: nowrap;
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+  border-right: 1px solid var(--color-border-default);
+}
+
+/* --- Significant pairs list ----------------------------------------------- */
+
+.significantSection {
+  margin-top: var(--space-6);
+}
+
+.significantTitle {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-3) 0;
+}
+
+.significantList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.significantPair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.significantMetric {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.significantConnector {
+  color: var(--color-text-muted);
+}
+
+.significantR {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+}
+
+.significantP {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+/* --- Bland-Altman results ------------------------------------------------- */
+
+.blandAltmanGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+/* --- Lagged CCF results --------------------------------------------------- */
+
+.lagGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.lagBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.lagLabel {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  min-width: 40px;
+  text-align: right;
+}
+
+.lagBarInner {
+  height: 12px;
+  border-radius: var(--radius-full);
+  transition: width var(--transition-base);
+  min-width: 2px;
+}
+
+.lagBarPositive {
+  background: var(--color-chart-1);
+}
+
+.lagBarNegative {
+  background: var(--color-chart-2);
+}
+
+.lagValue {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  min-width: 40px;
+}
+
+.lagSignificanceLine {
+  border-left: 2px dashed var(--color-warning);
+}
+
+/* --- No-data hint --------------------------------------------------------- */
+
+.noData {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+/* --- Skeleton rows -------------------------------------------------------- */
+
+.skeletonRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-6);
+}
+
+/* --- Responsive ----------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .page {
+    padding: var(--space-4);
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .controlGroup {
+    min-width: auto;
+  }
+
+  .resultGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .blandAltmanGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .lagGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .matrixTable th.columnHeader {
+    writing-mode: horizontal-tb;
+    transform: none;
+    max-height: none;
+  }
+}

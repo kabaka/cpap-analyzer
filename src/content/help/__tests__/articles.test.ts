@@ -26,6 +26,7 @@ const VALID_ICONS: ArticleIcon[] = [
   'reports',
   'settings',
   'clinical',
+  'integrations',
 ];
 
 describe('Help articles', () => {

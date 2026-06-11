@@ -8,6 +8,12 @@
 
 import type { NightlyAggregate, Session } from './session';
 import type { Event } from './events';
+import type {
+  FitbitDailyPayloadMap,
+  FitbitDailyType,
+  FitbitTimeseriesPayloadMap,
+  FitbitTimeseriesType,
+} from './fitbit';
 
 /**
  * An error encountered while processing a single file during import.
@@ -71,6 +77,57 @@ export interface IntegrationData {
   readonly data: unknown;
   /** ISO 8601 timestamp when this data was imported. */
   readonly importedAt: string;
+}
+
+/** Extended integration source type. */
+export type IntegrationSource = 'fitbit' | 'weather' | 'pollen' | 'user';
+
+/**
+ * Daily summary record for integration data.
+ *
+ * Discriminated by dataType for type-safe payload access.
+ */
+export interface IntegrationDailySummary<T extends FitbitDailyType = FitbitDailyType> {
+  readonly id: string;
+  readonly source: IntegrationSource;
+  readonly dataType: T;
+  /** YYYY-MM-DD */
+  readonly date: string;
+  readonly data: T extends keyof FitbitDailyPayloadMap ? FitbitDailyPayloadMap[T] : unknown;
+  readonly importedAt: string;
+}
+
+/**
+ * Intra-night timeseries record. One record per date per data type.
+ */
+export interface IntegrationTimeseries<T extends FitbitTimeseriesType = FitbitTimeseriesType> {
+  readonly id: string;
+  readonly source: IntegrationSource;
+  readonly dataType: T;
+  /** YYYY-MM-DD */
+  readonly date: string;
+  readonly data: T extends keyof FitbitTimeseriesPayloadMap
+    ? FitbitTimeseriesPayloadMap[T]
+    : unknown;
+  readonly importedAt: string;
+}
+
+/**
+ * Record of a Google Health import operation.
+ */
+export interface IntegrationImportRecord {
+  readonly id: string;
+  readonly source: IntegrationSource;
+  readonly importedAt: string;
+  readonly dateRangeStart: string;
+  readonly dateRangeEnd: string;
+  readonly dataTypes: readonly string[];
+  readonly recordsImported: number;
+  readonly recordsSkipped: number;
+  readonly recordsErrored: number;
+  readonly errors: readonly ImportError[];
+  readonly durationSeconds: number;
+  readonly fileHashes: readonly string[];
 }
 
 /** Date range for data queries (ISO date strings). */
