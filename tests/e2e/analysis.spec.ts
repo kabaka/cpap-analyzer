@@ -175,7 +175,7 @@ test.describe('Analysis Routes — Navigation', () => {
 
   test('integration analysis route renders', async ({ page }) => {
     await page.goto('/analysis/integrations');
-    await expect(page.getByRole('heading', { name: /integration analysis/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /cross-source analysis/i })).toBeVisible();
   });
 
   test('sidebar navigation to analysis hub', async ({ page }) => {
@@ -565,7 +565,7 @@ test.describe('Analysis Engine — Integration', () => {
       { path: '/analysis/statistical', heading: /statistical analysis/i },
       { path: '/analysis/events', heading: /event analysis/i },
       { path: '/analysis/pressure', heading: /pressure optimization/i },
-      { path: '/analysis/integrations', heading: /integration analysis/i },
+      { path: '/analysis/integrations', heading: /cross-source analysis/i },
     ];
 
     for (const route of routes) {
