@@ -217,7 +217,7 @@ function OverviewTab() {
         </div>
         <progress
           className={styles.progressBarTrack}
-          value={Math.round(usagePercent)}
+          value={usagePercent}
           max={100}
           aria-label={`Storage usage: ${usagePercent.toFixed(1)} percent`}
         >
@@ -384,11 +384,17 @@ function CleanupTab() {
       const opfs = new OPFSService();
 
       for (const session of sessions) {
-        await db.deleteEventsBySessionId(session.id);
+        // Atomically remove the session, its nightly aggregate, and its events
+        // (single IDB transaction — no orphaned aggregate left behind). OPFS
+        // signal chunks live outside IndexedDB and are deleted separately.
         await opfs.deleteSessionData(session.id);
-        await db.deleteSession(session.id);
+        await db.deleteSessionCascade(session.id);
       }
 
+      // Defensive sweep: remove any aggregates in the range that were NOT linked
+      // to a session we just cascaded (e.g. pre-existing orphans from before the
+      // cascade fix). Aggregates tied to a deleted session are already gone, so
+      // this only catches genuine orphans.
       for (const agg of aggregates) {
         await db.deleteNightlyAggregate(agg.id);
       }
@@ -582,6 +588,7 @@ function SessionExportSection() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -609,6 +616,7 @@ function SessionExportSection() {
 
   const handleExport = useCallback(async (session: Session) => {
     setExportingId(session.id);
+    setExportError(null);
     try {
       const db = await getDB();
       const events = await db.getEventsBySessionId(session.id);
@@ -616,8 +624,12 @@ function SessionExportSection() {
       const json = JSON.stringify(exportData, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       downloadBlob(blob, `cpap-session-${session.date}.json`);
-    } catch {
-      // Silent fail for individual export — user can retry
+    } catch (err) {
+      setExportError(
+        `Failed to export session from ${session.date}: ${
+          err instanceof Error ? err.message : 'Unknown error'
+        }`,
+      );
     } finally {
       setExportingId(null);
     }
@@ -653,6 +665,11 @@ function SessionExportSection() {
       <p className={styles.backupGroupDescription}>
         Download individual session data as JSON files.
       </p>
+      {exportError && (
+        <div className={`${styles.statusMessage} ${styles.statusError}`} role="alert">
+          {exportError}
+        </div>
+      )}
       <div className={styles.sessionList}>
         {sessions.slice(0, 50).map((session) => (
           <div key={session.id} className={styles.sessionRow}>

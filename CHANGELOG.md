@@ -7,6 +7,40 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+### Fixed (Phase 10: Correctness, Performance & UX pass)
+
+- Import no longer fails to store sessions with a "machineId_date uniqueness" error. Multiple sessions on the same calendar day (e.g. a nap plus an overnight, or mask removal and reapplication) are now stored independently instead of colliding. Root cause was a wrongly-unique database index; a v1→v2 schema migration auto-upgrades existing databases losslessly on first launch — no re-import required.
+- Empty or header-only ResMed files that contain no events (for example a CSL Cheyne-Stokes annotation file from a night with none) are now skipped quietly during import instead of being reported as errors. The import summary reports how many such files were skipped.
+- Session writes are now atomic: a failure partway through writing a session no longer leaves orphaned nightly aggregates, events, or signal chunks behind.
+- URL-encoded date ranges no longer shift by one day for users in time zones behind or ahead of UTC. Shared and bookmarked date-range links now resolve to the intended local dates.
+- "Learn More" on the empty dashboard now navigates correctly within the app (previously a broken full-page link).
+- The Signal Viewer no longer carries one session's hidden-channel selection over into another session; channel visibility is again scoped per session.
+
+### Changed (Phase 10 — clinical: some displayed numbers will change)
+
+> These corrections improve clinical and statistical accuracy. As a result, several metrics may display different values than in earlier versions. The new values are the correct ones; prior values were affected by the issues described below. This tool is for informational analysis and does not diagnose — discuss any changes that concern you with your clinician.
+
+- **AHI now excludes RERAs (AASM / ICSD-3 correct).** Respiratory effort-related arousals (RERAs) were previously summed into the AHI — that quantity is actually the Respiratory Disturbance Index (RDI), not the AHI. Displayed AHI will be **lower** on nights that had RERAs. A separate **RDI** value (AHI + RERA index) is now reported. This also resolves an internal contradiction with the app's own glossary, which already (correctly) defined RERAs as part of RDI and not AHI.
+- **ODI is now event-based.** The Oxygen Desaturation Index is now computed from discrete desaturation events (a fall of ≥3% below a rolling baseline, sustained ≥10 s, counted once per event) per hour of valid oximetry, replacing a per-sample-drop count. ODI values will change and are now clinically valid.
+- **Usage time / mask-on detection now uses the machine's recorded intervals.** When ResMed's mask-on/mask-off intervals are present in STR.edf, they are used directly; otherwise an improved hysteresis detector (separate on/off thresholds) is used, replacing the previous fixed 2 cmH₂O instantaneous threshold. Because usage time is the denominator for AHI, ODI, leak-duration, and the CMS 4-hour compliance test, usage hours and these dependent metrics may shift slightly and are now more accurate. Subtherapeutic ramp handling is documented in the Usage Hours glossary entry.
+- **T90 (% of time with SpO₂ < 90%) is now time-based**, integrating the duration spent below 90% over valid-oximetry time, with oximetry-dropout periods excluded from both numerator and denominator. An oximetry **coverage %** is now reported so SpO₂ statistics can be read in the context of how much valid signal a night actually had.
+- **Missing samples are no longer folded in as real zeros.** Pressure, leak, and respiratory statistics are now computed only over recorded samples; sensor-gap periods are excluded rather than counted as zero, which previously biased means and percentiles downward.
+- **Normality test correctly labeled Shapiro–Francia.** The implementation always computed the Shapiro–Francia statistic (the correlation-based variant), not Shapiro–Wilk; the label and the p-value transform are corrected to match.
+- **"Median EPAP/IPAP" cards relabeled "Mean EPAP/IPAP"** in Pressure Optimization, because they compute the mean across nights of each night's median pressure (a mean of nightly medians), not a median.
+- **Granger causality results now flag exploratory and non-stationary cases.** Selection-affected p-values (from scanning many metric pairs without multiple-comparison correction) and non-stationary inputs are now flagged, since both can produce spurious apparent "causality."
+
+### Added (Phase 10)
+
+- **RDI (Respiratory Disturbance Index)** metric: apneas + hypopneas + RERAs per hour (AHI + RERA index), always ≥ AHI. Includes a dedicated glossary entry and metric tooltip; device-derived RERA counts are noted as proxy estimates.
+- **SpO₂ coverage %** metric: the fraction of analyzed time with a valid pulse-oximetry signal, surfaced as a data-quality denominator for all SpO₂ statistics.
+- **"Empty files skipped" count** in the import summary, for transparency when header-only/event-free files are encountered.
+- Glossary entries for **RDI**, **T90**, and **SpO₂ Coverage**; updated AHI, RERA, ODI, SpO₂, Usage Hours, Compliance, and Normal Distribution entries; help-article updates covering the Shapiro–Francia test, the Mean EPAP/IPAP relabel, Granger causality caveats, missing-data handling, and multiple-sessions-per-day import.
+
+### Performance (Phase 10)
+
+- Import parsing now runs in parallel across a worker pool, with signal buffers transferred (not copied) across the worker boundary, eliminating duplicate large-array allocations.
+- Per-day streaming during import caps peak memory on large multi-year imports, and redundant per-channel sorts were removed. Net effect: faster imports and substantially lower memory use.
+
 ### Added (Phase 9: Analysis Views + Visualization Library)
 
 - Analysis views: Statistical Analysis (`src/views/Analysis/StatisticalAnalysis/`), Event Analysis (`src/views/Analysis/EventAnalysis/`), and Pressure Optimization (`src/views/Analysis/PressureOptimization/`) with tabbed layouts following WAI-ARIA APG tabs pattern

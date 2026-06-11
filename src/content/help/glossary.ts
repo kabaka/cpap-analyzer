@@ -42,10 +42,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'AHI counts the total number of breathing interruptions (apneas and hypopneas) per hour of sleep. It is the standard clinical measure for diagnosing and monitoring obstructive sleep apnea. An AHI below 5 is considered normal; 5–14 is mild, 15–29 is moderate, and 30 or above is severe.',
     detailed:
-      'AHI = (Total Apnea Events + Total Hypopnea Events) / Total Sleep Time (hours). Per AASM 2012 guidelines, an apnea is a ≥90% reduction in airflow lasting ≥10 seconds, while a hypopnea is a ≥30% reduction in airflow for ≥10 seconds accompanied by ≥3% oxygen desaturation or an arousal. CPAP machines report "residual AHI," which reflects events that persist despite therapy. Severity classification: Normal (< 5), Mild (5–14), Moderate (15–29), Severe (≥ 30). Important: AHI does not capture event severity, desaturation depth, or sleep fragmentation — always review alongside SpO₂ and event clustering data.',
+      'AHI = (Total Apnea Events + Total Hypopnea Events) / Total Sleep Time (hours). Per AASM 2012 guidelines (ICSD-3), an apnea is a ≥90% reduction in airflow lasting ≥10 seconds, while a hypopnea is a ≥30% reduction in airflow for ≥10 seconds accompanied by ≥3% oxygen desaturation or an arousal. AHI counts apneas and hypopneas only — respiratory effort-related arousals (RERAs) are deliberately excluded. When RERAs are added, the result is the Respiratory Disturbance Index (RDI), a distinct and always-greater-or-equal metric reported separately. CPAP machines report "residual AHI," which reflects events that persist despite therapy. Severity classification: Normal (< 5), Mild (5–14), Moderate (15–29), Severe (≥ 30). Important: AHI does not capture event severity, desaturation depth, or sleep fragmentation — always review alongside SpO₂, RDI, and event clustering data.',
     formula:
       '\\text{AHI} = \\frac{\\text{Total Apneas} + \\text{Total Hypopneas}}{\\text{Total Sleep Time (hours)}}',
-    relatedTerms: ['apnea', 'hypopnea', 'residual-ahi', 'odi'],
+    relatedTerms: ['apnea', 'hypopnea', 'residual-ahi', 'rdi', 'odi'],
   },
   {
     id: 'apnea',
@@ -80,8 +80,23 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'RERAs are subtle breathing disturbances — a sequence of breaths with increasing respiratory effort or flow limitation lasting ≥10 seconds that leads to an arousal from sleep, but does not qualify as an apnea or hypopnea. RERAs contribute to sleep fragmentation and daytime sleepiness, and are included in the Respiratory Disturbance Index (RDI) but not in AHI.',
     detailed:
-      'AASM definition: a sequence of breaths lasting ≥10 seconds characterized by increasing respiratory effort or flattening of the nasal pressure waveform leading to an arousal that does not meet criteria for apnea or hypopnea. When RERAs are added to AHI, the result is the Respiratory Disturbance Index (RDI). RERA detection on CPAP machines is limited because they cannot detect EEG arousals. Flow limitation patterns may serve as a proxy. Upper airway resistance syndrome (UARS) is characterized by elevated RERAs with normal AHI.',
-    relatedTerms: ['ahi', 'flow-limitation', 'uars'],
+      'AASM definition: a sequence of breaths lasting ≥10 seconds characterized by increasing respiratory effort or flattening of the nasal pressure waveform leading to an arousal that does not meet criteria for apnea or hypopnea. When RERAs are added to AHI, the result is the Respiratory Disturbance Index (RDI) — RERAs are part of RDI, never AHI. RERA detection on CPAP machines is limited because they cannot detect EEG arousals. Flow limitation patterns may serve as a proxy. Upper airway resistance syndrome (UARS) is characterized by elevated RERAs with normal AHI.',
+    relatedTerms: ['ahi', 'rdi', 'flow-limitation', 'uars'],
+  },
+  {
+    id: 'rdi',
+    term: 'RDI (Respiratory Disturbance Index)',
+    category: 'cpap-therapy',
+    aliases: ['Respiratory Disturbance Index'],
+    quick:
+      'The number of apneas, hypopneas, and RERAs per hour of sleep — equal to AHI plus the RERA index.',
+    standard:
+      'RDI extends the AHI by also counting respiratory effort-related arousals (RERAs): RDI = AHI + RERA index. Because it adds a non-negative term, RDI is always greater than or equal to the AHI for the same night. RDI captures subtler sleep-disordered breathing that the AHI misses, and is the metric that flags upper airway resistance syndrome (UARS), where AHI can be normal while RDI is elevated.',
+    detailed:
+      'RDI = (Total Apneas + Total Hypopneas + Total RERAs) / Total Sleep Time (hours), equivalently AHI + RERA index (per AASM / ICSD-3). The distinction matters: AHI and RDI are different indices and must not be conflated — summing RERAs into a value labelled "AHI" overstates the AHI and is clinically incorrect. CPAP Analyzer reports AHI and RDI as separate values so the two are never confused. Caveat: RERA scoring relies on EEG arousals, which CPAP machines cannot measure directly; device-derived RERA counts are therefore proxy estimates (typically from flow-limitation patterns) and the resulting RDI is an approximation, not a polysomnography-grade measurement. Interpret RDI as a screening signal — a normal AHI with a notably higher RDI may warrant discussion of UARS with a clinician.',
+    formula:
+      '\\text{RDI} = \\text{AHI} + \\text{RERA Index} = \\frac{\\text{Apneas} + \\text{Hypopneas} + \\text{RERAs}}{\\text{Total Sleep Time (hours)}}',
+    relatedTerms: ['ahi', 'rera', 'uars', 'flow-limitation'],
   },
   {
     id: 'central-apnea',
@@ -183,7 +198,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'CPAP compliance is measured as usage hours per night and the percentage of nights meeting minimum criteria. The standard threshold (per Medicare and most insurers) is ≥4 hours/night for ≥70% of nights (21 out of 30 days) during a consecutive 30-day window. Falling below this threshold can result in loss of insurance coverage for equipment.',
     detailed:
-      'The 4-hour/70% threshold was established for Medicare reimbursement (CMS LCD). However, clinical benefits are dose-dependent — more usage yields greater improvement in sleepiness, blood pressure, and cardiovascular outcomes. Research suggests ≥6 hours/night is optimal for cardiovascular benefit. CPAP Analyzer calculates compliance using actual mask-on time (excluding ramp time) recorded by the machine. Usage patterns (early-night dropoff, intermittent removal) are clinically informative. Compliance rates in clinical practice range from 30–60% at 1 year, making it one of the most significant challenges in sleep apnea treatment.',
+      'The 4-hour/70% threshold was established for Medicare reimbursement (CMS LCD). However, clinical benefits are dose-dependent — more usage yields greater improvement in sleepiness, blood pressure, and cardiovascular outcomes. Research suggests ≥6 hours/night is optimal for cardiovascular benefit. CPAP Analyzer calculates compliance from actual mask-on time, derived from the mask-on/mask-off intervals the machine records in STR.edf (with a hysteresis-based fallback when those are unavailable) and excluding subtherapeutic ramp time — see the Usage Hours entry for the full method. Usage patterns (early-night dropoff, intermittent removal) are clinically informative. Compliance rates in clinical practice range from 30–60% at 1 year, making it one of the most significant challenges in sleep apnea treatment.',
     formula:
       '\\text{Compliance Rate} = \\frac{\\text{Nights} \\geq 4\\text{h}}{N_{\\text{total}}} \\times 100\\%',
     relatedTerms: ['usage-hours', 'cpap'],
@@ -286,9 +301,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     quick:
       'The total time the CPAP mask was worn during a sleep session, typically excluding ramp time.',
     standard:
-      'Usage hours represent how long you actually wore the mask during a night. This is the primary measure of therapy adherence. Most machines report usage as mask-on time at or above therapeutic pressure (excluding ramp). The compliance target is ≥4 hours per night, though clinical benefits increase with longer use.',
+      'Usage hours represent how long you actually wore the mask during a night. This is the primary measure of therapy adherence and is the denominator for AHI, ODI, and leak-duration metrics. CPAP Analyzer prefers the mask-on/mask-off intervals ResMed records in STR.edf; when those are unavailable it falls back to a hysteresis-based detector. The compliance target is ≥4 hours per night, though clinical benefits increase with longer use.',
     detailed:
-      'Usage hours are recorded when the machine detects mask-on conditions (pressure-flow feedback). ResMed devices may report slightly different values for "usage" vs "mask-on time" depending on how ramp periods are classified. For compliance calculations, only time at therapeutic pressure is counted. Dose-response relationship: 4 hours/night provides ESS improvement; ≥6 hours provides cardiovascular benefit; ≥7 hours provides maximal neurocognitive improvement. Mean nightly usage in published studies: 4.5–5.5 hours for adherent patients.',
+      'How usage / mask-on time is determined: CPAP Analyzer uses, in order of preference, (1) the explicit mask-on and mask-off interval markers recorded by the machine in STR.edf, which most faithfully reflect what the device itself counted; and (2) when those markers are absent, an improved hysteresis detector that requires flow/pressure to cross an "on" threshold to start a usage interval and fall below a separate, lower "off" threshold to end it. Hysteresis (two thresholds rather than one) prevents a single instantaneous reading near the boundary from rapidly toggling mask-on/off and fragmenting the session — a limitation of the previous fixed 2 cmH₂O instantaneous threshold. Subtherapeutic ramp handling: time spent below therapeutic pressure during ramp is identified so it can be treated appropriately for compliance, which counts time at therapeutic pressure. Because usage time is the denominator for AHI, ODI, leak-duration, and the CMS 4-hour compliance test, these more accurate intervals can shift usage hours and dependent metrics slightly relative to older versions. Dose-response relationship: 4 hours/night provides ESS improvement; ≥6 hours provides cardiovascular benefit; ≥7 hours provides maximal neurocognitive improvement. Mean nightly usage in published studies: 4.5–5.5 hours for adherent patients.',
     relatedTerms: ['compliance', 'ramp-time'],
   },
 
@@ -340,11 +355,12 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     quick:
       'The number of times per hour that blood oxygen drops by ≥3% (or ≥4%) from baseline during sleep.',
     standard:
-      'ODI measures how frequently oxygen levels dip during sleep. A 3% ODI counts drops of ≥3% from baseline SpO₂, while a 4% ODI counts drops of ≥4%. ODI correlates with AHI but specifically captures the physiological impact of breathing events — events that cause significant desaturation are more clinically concerning than those without.',
+      'ODI measures how frequently oxygen levels dip during sleep. CPAP Analyzer scores a desaturation as a discrete event — a fall of ≥3% in SpO₂ below a rolling baseline, sustained for at least 10 seconds — and counts each event once, then divides by the hours of valid oximetry. A 3% ODI counts ≥3% drops; a 4% ODI counts ≥4% drops. ODI correlates with AHI but specifically captures the physiological impact of breathing events — events that cause significant desaturation are more clinically concerning than those without.',
     detailed:
-      'ODI is calculated as the number of desaturation events per hour of recording. Two thresholds are commonly used: 3% ODI (more sensitive, aligns with AASM hypopnea definition) and 4% ODI (more specific, aligns with Medicare hypopnea definition). ODI may diverge from AHI when: (1) many events cause arousal without desaturation (ODI < AHI); (2) oxygen stores are depleted in REM/supine position causing desaturations from minor events (ODI > AHI). ODI is a stronger predictor of cardiovascular outcomes than AHI in some studies (Wisconsin Cohort, SHHS). CPAP machines that include oximetry can calculate ODI; otherwise it requires separate pulse oximetry.',
-    formula: '\\text{ODI} = \\frac{\\text{Desaturation Events}}{\\text{Hours of Recording}}',
-    relatedTerms: ['spo2', 'desaturation', 'ahi'],
+      'ODI is the number of discrete desaturation events per hour of valid oximetry. CPAP Analyzer detects an event when SpO₂ falls ≥3% (or ≥4%, configurable) below a rolling baseline — the recent local maximum / running reference saturation — for ≥10 seconds, and counts that excursion exactly once (a single prolonged dip is one event, not many). The denominator excludes periods with no oximetry signal, so dropouts do not deflate the rate. (Earlier versions counted per-sample drops, which inflated ODI and is not clinically valid; the event-based definition here is the correct one.) Two thresholds are common: 3% ODI (more sensitive, aligns with the AASM hypopnea definition) and 4% ODI (more specific, aligns with the Medicare hypopnea definition). ODI may diverge from AHI when: (1) many events cause arousal without desaturation (ODI < AHI); (2) oxygen stores are depleted in REM/supine position causing desaturations from minor events (ODI > AHI). ODI is a stronger predictor of cardiovascular outcomes than AHI in some studies (Wisconsin Cohort, SHHS). Requires integrated or paired pulse oximetry; without oximetry data, ODI is not reported.',
+    formula:
+      '\\text{ODI} = \\frac{\\text{Desaturation Events } (\\geq 3\\%,\\, \\geq 10\\text{s})}{\\text{Hours of Valid Oximetry}}',
+    relatedTerms: ['spo2', 'desaturation', 'ahi', 'spo2-coverage', 't90'],
   },
   {
     id: 'spo2',
@@ -356,8 +372,38 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'SpO₂ measures the percentage of hemoglobin in your blood that is carrying oxygen, measured non-invasively by pulse oximetry. Normal resting SpO₂ is 95–100%. During sleep apnea events, SpO₂ drops (desaturates) as oxygen is consumed without being replenished. Significant desaturation is generally defined as SpO₂ < 90%.',
     detailed:
-      'SpO₂ is measured by pulse oximetry using differential light absorption at two wavelengths (660nm red, 940nm infrared). Normal: 95–100%. Mild desaturation: 90–94%. Moderate desaturation: 80–89%. Severe desaturation: < 80%. In sleep apnea, the pattern of cyclic desaturation-reoxygenation (intermittent hypoxia) causes oxidative stress and is implicated in cardiovascular, metabolic, and neurocognitive morbidity. Key metrics: mean SpO₂, minimum SpO₂, time spent below 90% (T90), oxygen desaturation index (ODI). Measurement artifacts: motion, poor perfusion, dark nail polish, skin pigmentation may cause inaccurate readings. Some CPAP machines include integrated oximetry; external oximeters can be paired via Bluetooth.',
-    relatedTerms: ['odi', 'desaturation'],
+      'SpO₂ is measured by pulse oximetry using differential light absorption at two wavelengths (660nm red, 940nm infrared). Normal: 95–100%. Mild desaturation: 90–94%. Moderate desaturation: 80–89%. Severe desaturation: < 80%. In sleep apnea, the pattern of cyclic desaturation-reoxygenation (intermittent hypoxia) causes oxidative stress and is implicated in cardiovascular, metabolic, and neurocognitive morbidity. Key metrics: mean SpO₂, minimum SpO₂, time below 90% (T90, time-based with oximetry dropouts excluded), oxygen desaturation index (ODI), and oximetry coverage % (the fraction of analyzed time with a valid SpO₂ signal). Coverage should be reviewed first: low coverage means the other SpO₂ statistics rest on little data. Measurement artifacts: motion, poor perfusion, dark nail polish, skin pigmentation may cause inaccurate readings. Some CPAP machines include integrated oximetry; external oximeters can be paired via Bluetooth.',
+    relatedTerms: ['odi', 'desaturation', 't90', 'spo2-coverage'],
+  },
+  {
+    id: 't90',
+    term: 'T90 (Time Below 90% SpO₂)',
+    category: 'sleep-medicine',
+    aliases: ['Time Below 90%', 'TST90', 'T90%'],
+    quick:
+      'The percentage of analyzed time spent with blood oxygen saturation below 90%, excluding oximetry dropouts.',
+    standard:
+      'T90 is the proportion of analyzed time during which SpO₂ is below 90%. CPAP Analyzer computes it on a time basis — integrating the duration spent below the 90% threshold and dividing by the total valid-oximetry time — rather than as a count of samples. Periods with no oximetry signal are excluded from both the numerator and the denominator, so dropouts neither inflate nor deflate the figure. Elevated T90 indicates a substantial nocturnal hypoxic burden and warrants attention.',
+    detailed:
+      'T90 (also written TST90, "time below 90% as a percentage of sleep/analyzed time") = (time with SpO₂ < 90%) / (total valid-oximetry time) × 100%. Reporting it as a percentage of *valid* time, with oximetry-dropout intervals removed, avoids the bias that arises when a sensor disconnect is silently treated as either 0% or as normal saturation. T90 is one component of the nocturnal hypoxemia profile alongside mean SpO₂, minimum (nadir) SpO₂, ODI, and the emerging "hypoxic burden" (area under the desaturation curve). Higher T90 has been associated in cohort studies with hypertension, atrial fibrillation, and adverse cardiovascular outcomes. Always interpret T90 together with the oximetry coverage % — a low T90 computed over only a few minutes of valid signal is not reassuring. This tool reports T90 for information and does not diagnose.',
+    formula:
+      'T90 = \\frac{t_{\\,\\text{SpO}_2 < 90\\%}}{t_{\\,\\text{valid oximetry}}} \\times 100\\%',
+    relatedTerms: ['spo2', 'desaturation', 'odi', 'spo2-coverage'],
+  },
+  {
+    id: 'spo2-coverage',
+    term: 'SpO₂ Coverage (Oximetry Coverage %)',
+    category: 'sleep-medicine',
+    aliases: ['Oximetry Coverage', 'SpO2 Coverage'],
+    quick:
+      'The fraction of analyzed time that has a valid pulse-oximetry signal — a data-quality denominator for all SpO₂ statistics.',
+    standard:
+      'SpO₂ coverage is the percentage of the analyzed period during which a usable oximetry reading was present (sensor attached, adequate perfusion, no dropout). It is a data-quality indicator, not a clinical measure of breathing: it tells you how much of the night the oxygen statistics are actually based on. Mean SpO₂, minimum SpO₂, T90, and ODI are all computed over valid-oximetry time only, so low coverage means those numbers summarize a small, possibly unrepresentative slice of the night.',
+    detailed:
+      'Coverage % = (duration with a valid SpO₂ sample) / (total analyzed duration) × 100%. Causes of low coverage include the oximeter not being worn, sensor disconnection, motion artifact, poor peripheral perfusion, and Bluetooth pairing gaps for external oximeters. CPAP Analyzer surfaces coverage explicitly so derived SpO₂ metrics can be read in context: a nadir of 84% over 95% coverage is far more informative than the same nadir over 8% coverage. As a rough rule of thumb, treat oxygen statistics with caution when coverage is low (e.g., well under ~50–70% of the session), and prefer nights with high coverage when comparing trends. Coverage is a transparency metric — it does not by itself indicate any clinical condition.',
+    formula:
+      '\\text{Coverage} = \\frac{t_{\\,\\text{valid oximetry}}}{t_{\\,\\text{analyzed}}} \\times 100\\%',
+    relatedTerms: ['spo2', 't90', 'odi'],
   },
   {
     id: 'desaturation',
@@ -579,7 +625,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'The normal (Gaussian) distribution is the most common probability distribution in statistics — the familiar bell curve. Many statistical tests assume normality. In CPAP data, variables like SpO₂ and pressure in fixed-CPAP mode often approximate normality, while AHI and leak rate are typically right-skewed and are NOT normally distributed.',
     detailed:
-      'PDF: f(x) = (1/(σ√(2π))) × e^(-(x-μ)²/(2σ²)). Characterized by mean (μ) and standard deviation (σ). Properties: symmetric about the mean; 68-95-99.7 rule; mean = median = mode. Central Limit Theorem: the mean of sufficiently large random samples will be approximately normal regardless of the underlying distribution. This is why confidence intervals and hypothesis tests often work well even for non-normal data when sample sizes are adequate (n ≥ 30 as a rough guideline). For CPAP data: test normality with Shapiro-Wilk test; use non-parametric methods (Mann-Whitney, Kruskal-Wallis) when normality is violated.',
+      'PDF: f(x) = (1/(σ√(2π))) × e^(-(x-μ)²/(2σ²)). Characterized by mean (μ) and standard deviation (σ). Properties: symmetric about the mean; 68-95-99.7 rule; mean = median = mode. Central Limit Theorem: the mean of sufficiently large random samples will be approximately normal regardless of the underlying distribution. This is why confidence intervals and hypothesis tests often work well even for non-normal data when sample sizes are adequate (n ≥ 30 as a rough guideline). For CPAP data: test normality with the Shapiro–Francia test (the correlation-based variant of Shapiro–Wilk, which CPAP Analyzer computes); use non-parametric methods (Mann-Whitney, Kruskal-Wallis) when normality is violated.',
     formula: 'f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}}\\, e^{-\\frac{(x - \\mu)^2}{2\\sigma^2}}',
     relatedTerms: ['mean', 'standard-deviation'],
   },

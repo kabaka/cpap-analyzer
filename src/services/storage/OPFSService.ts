@@ -290,9 +290,13 @@ export class OPFSService {
 
         const fileName = `chunk-${String(ci).padStart(3, '0')}.bin`;
 
-        // Extract per-channel samples for this chunk's time window
+        // Extract per-channel sample views for this chunk's time window.
+        // We keep zero-copy `subarray` VIEWS (no intermediate `.slice()` copy)
+        // and copy each view exactly once, directly into the concatenation
+        // buffer below — halving the sample-byte copies vs. slice-then-concat.
         const chunkSamples: Record<string, number> = {};
-        const channelBuffers: ArrayBuffer[] = [];
+        const channelViews: Float32Array[] = [];
+        let totalBytes = 0;
 
         for (const ch of channels) {
           const chunkOffsetSec = (chunkStartTime - startTime) / 1000;
@@ -311,22 +315,17 @@ export class OPFSService {
 
           chunkSamples[ch.name] = actualCount;
 
-          // Extract bytes for this channel within this chunk
-          const slice = ch.data.subarray(clampedStart, clampedEnd);
-          const buffer = (slice.buffer as ArrayBuffer).slice(
-            slice.byteOffset,
-            slice.byteOffset + slice.byteLength,
-          );
-          channelBuffers.push(buffer);
+          const view = ch.data.subarray(clampedStart, clampedEnd);
+          channelViews.push(view);
+          totalBytes += view.byteLength;
         }
 
-        // Concatenate all channel buffers into a single chunk file
-        const totalBytes = channelBuffers.reduce((sum, buf) => sum + buf.byteLength, 0);
+        // Concatenate the channel views into a single contiguous chunk buffer.
         const chunkBuffer = new Uint8Array(totalBytes);
         let offset = 0;
-        for (const buf of channelBuffers) {
-          chunkBuffer.set(new Uint8Array(buf), offset);
-          offset += buf.byteLength;
+        for (const view of channelViews) {
+          chunkBuffer.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength), offset);
+          offset += view.byteLength;
         }
 
         // Write chunk file

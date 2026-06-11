@@ -716,3 +716,61 @@ export const MIGRATION_001_INITIAL_SCHEMA: Migration = {
     return { success: errors.length === 0, errors, warnings };
   },
 };
+
+/**
+ * Migration 2: make the `machineId_date` compound indexes non-unique.
+ *
+ * The schema change itself is performed by `IndexedDBService.upgradeSchema()`
+ * inside the `onupgradeneeded` versionchange transaction (IndexedDB only allows
+ * index alterations there). This record exists so the migration ledger in the
+ * settings store stays an accurate, ordered history of schema versions: `up`
+ * is a no-op and `verify` confirms the on-disk indexes are now non-unique.
+ *
+ * Background: `session.date` is day-granularity (YYYY-MM-DD) and a machine
+ * legitimately produces multiple sessions per calendar day, so the original
+ * UNIQUE `[machineId, date]` indexes rejected every 2nd+ session of a day with
+ * a ConstraintError.
+ */
+export const MIGRATION_002_NONUNIQUE_MACHINE_DATE: Migration = {
+  version: 2,
+  description: 'Make sessions/nightly_aggregates machineId_date indexes non-unique',
+  estimatedDurationMs: 50,
+  dependencies: [1],
+
+  async up(context: MigrationContext): Promise<void> {
+    context.progress.setMessage('Recording machineId_date index fix…');
+    // Index alteration is applied by IndexedDBService.upgradeSchema() during
+    // onupgradeneeded. Nothing to do here beyond advancing the version record.
+  },
+
+  async down(): Promise<void> {
+    // Re-introducing the unique constraint would re-break multi-session days
+    // and cannot be applied outside a versionchange transaction. No-op.
+  },
+
+  async verify(context: MigrationContext): Promise<MigrationVerificationResult> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    const stores = ['sessions', 'nightly_aggregates'] as const;
+    try {
+      const tx = context.db.transaction([...stores], 'readonly');
+      for (const storeName of stores) {
+        const store = tx.objectStore(storeName);
+        if (!store.indexNames.contains('machineId_date')) {
+          errors.push(`Missing index machineId_date on ${storeName}`);
+          continue;
+        }
+        if (store.index('machineId_date').unique) {
+          errors.push(`Index machineId_date on ${storeName} is still unique`);
+        }
+      }
+    } catch (error) {
+      errors.push(
+        `Failed to inspect machineId_date indexes: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    return { success: errors.length === 0, errors, warnings };
+  },
+};

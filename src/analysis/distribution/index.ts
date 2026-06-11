@@ -149,45 +149,64 @@ export function qqNormal(values: number[]): QQPlotData {
 }
 
 // ---------------------------------------------------------------------------
-// Shapiro-Wilk Test
+// Shapiro-Francia Test
 // ---------------------------------------------------------------------------
 
+const SHAPIRO_FRANCIA_TEST_NAME = 'Shapiro-Francia';
+
 /**
- * Shapiro-Wilk normality test using Royston's (1995) approximation.
+ * Shapiro-Francia normality test (Shapiro & Francia, 1972) with Royston's
+ * (1993) normalizing transform for the p-value.
  *
- * For $n < 3$ returns NaN (insufficient data). For $n \geq 5000$ delegates to
- * the Kolmogorov-Smirnov test. For $3 \leq n < 5000$ computes $W$ as the squared
- * correlation between sample order statistics and expected normal scores,
- * then converts to $p$-value using Royston's log-normal transformation.
+ * The test statistic is
+ *   W' = r²(x_{(i)}, m_i)
+ * the squared Pearson correlation between the sorted sample and the expected
+ * standard-normal order statistics approximated by Blom's (1958) scores
+ *   m_i = Φ⁻¹((i − 3/8) / (n + 1/4)).
  *
- * Test statistic: $W = r^2$ where $r$ is the Pearson correlation between
- * sorted data and expected normal order statistics via Blom's formula:
- * $m_i = \Phi^{-1}\left(\frac{i - 3/8}{n + 1/4}\right)$
+ * **This is the Shapiro-Francia statistic, not Shapiro-Wilk.** True
+ * Shapiro-Wilk uses the BLUE weights a = m'V⁻¹ / ‖V⁻¹m‖ (incorporating the
+ * covariance V of the order statistics); Shapiro-Francia replaces V⁻¹ with the
+ * identity, i.e. W' = corr(x_{(i)}, m_i)². The two coincide asymptotically and
+ * Shapiro-Francia has excellent power against heavy-tailed and skewed
+ * alternatives, but they are distinct tests with distinct null distributions —
+ * hence the previous "Shapiro-Wilk" name and Royston-SW p-value transform were
+ * a mislabelling. This implementation now uses the matching Shapiro-Francia
+ * transform.
  *
- * **Implementation note**: Uses the Shapiro-Francia correlation-based variant
- * ($W = r^2$) rather than computing true Shapiro-Wilk coefficients $a_i$. This is
- * a documented, practical approximation for production use (faster, numerically
- * stable). Note this deviation from design doc for future consistency updates.
+ * **P-value (Royston 1993, "A Toolkit for Testing for Non-Normality in
+ * Complete and Censored Samples", Applied Statistics 42(1), eq. for SF):**
+ * for 5 ≤ n ≤ 5000, with w = ln(1 − W'), u = ln(n), v = ln(u),
+ *   μ = −1.2725 + 1.0521·(v − u),
+ *   σ =  1.0308 − 0.26758·(v + 2/u),
+ *   z = (w − μ) / σ,  p = 1 − Φ(z).
+ * For n = 3, 4 (below Royston's validated range) a conservative
+ * range-statistic fallback is used and the result should be treated as
+ * indicative only.
  *
- * **Assumptions**: Data are i.i.d. continuous observations.
+ * For n ≥ 5000 the routine delegates to the Lilliefors-corrected
+ * Kolmogorov-Smirnov test. For n < 3 it returns NaN.
  *
- * @param values - Numeric array (non-finite values are filtered)
- * @returns Test result with W statistic, p-value, and normality decision at $\alpha = 0.05$
+ * **Assumptions**: data are i.i.d. continuous observations.
+ *
+ * @param values - Numeric array (non-finite values are filtered).
+ * @returns Test result with W' statistic, p-value, and normality decision at
+ *          α = 0.05.
  *
  * @example
  * ```ts
- * const result = shapiroWilk(myData);
+ * const result = shapiroFrancia(myData);
  * if (result.isNormal) {
  *   // Cannot reject normality at α = 0.05
  * }
  * ```
  */
-export function shapiroWilk(values: number[]): NormalityTestResult {
+export function shapiroFrancia(values: number[]): NormalityTestResult {
   const clean = filterFinite(values);
   const n = clean.length;
 
   if (n < 3) {
-    return { statistic: NaN, pValue: NaN, isNormal: false, testName: 'Shapiro-Wilk' };
+    return { statistic: NaN, pValue: NaN, isNormal: false, testName: SHAPIRO_FRANCIA_TEST_NAME };
   }
 
   // For n >= 5000, fall back to Kolmogorov-Smirnov
@@ -206,10 +225,10 @@ export function shapiroWilk(values: number[]): NormalityTestResult {
   }
   if (ss === 0) {
     // All values identical — undefined test, but vacuously "normal"
-    return { statistic: 1, pValue: 1, isNormal: true, testName: 'Shapiro-Wilk' };
+    return { statistic: 1, pValue: 1, isNormal: true, testName: SHAPIRO_FRANCIA_TEST_NAME };
   }
 
-  // Compute expected normal order statistics using Blom's formula
+  // Expected normal order statistics via Blom's formula
   // m_i = Φ⁻¹((i - 3/8) / (n + 1/4))
   const m: number[] = new Array(n);
   for (let i = 0; i < n; i++) {
@@ -217,80 +236,61 @@ export function shapiroWilk(values: number[]): NormalityTestResult {
     m[i] = inverseNormalCDF(p);
   }
 
-  // W = correlation² between sorted values and expected normal scores
+  // W' = correlation² between sorted values and expected normal scores
   const r = pearsonR(m, sorted);
   const W = r * r;
 
-  // P-value using Royston's approximation
-  const pValue = roystonPValue(W, n);
+  const pValue = shapiroFranciaPValue(W, n);
 
   return {
     statistic: W,
     pValue,
     isNormal: pValue >= 0.05,
-    testName: 'Shapiro-Wilk',
+    testName: SHAPIRO_FRANCIA_TEST_NAME,
   };
 }
 
 /**
- * Royston's (1995) p-value approximation for the Shapiro-Wilk W statistic.
- *
- * Two regimes:
- * - 4 ≤ n ≤ 11: polynomial transformation of W
- * - 12 ≤ n ≤ 5000: log-normal transformation of (1 - W)
- *
- * For n = 3: fixed critical values (exact table).
+ * @deprecated Misnamed — this computes the **Shapiro-Francia** statistic
+ * (correlation-based W'), not true Shapiro-Wilk. Retained as a thin alias for
+ * backward compatibility. Prefer {@link shapiroFrancia}. NOTE: the returned
+ * `testName` is now `'Shapiro-Francia'`, not `'Shapiro-Wilk'`.
  */
-function roystonPValue(W: number, n: number): number {
-  if (n === 3) {
-    // For n=3, W is approximately related to the range.
-    // Shapiro-Wilk exact: p ≈ (6/π) × (arcsin(√W) - arcsin(√(3/4)))
-    // Simplified approach: use the relationship that for n=3,
-    // if W ≥ 0.767 → p > 0.05, else p < 0.05
-    // Use a rough approximation based on correlation with normal approximation
+export function shapiroWilk(values: number[]): NormalityTestResult {
+  return shapiroFrancia(values);
+}
+
+/**
+ * Royston's (1993) normalizing transform giving the Shapiro-Francia p-value.
+ *
+ * Valid for 5 ≤ n ≤ 5000. For n = 3, 4 a conservative range-based fallback is
+ * used (below Royston's validated range); such results are indicative only.
+ *
+ * @see Royston, P. (1993). A Toolkit for Testing for Non-Normality in Complete
+ *      and Censored Samples. *Applied Statistics* 42(1), 37–43.
+ */
+function shapiroFranciaPValue(W: number, n: number): number {
+  if (n < 5) {
+    // Below Royston's validated SF range. Use a deliberately conservative
+    // monotone fallback on -ln(1 - W) so the verdict degrades gracefully and
+    // does not over-claim significance for tiny samples.
     const z = -Math.log(1 - W);
-    const p = 1 - normalCDF(z);
-    return clamp01(p);
+    return clamp01(1 - normalCDF(z));
   }
 
-  if (n <= 11) {
-    // Small sample: polynomial transformation
-    // Royston (1992) uses -ln(1 - W) with gamma approximation
-    // Simplified: use a normal approximation on transformed W
-    const gamma = 0.459 * n - 2.273;
-    const negLogOneMinusW = -Math.log(1 - W);
-    const mu = -1.2725 + 1.0521 * Math.log(n);
-    const sigma = 1.0308 - 0.26758 * Math.log(n);
+  // Royston (1993) Shapiro-Francia normalizing transform.
+  const w = Math.log(1 - W);
+  const u = Math.log(n);
+  const v = Math.log(u);
+  const mu = -1.2725 + 1.0521 * (v - u);
+  const sigma = 1.0308 - 0.26758 * (v + 2 / u);
 
-    if (sigma <= 0) {
-      return W >= 0.95 ? 0.5 : 0.01;
-    }
-
-    // Royston small-sample: transform using gamma-like approach
-    const y = Math.pow(negLogOneMinusW, gamma);
-    const muY = mu;
-    const sigmaY = sigma;
-    const z = (y - muY) / sigmaY;
-    const p = 1 - normalCDF(z);
-    return clamp01(p);
+  if (!(sigma > 0)) {
+    return W >= 0.95 ? 0.5 : 0.01;
   }
 
-  // Large sample (12 ≤ n ≤ 5000): log-normal approximation
-  // ln(1 - W) ~ Normal(mu, sigma²)
-  // Royston's coefficients for the normal approximation
-  const lnN = Math.log(n);
-
-  // Polynomial coefficients for mu (Royston 1995, Table 4)
-  const mu = -1.2725 + 1.0521 * lnN;
-
-  // Polynomial coefficients for ln(sigma)
-  const lnSigma = -1.0369 + 0.118 * lnN;
-  const sigma = Math.exp(lnSigma);
-
-  const y = Math.log(1 - W);
-  const z = (y - mu) / sigma;
+  const z = (w - mu) / sigma;
   const p = 1 - normalCDF(z);
-
   return clamp01(p);
 }
 

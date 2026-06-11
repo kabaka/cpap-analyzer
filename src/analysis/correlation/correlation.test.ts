@@ -690,6 +690,55 @@ describe('crossCorrelation', () => {
       expect(v).toBeNaN();
     }
   });
+
+  // -------------------------------------------------------------------------
+  // Hardening: clamp to [-1, 1] and constrain best-lag to adequate overlap.
+  //
+  // The overlap-only cross-product divided by full-series SDs can exceed
+  // unity at large |k| (small overlap). We now clamp every ccf(k) to [-1, 1]
+  // and only select bestLag/bestCCF over |k| ≤ n/2.
+  // -------------------------------------------------------------------------
+  it('should clamp every ccf value to exactly [-1, 1] even at large lags', () => {
+    // A short, monotone, perfectly-correlated pair maximises the chance that
+    // the overlap-only estimator overshoots at the extreme lags.
+    const x = [1, 2, 3, 4, 5, 6, 7, 8];
+    const y = [2, 4, 6, 8, 10, 12, 14, 16];
+
+    const result = crossCorrelation(x, y, 7);
+
+    for (const v of result.ccf) {
+      if (Number.isFinite(v)) {
+        expect(v).toBeGreaterThanOrEqual(-1);
+        expect(v).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it('should not select a bestLag with |lag| > n/2 (spurious large-lag spike)', () => {
+    // 12 points: bestLagBound = floor(12/2) = 6. A spurious large-lag spike at
+    // |k| = 7..11 (tiny overlap) must never be chosen as bestLag.
+    const rng = seededRandom(2024);
+    const n = 12;
+    const x = Array.from({ length: n }, () => rng());
+    const y = Array.from({ length: n }, () => rng());
+
+    const result = crossCorrelation(x, y, n - 1);
+
+    expect(Math.abs(result.bestLag)).toBeLessThanOrEqual(Math.floor(n / 2));
+  });
+
+  it('should still pick lag 0 for self-correlation under the overlap bound', () => {
+    const rng = seededRandom(7);
+    const n = 40;
+    const x = Array.from({ length: n }, () => rng());
+
+    // maxLag deliberately larger than n/2 so the bound is exercised.
+    const result = crossCorrelation(x, x, 30);
+
+    expect(result.bestLag).toBe(0);
+    expect(result.bestCCF).toBeCloseTo(1.0, 5);
+    expect(Math.abs(result.bestLag)).toBeLessThanOrEqual(Math.floor(n / 2));
+  });
 });
 
 // ---------------------------------------------------------------------------

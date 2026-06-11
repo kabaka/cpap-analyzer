@@ -618,28 +618,89 @@ function computeLoessResiduals(
 // ---------------------------------------------------------------------------
 
 /**
- * Detect change points using the PELT algorithm with L2 cost.
+ * Scale-aware default PELT penalty: β = 2·ln(n)·σ̂².
  *
- * The Pruned Exact Linear Time (PELT) algorithm finds the optimal
- * segmentation by minimising Σ C(segment) + β · (number of change points),
- * where C is the sum-of-squared-errors cost and β is the penalty.
+ * σ̂ is estimated robustly from the lag-1 differences so that genuine mean
+ * shifts do not inflate the noise estimate: σ̂ = 1.4826·MAD(Δx)/√2 (the √2
+ * accounts for differencing two independent noise terms). This is the modified
+ * BIC / SIC penalty for a single mean-shift parameter at known noise level
+ * (cf. Killick et al. 2012 §3.1; Lavielle 2005), making the penalty
+ * automatically commensurate with the metric's units.
  *
- * Reference: Killick, Fearnhead & Eckley (2012).
+ * Falls back to a small positive constant when the series is too short or has
+ * zero spread (so a degenerate σ̂ = 0 cannot make every split free).
+ */
+function defaultChangePointPenalty(data: number[]): number {
+  const n = data.length;
+  if (n < 3) return 1;
+
+  const diffs: number[] = [];
+  for (let i = 1; i < n; i++) {
+    diffs.push(at(data, i) - at(data, i - 1));
+  }
+  const absDiffs = diffs.map(Math.abs);
+  sortAsc(absDiffs);
+  const madDiff = medianSorted(absDiffs);
+  // σ̂ from differenced series: divide by √2 to undo differencing variance.
+  const sigmaHat = (1.4826 * madDiff) / Math.SQRT2;
+  const sigma2 = sigmaHat * sigmaHat;
+
+  if (!(sigma2 > 0) || !Number.isFinite(sigma2)) return 1;
+  return 2 * Math.log(n) * sigma2;
+}
+
+/**
+ * Detect change points using the PELT algorithm with an L2 (change-in-mean)
+ * cost.
  *
- * @param values - Numeric time series
- * @param dates - ISO date strings (parallel to values)
- * @param penalty - Penalty per change point (default 10)
+ * PELT (Killick, Fearnhead & Eckley, 2012, JASA) finds the segmentation that
+ * minimises Σ C(segment) + β · (number of change points), where C is the
+ * sum-of-squared-errors cost and β is the penalty.
+ *
+ * **Penalty is scale-dependent.** The L2 cost has units of the data squared,
+ * so a fixed β tuned for AHI (events/hr, O(1–50)) is wildly inappropriate for
+ * leak rate (L/min, O(0–60)) or pressure (cmH₂O). For this reason there is no
+ * universal default. When `penalty` is omitted we derive a BIC-style,
+ * scale-aware default β = 2·ln(n)·σ̂², where σ̂² is a robust variance estimate
+ * from the median absolute deviation of first differences
+ * (σ̂ = 1.4826·MAD(Δx)/√2). This is the standard modified-BIC penalty for a
+ * single-parameter (mean-shift) change at known noise level and adapts
+ * automatically to the metric's scale. Passing an explicit `penalty` overrides
+ * this and is interpreted as a raw L2 penalty (units of data²) — callers
+ * supplying a number MUST tune it per metric.
+ *
+ * **Pruning.** This implementation uses the exact PELT dynamic program with
+ * the inequality-based candidate pruning of Killick et al. The pruning keeps
+ * the result exact; whether it achieves the paper's expected linear-time
+ * behaviour depends on the data generating frequent changes. On series with
+ * few change points it remains close to O(n²) in the worst case, so we make no
+ * blanket "linear time" guarantee here.
+ *
+ * Reference: Killick, R., Fearnhead, P. & Eckley, I.A. (2012). "Optimal
+ * Detection of Changepoints With a Linear Computational Cost." JASA 107(500).
+ *
+ * @param values  - Numeric time series.
+ * @param dates   - ISO date strings (parallel to values).
+ * @param penalty - Raw L2 penalty per change point. Omit to use the
+ *                  scale-aware BIC default β = 2·ln(n)·σ̂².
  */
 export function detectChangePoints(
   values: number[],
   dates: string[],
-  penalty: number = 10,
+  penalty?: number,
 ): ChangePointResult {
   const emptyResult: ChangePointResult = { changePoints: [], segments: [] };
   if (values.length === 0) return emptyResult;
 
   const n = values.length;
   const data: number[] = values.map((v) => (Number.isFinite(v) ? v : 0));
+
+  // Resolve the penalty. An explicit (finite) value is used verbatim as a raw
+  // L2 penalty; otherwise derive a scale-aware BIC penalty β = 2·ln(n)·σ̂².
+  const beta =
+    typeof penalty === 'number' && Number.isFinite(penalty)
+      ? penalty
+      : defaultChangePointPenalty(data);
 
   // Prefix sums for O(1) cost computation
   const cumSum: number[] = [0];
@@ -662,7 +723,7 @@ export function detectChangePoints(
   }
 
   // PELT dynamic programming
-  const F: number[] = [-penalty];
+  const F: number[] = [-beta];
   const lastChange: number[] = [0];
 
   let candidates = [0];
@@ -674,11 +735,19 @@ export function detectChangePoints(
     const nextCandidates: number[] = [];
 
     for (const tau of candidates) {
-      const candidateCost = at(F, tau) + cost(tau, tStar) + penalty;
+      const candidateCost = at(F, tau) + cost(tau, tStar) + beta;
       if (candidateCost < bestCost) {
         bestCost = candidateCost;
         bestTau = tau;
       }
+      // Killick et al. (2012) pruning: drop τ as a future candidate once
+      //   F(τ) + C(τ, t*) + K ≥ F(t*),
+      // with K = 0 for the L2 cost (the cost is additive, not subadditive
+      // with a slack term). We compare against bestCost (= F(t*)) here; this
+      // is exact. Note the inequality below retains τ when it is still
+      // competitive, i.e. it does NOT prune the most over-conservatively, so
+      // the candidate set can stay larger than the theoretical minimum — the
+      // segmentation it returns is nonetheless optimal.
       if (at(F, tau) + cost(tau, tStar) <= bestCost) {
         nextCandidates.push(tau);
       }
@@ -852,6 +921,15 @@ export function stlDecomposition(
         const absResiduals = finiteResiduals.map(Math.abs);
         sortAsc(absResiduals);
         const mad = medianSorted(absResiduals);
+        // h = 6·MAD is the correct robustness scale for Cleveland's robust STL.
+        // This is INTENTIONALLY the raw median absolute deviation, NOT the
+        // normal-consistent estimator 1.4826·MAD ≈ σ̂. Cleveland et al. (1990),
+        // "STL: A Seasonal-Trend Decomposition Procedure Based on Loess",
+        // J. Official Statistics 6(1), define the robustness weights as
+        // ρ(r_i) = B(r_i / (6·median|r_i|)) where B is Tukey's bisquare. The
+        // factor 6 (not the Gaussian 1.4826) sets the cutoff at which weights
+        // reach zero. Do NOT "fix" this by inserting 1.4826 — that would change
+        // the published algorithm's down-weighting behavior.
         const h = 6 * mad;
 
         weights = new Array<number>(n).fill(0);

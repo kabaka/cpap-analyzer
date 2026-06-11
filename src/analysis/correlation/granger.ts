@@ -9,20 +9,42 @@
  * 1. For each candidate lag p (1 … maxLag), fit:
  *    - **Restricted** AR model: y_t = Σ α_i y_{t-i} + ε
  *    - **Unrestricted** VAR model: y_t = Σ α_i y_{t-i} + Σ β_i x_{t-i} + ε
- * 2. Select optimal lag via AIC on the unrestricted model.
+ * 2. Choose the lag at which to report the F-test: either a caller-supplied
+ *    fixed `lag` (clean inference) or the AIC-minimising lag.
  * 3. Compute the F-statistic comparing restricted vs. unrestricted RSS.
  * 4. Derive a p-value from the F-distribution using the regularized
  *    incomplete beta function.
  * 5. Test both X→Y and Y→X directions; classify result.
  *
+ * **Post-selection inference caveat.** When the lag is selected by minimising
+ * AIC and the F-test is then reported at that *same* lag, the p-value is
+ * selection-affected (anti-conservative): the same data both chose and tested
+ * the model, so the nominal F p-value understates the true type-I error and
+ * causality is declared too readily (Leeb & Pötscher 2005). This module no
+ * longer presents such p-values as clean inferential quantities — when the
+ * reported lag was AIC-selected, `selectionAffected` is set to `true` and the
+ * p-value must be read as exploratory. To obtain a clean p-value, pass a fixed
+ * `lag` (e.g. chosen on a separate training portion).
+ *
+ * **Stationarity.** The VAR F-test assumes (trend-)stationary inputs. CPAP
+ * nightly series frequently trend (e.g. acclimatisation, seasonal leak), and a
+ * deterministic trend shared by two independent series produces spurious
+ * Granger causality (Granger & Newbold 1974). A lightweight trend test is run
+ * on each input; if a significant linear trend is detected, the result carries
+ * a `stationarityWarning` and the caller should consider first-differencing.
+ *
  * @see Granger, C. W. J. (1969). Investigating causal relations by
  *      econometric models and cross-spectral methods. *Econometrica*.
+ * @see Granger, C. W. J. & Newbold, P. (1974). Spurious regressions in
+ *      econometrics. *Journal of Econometrics*.
+ * @see Leeb, H. & Pötscher, B. M. (2005). Model selection and inference:
+ *      facts and fiction. *Econometric Theory*.
  *
  * @module analysis/correlation/granger
  */
 
 import { Matrix, solve } from 'ml-matrix';
-import { regularizedIncompleteBeta } from '@/analysis/math';
+import { regularizedIncompleteBeta, twoTailedPValue } from '@/analysis/math';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,11 +52,14 @@ import { regularizedIncompleteBeta } from '@/analysis/math';
 
 /** Result of a bi-directional Granger causality test. */
 export interface GrangerCausalityResult {
-  /** F-statistic for the X→Y direction at optimal lag. */
+  /** F-statistic for the X→Y direction at the reported lag. */
   readonly fStatistic: number;
-  /** p-value for the X→Y direction at optimal lag. */
+  /** p-value for the X→Y direction at the reported lag. */
   readonly pValue: number;
-  /** Lag selected by minimum AIC (unrestricted model). */
+  /**
+   * Lag at which the test is reported. Equals the caller-supplied fixed lag
+   * when one was given, otherwise the AIC-minimising lag.
+   */
   readonly optimalLag: number;
   /** Directional causality classification. */
   readonly causality: 'X causes Y' | 'Y causes X' | 'bidirectional' | 'none';
@@ -42,6 +67,31 @@ export interface GrangerCausalityResult {
   readonly confidenceLevel: 'high' | 'moderate' | 'low';
   /** AIC values for the unrestricted X→Y model at each candidate lag. */
   readonly aicValues: readonly number[];
+  /**
+   * `true` when the reported lag was chosen by minimising AIC on the same data
+   * used for the F-test. In that case the p-value is selection-affected
+   * (anti-conservative) and should be treated as **exploratory**, not as a
+   * clean inferential p-value. `false` when a fixed `lag` was supplied.
+   */
+  readonly selectionAffected: boolean;
+  /**
+   * Non-null when at least one input series shows a statistically significant
+   * linear trend (non-stationarity). The VAR F-test assumes stationarity;
+   * trending inputs can yield spurious Granger causality. The message names the
+   * affected series; callers should consider first-differencing.
+   */
+  readonly stationarityWarning: string | null;
+}
+
+/** Options for {@link grangerCausality}. */
+export interface GrangerCausalityOptions {
+  /**
+   * Fixed lag at which to report the F-test, separating lag SELECTION from
+   * TESTING. When provided (1 ≤ lag ≤ maxLag), the reported p-value is a clean
+   * inferential quantity and `selectionAffected` is `false`. When omitted, the
+   * lag is AIC-selected and `selectionAffected` is `true`.
+   */
+  readonly lag?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,19 +235,32 @@ function fDistPValue(fStat: number, df1: number, df2: number): number {
 
 /**
  * Run a one-directional Granger test: does `x` Granger-cause `y`?
- * Returns the F-statistic, p-value, optimal lag, and per-lag AIC values.
+ *
+ * Always computes the per-lag AIC values for diagnostics. The lag at which the
+ * F-test is reported is `fixedLag` when provided (clean inference), otherwise
+ * the AIC-minimising lag (selection-affected inference).
+ *
+ * Returns the F-statistic, p-value, reported lag, per-lag AIC values, and a
+ * `selectionAffected` flag.
  */
 function grangerOneDirection(
   x: number[],
   y: number[],
   maxLag: number,
-): { fStatistic: number; pValue: number; optimalLag: number; aicValues: number[] } {
+  fixedLag?: number,
+): {
+  fStatistic: number;
+  pValue: number;
+  optimalLag: number;
+  aicValues: number[];
+  selectionAffected: boolean;
+} {
   const n = y.length;
   const aicValues: number[] = [];
   let bestLag = 1;
   let bestAic = Infinity;
 
-  // Evaluate each candidate lag
+  // Evaluate each candidate lag (always, for AIC diagnostics)
   for (let p = 1; p <= maxLag; p++) {
     const nEff = n - p; // effective sample size
     if (nEff <= 2 * p + 1) {
@@ -220,25 +283,91 @@ function grangerOneDirection(
     }
   }
 
-  // Compute F-test at optimal lag
-  const nEff = n - bestLag;
-  const { designMatrix: Xr, response: Yr } = buildRestricted(y, bestLag);
-  const { designMatrix: Xu, response: Yu } = buildUnrestricted(y, x, bestLag);
+  // Separate SELECTION from TESTING: use the caller's fixed lag when valid,
+  // otherwise the AIC-selected lag (and flag the resulting p-value).
+  const useFixed =
+    typeof fixedLag === 'number' &&
+    Number.isInteger(fixedLag) &&
+    fixedLag >= 1 &&
+    fixedLag <= maxLag;
+  const testLag = useFixed ? (fixedLag as number) : bestLag;
+  const selectionAffected = !useFixed;
+
+  const nEff = n - testLag;
+  const { designMatrix: Xr, response: Yr } = buildRestricted(y, testLag);
+  const { designMatrix: Xu, response: Yu } = buildUnrestricted(y, x, testLag);
 
   const rssR = fitOLS(Xr, Yr);
   const rssU = fitOLS(Xu, Yu);
 
-  const df1 = bestLag;
-  const df2 = nEff - 2 * bestLag - 1;
+  const df1 = testLag;
+  const df2 = nEff - 2 * testLag - 1;
 
   if (df2 <= 0 || !Number.isFinite(rssR) || !Number.isFinite(rssU) || rssU <= 0) {
-    return { fStatistic: NaN, pValue: NaN, optimalLag: bestLag, aicValues };
+    return { fStatistic: NaN, pValue: NaN, optimalLag: testLag, aicValues, selectionAffected };
   }
 
   const fStat = (rssR - rssU) / df1 / (rssU / df2);
   const pValue = fDistPValue(fStat, df1, df2);
 
-  return { fStatistic: fStat, pValue, optimalLag: bestLag, aicValues };
+  return { fStatistic: fStat, pValue, optimalLag: testLag, aicValues, selectionAffected };
+}
+
+/**
+ * Lightweight stationarity guard: test for a significant deterministic linear
+ * trend via OLS regression of the series on time (t = 0…n−1), using a
+ * two-tailed t-test on the slope at α = 0.05.
+ *
+ * This is a deliberately simple, fast check — not a full unit-root/ADF test —
+ * intended to flag the most common CPAP non-stationarity (a drifting mean). A
+ * significant slope ⇒ trend-non-stationary ⇒ warn.
+ *
+ * @returns `true` when a significant linear trend is detected.
+ */
+function hasSignificantTrend(series: number[]): boolean {
+  const n = series.length;
+  if (n < 4) return false;
+
+  let sumT = 0;
+  let sumY = 0;
+  for (let i = 0; i < n; i++) {
+    sumT += i;
+    sumY += series[i] ?? 0;
+  }
+  const meanT = sumT / n;
+  const meanY = sumY / n;
+
+  let sTT = 0;
+  let sTY = 0;
+  for (let i = 0; i < n; i++) {
+    const dt = i - meanT;
+    sTT += dt * dt;
+    sTY += dt * ((series[i] ?? 0) - meanY);
+  }
+  if (sTT === 0) return false;
+
+  const slope = sTY / sTT;
+  const intercept = meanY - slope * meanT;
+
+  // Residual sum of squares and slope standard error.
+  let rss = 0;
+  for (let i = 0; i < n; i++) {
+    const resid = (series[i] ?? 0) - (intercept + slope * i);
+    rss += resid * resid;
+  }
+  const df = n - 2;
+  if (df <= 0) return false;
+  const sigma2 = rss / df;
+  if (sigma2 <= 0) {
+    // Perfect linear fit ⇒ a (deterministic) trend, unless the slope is ~0.
+    return Math.abs(slope) > 0;
+  }
+  const seSlope = Math.sqrt(sigma2 / sTT);
+  if (seSlope === 0) return Math.abs(slope) > 0;
+
+  const tStat = slope / seSlope;
+  const p = twoTailedPValue(tStat, df);
+  return Number.isFinite(p) && p < SIGNIFICANCE;
 }
 
 /**
@@ -265,14 +394,23 @@ function confidenceFromP(p: number): 'high' | 'moderate' | 'low' {
  * @param x       First time series (aligned by index with `y`).
  * @param y       Second time series.
  * @param maxLag  Maximum number of lags to evaluate (default 7).
- * @returns       Test statistics, optimal lag, directional classification,
- *                and confidence level.
+ * @param options Optional settings; pass `{ lag }` to report a clean,
+ *                non-selection-affected F-test at a fixed lag.
+ * @returns       Test statistics, reported lag, directional classification,
+ *                confidence level, a `selectionAffected` flag, and a
+ *                `stationarityWarning`.
  *
  * @remarks
  * **Assumptions**:
- * - Both series are stationary or trend-stationary.
+ * - Both series are stationary or trend-stationary. A significant linear trend
+ *   sets `stationarityWarning` (see {@link GrangerCausalityResult}).
  * - Observations are equally spaced in time.
  * - The relationship, if any, is linear.
+ *
+ * **Inference honesty**: when `options.lag` is omitted the reported lag is
+ * AIC-selected and `selectionAffected` is `true` — read the p-value as
+ * exploratory. Supply `options.lag` (e.g. selected on a training split) for a
+ * clean p-value.
  *
  * **Edge cases**:
  * - Fewer than `2 × maxLag + 2` observations → returns NaN values
@@ -281,17 +419,21 @@ function confidenceFromP(p: number): 'high' | 'moderate' | 'low' {
  *
  * @example
  * ```ts
- * const result = grangerCausality(leakRates, ahiDaily, 5);
- * if (result.causality === 'X causes Y') {
- *   console.log(`Leak → AHI (F=${result.fStatistic.toFixed(2)}, p=${result.pValue.toFixed(4)})`);
- * }
+ * // Exploratory (AIC-selected lag): result.selectionAffected === true
+ * const explor = grangerCausality(leakRates, ahiDaily, 5);
+ *
+ * // Confirmatory (fixed lag): result.selectionAffected === false
+ * const conf = grangerCausality(leakRates, ahiDaily, 5, { lag: 2 });
  * ```
  */
 export function grangerCausality(
   x: number[],
   y: number[],
   maxLag: number = DEFAULT_MAX_LAG,
+  options: GrangerCausalityOptions = {},
 ): GrangerCausalityResult {
+  const { lag } = options;
+
   // Pairwise finite filter
   const { fx, fy } = filterFinitePairs(x, y);
   const n = fx.length;
@@ -299,10 +441,12 @@ export function grangerCausality(
   const nanResult: GrangerCausalityResult = {
     fStatistic: NaN,
     pValue: NaN,
-    optimalLag: maxLag,
+    optimalLag: lag ?? maxLag,
     causality: 'none',
     confidenceLevel: 'low',
     aicValues: [],
+    selectionAffected: lag === undefined,
+    stationarityWarning: null,
   };
 
   // Guard: insufficient data
@@ -315,9 +459,25 @@ export function grangerCausality(
     return nanResult;
   }
 
+  // Stationarity guard: flag deterministic trends that can induce spurious
+  // Granger causality.
+  const xTrending = hasSignificantTrend(fx);
+  const yTrending = hasSignificantTrend(fy);
+  let stationarityWarning: string | null = null;
+  if (xTrending && yTrending) {
+    stationarityWarning =
+      'Both series show a significant linear trend (non-stationary); Granger results may be spurious. Consider first-differencing the inputs.';
+  } else if (xTrending) {
+    stationarityWarning =
+      'Series X shows a significant linear trend (non-stationary); Granger results may be spurious. Consider first-differencing X.';
+  } else if (yTrending) {
+    stationarityWarning =
+      'Series Y shows a significant linear trend (non-stationary); Granger results may be spurious. Consider first-differencing Y.';
+  }
+
   // Test both directions
-  const xy = grangerOneDirection(fx, fy, maxLag);
-  const yx = grangerOneDirection(fy, fx, maxLag);
+  const xy = grangerOneDirection(fx, fy, maxLag, lag);
+  const yx = grangerOneDirection(fy, fx, maxLag, lag);
 
   const xyCausal = Number.isFinite(xy.pValue) && xy.pValue < SIGNIFICANCE;
   const yxCausal = Number.isFinite(yx.pValue) && yx.pValue < SIGNIFICANCE;
@@ -346,5 +506,7 @@ export function grangerCausality(
     causality,
     confidenceLevel: confidenceFromP(minP),
     aicValues: xy.aicValues,
+    selectionAffected: xy.selectionAffected || yx.selectionAffected,
+    stationarityWarning,
   };
 }

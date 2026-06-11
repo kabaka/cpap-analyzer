@@ -318,9 +318,19 @@ function EventSummaryTable({ events }: EventSummaryTableProps) {
 
 // ── Metric Cards ─────────────────────────────────────────────────
 
+/**
+ * Respiratory Disturbance Index: AHI + RERA index. Prefer the stored `rdi`
+ * field; fall back to `ahi + ahiRera` for aggregates persisted before the
+ * field existed (see {@link NightlyAggregate.rdi}).
+ */
+function resolveRdi(aggregate: NightlyAggregate): number {
+  return aggregate.rdi ?? aggregate.ahi + aggregate.ahiRera;
+}
+
 function AHICard({ aggregate }: { aggregate: NightlyAggregate }) {
   const severity = ahiSeverity(aggregate.ahi);
   const badgeVariant = ahiBadgeVariant(severity);
+  const rdi = resolveRdi(aggregate);
 
   return (
     <Card className={styles.metricCard}>
@@ -337,6 +347,11 @@ function AHICard({ aggregate }: { aggregate: NightlyAggregate }) {
           {aggregate.ahi.toFixed(1)}
         </span>
         <span className={styles.metricUnit}>events/hr</span>
+      </div>
+      <div className={styles.metricSecondary}>
+        <span className={styles.metricSecondaryLabel}>RDI</span>
+        <span className={styles.metricSecondaryValue}>{fmt(rdi)}</span>
+        <span className={styles.metricSecondaryUnit}>events/hr (incl. RERA)</span>
       </div>
       <div className={styles.metricBreakdown}>
         <div className={styles.breakdownItem}>
@@ -477,6 +492,14 @@ function SpO2Card({ aggregate }: { aggregate: NightlyAggregate }) {
         <div className={styles.breakdownItem}>
           <span className={styles.breakdownLabel}>ODI</span>
           <span className={styles.breakdownValue}>{fmt(aggregate.oxygenDesaturationIndex)}</span>
+        </div>
+        <div className={styles.breakdownItem}>
+          <span className={styles.breakdownLabel}>Coverage</span>
+          <span className={styles.breakdownValue}>
+            {aggregate.spo2CoveragePercent != null
+              ? `${aggregate.spo2CoveragePercent.toFixed(0)}%`
+              : '—'}
+          </span>
         </div>
       </div>
     </Card>

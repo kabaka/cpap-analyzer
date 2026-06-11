@@ -35,6 +35,7 @@ export {
   MigrationError,
   MigrationService,
   MIGRATION_001_INITIAL_SCHEMA,
+  MIGRATION_002_NONUNIQUE_MACHINE_DATE,
   type Migration,
   type MigrationCheckpoint,
   type MigrationContext,

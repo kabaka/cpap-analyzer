@@ -314,6 +314,153 @@ describe('IndexedDBService', () => {
       const all = await db.getAllSessions();
       expect(all).toHaveLength(2);
     });
+
+    // Regression: the original schema declared a UNIQUE [machineId, date] index,
+    // which threw ConstraintError on the 2nd+ session of a calendar day. A
+    // machine legitimately has multiple sessions per day (gap-split), so both
+    // must persist.
+    it('should persist multiple sessions for the same machine on the same date', async () => {
+      const machineId = 'SN-MULTI';
+      const date = '2026-03-01';
+      const s1 = makeSession({
+        machineId,
+        date,
+        startTime: '2026-03-01T22:00:00.000Z',
+      });
+      const s2 = makeSession({
+        machineId,
+        date,
+        startTime: '2026-03-02T04:30:00.000Z',
+      });
+
+      await db.addSession(s1);
+      await db.addSession(s2);
+
+      const all = await db.getAllSessions();
+      expect(all).toHaveLength(2);
+      const machineDay = await db.getSessionsByMachineId(machineId);
+      expect(machineDay).toHaveLength(2);
+      expect(new Set(machineDay.map((s) => s.id))).toEqual(new Set([s1.id, s2.id]));
+    });
+
+    it('should persist multiple nightly aggregates for the same machine on the same date', async () => {
+      const machineId = 'SN-MULTI-AGG';
+      const date = '2026-03-02';
+      const a1 = makeAggregate({ machineId, date, sessionId: crypto.randomUUID() });
+      const a2 = makeAggregate({ machineId, date, sessionId: crypto.randomUUID() });
+
+      await db.addNightlyAggregate(a1);
+      await db.addNightlyAggregate(a2);
+
+      const results = await db.getNightlyAggregatesByDateRange(date, date);
+      expect(results).toHaveLength(2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Atomic multi-store write
+  // -----------------------------------------------------------------------
+
+  describe('addSessionWithRelated', () => {
+    it('should persist session, aggregate, and events in one transaction', async () => {
+      const session = makeSession();
+      const aggregate = makeAggregate({ sessionId: session.id, machineId: session.machineId });
+      const events = [makeEvent({ sessionId: session.id }), makeEvent({ sessionId: session.id })];
+
+      await db.addSessionWithRelated(session, aggregate, events);
+
+      expect(await db.getSession(session.id)).toEqual(session);
+      expect(await db.getNightlyAggregate(aggregate.id)).toEqual(aggregate);
+      expect(await db.getEventsBySessionId(session.id)).toHaveLength(2);
+    });
+
+    it('should accept an empty events array', async () => {
+      const session = makeSession();
+      const aggregate = makeAggregate({ sessionId: session.id, machineId: session.machineId });
+
+      await db.addSessionWithRelated(session, aggregate, []);
+
+      expect(await db.getSession(session.id)).toEqual(session);
+      expect(await db.getEventsBySessionId(session.id)).toHaveLength(0);
+    });
+
+    it('should roll back the entire batch if one inner write fails', async () => {
+      const session = makeSession();
+      const aggregate = makeAggregate({ sessionId: session.id, machineId: session.machineId });
+      const events = [makeEvent({ sessionId: session.id })];
+
+      // Pre-insert the aggregate so the aggregate `add` inside the batch throws a
+      // ConstraintError (duplicate key), aborting the whole transaction.
+      await db.addNightlyAggregate(aggregate);
+
+      await expect(db.addSessionWithRelated(session, aggregate, events)).rejects.toBeInstanceOf(
+        StorageError,
+      );
+
+      // Nothing from the failed batch should have persisted.
+      expect(await db.getSession(session.id)).toBeNull();
+      expect(await db.getEventsBySessionId(session.id)).toHaveLength(0);
+    });
+  });
+
+  describe('deleteSessionCascade', () => {
+    it('should remove the session, its aggregate, and its events together', async () => {
+      const session = makeSession();
+      const aggregate = makeAggregate({ sessionId: session.id, machineId: session.machineId });
+      const events = [makeEvent({ sessionId: session.id }), makeEvent({ sessionId: session.id })];
+      await db.addSessionWithRelated(session, aggregate, events);
+
+      await db.deleteSessionCascade(session.id);
+
+      // No orphans: session, aggregate, and events are all gone.
+      expect(await db.getSession(session.id)).toBeNull();
+      expect(await db.getNightlyAggregate(aggregate.id)).toBeNull();
+      expect(await db.getNightlyAggregateBySessionId(session.id)).toBeNull();
+      expect(await db.getEventsBySessionId(session.id)).toHaveLength(0);
+    });
+
+    it('should NOT leave an orphaned aggregate visible to date-range reads', async () => {
+      const session = makeSession({ date: '2026-01-15' });
+      const aggregate = makeAggregate({
+        sessionId: session.id,
+        machineId: session.machineId,
+        date: '2026-01-15',
+      });
+      await db.addSessionWithRelated(session, aggregate, []);
+
+      await db.deleteSessionCascade(session.id);
+
+      // Dashboard/Trends read aggregates by date range WITHOUT joining on the
+      // session — a leftover aggregate here would be a phantom night.
+      const inRange = await db.getNightlyAggregatesByDateRange('2026-01-14', '2026-01-16');
+      expect(inRange).toHaveLength(0);
+    });
+
+    it('should not affect unrelated sessions', async () => {
+      const keep = makeSession();
+      const keepAgg = makeAggregate({ sessionId: keep.id, machineId: keep.machineId });
+      const keepEvents = [makeEvent({ sessionId: keep.id })];
+      await db.addSessionWithRelated(keep, keepAgg, keepEvents);
+
+      const drop = makeSession();
+      const dropAgg = makeAggregate({ sessionId: drop.id, machineId: drop.machineId });
+      const dropEvents = [makeEvent({ sessionId: drop.id })];
+      await db.addSessionWithRelated(drop, dropAgg, dropEvents);
+
+      await db.deleteSessionCascade(drop.id);
+
+      expect(await db.getSession(keep.id)).not.toBeNull();
+      expect(await db.getNightlyAggregate(keepAgg.id)).not.toBeNull();
+      expect(await db.getEventsBySessionId(keep.id)).toHaveLength(1);
+
+      expect(await db.getSession(drop.id)).toBeNull();
+      expect(await db.getNightlyAggregate(dropAgg.id)).toBeNull();
+      expect(await db.getEventsBySessionId(drop.id)).toHaveLength(0);
+    });
+
+    it('should be a no-op for an unknown session id (no throw)', async () => {
+      await expect(db.deleteSessionCascade('does-not-exist')).resolves.toBeUndefined();
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -717,5 +864,87 @@ describe('IndexedDBService', () => {
       expect(result).toBeNull();
       await fresh.destroy();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// v1 -> v2 schema migration
+// ---------------------------------------------------------------------------
+
+/**
+ * Open a database at version 1 using the ORIGINAL (buggy) schema in which the
+ * two `machineId_date` compound indexes were UNIQUE. Mirrors the pre-fix
+ * `createSchema()` for the two affected stores so we can simulate an existing
+ * v1 user's database on disk.
+ */
+function openLegacyV1(dbName: string): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(dbName, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+
+      const sessions = db.createObjectStore('sessions', { keyPath: 'id' });
+      sessions.createIndex('date', 'date', { unique: false });
+      sessions.createIndex('machineId', 'machineId', { unique: false });
+      sessions.createIndex('machineId_date', ['machineId', 'date'], { unique: true });
+
+      const aggregates = db.createObjectStore('nightly_aggregates', { keyPath: 'id' });
+      aggregates.createIndex('sessionId', 'sessionId', { unique: false });
+      aggregates.createIndex('date', 'date', { unique: false });
+      aggregates.createIndex('machineId_date', ['machineId', 'date'], { unique: true });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function putRaw(db: IDBDatabase, storeName: string, value: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).add(value);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+describe('IndexedDBService v1 -> v2 migration', () => {
+  it('flips machineId_date indexes to non-unique while preserving existing rows', async () => {
+    const dbName = `mig-v1v2-${crypto.randomUUID()}`;
+
+    // 1. Seed a v1 database with the old unique schema.
+    const legacy = await openLegacyV1(dbName);
+    const s1 = makeSession({ id: 's1', machineId: 'M1', date: '2026-04-01' });
+    const s2 = makeSession({ id: 's2', machineId: 'M1', date: '2026-04-02' });
+    const a1 = makeAggregate({ id: 'a1', machineId: 'M1', date: '2026-04-01' });
+    await putRaw(legacy, 'sessions', s1);
+    await putRaw(legacy, 'sessions', s2);
+    await putRaw(legacy, 'nightly_aggregates', a1);
+    legacy.close();
+
+    // 2. Reopen at v2 through IndexedDBService, triggering the real upgrade path.
+    const svc = new IndexedDBService(dbName, 2);
+    await svc.open();
+
+    try {
+      const raw = svc.getRawDatabase();
+
+      // Index options are flipped to non-unique on both affected stores.
+      const tx = raw.transaction(['sessions', 'nightly_aggregates'], 'readonly');
+      expect(tx.objectStore('sessions').index('machineId_date').unique).toBe(false);
+      expect(tx.objectStore('nightly_aggregates').index('machineId_date').unique).toBe(false);
+
+      // Existing rows are preserved (index rebuilt from data, stores untouched).
+      expect(await svc.getSession('s1')).toEqual(s1);
+      expect(await svc.getSession('s2')).toEqual(s2);
+      expect(await svc.getNightlyAggregate('a1')).toEqual(a1);
+
+      // The previously-rejected case now works: a 2nd session same machine+date.
+      const s1b = makeSession({ id: 's1b', machineId: 'M1', date: '2026-04-01' });
+      await svc.addSession(s1b);
+      expect(await svc.getSessionsByMachineId('M1')).toHaveLength(3);
+    } finally {
+      await svc.destroy();
+    }
   });
 });

@@ -75,6 +75,30 @@ export class EDFParser {
     let header = this.parseHeader(buffer);
 
     if (buffer.byteLength < header.headerBytes) {
+      // Benign ResMed pattern: a 256-byte global header that declares one or
+      // more signals (so headerBytes = 256 + 256·numSignals > 256) but ships
+      // with NO signal-header block and NO data — e.g. a `*_CSL.edf`
+      // (Cheyne-Stokes) file for a night with zero periodic-breathing events.
+      // The global header is valid; the file is simply empty.
+      //
+      // Treat this as an EMPTY file (0 signals / 0 records / 0 annotations /
+      // duration 0) returned normally, so downstream fabricates no events and
+      // no session. We only do this when exactly the fixed header is present
+      // (byteLength === MIN_HEADER_BYTES) and at least one signal is declared:
+      // a file that contains a partial signal-header block, or that declares
+      // data records and is truncated mid-data, is genuine corruption and must
+      // still error (handled by the size check below).
+      if (buffer.byteLength === MIN_HEADER_BYTES && header.numSignals >= 1) {
+        return {
+          header: { ...header, numSignals: 0, numDataRecords: 0 },
+          signals: [],
+          annotations: undefined,
+          duration: 0,
+          startTime: header.startDate,
+          rawAnnotationSignalIndex: undefined,
+        };
+      }
+
       throw new EDFParseError(
         'HEADER_TOO_SHORT',
         `Buffer too short for signal headers: ${buffer.byteLength} bytes (need ≥ ${header.headerBytes})`,

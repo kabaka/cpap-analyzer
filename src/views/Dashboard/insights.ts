@@ -9,6 +9,7 @@
 
 import type { NightlyAggregate } from '@/types';
 import type { SummaryStats } from '@/hooks/useSummaryStats';
+import { findFirstSettingsChangeDate } from '@/views/Trends/utils/detectSettingsChanges';
 
 export type InsightSeverity = 'positive' | 'neutral' | 'warning';
 export type InsightIcon = 'trending-down' | 'trending-up' | 'check' | 'alert' | 'info';
@@ -104,24 +105,49 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
   }
 
   // 5. Central apnea index
-  const meanCentralIndex = aggregates.reduce((sum, a) => sum + a.ahiCentral, 0) / aggregates.length;
-  if (meanCentralIndex > 5) {
-    insights.push({
-      id: 'central-apnea-high',
-      icon: 'info',
-      severity: 'neutral',
-      message: `Central apnea index is ${meanCentralIndex.toFixed(1)} — discuss with your provider`,
-    });
+  //
+  // The central apnea index is an events-per-hour RATE, so the clinically sound
+  // cross-night aggregate is total central events / total hours — equivalently a
+  // mean of each night's index WEIGHTED BY that night's usage hours. A plain
+  // unweighted mean lets a single very short night (e.g. ~12 min of mask-on time)
+  // with a spuriously high nightly index dominate the average and trip a
+  // provider-referral message even when every well-used night is benign.
+  //
+  // We additionally require ≥ 1 hour of usage for a night to count toward this
+  // insight. Nights below an hour carry too few breaths for a stable per-hour
+  // rate, and the >5/h threshold here drives a clinical referral, so excluding
+  // them avoids misleading the user. (Distinct from the CMS 4h compliance floor,
+  // which is about adherence accounting, not rate stability.)
+  const MIN_CENTRAL_USAGE_HOURS = 1;
+  let centralEventHours = 0;
+  let centralUsageHours = 0;
+  for (const a of aggregates) {
+    if (a.usageHours >= MIN_CENTRAL_USAGE_HOURS) {
+      centralEventHours += a.ahiCentral * a.usageHours;
+      centralUsageHours += a.usageHours;
+    }
+  }
+  // No qualifying nights → no stable rate → no insight (avoids divide-by-zero).
+  if (centralUsageHours > 0) {
+    const weightedCentralIndex = centralEventHours / centralUsageHours;
+    if (weightedCentralIndex > 5) {
+      insights.push({
+        id: 'central-apnea-high',
+        icon: 'info',
+        severity: 'neutral',
+        message: `Central apnea index is ${weightedCentralIndex.toFixed(1)} — discuss with your provider`,
+      });
+    }
   }
 
   // 6. Settings change detection
-  const settingsChanges = detectSettingsChanges(aggregates);
-  if (settingsChanges) {
+  const settingsChangeDate = findFirstSettingsChangeDate(aggregates);
+  if (settingsChangeDate) {
     insights.push({
       id: 'settings-changed',
       icon: 'info',
       severity: 'neutral',
-      message: `Machine settings were changed on ${settingsChanges}`,
+      message: `Machine settings were changed on ${settingsChangeDate}`,
     });
   }
 
@@ -149,31 +175,4 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
   insights.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
   return insights.slice(0, 5);
-}
-
-/**
- * Detect if machine settings changed within the period.
- * Returns the date string of first change, or null.
- */
-function detectSettingsChanges(aggregates: NightlyAggregate[]): string | null {
-  if (aggregates.length < 2) return null;
-
-  const sorted = [...aggregates].sort((a, b) => a.date.localeCompare(b.date));
-  const latest = sorted[sorted.length - 1];
-  if (!latest) return null;
-
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const agg = sorted[i];
-    if (!agg) continue;
-    if (
-      agg.configuredMinPressure !== latest.configuredMinPressure ||
-      agg.configuredMaxPressure !== latest.configuredMaxPressure ||
-      agg.eprLevel !== latest.eprLevel
-    ) {
-      // The change first appears at the next aggregate
-      return sorted[i + 1]?.date ?? agg.date;
-    }
-  }
-
-  return null;
 }

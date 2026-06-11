@@ -10,7 +10,9 @@ const basename = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/';
 const Dashboard = lazy(() => import('@/views/Dashboard/Dashboard'));
 const SessionList = lazy(() => import('@/views/Sessions/SessionList'));
 const SessionDetail = lazy(() => import('@/views/Sessions/SessionDetail'));
-const SignalViewer = lazy(() => import('@/views/Sessions/SignalViewer'));
+// Keyed wrapper around SignalViewer — forces a remount per `:sessionId` so
+// per-session state does not leak between sessions. See KeyedSignalViewer.
+const SignalViewer = lazy(() => import('@/views/Sessions/KeyedSignalViewer'));
 const SessionComparison = lazy(() => import('@/views/Sessions/SessionComparison'));
 const Trends = lazy(() => import('@/views/Trends/Trends'));
 const AnalysisHub = lazy(() => import('@/views/Analysis/AnalysisHub'));

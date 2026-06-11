@@ -5,14 +5,22 @@
  * - Merging BRP, EVE, SAD, CSL, and PLD files into a single session
  * - Time alignment across files
  * - Session boundary detection (>30 min gap = new session)
- * - Usage time computation (mask pressure > 2 cmH₂O)
- * - AHI computation from events and usage time
+ * - Usage / mask-on time computation (STR mask intervals when available;
+ *   otherwise a hysteresis detector on mask pressure)
+ * - AHI / RDI / ODI computation from events, signals, and usage time
  * - Production of domain `Session`, `NightlyAggregate`, and `Event[]`
+ *
+ * ## Sentinel / gap policy
+ * A missing/undefined sample is SKIPPED, never folded in as a real `0`. ResMed
+ * channels also use specific physiologic sentinels: SpO₂ uses `0` (no probe).
+ * Skipping (rather than `?? 0`) keeps means/medians/percentiles from being
+ * biased toward zero by padding or dropout. See {@link collectValidSamples}.
  */
 
 import type { Event } from '@/types/events';
 import type { Session, NightlyAggregate, ChannelMetadata, MachineSettings } from '@/types/session';
 import type { ResMedInterpretation, StandardChannel } from './ResMedInterpreter';
+import type { MaskInterval } from './STRParser';
 
 // ---------------------------------------------------------------------------
 // Exported interfaces
@@ -35,14 +43,68 @@ export interface BuildResult {
 /** Gap threshold in milliseconds: >30 minutes means a new session. */
 const SESSION_GAP_MS = 30 * 60 * 1000;
 
-/** Mask pressure threshold (cmH₂O) for usage time computation. */
-const USAGE_PRESSURE_THRESHOLD = 2.0;
-
 /** CMS compliance threshold: 4 hours. */
 const CMS_COMPLIANCE_HOURS = 4;
 
 /** Large leak threshold in L/min. */
 const LARGE_LEAK_THRESHOLD = 24;
+
+// --- Usage hysteresis detector thresholds (mask-pressure fallback) ----------
+//
+// The instantaneous mask-pressure waveform oscillates per breath (and dips
+// further with EPR/EPAP), so a single fixed threshold miscounts: a naive
+// "> 2 cmH₂O" rule both rejects exhalation troughs at low CPAP and accepts the
+// sub-therapeutic start of a ramp. Instead we use Schmitt-trigger hysteresis:
+// treat the mask as ON once pressure rises above an UPPER threshold and as OFF
+// only after pressure stays below a LOWER threshold for a sustained dwell. The
+// band absorbs per-breath oscillation; the dwell absorbs brief signal dropouts.
+
+/** Pressure (cmH₂O) above which the mask is considered ON (rising edge). */
+const USAGE_ON_THRESHOLD = 2.0;
+
+/**
+ * Pressure (cmH₂O) below which the mask may be considered OFF (falling edge).
+ * Set well under therapeutic ramp-start (typically 4 cmH₂O) so the trough of a
+ * low-CPAP breath with EPR never crosses it. The machine vents to near-ambient
+ * (~0–1 cmH₂O) when the mask is actually removed.
+ */
+const USAGE_OFF_THRESHOLD = 1.0;
+
+/**
+ * Sustained time (seconds) pressure must remain below {@link USAGE_OFF_THRESHOLD}
+ * before the mask is declared OFF. Bridges momentary dropouts and the brief
+ * near-zero excursions of a deep exhalation without ending usage prematurely.
+ */
+const USAGE_OFF_DWELL_SECONDS = 10;
+
+// --- ODI (oxygen desaturation index) parameters -----------------------------
+//
+// AASM SpO₂ desaturation scoring: a desaturation event is a fall in SpO₂ of at
+// least a threshold amount (default 3%) from a local baseline, lasting a
+// minimum duration, counted once per physiologic dip. We use a trailing
+// rolling-mean baseline and require the nadir to persist, with a refractory
+// gap so one dip = one event.
+
+/** Minimum SpO₂ fall (percentage points) from baseline to score a desaturation. */
+const ODI_DROP_THRESHOLD = 3;
+
+/** Trailing window (seconds) used to compute the rolling SpO₂ baseline. */
+const ODI_BASELINE_WINDOW_SECONDS = 120;
+
+/** Minimum event duration (seconds): SpO₂ must stay ≥ threshold below baseline this long. */
+const ODI_MIN_EVENT_SECONDS = 10;
+
+/**
+ * Refractory gap (seconds) after an event's nadir before a new event may be
+ * scored, so one physiologic dip is not double-counted as it recovers.
+ */
+const ODI_REFRACTORY_SECONDS = 10;
+
+/** SpO₂ sentinel value: 0 = no oximeter / probe off. */
+const SPO2_SENTINEL = 0;
+
+/** T90 threshold: SpO₂ strictly below this (%) counts toward time-below-90. */
+const SPO2_T90_THRESHOLD = 90;
 
 // ---------------------------------------------------------------------------
 // SessionBuilder class
@@ -66,16 +128,24 @@ export class SessionBuilder {
    *
    * @param interpretations - Interpreted EDF files from `ResMedInterpreter`.
    * @param strSettingsByDate - Optional map from ISO date to machine settings from STR.edf.
+   * @param strMaskIntervalsByDate - Optional map from ISO date to the machine-
+   *   recorded mask-on/off intervals (from {@link STRParser.parseFromRawChannels}).
+   *   When supplied, usage time is computed authoritatively from the overlap of
+   *   these intervals with each session window. When omitted, usage falls back
+   *   to a hysteresis detector on mask pressure (backward compatible).
    * @returns Array of build results, one per detected session.
    */
   buildSessions(
     interpretations: readonly ResMedInterpretation[],
     strSettingsByDate?: ReadonlyMap<string, MachineSettings>,
+    strMaskIntervalsByDate?: ReadonlyMap<string, readonly MaskInterval[]>,
   ): BuildResult[] {
     if (interpretations.length === 0) return [];
 
     const groups = this.detectSessionBoundaries(interpretations);
-    return groups.map((group) => this.buildFromGroup(group, strSettingsByDate));
+    return groups.map((group) =>
+      this.buildFromGroup(group, strSettingsByDate, strMaskIntervalsByDate),
+    );
   }
 
   /**
@@ -129,6 +199,7 @@ export class SessionBuilder {
   private buildFromGroup(
     group: readonly ResMedInterpretation[],
     strSettingsByDate?: ReadonlyMap<string, MachineSettings>,
+    strMaskIntervalsByDate?: ReadonlyMap<string, readonly MaskInterval[]>,
   ): BuildResult {
     const sessionId = crypto.randomUUID();
     const aggregateId = crypto.randomUUID();
@@ -157,8 +228,20 @@ export class SessionBuilder {
       }
     }
 
-    // Compute usage time from mask pressure
-    const usageSeconds = this.computeUsageSeconds(channelMap);
+    // Compute usage time. Prefer the machine's own recorded mask-on/off
+    // intervals from STR (authoritative). Fall back to a pressure hysteresis
+    // detector when STR intervals are not supplied for this session's date(s).
+    const sessionDateForUsage = this.formatDate(startTime);
+    const maskIntervals = this.maskIntervalsForWindow(
+      strMaskIntervalsByDate,
+      startTime,
+      endTime,
+      sessionDateForUsage,
+    );
+    const usageSeconds =
+      maskIntervals !== null
+        ? this.computeUsageFromIntervals(maskIntervals, startMs, endMs)
+        : this.computeUsageSeconds(channelMap);
 
     // Build machine info from first interpretation
     const firstInterp = group[0];
@@ -202,7 +285,7 @@ export class SessionBuilder {
     const sourceHash = sessionId; // Placeholder; real hash computed at import time
 
     // Look up machine settings from STR data by session date
-    const sessionDate = this.formatDate(startTime);
+    const sessionDate = sessionDateForUsage;
     const machineSettings = strSettingsByDate?.get(sessionDate) ?? null;
 
     const session: Session = {
@@ -228,16 +311,15 @@ export class SessionBuilder {
     // Compute metrics
     const usageHours = usageSeconds / 3600;
     const ahiResult = this.computeAHIBreakdown(domainEvents, usageHours);
-    const totalAHI =
-      ahiResult.obstructive +
-      ahiResult.central +
-      ahiResult.mixed +
-      ahiResult.hypopnea +
-      ahiResult.rera;
+    // AHI = (obstructive + central + mixed apneas + hypopneas) / usage hours.
+    // Per AASM 2012 / ICSD-3 RERAs are EXCLUDED from AHI — they belong to RDI.
+    const ahi = ahiResult.obstructive + ahiResult.central + ahiResult.mixed + ahiResult.hypopnea;
+    // RDI = AHI + RERA index. Equals AHI when no RERAs are scored.
+    const rdi = ahi + ahiResult.rera;
 
     const leakResult = this.computeLeakStats(channelMap);
     const pressureResult = this.computePressureStats(channelMap);
-    const spo2Result = this.computeSpO2Stats(channelMap, usageHours);
+    const spo2Result = this.computeSpO2Stats(channelMap, durationSeconds);
     const respiratoryResult = this.computeRespiratoryMetrics(channelMap);
 
     // Determine compliance status
@@ -255,7 +337,8 @@ export class SessionBuilder {
       sessionId,
       machineId: machineInfo.serialNumber,
       date: this.formatDate(startTime),
-      ahi: totalAHI,
+      ahi,
+      rdi,
       ahiObstructive: ahiResult.obstructive,
       ahiCentral: ahiResult.central,
       ahiMixed: ahiResult.mixed,
@@ -286,6 +369,7 @@ export class SessionBuilder {
       spo2Median: spo2Result?.median ?? null,
       spo2Min: spo2Result?.min ?? null,
       spo2Below90Percent: spo2Result?.below90Percent ?? null,
+      spo2CoveragePercent: spo2Result?.coveragePercent ?? null,
       oxygenDesaturationIndex: spo2Result?.odi ?? null,
       usageHours,
       maskOnTimeMinutes: usageSeconds / 60,
@@ -304,19 +388,155 @@ export class SessionBuilder {
   // Usage time
   // ---------------------------------------------------------------------------
 
-  /** Compute usage time in seconds from mask pressure channel. */
+  /**
+   * Select the mask intervals relevant to a session window.
+   *
+   * Looks up the session's own date plus the day before and after (a night
+   * commonly spans midnight, and STR keys intervals by calendar day), then
+   * returns only those intervals that overlap the [start, end] window at all.
+   *
+   * @returns The overlapping intervals (possibly empty) when an STR map was
+   *   supplied, or `null` when no STR map was provided (signalling the caller
+   *   to fall back to pressure-based detection). Note: an empty array means
+   *   "STR is authoritative and recorded zero usage", which is distinct from
+   *   `null` ("no STR data; use the fallback").
+   */
+  private maskIntervalsForWindow(
+    byDate: ReadonlyMap<string, readonly MaskInterval[]> | undefined,
+    start: Date,
+    end: Date,
+    sessionDate: string,
+  ): MaskInterval[] | null {
+    if (!byDate) return null;
+
+    const candidateDates = new Set<string>([sessionDate]);
+    const dayBefore = new Date(start);
+    dayBefore.setDate(dayBefore.getDate() - 1);
+    candidateDates.add(this.formatDate(dayBefore));
+    const dayAfter = new Date(end);
+    dayAfter.setDate(dayAfter.getDate() + 1);
+    candidateDates.add(this.formatDate(dayAfter));
+
+    const startMs = start.getTime();
+    const endMs = end.getTime();
+    const overlapping: MaskInterval[] = [];
+    for (const date of candidateDates) {
+      const intervals = byDate.get(date);
+      if (!intervals) continue;
+      for (const iv of intervals) {
+        // Overlap if interval start precedes window end and interval end
+        // follows window start.
+        if (iv.start.getTime() < endMs && iv.end.getTime() > startMs) {
+          overlapping.push(iv);
+        }
+      }
+    }
+    return overlapping;
+  }
+
+  /**
+   * Compute usage seconds from mask intervals clipped to the session window.
+   *
+   * Sums the per-interval overlap with [startMs, endMs] and merges any
+   * overlapping intervals first so concurrent slots are not double-counted.
+   */
+  private computeUsageFromIntervals(
+    intervals: readonly MaskInterval[],
+    startMs: number,
+    endMs: number,
+  ): number {
+    if (intervals.length === 0) return 0;
+
+    // Clip to window, drop empties.
+    const clipped: Array<[number, number]> = [];
+    for (const iv of intervals) {
+      const s = Math.max(iv.start.getTime(), startMs);
+      const e = Math.min(iv.end.getTime(), endMs);
+      if (e > s) clipped.push([s, e]);
+    }
+    if (clipped.length === 0) return 0;
+
+    // Merge overlapping/adjacent ranges, then sum durations.
+    clipped.sort((a, b) => a[0] - b[0]);
+    let totalMs = 0;
+    let [curStart, curEnd] = clipped[0] as [number, number];
+    for (let i = 1; i < clipped.length; i++) {
+      const [s, e] = clipped[i] as [number, number];
+      if (s <= curEnd) {
+        if (e > curEnd) curEnd = e;
+      } else {
+        totalMs += curEnd - curStart;
+        curStart = s;
+        curEnd = e;
+      }
+    }
+    totalMs += curEnd - curStart;
+
+    return totalMs / 1000;
+  }
+
+  /**
+   * Fallback usage detection: a Schmitt-trigger hysteresis on mask pressure.
+   *
+   * Used only when STR mask intervals are unavailable. The mask is declared ON
+   * when pressure rises above {@link USAGE_ON_THRESHOLD}, and OFF only after it
+   * stays below {@link USAGE_OFF_THRESHOLD} for {@link USAGE_OFF_DWELL_SECONDS}.
+   * This counts the full mask-on span (including the low-pressure ramp from 4
+   * cmH₂O, which is genuine usage) and is immune to per-breath exhalation /
+   * EPR troughs at low CPAP — those briefly dip below the OFF threshold but
+   * recover well within the dwell, so usage is not split.
+   *
+   * Undefined samples are treated as continuation of the current state (a gap),
+   * never as a real 0 pressure that would force the mask off.
+   */
   private computeUsageSeconds(channels: ReadonlyMap<string, StandardChannel>): number {
     const pressureChannel = channels.get('maskPressure');
-    if (!pressureChannel) return 0;
+    if (!pressureChannel || pressureChannel.sampleRate <= 0) return 0;
 
+    const rate = pressureChannel.sampleRate;
+    const dwellSamples = Math.max(1, Math.round(USAGE_OFF_DWELL_SECONDS * rate));
+    const samples = pressureChannel.samples;
+
+    let maskOn = false;
+    let belowRun = 0; // consecutive samples below the OFF threshold
     let usageSamples = 0;
-    for (let i = 0; i < pressureChannel.samples.length; i++) {
-      if ((pressureChannel.samples[i] ?? 0) > USAGE_PRESSURE_THRESHOLD) {
-        usageSamples++;
+
+    for (let i = 0; i < samples.length; i++) {
+      const val = samples[i];
+      if (val === undefined) {
+        // Treat a missing sample as a gap: hold current state, count it as
+        // usage if currently on (the machine was running), and do not advance
+        // the off-dwell counter toward an off transition.
+        if (maskOn) usageSamples++;
+        continue;
+      }
+
+      if (!maskOn) {
+        if (val >= USAGE_ON_THRESHOLD) {
+          maskOn = true;
+          belowRun = 0;
+          usageSamples++;
+        }
+        continue;
+      }
+
+      // Currently on.
+      usageSamples++;
+      if (val < USAGE_OFF_THRESHOLD) {
+        belowRun++;
+        if (belowRun >= dwellSamples) {
+          // The dwell window we just counted as usage was actually mask-off;
+          // reclaim it so a long off-period is not counted as therapy.
+          usageSamples -= belowRun;
+          maskOn = false;
+          belowRun = 0;
+        }
+      } else {
+        belowRun = 0;
       }
     }
 
-    return usageSamples / pressureChannel.sampleRate;
+    return usageSamples / rate;
   }
 
   // ---------------------------------------------------------------------------
@@ -383,19 +603,27 @@ export class SessionBuilder {
       return { median: 0, p95: 0, max: 0, largeLeakSeconds: 0 };
     }
 
-    const sorted = Float32Array.from(leakChannel.samples).sort();
-    const median = this.percentile(sorted, 50);
-    const p95 = this.percentile(sorted, 95);
-
+    // Single pass: collect valid samples (skip undefined gaps), track max and
+    // the large-leak count. Then sort ONCE for percentiles.
+    const valid = new Float32Array(leakChannel.samples.length);
+    let n = 0;
     let max = -Infinity;
     let largeLeakSamples = 0;
     for (let i = 0; i < leakChannel.samples.length; i++) {
-      const val = leakChannel.samples[i] ?? 0;
+      const val = leakChannel.samples[i];
+      if (val === undefined) continue;
+      valid[n++] = val;
       if (val > max) max = val;
       if (val > LARGE_LEAK_THRESHOLD) largeLeakSamples++;
     }
 
-    const largeLeakSeconds = largeLeakSamples / leakChannel.sampleRate;
+    if (n === 0) return { median: 0, p95: 0, max: 0, largeLeakSeconds: 0 };
+
+    const sorted = valid.subarray(0, n).slice().sort();
+    const median = this.percentile(sorted, 50);
+    const p95 = this.percentile(sorted, 95);
+    const largeLeakSeconds =
+      leakChannel.sampleRate > 0 ? largeLeakSamples / leakChannel.sampleRate : 0;
 
     return { median, p95, max, largeLeakSeconds };
   }
@@ -418,85 +646,178 @@ export class SessionBuilder {
       return { mean: 0, median: 0, p95: 0, max: 0, epap: null, ipap: null };
     }
 
-    let sum = 0;
-    let max = -Infinity;
-    for (let i = 0; i < pressureChannel.samples.length; i++) {
-      const val = pressureChannel.samples[i] ?? 0;
-      sum += val;
-      if (val > max) max = val;
+    // Sort the pressure channel's valid samples ONCE; derive mean, max,
+    // median and p95 from that single pass + single sort.
+    const stats = this.sortedScalarStats(pressureChannel.samples);
+    if (stats === null) {
+      return { mean: 0, median: 0, p95: 0, max: 0, epap: null, ipap: null };
     }
 
-    const mean = sum / pressureChannel.samples.length;
-    const sorted = Float32Array.from(pressureChannel.samples).sort();
-    const median = this.percentile(sorted, 50);
-    const p95 = this.percentile(sorted, 95);
+    // EPAP/IPAP medians from dedicated channels (each sorted once internally).
+    const epap = this.medianOf(channels.get('epap'));
+    const ipap = this.medianOf(channels.get('ipap'));
 
-    // EPAP/IPAP from dedicated channels
-    const epapChannel = channels.get('epap');
-    const ipapChannel = channels.get('ipap');
-
-    const epap =
-      epapChannel && epapChannel.samples.length > 0
-        ? this.percentile(Float32Array.from(epapChannel.samples).sort(), 50)
-        : null;
-    const ipap =
-      ipapChannel && ipapChannel.samples.length > 0
-        ? this.percentile(Float32Array.from(ipapChannel.samples).sort(), 50)
-        : null;
-
-    return { mean, median, p95, max, epap, ipap };
+    return {
+      mean: stats.mean,
+      median: this.percentile(stats.sorted, 50),
+      p95: this.percentile(stats.sorted, 95),
+      max: stats.max,
+      epap,
+      ipap,
+    };
   }
 
   // ---------------------------------------------------------------------------
   // SpO2 stats
   // ---------------------------------------------------------------------------
 
-  /** Compute SpO2 statistics, or null if no oximetry data. */
+  /**
+   * Compute SpO₂ statistics, or null if no oximetry data.
+   *
+   * - Sentinel `0` (no probe / finger off) is excluded from every statistic.
+   * - **T90** (`below90Percent`) is TIME-based: (valid samples < 90% ÷ all
+   *   valid samples) × 100. Because every valid sample represents an equal
+   *   1/sampleRate slice, this sample fraction equals the time fraction over
+   *   analyzed (non-dropout) oximetry time.
+   * - **Coverage** is valid oximetry time ÷ total session time × 100.
+   * - **ODI** is discrete desaturation EVENTS per hour of valid oximetry time,
+   *   per {@link detectDesaturations}.
+   *
+   * @param channels - Merged session channels.
+   * @param sessionDurationSeconds - Total session window length (for coverage).
+   */
   private computeSpO2Stats(
     channels: ReadonlyMap<string, StandardChannel>,
-    usageHours: number,
-  ): { mean: number; median: number; min: number; below90Percent: number; odi: number } | null {
+    sessionDurationSeconds: number,
+  ): {
+    mean: number;
+    median: number;
+    min: number;
+    below90Percent: number;
+    coveragePercent: number;
+    odi: number;
+  } | null {
     const spo2Channel = channels.get('spo2');
     if (!spo2Channel || spo2Channel.samples.length === 0) return null;
 
-    // Filter out sentinel values (0 = no oximeter data)
-    const validSamples: number[] = [];
-    for (let i = 0; i < spo2Channel.samples.length; i++) {
-      const val = spo2Channel.samples[i] ?? 0;
-      if (val > 0) {
-        validSamples.push(val);
-      }
-    }
+    const rate = spo2Channel.sampleRate > 0 ? spo2Channel.sampleRate : 1;
 
-    // If all values are sentinel, no real oximetry data
-    if (validSamples.length === 0) return null;
-
+    // Collect valid (non-sentinel) samples in original order (needed for ODI).
+    const validOrdered: number[] = [];
     let sum = 0;
     let min = Infinity;
     let timeBelow90Count = 0;
-    let desatCount = 0;
-    let previousSpo2 = validSamples[0] ?? 100;
-
-    for (let i = 0; i < validSamples.length; i++) {
-      const val = validSamples[i] ?? 0;
+    for (let i = 0; i < spo2Channel.samples.length; i++) {
+      const val = spo2Channel.samples[i];
+      if (val === undefined || val === SPO2_SENTINEL || val < 0) continue;
+      validOrdered.push(val);
       sum += val;
       if (val < min) min = val;
-      if (val < 90) timeBelow90Count++;
-
-      // Simple desaturation detection: drop ≥ 3% from previous sample
-      if (i > 0 && previousSpo2 - val >= 3) {
-        desatCount++;
-      }
-      previousSpo2 = val;
+      if (val < SPO2_T90_THRESHOLD) timeBelow90Count++;
     }
 
-    const mean = sum / validSamples.length;
-    const sortedValid = Float32Array.from(validSamples).sort();
-    const median = this.percentile(sortedValid, 50);
-    const below90Percent = (timeBelow90Count / validSamples.length) * 100;
-    const odi = usageHours > 0 ? desatCount / usageHours : 0;
+    const validCount = validOrdered.length;
+    if (validCount === 0) return null;
 
-    return { mean, median, min, below90Percent, odi };
+    const mean = sum / validCount;
+    const sortedValid = Float32Array.from(validOrdered).sort();
+    const median = this.percentile(sortedValid, 50);
+
+    // T90: fraction of valid oximetry TIME below 90% (each sample = 1/rate s).
+    const below90Percent = (timeBelow90Count / validCount) * 100;
+
+    // Coverage: valid oximetry time as a fraction of the session window.
+    const validSeconds = validCount / rate;
+    const coveragePercent =
+      sessionDurationSeconds > 0 ? Math.min(100, (validSeconds / sessionDurationSeconds) * 100) : 0;
+
+    // ODI: events per hour of analyzed (valid) oximetry time.
+    const eventCount = this.detectDesaturations(validOrdered, rate);
+    const validHours = validSeconds / 3600;
+    const odi = validHours > 0 ? eventCount / validHours : 0;
+
+    return { mean, median, min, below90Percent, coveragePercent, odi };
+  }
+
+  /**
+   * Detect discrete SpO₂ desaturation events (AASM SpO₂ desaturation scoring).
+   *
+   * Algorithm (parameters are module constants):
+   * 1. Maintain a trailing rolling-mean baseline over the last
+   *    {@link ODI_BASELINE_WINDOW_SECONDS} of valid SpO₂.
+   * 2. A candidate event begins when SpO₂ falls ≥ {@link ODI_DROP_THRESHOLD}
+   *    percentage points below that baseline.
+   * 3. The candidate is confirmed only if it stays ≥ threshold below baseline
+   *    for at least {@link ODI_MIN_EVENT_SECONDS} (continuously), reaching a
+   *    nadir — so a single brief 1-sample dip or slow noise does not score.
+   * 4. After the nadir, a {@link ODI_REFRACTORY_SECONDS} gap must pass (SpO₂
+   *    back near baseline) before another event can score, so one physiologic
+   *    dip counts exactly once.
+   *
+   * Operating on contiguous valid samples (sentinels already removed) means a
+   * gradual non-recovering drift re-baselines and does not produce spurious
+   * repeated events; ±1% jitter never reaches the 3% threshold.
+   *
+   * @param spo2 - Valid SpO₂ samples in time order (no sentinels).
+   * @param rate - Sample rate in Hz.
+   * @returns Number of distinct desaturation events.
+   */
+  private detectDesaturations(spo2: readonly number[], rate: number): number {
+    const n = spo2.length;
+    if (n === 0) return 0;
+
+    const baselineWindow = Math.max(1, Math.round(ODI_BASELINE_WINDOW_SECONDS * rate));
+    const minEventSamples = Math.max(1, Math.round(ODI_MIN_EVENT_SECONDS * rate));
+    const refractorySamples = Math.max(1, Math.round(ODI_REFRACTORY_SECONDS * rate));
+
+    let events = 0;
+    let inEvent = false;
+    let belowRun = 0; // consecutive samples ≥ threshold below baseline
+    let counted = false; // whether the current event has already been scored
+    let refractory = 0; // samples remaining before a new event may start
+
+    // Running sum for the trailing baseline window.
+    let windowSum = 0;
+    let windowStart = 0;
+
+    for (let i = 0; i < n; i++) {
+      const val = spo2[i] as number;
+
+      // Update trailing window [windowStart, i].
+      windowSum += val;
+      while (i - windowStart + 1 > baselineWindow) {
+        windowSum -= spo2[windowStart] as number;
+        windowStart++;
+      }
+      const baseline = windowSum / (i - windowStart + 1);
+
+      if (refractory > 0) {
+        refractory--;
+      }
+
+      const drop = baseline - val;
+      if (drop >= ODI_DROP_THRESHOLD) {
+        if (!inEvent && refractory === 0) {
+          inEvent = true;
+          belowRun = 0;
+          counted = false;
+        }
+        if (inEvent) {
+          belowRun++;
+          if (!counted && belowRun >= minEventSamples) {
+            events++;
+            counted = true;
+          }
+        }
+      } else if (inEvent) {
+        // Recovered toward baseline: close the event, start the refractory gap.
+        inEvent = false;
+        belowRun = 0;
+        refractory = refractorySamples;
+      }
+    }
+
+    return events;
   }
 
   // ---------------------------------------------------------------------------
@@ -560,14 +881,11 @@ export class SessionBuilder {
       ch: StandardChannel | undefined,
     ): { mean: number | null; median: number | null } => {
       if (!ch || ch.samples.length === 0) return { mean: null, median: null };
-      let sum = 0;
-      for (let i = 0; i < ch.samples.length; i++) {
-        sum += ch.samples[i] ?? 0;
-      }
-      const mean = sum / ch.samples.length;
-      const sorted = Float32Array.from(ch.samples).sort();
-      const median = this.percentile(sorted, 50);
-      return { mean, median };
+      // Single pass for mean + one sort for median; skip undefined gaps so
+      // padding does not bias the mean/median toward zero.
+      const stats = this.sortedScalarStats(ch.samples);
+      if (stats === null) return { mean: null, median: null };
+      return { mean: stats.mean, median: this.percentile(stats.sorted, 50) };
     };
 
     const tv = computeChannelStats(channels.get('tidalVolume'));
@@ -586,6 +904,43 @@ export class SessionBuilder {
   // ---------------------------------------------------------------------------
   // Utilities
   // ---------------------------------------------------------------------------
+
+  /**
+   * Collect a channel's valid samples, computing mean and max in one pass and
+   * returning them alongside a single sorted copy for percentile queries.
+   *
+   * "Valid" = not `undefined` (a padding/gap sample). This is the one place the
+   * sentinel policy is applied for pressure/leak/respiratory channels: gaps are
+   * SKIPPED, never folded in as a real `0` that would drag stats down.
+   *
+   * @returns `{ sorted, mean, max }` over valid samples, or `null` if none.
+   */
+  private sortedScalarStats(
+    samples: Float32Array,
+  ): { sorted: Float32Array; mean: number; max: number } | null {
+    const valid = new Float32Array(samples.length);
+    let n = 0;
+    let sum = 0;
+    let max = -Infinity;
+    for (let i = 0; i < samples.length; i++) {
+      const val = samples[i];
+      if (val === undefined) continue;
+      valid[n++] = val;
+      sum += val;
+      if (val > max) max = val;
+    }
+    if (n === 0) return null;
+    const sorted = valid.subarray(0, n).slice().sort();
+    return { sorted, mean: sum / n, max };
+  }
+
+  /** Median of a channel's valid samples (sorted once), or null if empty. */
+  private medianOf(ch: StandardChannel | undefined): number | null {
+    if (!ch || ch.samples.length === 0) return null;
+    const stats = this.sortedScalarStats(ch.samples);
+    if (stats === null) return null;
+    return this.percentile(stats.sorted, 50);
+  }
 
   /** Compute a percentile from a sorted Float32Array. */
   private percentile(sorted: Float32Array, p: number): number {

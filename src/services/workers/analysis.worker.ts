@@ -42,6 +42,7 @@ import { grangerCausality } from '@/analysis/correlation/granger';
 import { mannWhitneyU, wilcoxonSignedRank, cohensD, pairedComparison } from '@/analysis/hypothesis';
 import {
   qqNormal,
+  shapiroFrancia,
   shapiroWilk,
   kolmogorovSmirnov,
   kernelDensityEstimation,
@@ -96,7 +97,8 @@ const analysisAPI = {
 
   // Distribution
   qqNormal,
-  shapiroWilk,
+  shapiroFrancia,
+  shapiroWilk, // deprecated alias of shapiroFrancia (testName now 'Shapiro-Francia')
   kolmogorovSmirnov,
   kernelDensityEstimation,
 

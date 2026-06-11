@@ -5,7 +5,7 @@
  * sessions, nightly aggregates, therapy events, analysis results, settings,
  * import history, and integration data.
  *
- * Database: `cpap-analyzer`, schema version 1.
+ * Database: `cpap-analyzer`, schema version 2.
  */
 
 import {
@@ -118,8 +118,15 @@ export class StorageError extends Error {
 /** Database name used for the CPAP Analyzer IndexedDB instance. */
 const DB_NAME = 'cpap-analyzer';
 
-/** Current schema version. Incremented on each migration. */
-const DB_VERSION = 1;
+/**
+ * Current schema version. Incremented on each migration.
+ *
+ * - v1: initial 7-store schema.
+ * - v2: change `sessions.machineId_date` and `nightly_aggregates.machineId_date`
+ *   from UNIQUE to non-unique (multiple sessions per machine per calendar day
+ *   are legitimate). See `upgradeSchema()` and `MIGRATION_002_NONUNIQUE_MACHINE_DATE`.
+ */
+const DB_VERSION = 2;
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
@@ -144,8 +151,12 @@ export class IndexedDBService {
         const request = indexedDB.open(this.dbName, this.dbVersion);
 
         request.onupgradeneeded = (event) => {
-          const db = (event.target as IDBOpenDBRequest).result;
-          this.createSchema(db);
+          const target = event.target as IDBOpenDBRequest;
+          const db = target.result;
+          // `target.transaction` is the versionchange transaction; it is the
+          // only way to obtain existing object stores during an upgrade so we
+          // can alter their indexes in place without dropping data.
+          this.upgradeSchema(db, target.transaction, event.oldVersion);
         };
 
         request.onsuccess = () => resolve(request.result);
@@ -193,6 +204,51 @@ export class IndexedDBService {
       await this.wrapRequest(store.add(session));
     } catch (error) {
       throw this.wrapError('STORAGE_WRITE_FAILED', 'add session', 'sessions', session.id, error);
+    }
+  }
+
+  /**
+   * Atomically persist a session together with its nightly aggregate and
+   * therapy events in a SINGLE read-write transaction.
+   *
+   * All three writes share one `('sessions', 'nightly_aggregates', 'events')`
+   * transaction, so any failure (e.g. a ConstraintError on a duplicate ID)
+   * aborts the whole transaction and rolls back every write — preventing the
+   * orphaned-row scenario that arises when the records are written in separate
+   * transactions.
+   *
+   * Intended to replace the sequential `addSession` + `addNightlyAggregate` +
+   * `addEvents` calls in the import pipeline.
+   *
+   * @param session   - The session record (uses `add`, so a duplicate ID throws).
+   * @param aggregate - The nightly aggregate for this session (uses `add`).
+   * @param events    - Therapy events for this session (may be empty).
+   */
+  async addSessionWithRelated(
+    session: Session,
+    aggregate: StoredNightlyAggregate,
+    events: readonly Event[],
+  ): Promise<void> {
+    try {
+      const tx = this.createWriteTransaction('sessions', 'nightly_aggregates', 'events');
+      tx.objectStore('sessions').add(session);
+      tx.objectStore('nightly_aggregates').add(aggregate);
+      if (events.length > 0) {
+        const eventStore = tx.objectStore('events');
+        for (const event of events) {
+          eventStore.add(event);
+        }
+      }
+      // Await transaction completion so any failed write rolls back the batch.
+      await this.awaitTransaction(tx);
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        'add session with related records',
+        'sessions',
+        session.id,
+        error,
+      );
     }
   }
 
@@ -264,6 +320,46 @@ export class IndexedDBService {
       await this.wrapRequest(store.delete(id));
     } catch (error) {
       throw this.wrapError('STORAGE_DELETE_FAILED', 'delete session', 'sessions', id, error);
+    }
+  }
+
+  /**
+   * Atomically delete a session and ALL of its related metadata: the session
+   * row, its nightly aggregate(s) (matched via the `sessionId` index), and its
+   * therapy events (matched via the `sessionId` index).
+   *
+   * All three stores are mutated inside a SINGLE multi-store readwrite
+   * transaction, so the delete either fully succeeds or fully rolls back. This
+   * prevents orphaned `nightly_aggregates` rows — which Dashboard/Trends/
+   * SummaryStats read by date range WITHOUT joining on session existence and
+   * would otherwise surface as phantom nights with wrong AHI/usage/compliance.
+   *
+   * Note: high-resolution signal chunks live in OPFS, not IndexedDB, and are
+   * deleted separately (see {@link OPFSService.deleteSessionData}).
+   */
+  async deleteSessionCascade(sessionId: string): Promise<void> {
+    try {
+      const tx = this.createWriteTransaction('sessions', 'nightly_aggregates', 'events');
+
+      // Session row (keyed by id).
+      tx.objectStore('sessions').delete(sessionId);
+
+      // Nightly aggregate(s) for this session — looked up via the sessionId index.
+      await this.deleteByIndexCursor(tx.objectStore('nightly_aggregates'), 'sessionId', sessionId);
+
+      // Therapy events for this session — looked up via the sessionId index.
+      await this.deleteByIndexCursor(tx.objectStore('events'), 'sessionId', sessionId);
+
+      // Await transaction completion so any failed delete rolls back the batch.
+      await this.awaitTransaction(tx);
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_DELETE_FAILED',
+        'cascade-delete session',
+        'sessions',
+        sessionId,
+        error,
+      );
     }
   }
 
@@ -972,22 +1068,90 @@ export class IndexedDBService {
     await this.wrapTransaction(tx);
   }
 
+  /**
+   * Return the underlying open `IDBDatabase` connection.
+   *
+   * Exposed for the migration ledger (MigrationService needs the raw handle to
+   * read/write the `schema_version` setting and inspect indexes). Throws if the
+   * database has not been opened yet.
+   */
+  getRawDatabase(): IDBDatabase {
+    return this.getDB();
+  }
+
   // -----------------------------------------------------------------------
-  // Schema creation (runs inside onupgradeneeded)
+  // Schema creation / upgrade (runs inside onupgradeneeded)
   // -----------------------------------------------------------------------
+
+  /**
+   * Dispatch schema work based on the version we are upgrading from.
+   *
+   * IndexedDB invokes `onupgradeneeded` once with `event.oldVersion` set to the
+   * version currently on disk (0 for a brand-new database). Each numbered step
+   * below is applied in order so a user on any prior version is brought fully
+   * up to date in a single upgrade transaction.
+   *
+   * @param db          - The database being created/upgraded.
+   * @param tx          - The active versionchange transaction (used to reach
+   *                      existing object stores). Null only in pathological
+   *                      environments; guarded defensively.
+   * @param oldVersion  - The on-disk schema version prior to this upgrade.
+   */
+  private upgradeSchema(db: IDBDatabase, tx: IDBTransaction | null, oldVersion: number): void {
+    // Fresh database: build the full schema with the corrected (non-unique)
+    // compound indexes. No further steps needed.
+    if (oldVersion < 1) {
+      this.createSchema(db);
+      return;
+    }
+
+    // v1 -> v2: existing databases were created with UNIQUE machineId_date
+    // indexes (index options are immutable, so they survived in place). Drop
+    // and recreate those two indexes as non-unique. Recreating only the index
+    // preserves all existing rows — IndexedDB rebuilds the index from the data
+    // already in the store.
+    if (oldVersion < 2 && tx) {
+      this.migrateV1ToV2(db, tx);
+    }
+  }
+
+  /**
+   * v1 -> v2 migration: convert the two `machineId_date` compound indexes from
+   * UNIQUE to non-unique. Idempotent and data-preserving.
+   */
+  private migrateV1ToV2(db: IDBDatabase, tx: IDBTransaction): void {
+    const fixIndex = (storeName: 'sessions' | 'nightly_aggregates'): void => {
+      if (!db.objectStoreNames.contains(storeName)) return;
+      const store = tx.objectStore(storeName);
+      if (store.indexNames.contains('machineId_date')) {
+        store.deleteIndex('machineId_date');
+      }
+      store.createIndex('machineId_date', ['machineId', 'date'], { unique: false });
+    };
+
+    fixIndex('sessions');
+    fixIndex('nightly_aggregates');
+  }
 
   private createSchema(db: IDBDatabase): void {
     // sessions
     const sessions = db.createObjectStore('sessions', { keyPath: 'id' });
     sessions.createIndex('date', 'date', { unique: false });
     sessions.createIndex('machineId', 'machineId', { unique: false });
-    sessions.createIndex('machineId_date', ['machineId', 'date'], { unique: true });
+    // NOTE: must be non-unique. A machine legitimately has multiple sessions
+    // per calendar day (SessionBuilder splits on >30-min gaps), so a unique
+    // [machineId, date] index would reject every 2nd+ session of a day with a
+    // ConstraintError. Used only for per-machine/day range/cursor queries.
+    sessions.createIndex('machineId_date', ['machineId', 'date'], { unique: false });
 
     // nightly_aggregates
     const aggregates = db.createObjectStore('nightly_aggregates', { keyPath: 'id' });
     aggregates.createIndex('sessionId', 'sessionId', { unique: false });
     aggregates.createIndex('date', 'date', { unique: false });
-    aggregates.createIndex('machineId_date', ['machineId', 'date'], { unique: true });
+    // NOTE: non-unique for the same reason as sessions.machineId_date above —
+    // multiple aggregates can share a [machineId, date] when a day has multiple
+    // sessions.
+    aggregates.createIndex('machineId_date', ['machineId', 'date'], { unique: false });
 
     // events
     const events = db.createObjectStore('events', { keyPath: 'id' });
@@ -1081,6 +1245,32 @@ export class IndexedDBService {
           cursor.continue();
         } else {
           resolve(results);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Delete every record in `store` whose `indexName` value equals `key`, using
+   * a cursor on the given index. The provided `store` MUST already belong to an
+   * active readwrite transaction; deletions are enqueued on that transaction and
+   * are not committed until the caller awaits the transaction itself.
+   */
+  private deleteByIndexCursor(
+    store: IDBObjectStore,
+    indexName: string,
+    key: IDBValidKey,
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const request = store.index(indexName).openCursor(IDBKeyRange.only(key));
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        } else {
+          resolve();
         }
       };
       request.onerror = () => reject(request.error);

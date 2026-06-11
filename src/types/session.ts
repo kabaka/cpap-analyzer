@@ -124,8 +124,26 @@ export interface NightlyAggregate {
   readonly date: string;
 
   // AHI metrics (events/hour)
-  /** Total Apnea-Hypopnea Index. */
+  /**
+   * Apnea-Hypopnea Index: (obstructive + central + mixed apneas + hypopneas)
+   * per hour of usage. Per AASM 2012 / ICSD-3, AHI EXCLUDES RERAs — those
+   * belong to the RDI (see {@link rdi}). Computed over usage hours (mask-on
+   * time), matching the residual-AHI convention CPAP machines report.
+   */
   readonly ahi: number;
+  /**
+   * Respiratory Disturbance Index: AHI + RERA index (events/hour). RDI =
+   * (apneas + hypopneas + RERAs) / usage hours. Always ≥ {@link ahi}. RERA
+   * detection on CPAP is flow-based and approximate (no EEG arousal), so RDI
+   * is a lower bound on the polysomnographic RDI. Equals `ahi` when no RERAs
+   * are scored.
+   *
+   * Optional ONLY for backward compatibility with aggregates persisted before
+   * this field existed (and hand-built test fixtures). `SessionBuilder` always
+   * populates it; consumers that may read legacy records should fall back to
+   * `ahi + ahiRera`.
+   */
+  readonly rdi?: number;
   /** Obstructive apnea index. */
   readonly ahiObstructive: number;
   /** Central apnea index. */
@@ -134,7 +152,7 @@ export interface NightlyAggregate {
   readonly ahiMixed: number;
   /** Hypopnea index. */
   readonly ahiHypopnea: number;
-  /** RERA index. */
+  /** RERA index (events/hour). Part of RDI, NOT part of AHI. */
   readonly ahiRera: number;
 
   // Event counts
@@ -197,9 +215,31 @@ export interface NightlyAggregate {
   readonly spo2Median: number | null;
   /** Minimum SpO2 percentage. */
   readonly spo2Min: number | null;
-  /** Percentage of time SpO2 was below 90%. */
+  /**
+   * T90: percentage of analyzed oximetry TIME (not samples) with SpO₂ < 90%.
+   * Computed as (time below 90% / valid-SpO₂ time) × 100 using the channel
+   * sample rate. Dropout periods (sentinel 0 = no finger/probe) are excluded
+   * from both numerator and denominator. See {@link spo2CoveragePercent} for
+   * how much of the session actually had valid oximetry.
+   */
   readonly spo2Below90Percent: number | null;
-  /** Oxygen Desaturation Index. */
+  /**
+   * SpO₂ coverage: percentage of the session duration that had valid (non-
+   * sentinel) oximetry samples. Low coverage means T90/ODI are based on a
+   * small slice of the night and should be interpreted with caution. Null if
+   * no oximetry channel is present.
+   *
+   * Optional ONLY for backward compatibility with aggregates persisted before
+   * this field existed (and hand-built test fixtures). `SessionBuilder` always
+   * sets it (to a number or null).
+   */
+  readonly spo2CoveragePercent?: number | null;
+  /**
+   * Oxygen Desaturation Index: discrete desaturation EVENTS per hour of valid
+   * oximetry time. A desaturation event is a ≥3% SpO₂ fall from a rolling
+   * baseline reaching a nadir and lasting ≥10 s, counted once per event
+   * (AASM SpO₂ desaturation scoring). NOT a per-sample drop count.
+   */
   readonly oxygenDesaturationIndex: number | null;
 
   // Usage

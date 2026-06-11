@@ -38,6 +38,12 @@ export interface ImportProgress {
   readonly sessionsStored: number;
   /** Total sessions to store */
   readonly totalSessionsToStore: number;
+  /**
+   * Number of discovered EDF files that parsed to an empty (header-only) stub
+   * and were skipped without error (e.g. CSL files on nights with no
+   * Cheyne-Stokes events). Distinct from {@link errors}.
+   */
+  readonly filesSkippedEmpty: number;
 }
 
 /** A single error encountered during import. */

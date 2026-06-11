@@ -257,11 +257,11 @@ function sineWave(
 // Fixture definitions
 // ---------------------------------------------------------------------------
 
-function generateBRP(): ArrayBuffer {
+function generateBRP(startDate: Date = START_DATE): ArrayBuffer {
   return buildEDF({
     patientId: PATIENT_ID,
     recordingId: RECORDING_ID,
-    startDate: START_DATE,
+    startDate,
     reserved: '',
     dataRecordDuration: 1,
     numDataRecords: 60,
@@ -452,11 +452,11 @@ function generatePLD(): ArrayBuffer {
   });
 }
 
-function generateEVE(): ArrayBuffer {
+function generateEVE(startDate: Date = START_DATE): ArrayBuffer {
   return buildEDF({
     patientId: PATIENT_ID,
     recordingId: RECORDING_ID,
-    startDate: START_DATE,
+    startDate,
     reserved: 'EDF+C',
     dataRecordDuration: 0,
     numDataRecords: 1,
@@ -470,6 +470,38 @@ function generateEVE(): ArrayBuffer {
       { onset: 800, duration: 14, label: 'Apnea' },
     ],
   });
+}
+
+/**
+ * Build a 256-byte global-header-only EDF buffer (CSL-style stub).
+ *
+ * A valid fixed header that *declares* `numSignals` signals and 0 data records,
+ * but the signal-header block and data records are ABSENT on disk (the file is
+ * exactly 256 bytes). ResMed AirSense machines emit these CSL (Cheyne-Stokes)
+ * stubs on nights with no periodic-breathing events. {@link EDFParser.parse}
+ * returns an EMPTY EDFFile for these rather than throwing, so the import
+ * pipeline counts them as `filesSkippedEmpty` instead of surfacing an error.
+ *
+ * Byte layout mirrors `makeCslStubBuffer` in ImportService.test.ts so the E2E
+ * and unit fixtures stay in lock-step.
+ */
+function generateCslStub(numSignals = 2, startDate: Date = START_DATE): ArrayBuffer {
+  const buffer = new ArrayBuffer(256);
+  const bytes = new Uint8Array(buffer);
+  const headerBytes = 256 + 256 * numSignals; // declared, but absent on disk
+
+  writeAscii(bytes, 0, 8, '0'); // version
+  writeAscii(bytes, 8, 80, PATIENT_ID); // patient id
+  writeAscii(bytes, 88, 80, RECORDING_ID); // recording id
+  writeAscii(bytes, 168, 8, formatDate(startDate)); // start date
+  writeAscii(bytes, 176, 8, formatTime(startDate)); // start time
+  writeAscii(bytes, 184, 8, String(headerBytes)); // header byte count
+  writeAscii(bytes, 192, 44, 'EDF+C'); // reserved
+  writeAscii(bytes, 236, 8, '0'); // numDataRecords
+  writeAscii(bytes, 244, 8, '0'); // dataRecordDuration
+  writeAscii(bytes, 252, 4, String(numSignals)); // numSignals
+
+  return buffer;
 }
 
 function generateSAD(): ArrayBuffer {
@@ -559,7 +591,104 @@ function main(): void {
   fs.writeFileSync(emptyPath, Buffer.alloc(0));
   console.log('  ✓ eve-empty.edf (0 bytes)');
 
+  // Standalone CSL stub fixture (256-byte header-only).
+  const cslPath = path.join(OUTPUT_DIR, 'csl-stub.edf');
+  fs.writeFileSync(cslPath, Buffer.from(generateCslStub(2)));
+  console.log('  ✓ csl-stub.edf (256 bytes)');
+
+  generateImportTree();
+
   console.log(`\nAll fixtures written to ${OUTPUT_DIR}`);
 }
 
-main();
+// ---------------------------------------------------------------------------
+// Import directory tree (for the E2E Import Wizard "happy path" + regression)
+// ---------------------------------------------------------------------------
+
+/**
+ * Write a complete SD-card-style import tree to `tests/fixtures/import-tree/`,
+ * mirroring a ResMed DATALOG layout. This tree is uploaded *as a directory* by
+ * the Playwright import E2E so the wizard's `webkitdirectory` file input
+ * receives real `webkitRelativePath`s.
+ *
+ * The single day-folder (named `YYYYMMDD`) contains:
+ *   - Session A:  22:00:00  BRP + EVE  (60-second recordings)
+ *   - Session B:  23:30:00  BRP + EVE  (>30 min after A → SessionBuilder splits
+ *                                       them into two distinct sessions on the
+ *                                       SAME calendar date)
+ *   - A 256-byte CSL header-only stub  (must be skipped quietly, NOT errored)
+ *
+ * Two same-day sessions exercise the multi-session-per-day regression fix
+ * (previously the 2nd session failed on the machineId_date uniqueness
+ * constraint); the CSL stub exercises the empty-skip summary count.
+ *
+ * The recording date is **7 days ago** (computed at generation time) so the
+ * imported sessions fall inside the app's default 30-day date-range window and
+ * are therefore visible in the Sessions / Dashboard views without the E2E
+ * having to widen the range. The night is anchored at 22:00 local time so both
+ * sessions land on the same calendar date regardless of the runner's timezone.
+ */
+/** Metadata describing the generated import tree, consumed by the E2E spec. */
+export interface ImportTreeInfo {
+  /** Absolute path to the tree root (the directory uploaded by the wizard). */
+  readonly treeDir: string;
+  /** `YYYYMMDD` day-folder name = the calendar date of both sessions. */
+  readonly yyyymmdd: string;
+  /** Number of distinct sessions the tree should produce (same calendar day). */
+  readonly expectedSessions: number;
+  /** Number of files that must be skipped as empty (the CSL stub). */
+  readonly expectedSkippedEmpty: number;
+}
+
+export function generateImportTree(outDir?: string): ImportTreeInfo {
+  // Anchor on a recent calendar date (7 days ago) at 22:00 local time.
+  const anchor = new Date();
+  anchor.setDate(anchor.getDate() - 7);
+  const y = anchor.getFullYear();
+  const mo = anchor.getMonth();
+  const d = anchor.getDate();
+
+  const yyyymmdd = `${y}${String(mo + 1).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+
+  // Default to a shared location for the CLI; callers (e.g. parallel Playwright
+  // workers) pass a unique `outDir` to avoid racing on the same directory.
+  const TREE_DIR = outDir ? path.resolve(outDir) : path.resolve(__dirname, '..', 'import-tree');
+  const dayDir = path.join(TREE_DIR, 'DATALOG', yyyymmdd);
+  // Clean any stale day-folders from a previous run (date changes daily).
+  const datalogDir = path.join(TREE_DIR, 'DATALOG');
+  if (fs.existsSync(datalogDir)) {
+    fs.rmSync(datalogDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(dayDir, { recursive: true });
+
+  // Session A — <date> 22:00:00
+  const sessionA = new Date(y, mo, d, 22, 0, 0);
+  // Session B — <date> 23:30:00 (90 min later → new session)
+  const sessionB = new Date(y, mo, d, 23, 30, 0);
+
+  const files: Array<{ name: string; data: ArrayBuffer }> = [
+    { name: `${yyyymmdd}_220000_BRP.edf`, data: generateBRP(sessionA) },
+    { name: `${yyyymmdd}_220000_EVE.edf`, data: generateEVE(sessionA) },
+    { name: `${yyyymmdd}_233000_BRP.edf`, data: generateBRP(sessionB) },
+    { name: `${yyyymmdd}_233000_EVE.edf`, data: generateEVE(sessionB) },
+    // Header-only CSL stub on a night with no Cheyne-Stokes events.
+    { name: `${yyyymmdd}_220000_CSL.edf`, data: generateCslStub(2, sessionA) },
+  ];
+
+  for (const { name, data } of files) {
+    fs.writeFileSync(path.join(dayDir, name), Buffer.from(data));
+  }
+
+  console.log(
+    `  ✓ import-tree/DATALOG/${yyyymmdd}/ (${files.length} files: 2 sessions + 1 CSL stub)`,
+  );
+
+  return { treeDir: TREE_DIR, yyyymmdd, expectedSessions: 2, expectedSkippedEmpty: 1 };
+}
+
+// Only run the full fixture write when executed directly as a script
+// (`npx tsx fixture-generator.ts`), not when imported for `generateImportTree`.
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
+if (invokedPath === __filename) {
+  main();
+}

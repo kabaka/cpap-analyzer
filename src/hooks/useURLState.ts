@@ -1,19 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
-
-/** Format a Date as an ISO date string (YYYY-MM-DD). */
-function toISODate(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-/** Validate that a string is a plausible ISO date (YYYY-MM-DD) and parse it. */
-function parseISODate(value: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const ms = Date.parse(value);
-  if (Number.isNaN(ms)) return null;
-  return new Date(ms);
-}
+import { formatDate, parseLocalDate } from '@/utils/formatDate';
 
 /**
  * Bidirectional sync between the Zustand app store and URL search params.
@@ -40,8 +28,8 @@ export function useURLStateSync(): void {
     const session = searchParams.get('session');
 
     if (startParam && endParam) {
-      const start = parseISODate(startParam);
-      const end = parseISODate(endParam);
+      const start = parseLocalDate(startParam);
+      const end = parseLocalDate(endParam);
 
       if (start && end) {
         setDateRange({ start, end });
@@ -69,8 +57,8 @@ export function useURLStateSync(): void {
       const { dateRange, selectedSessionId } = useAppStore.getState();
 
       const next = new URLSearchParams();
-      next.set('start', toISODate(dateRange.start));
-      next.set('end', toISODate(dateRange.end));
+      next.set('start', formatDate(dateRange.start));
+      next.set('end', formatDate(dateRange.end));
 
       if (selectedSessionId) {
         next.set('session', selectedSessionId);

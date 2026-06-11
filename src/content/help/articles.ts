@@ -107,6 +107,7 @@ export const helpArticles: readonly HelpArticle[] = [
           'Session summaries: date, duration, AHI, leak statistics, pressure statistics for each night.',
           'Detailed signals: high-resolution flow, pressure, and leak waveforms sampled at 25 Hz (25 readings per second). These enable breath-by-breath analysis and event visualization.',
           'Machine settings: therapy mode (CPAP/APAP/BiPAP), pressure settings, EPR configuration, ramp settings, and mask type.',
+          'Multiple sessions on the same calendar day are fully supported — if you removed the mask and reapplied it (e.g. a nap, or getting up during the night), each session is stored separately rather than overwriting one another. Empty or header-only EDF files that contain no events (for example a CSL Cheyne-Stokes annotation file from a night with none) are skipped silently rather than reported as errors; the import summary reports how many such files were skipped so the count is transparent.',
         ],
       },
       {
@@ -223,6 +224,7 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           'For each metric, you will see: mean ($\\bar{x}$), median ($\\tilde{x}$), standard deviation ($s$), interquartile range (IQR), and key percentiles ($P_5$, $P_{25}$, $P_{75}$, $P_{95}$). These give a complete picture of both the central tendency and the spread of your data.',
           'The mean is the arithmetic average: $\\bar{x} = \\frac{1}{n}\\sum_{i=1}^{n} x_i$. The median is the middle value. When these differ substantially (common with AHI data), the distribution is skewed. In skewed distributions, the median often better represents the "typical" night than the mean.',
+          'Missing data is treated as missing, not as zero. Pressure, leak, and respiratory statistics are computed only over samples that were actually recorded; gaps where the sensor produced no value are excluded rather than folded in as real zeros, which would otherwise bias means and percentiles downward. SpO₂-derived statistics are similarly computed over valid-oximetry time only (see oximetry coverage %).',
         ],
       },
       {
@@ -236,7 +238,7 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Distribution analysis',
         paragraphs: [
           'Histograms and box plots show the shape of your data distribution. Is AHI consistently low, or does it vary widely? Are there distinct "good night" and "bad night" clusters? The distribution view helps answer these questions visually.',
-          "The Shapiro-Wilk test checks whether your data follows a normal distribution, $f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}} e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}$. This matters because some statistical methods assume normality — CPAP Analyzer automatically selects appropriate methods based on your data's actual distribution.",
+          "The Shapiro–Francia test checks whether your data follows a normal distribution, $f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}} e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}$. Shapiro–Francia is the correlation-based variant of the Shapiro–Wilk family — it is the statistic CPAP Analyzer actually computes (a squared correlation between the ordered data and the expected normal order statistics), and it is well suited to that correlation form. This matters because some statistical methods assume normality — CPAP Analyzer automatically selects appropriate methods based on your data's actual distribution.",
         ],
       },
       {
@@ -244,6 +246,7 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           'The correlation matrix shows relationships between metrics. For example: Is higher leak associated with higher AHI? Does AHI vary with usage hours? Correlations are displayed as a heatmap with Pearson ($r$) and Spearman ($\\rho$) coefficients.',
           'Important: correlation does not imply causation. A correlation between two metrics means they tend to move together, but not necessarily that one causes the other. Use correlations as starting points for investigation, not as conclusions.',
+          'For directional questions, a Granger causality test asks whether the past of one series helps predict another beyond the series\' own past. Treat its results as exploratory: when you scan many metric pairs, the reported $p$-values are selection-affected (not corrected for multiple comparisons), and CPAP Analyzer now flags this. The test also assumes (weak) stationarity, so non-stationary inputs — for example a series with a strong trend or change point — are flagged because they can produce spurious "causality." Granger causality measures predictive precedence, not physiological cause, and is never on its own a basis for a clinical decision.',
         ],
       },
       {
@@ -337,6 +340,7 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'BiPAP/ASV analysis',
         paragraphs: [
           "For bilevel users, the analysis separately tracks IPAP and EPAP trends, pressure support (IPAP − EPAP), and the relationship between pressure support and event control. ASV-specific metrics include the machine's learned target ventilation and actual versus target minute ventilation.",
+          'The summary cards labelled "Mean EPAP" and "Mean IPAP" report the mean across nights of each night\'s median pressure (a mean of nightly medians) — not a grand median. They were previously labelled "Median EPAP/IPAP"; the relabel makes the statistic match what is computed. For a robust single-night central value, read the per-session pressure profile, which reports the within-night median and percentiles directly.',
         ],
       },
     ],

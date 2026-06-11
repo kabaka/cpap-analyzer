@@ -20,7 +20,10 @@ import { test, expect, type Page } from '@playwright/test';
 // ── Constants ──
 
 const DB_NAME = 'cpap-analyzer';
-const DB_VERSION = 1;
+// Note: no DB_VERSION constant. The seed helper opens the app DB with a
+// version-less indexedDB.open(name) so it attaches to whatever schema version
+// the app has already created. Pinning a version here breaks whenever the app
+// bumps its schema (a version-less open never throws VersionError on migration).
 
 // ── Test Data Factories ──
 
@@ -198,9 +201,9 @@ async function injectTestData(
   events: ReturnType<typeof makeEvent>[] = [],
 ): Promise<void> {
   await page.evaluate(
-    ({ dbName, dbVersion, sessions, aggregates, events }) => {
+    ({ dbName, sessions, aggregates, events }) => {
       return new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open(dbName, dbVersion);
+        const request = indexedDB.open(dbName);
         request.onerror = () => reject(new Error('Failed to open database'));
         request.onsuccess = () => {
           const db = request.result;
@@ -228,7 +231,7 @@ async function injectTestData(
         };
       });
     },
-    { dbName: DB_NAME, dbVersion: DB_VERSION, sessions, aggregates, events },
+    { dbName: DB_NAME, sessions, aggregates, events },
   );
 }
 
