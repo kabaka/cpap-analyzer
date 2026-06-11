@@ -8,7 +8,7 @@
  * @module views/Analysis/StatisticalAnalysis
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import {
   ChartContainer,
@@ -18,6 +18,7 @@ import {
 } from '@/components/charts';
 import type { ReferenceLineConfig } from '@/components/charts';
 import { useAppStore } from '@/stores/useAppStore';
+import { GrangerCausalitySection } from './GrangerCausalitySection';
 import styles from './StatisticalAnalysis.module.css';
 
 // ---------------------------------------------------------------------------
@@ -43,7 +44,7 @@ const METRICS: readonly MetricOption[] = [
 
 const WINDOW_OPTIONS = [3, 7, 14, 30] as const;
 
-type TabId = 'descriptive' | 'trends' | 'distribution' | 'correlation' | 'hypothesis';
+type TabId = 'descriptive' | 'trends' | 'distribution' | 'correlation' | 'causality' | 'hypothesis';
 
 interface TabDef {
   id: TabId;
@@ -55,6 +56,7 @@ const TABS: readonly TabDef[] = [
   { id: 'trends', label: 'Trends' },
   { id: 'distribution', label: 'Distribution' },
   { id: 'correlation', label: 'Correlation' },
+  { id: 'causality', label: 'Granger Causality' },
   { id: 'hypothesis', label: 'Hypothesis Testing' },
 ];
 
@@ -502,7 +504,7 @@ const HypothesisSection = React.memo(function HypothesisSection({
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function EmptyState() {
+export function EmptyState() {
   return (
     <div className={styles.emptyState} role="status">
       <h2>No data available</h2>
@@ -511,7 +513,7 @@ function EmptyState() {
   );
 }
 
-function MetadataBanner({
+export function MetadataBanner({
   metadata,
 }: {
   metadata: { computedAt: string; computationTimeMs: number; sampleSize: number } | null;
@@ -526,7 +528,7 @@ function MetadataBanner({
   );
 }
 
-function AssumptionsPanel({ assumptions }: { assumptions: string[] | undefined }) {
+export function AssumptionsPanel({ assumptions }: { assumptions: string[] | undefined }) {
   if (!assumptions || assumptions.length === 0) return null;
   return (
     <details className={styles.assumptions}>
@@ -550,6 +552,50 @@ export function StatisticalAnalysis() {
   const [window, setWindow] = useState(7);
 
   const selectedMetric = METRICS.find((m) => m.id === metric) ?? DEFAULT_METRIC;
+
+  // Refs to each tab button, keyed by tab index, for roving-tabindex focus
+  // management (WAI-ARIA Tabs pattern, manual activation).
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // Keyboard navigation for the tablist. Manual activation: ArrowLeft/Right,
+  // Home, and End move focus only; Enter/Space activate the focused tab. This
+  // avoids triggering an analysis computation on every arrow press.
+  const handleTabKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+      const lastIndex = TABS.length - 1;
+      let nextIndex: number | null = null;
+
+      switch (event.key) {
+        case 'ArrowRight':
+          nextIndex = index === lastIndex ? 0 : index + 1;
+          break;
+        case 'ArrowLeft':
+          nextIndex = index === 0 ? lastIndex : index - 1;
+          break;
+        case 'Home':
+          nextIndex = 0;
+          break;
+        case 'End':
+          nextIndex = lastIndex;
+          break;
+        case 'Enter':
+        case ' ': {
+          // Activate the focused tab (manual activation). Prevent default on
+          // Space to avoid page scroll.
+          event.preventDefault();
+          const focusedTab = TABS[index];
+          if (focusedTab) setActiveTab(focusedTab.id);
+          return;
+        }
+        default:
+          return;
+      }
+
+      event.preventDefault();
+      tabRefs.current[nextIndex]?.focus();
+    },
+    [],
+  );
 
   return (
     <div className={styles.page} role="main" aria-labelledby="stat-heading">
@@ -598,15 +644,20 @@ export function StatisticalAnalysis() {
 
       {/* Section navigation */}
       <div className={styles.tabs} role="tablist" aria-label="Analysis sections">
-        {TABS.map((tab) => (
+        {TABS.map((tab, index) => (
           <button
             key={tab.id}
+            ref={(el) => {
+              tabRefs.current[index] = el;
+            }}
             role="tab"
             aria-selected={activeTab === tab.id}
             aria-controls={`panel-${tab.id}`}
             id={`tab-${tab.id}`}
+            tabIndex={activeTab === tab.id ? 0 : -1}
             className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ''}`}
             onClick={() => setActiveTab(tab.id)}
+            onKeyDown={(e) => handleTabKeyDown(e, index)}
             type="button"
           >
             {tab.label}
@@ -620,6 +671,7 @@ export function StatisticalAnalysis() {
         {activeTab === 'trends' && <TrendsSection metric={selectedMetric} window={window} />}
         {activeTab === 'distribution' && <DistributionSection metric={selectedMetric} />}
         {activeTab === 'correlation' && <CorrelationSection />}
+        {activeTab === 'causality' && <GrangerCausalitySection />}
         {activeTab === 'hypothesis' && <HypothesisSection metric={selectedMetric} />}
       </div>
     </div>

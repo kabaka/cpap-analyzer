@@ -35,8 +35,12 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 - **RDI (Respiratory Disturbance Index)** metric: apneas + hypopneas + RERAs per hour (AHI + RERA index), always ≥ AHI. Includes a dedicated glossary entry and metric tooltip; device-derived RERA counts are noted as proxy estimates.
 - **SpO₂ coverage %** metric: the fraction of analyzed time with a valid pulse-oximetry signal, surfaced as a data-quality denominator for all SpO₂ statistics.
+- **Granger Causality tab** under Statistical Analysis: tests whether one nightly metric helps predict another (lagged VAR F-test) for a user-chosen metric pair (X→Y), reporting the F-statistic and p-value for that direction only. Granger causality measures predictive precedence, not physical causation, and the result is directional — it does not imply the reverse Y→X relationship.
+- The tab surfaces statistical-honesty flags: an **"Exploratory p-value (lag auto-selected)"** badge when the lag is AIC-selected (selection-affected, anti-conservative inference), and a **non-stationarity caution** when an input series shows a significant linear trend. An **inference-mode control** (Exploratory auto-lag vs. Confirmatory fixed-lag) lets users pin a lag to obtain a clean inferential p-value, alongside an **AIC-by-lag chart** for inspecting the order-selection landscape.
 - **"Empty files skipped" count** in the import summary, for transparency when header-only/event-free files are encountered.
 - Glossary entries for **RDI**, **T90**, and **SpO₂ Coverage**; updated AHI, RERA, ODI, SpO₂, Usage Hours, Compliance, and Normal Distribution entries; help-article updates covering the Shapiro–Francia test, the Mean EPAP/IPAP relabel, Granger causality caveats, missing-data handling, and multiple-sessions-per-day import.
+- **In-app help for Granger causality**: a dedicated "Interpreting Granger Causality" help article (with references) plus glossary entries for **Granger causality**, **F-test**, **AIC**, and **stationarity**, surfaced from the Granger Causality tab via a contextual help popover and an "how to read this tab" interpretation guide.
+- **Full keyboard navigation for the Statistical Analysis tab strip** (WAI-ARIA APG tabs pattern, manual activation): arrow keys move focus between tabs with wrap-around, Home/End jump to the first/last tab, and Enter/Space activate the focused tab. Benefits all six tabs (Descriptive, Trends, Distribution, Correlation, Granger Causality, Hypothesis).
 
 ### Performance (Phase 10)
 
