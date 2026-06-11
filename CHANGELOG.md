@@ -9,6 +9,7 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ### Fixed (Phase 10: Correctness, Performance & UX pass)
 
+- Data import no longer stalls at the start. Previously, starting an import could leave the progress indicator stuck at "0 / n imported" indefinitely, because the EDF parser failed to load in production builds. Imports now begin and progress normally.
 - Import no longer fails to store sessions with a "machineId_date uniqueness" error. Multiple sessions on the same calendar day (e.g. a nap plus an overnight, or mask removal and reapplication) are now stored independently instead of colliding. Root cause was a wrongly-unique database index; a v1→v2 schema migration auto-upgrades existing databases losslessly on first launch — no re-import required.
 - Empty or header-only ResMed files that contain no events (for example a CSL Cheyne-Stokes annotation file from a night with none) are now skipped quietly during import instead of being reported as errors. The import summary reports how many such files were skipped.
 - Session writes are now atomic: a failure partway through writing a session no longer leaves orphaned nightly aggregates, events, or signal chunks behind.

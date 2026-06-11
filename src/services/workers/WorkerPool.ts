@@ -17,8 +17,25 @@ import { buildWorkerError, createWorker, type WrappedWorker } from './createWork
 
 /** Configuration for a {@link WorkerPool}. */
 export interface WorkerPoolOptions {
-  /** The `URL` of the worker script (Vite-style). */
-  workerUrl: URL;
+  /**
+   * Factory that creates a fresh `Worker` for the pool.
+   *
+   * The `new Worker(new URL(...), { type: 'module' })` call MUST be
+   * written inline inside this factory so Vite can statically detect
+   * and bundle the worker script to JS. Receives an optional `name`
+   * (e.g. `pool-worker-3`) which should be forwarded as the Worker's
+   * `name` option for easier debugging.
+   *
+   * @example
+   * ```ts
+   * workerFactory: (name) =>
+   *   new Worker(new URL('./analysisWorker.ts', import.meta.url), {
+   *     type: 'module',
+   *     name,
+   *   })
+   * ```
+   */
+  workerFactory: (name?: string) => Worker;
 
   /**
    * Minimum number of workers to keep alive while the pool is active.
@@ -136,7 +153,8 @@ interface QueuedTask<T> {
  * }
  *
  * const pool = new WorkerPool<AnalysisAPI>({
- *   workerUrl: new URL('./analysisWorker.ts', import.meta.url),
+ *   workerFactory: (name) =>
+ *     new Worker(new URL('./analysisWorker.ts', import.meta.url), { type: 'module', name }),
  * });
  *
  * const result = await pool.submit(
@@ -149,7 +167,7 @@ interface QueuedTask<T> {
  */
 export class WorkerPool<T> {
   // ── Configuration ────────────────────────────────────────────
-  private readonly workerUrl: URL;
+  private readonly workerFactory: (name?: string) => Worker;
   private readonly minWorkers: number;
   private readonly maxWorkers: number;
   private readonly idleTimeoutMs: number;
@@ -162,7 +180,7 @@ export class WorkerPool<T> {
   private destroyed = false;
 
   constructor(options: WorkerPoolOptions) {
-    this.workerUrl = options.workerUrl;
+    this.workerFactory = options.workerFactory;
 
     const hwConcurrency = this.getHardwareConcurrency();
     const defaultMax = hwConcurrency;
@@ -473,8 +491,10 @@ export class WorkerPool<T> {
 
     try {
       const id = this.nextWorkerId++;
-      const wrapped = createWorker<T>(this.workerUrl, {
-        name: `pool-worker-${id}`,
+      // Naming flows through the factory argument: when `createWorker`
+      // receives a factory (rather than a URL) its own `name` option is
+      // ignored, so the factory itself must apply the worker name.
+      const wrapped = createWorker<T>(() => this.workerFactory(`pool-worker-${id}`), {
         timeoutMs: this.taskTimeoutMs,
       });
 
@@ -496,7 +516,7 @@ export class WorkerPool<T> {
           'Worker Pool Error',
           'Failed to create a new worker for the pool',
           ErrorSeverity.ERROR,
-          { workerUrl: this.workerUrl.href },
+          { pooled: true },
           err instanceof Error ? err : new Error(String(err)),
         ),
       );
