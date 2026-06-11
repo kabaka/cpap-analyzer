@@ -16,7 +16,10 @@ import { test, expect, type Page } from '@playwright/test';
 // ── Constants ──
 
 const DB_NAME = 'cpap-analyzer';
-const DB_VERSION = 1;
+// Note: no DB_VERSION constant. The seed helper opens the app DB with a
+// version-less indexedDB.open(name) so it attaches to whatever schema version
+// the app has already created. Pinning a version here breaks whenever the app
+// bumps its schema (a version-less open never throws VersionError on migration).
 const MACHINE_ID = '23241654214';
 const MACHINE_MODEL = 'AirSense 11 AutoSet';
 
@@ -132,9 +135,9 @@ async function injectTestData(
   aggregates: ReturnType<typeof makeAggregate>[],
 ): Promise<void> {
   await page.evaluate(
-    ({ dbName, dbVersion, sessions, aggregates }) => {
+    ({ dbName, sessions, aggregates }) => {
       return new Promise<void>((resolve, reject) => {
-        const request = indexedDB.open(dbName, dbVersion);
+        const request = indexedDB.open(dbName);
         request.onerror = () => reject(new Error('Failed to open database'));
         request.onsuccess = () => {
           const db = request.result;
@@ -160,7 +163,7 @@ async function injectTestData(
         };
       });
     },
-    { dbName: DB_NAME, dbVersion: DB_VERSION, sessions, aggregates },
+    { dbName: DB_NAME, sessions, aggregates },
   );
 }
 
@@ -308,9 +311,22 @@ test.describe('Session Detail', () => {
     // Machine model displayed
     await expect(page.getByText(MACHINE_MODEL)).toBeVisible();
 
-    // AHI metric card
+    // AHI metric card. Scope to the card so the AHI primary value is
+    // disambiguated from the RDI secondary value, which the redesigned card now
+    // also displays (RDI = AHI + RERA index; with ahiRera = 0 in the fixture,
+    // RDI numerically equals AHI = 3.2, which is why an unscoped getByText('3.2')
+    // now matches two elements).
     await expect(page.getByRole('heading', { name: 'AHI' })).toBeVisible();
-    await expect(page.getByText('3.2')).toBeVisible();
+    const ahiCard = page
+      .locator('div', { has: page.getByRole('heading', { name: 'AHI' }) })
+      .filter({ hasText: 'events/hr' })
+      .last();
+    // Primary AHI value with its unit.
+    await expect(ahiCard.getByText('3.2').first()).toBeVisible();
+    await expect(ahiCard.getByText('events/hr', { exact: true })).toBeVisible();
+    // New RDI readout (Respiratory Disturbance Index = AHI + RERA index).
+    await expect(ahiCard.getByText('RDI', { exact: true })).toBeVisible();
+    await expect(ahiCard.getByText(/events\/hr \(incl\. RERA\)/)).toBeVisible();
 
     // Leak Rate metric card
     await expect(page.getByRole('heading', { name: 'Leak Rate' })).toBeVisible();

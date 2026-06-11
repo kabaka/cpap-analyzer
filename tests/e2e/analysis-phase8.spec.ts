@@ -131,7 +131,10 @@ test.describe('Analysis Engine — Distribution Analysis', () => {
 
     expect(result.statistic).toBeGreaterThan(0);
     expect(result.statistic).toBeLessThanOrEqual(1);
-    expect(result.testName).toBe('Shapiro-Wilk');
+    // The function always computed the Shapiro-Francia statistic; `shapiroWilk`
+    // is now a deprecated alias that delegates to shapiroFrancia and reports the
+    // correct test name.
+    expect(result.testName).toBe('Shapiro-Francia');
     expect(typeof result.isNormal).toBe('boolean');
     expect(typeof result.pValue).toBe('number');
   });
