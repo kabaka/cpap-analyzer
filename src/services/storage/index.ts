@@ -29,6 +29,9 @@ export {
 // In-memory LRU cache
 export { CacheService } from './CacheService';
 
+// Total user-data wipe (privacy-critical "delete all data" action)
+export { clearAllUserData } from './clearAllUserData';
+
 // Migration framework
 export {
   BackgroundMigrationHandle,

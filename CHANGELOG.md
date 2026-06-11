@@ -15,6 +15,8 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 - URL-encoded date ranges no longer shift by one day for users in time zones behind or ahead of UTC. Shared and bookmarked date-range links now resolve to the intended local dates.
 - "Learn More" on the empty dashboard now navigates correctly within the app (previously a broken full-page link).
 - The Signal Viewer no longer carries one session's hidden-channel selection over into another session; channel visibility is again scoped per session.
+- "Delete all data" (in both Settings and the Data Management view) no longer fails with an `OPFS not initialized` error and could previously delete nothing; the OPFS signal-storage service now self-initializes, so a full wipe completes reliably. In Settings, a deletion failure is now surfaced to the user instead of being silently swallowed.
+- "Delete all data" now also clears residual app-owned `localStorage`/`sessionStorage` entries — including the per-session Signal Viewer view preferences stored under `signal-viewer-hidden-<sessionId>` keys — so no session metadata survives a full wipe (previously these keys were left behind).
 
 ### Changed (Phase 10 — clinical: some displayed numbers will change)
 
