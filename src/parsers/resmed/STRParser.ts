@@ -45,9 +45,13 @@ export interface STRDayRecord {
  * A single mask-on/mask-off interval recorded by the machine.
  *
  * Derived from the STR.edf `MaskOn` / `MaskOff` channels, which store up to 10
- * intervals per day as minutes-of-day (0–1440); unused slots are the sentinel
- * `-1`. `start`/`end` are absolute wall-clock times (local), with `end` always
- * ≥ `start`.
+ * intervals per STR "session day". Per the OSCAR ResmedLoader reference
+ * implementation, the stored values are **minutes since NOON** of the record's
+ * calendar date — NOT minutes-of-day from midnight. ResMed splits days at noon,
+ * so a record dated D covers local `D 12:00` (noon) through `D+1 12:00`. A value
+ * of e.g. `1200` therefore resolves to `noon + 1200 min = D+1 08:00`. Unused
+ * slots are `0` / negative (no event). `start`/`end` are absolute wall-clock
+ * times (local), with `end` always ≥ `start`.
  */
 export interface MaskInterval {
   /** Mask-on (therapy start) time. */
@@ -69,11 +73,23 @@ export interface STRParseResult {
   readonly maskIntervalsByDate: ReadonlyMap<string, MaskInterval[]>;
 }
 
-/** Sentinel value for unused MaskOn/MaskOff slots. */
-const MASK_SLOT_SENTINEL = -1;
-
-/** Minutes in a day; MaskOn/MaskOff values are minutes-of-day in [0, 1440]. */
-const MINUTES_PER_DAY = 1440;
+/**
+ * Upper sanity bound (minutes) for a MaskOn/MaskOff slot value.
+ *
+ * Values are minutes-since-noon. A normal noon-to-noon session day spans 1440
+ * minutes, but a session straddling the noon boundary can legitimately push an
+ * offset slightly past 1440 in some firmware. We allow a generous margin and
+ * only reject grossly-out-of-range values (decode garbage) rather than the old
+ * hard `> 1440` cutoff, which silently discarded valid late-morning sessions.
+ *
+ * Note: this intentionally diverges from OSCAR's reference loader, which warns
+ * and DISCARDS slots `> 24*60`. OSCAR can do that because it stitches
+ * noon-straddling sessions via its own start/end adjustment; here we instead
+ * retain the raw offset (up to 2880 min) and rely on date-keying plus
+ * clip-to-window in `computeUsageFromIntervals` to place and bound each
+ * interval, so legitimate post-noon offsets above 1440 must be kept.
+ */
+const MASK_MINUTES_SANITY_MAX = 2 * 1440;
 
 // ---------------------------------------------------------------------------
 // Channel name mapping for settings extraction
@@ -466,15 +482,24 @@ export class STRParser {
    * Extract per-day mask-on/off intervals from the STR `MaskOn` / `MaskOff`
    * channels.
    *
-   * Each STR data record is one calendar day and holds up to 10 interval slots
-   * (`samplesPerRecord = 10`). `MaskOn[k]` and `MaskOff[k]` are minutes-of-day
-   * in [0, 1440]; unused slots are the sentinel `-1`. A slot is a valid
-   * interval when both endpoints are in range and `MaskOff >= MaskOn`.
+   * Each STR data record is one ResMed "session day" and holds up to 10
+   * interval slots (`samplesPerRecord = 10`). Per the OSCAR ResmedLoader
+   * reference decoder, `MaskOn[k]` and `MaskOff[k]` are **minutes since NOON**
+   * of the record's calendar date — NOT minutes-of-day from midnight. ResMed
+   * splits days at noon, so the absolute wall-clock time of a slot is:
    *
-   * Returned `start`/`end` are absolute local wall-clock times = (the record's
-   * calendar midnight) + the minutes-of-day offset. The map is keyed by the
-   * same ISO date string used for `settingsByDate`, so a session's date looks
-   * up its own day's intervals directly.
+   *   `time = (record date at local 12:00) + value_minutes * 60s`
+   *
+   * A value `> 720` therefore crosses midnight into the next calendar day
+   * (e.g. `1200` → `noon + 20h` → next day 08:00), which is normal and must
+   * NOT be discarded. Unused slots are `0` or negative (no event).
+   *
+   * Each interval is keyed by the calendar date of its own `start` wall-clock
+   * time (which may be the record's date or the following date). This makes the
+   * map align with the date-keyed lookup the SessionBuilder performs against
+   * each EDF session window (whose `startTime` is local wall-clock). The
+   * SessionBuilder additionally probes ±1 calendar day, so a session is robust
+   * to either keying choice.
    *
    * @returns Empty map when MaskOn/MaskOff channels are absent (older firmware).
    */
@@ -495,32 +520,33 @@ export class STRParser {
     if (slotCount <= 0) return byDate;
 
     for (let recordIdx = 0; recordIdx < numRecords; recordIdx++) {
-      // Resolve this record's calendar day (local midnight).
+      // Resolve this record's NOON anchor (local 12:00 of the record's date).
       const dayValue = dateSamples?.[recordIdx] ?? 0;
-      const dayStart = this.dayValueToLocalMidnight(dayValue, startDate, recordIdx);
-      const isoDate = this.formatDate(dayStart);
+      const noonAnchor = this.dayValueToLocalNoon(dayValue, startDate, recordIdx);
+      const noonMs = noonAnchor.getTime();
 
-      const intervals: MaskInterval[] = [];
       const base = recordIdx * slotCount;
       for (let s = 0; s < slotCount; s++) {
         const onMin = maskOnChannel.samples[base + s];
         const offMin = maskOffChannel.samples[base + s];
         if (onMin === undefined || offMin === undefined) continue;
-        if (onMin === MASK_SLOT_SENTINEL || offMin === MASK_SLOT_SENTINEL) continue;
-        if (onMin < 0 || offMin < 0 || onMin > MINUTES_PER_DAY || offMin > MINUTES_PER_DAY)
-          continue;
+        // Sentinel / empty slot: a non-positive on-time means "no session" in
+        // this slot. (OSCAR likewise treats on <= 0 as no event.)
+        if (onMin <= 0 || offMin <= 0) continue;
+        // Reject only gross out-of-range garbage, NOT normal values above 720
+        // (which cross midnight) or slightly above 1440 (noon-boundary spill).
+        if (onMin > MASK_MINUTES_SANITY_MAX || offMin > MASK_MINUTES_SANITY_MAX) continue;
         if (offMin < onMin) continue; // malformed slot; skip rather than invert
 
-        const start = new Date(dayStart.getTime() + onMin * 60_000);
-        const end = new Date(dayStart.getTime() + offMin * 60_000);
-        intervals.push({ start, end });
-      }
+        const start = new Date(noonMs + onMin * 60_000);
+        const end = new Date(noonMs + offMin * 60_000);
 
-      if (intervals.length > 0) {
-        // Records can repeat a calendar date in rare re-sync cases; merge.
+        // Key by the interval's own start-date so the entry lands on the same
+        // local calendar day a session built from EDF would report.
+        const isoDate = this.formatDate(start);
         const existing = byDate.get(isoDate);
-        if (existing) existing.push(...intervals);
-        else byDate.set(isoDate, intervals);
+        if (existing) existing.push({ start, end });
+        else byDate.set(isoDate, [{ start, end }]);
       }
     }
 
@@ -528,22 +554,31 @@ export class STRParser {
   }
 
   /**
-   * Resolve a record's calendar day to a local-time midnight Date.
+   * Resolve a record's session day to a local-time NOON Date (12:00).
    *
-   * Mirrors {@link dayValueToDate} (ResMed Excel-serial epoch) but returns a
-   * Date at local 00:00 so minute-of-day offsets land on the correct local
-   * wall-clock time. Falls back to (startDate + recordIdx days) when the day
-   * value is absent or sentinel.
+   * ResMed MaskOn/MaskOff values are minutes-since-noon, so the anchor for
+   * converting them to absolute wall-clock time is local noon of the record's
+   * calendar date. Mirrors {@link dayValueToDate}'s Excel-serial epoch for the
+   * Y/M/D, then sets the local time to 12:00. Falls back to
+   * (startDate + recordIdx days) at local noon when the day value is absent.
    */
-  private dayValueToLocalMidnight(dayValue: number, startDate: Date, recordIdx: number): Date {
+  private dayValueToLocalNoon(dayValue: number, startDate: Date, recordIdx: number): Date {
     if (dayValue > 0) {
-      // Excel-serial epoch interpreted in UTC, then projected to local midnight
+      // Excel-serial epoch interpreted in UTC, then projected to local noon
       // via its calendar Y/M/D so the result matches dayValueToDate's string.
       const epochMs = Date.UTC(1899, 11, 30);
       const utc = new Date(epochMs + dayValue * 86_400_000);
-      return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+      return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate(), 12, 0, 0, 0);
     }
-    const d = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+    const d = new Date(
+      startDate.getFullYear(),
+      startDate.getMonth(),
+      startDate.getDate(),
+      12,
+      0,
+      0,
+      0,
+    );
     d.setDate(d.getDate() + recordIdx);
     return d;
   }
