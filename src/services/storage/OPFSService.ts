@@ -190,6 +190,14 @@ const BYTES_PER_SAMPLE = 4;
 export class OPFSService {
   private root: FileSystemDirectoryHandle | null = null;
 
+  /**
+   * In-flight initialization promise. Cached so concurrent callers share a
+   * single `getDirectory()`/`getDirectoryHandle()` sequence rather than racing
+   * to create the root handle. Reset to `null` on failure so a later call can
+   * retry from scratch.
+   */
+  private initPromise: Promise<void> | null = null;
+
   // -----------------------------------------------------------------------
   // Feature detection
   // -----------------------------------------------------------------------
@@ -207,8 +215,30 @@ export class OPFSService {
   // Lifecycle
   // -----------------------------------------------------------------------
 
-  /** Initialize the OPFS directory structure. Must be called before any I/O. */
+  /**
+   * Initialize the OPFS directory structure.
+   *
+   * Idempotent and concurrency-safe: if the root handle is already resolved
+   * this returns immediately, and concurrent callers share a single in-flight
+   * initialization promise rather than racing to create the root handle. On
+   * failure the cached promise is cleared so a later call can retry.
+   */
   async initialize(): Promise<void> {
+    if (this.root) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = this.doInitialize();
+    try {
+      await this.initPromise;
+    } catch (error) {
+      // Allow a later call to retry after a transient failure.
+      this.initPromise = null;
+      throw error;
+    }
+  }
+
+  /** Perform the actual OPFS directory setup. Guarded by {@link initialize}. */
+  private async doInitialize(): Promise<void> {
     if (!OPFSService.isSupported()) {
       throw new OPFSError(
         'OPFS_NOT_SUPPORTED',
@@ -219,15 +249,19 @@ export class OPFSService {
 
     try {
       const opfsRoot = await navigator.storage.getDirectory();
-      this.root = await opfsRoot.getDirectoryHandle(APP_DIR, { create: true });
+      const appRoot = await opfsRoot.getDirectoryHandle(APP_DIR, { create: true });
 
       // Ensure standard subdirectory structure exists
-      const signalsDir = await this.root.getDirectoryHandle(SIGNALS_DIR, { create: true });
-      const cacheDir = await this.root.getDirectoryHandle(CACHE_DIR, { create: true });
+      const signalsDir = await appRoot.getDirectoryHandle(SIGNALS_DIR, { create: true });
+      const cacheDir = await appRoot.getDirectoryHandle(CACHE_DIR, { create: true });
 
       // Just ensure directories exist
       void signalsDir;
       await cacheDir.getDirectoryHandle(DOWNSAMPLED_DIR, { create: true });
+
+      // Publish the root handle only after the full structure is in place, so a
+      // concurrent caller never observes a partially-initialized service.
+      this.root = appRoot;
     } catch (error) {
       throw new OPFSError(
         'OPFS_INIT_FAILED',
@@ -675,7 +709,7 @@ export class OPFSService {
    */
   async deleteAll(): Promise<void> {
     try {
-      const root = this.getRoot();
+      const root = await this.ensureInitialized();
       // Remove and recreate signals directory
       try {
         await root.removeEntry(SIGNALS_DIR, { recursive: true });
@@ -787,6 +821,22 @@ export class OPFSService {
   // Internal helpers
   // -----------------------------------------------------------------------
 
+  /**
+   * Resolve the OPFS root handle, initializing the service on demand.
+   *
+   * Self-initializing so that root-dependent I/O methods work on a freshly
+   * constructed instance without an explicit `initialize()` call. Callers that
+   * still invoke `initialize()` up front remain correct — it's a no-op the
+   * second time around.
+   */
+  private async ensureInitialized(): Promise<FileSystemDirectoryHandle> {
+    if (!this.root) {
+      await this.initialize();
+    }
+    // `initialize()` either sets `this.root` or throws, so this is non-null.
+    return this.getRoot();
+  }
+
   private getRoot(): FileSystemDirectoryHandle {
     if (!this.root) {
       throw new OPFSError(
@@ -799,7 +849,7 @@ export class OPFSService {
   }
 
   private async getSignalsDir(): Promise<FileSystemDirectoryHandle> {
-    const root = this.getRoot();
+    const root = await this.ensureInitialized();
     return root.getDirectoryHandle(SIGNALS_DIR, { create: true });
   }
 
@@ -812,7 +862,7 @@ export class OPFSService {
   }
 
   private async getDownsampledDir(): Promise<FileSystemDirectoryHandle> {
-    const root = this.getRoot();
+    const root = await this.ensureInitialized();
     const cacheDir = await root.getDirectoryHandle(CACHE_DIR, { create: true });
     return cacheDir.getDirectoryHandle(DOWNSAMPLED_DIR, { create: true });
   }

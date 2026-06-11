@@ -26,6 +26,7 @@ import {
 import { getDB } from '@/services/storage/getDB';
 import { resetDB } from '@/services/storage/getDB';
 import { OPFSService } from '@/services/storage/OPFSService';
+import { clearAllUserData } from '@/services/storage/clearAllUserData';
 import { downloadBlob, encryptBuffer } from '@/services/reports';
 import { useDataStore } from '@/stores/useDataStore';
 import type { ImportRecord, Session } from '@/types';
@@ -419,14 +420,11 @@ function CleanupTab() {
     setDeleting(true);
     setStatus(null);
     try {
-      const db = await getDB();
-      await db.destroy();
-      resetDB();
-      const opfs = new OPFSService();
-      await opfs.deleteAll();
-      localStorage.removeItem('cpap-theme');
-      localStorage.removeItem('cpap-settings');
-      clearCache();
+      // Single shared wipe of all durable + in-memory user data (IndexedDB,
+      // OPFS, app-owned localStorage incl. per-session keys, in-memory cache,
+      // and settings). Privacy-critical: a failure propagates so we never
+      // report success on a partial deletion.
+      await clearAllUserData();
       setDeleteAllOpen(false);
       setDeleteConfirmText('');
       setStatus({
@@ -441,7 +439,7 @@ function CleanupTab() {
     } finally {
       setDeleting(false);
     }
-  }, [clearCache]);
+  }, []);
 
   return (
     <div className={styles.cleanupSection}>

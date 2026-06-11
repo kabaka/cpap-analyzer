@@ -11,8 +11,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { Accordion, Button, Card, Dialog, Input, Select, Switch, Tabs } from '@/components/ui';
-import { getDB, resetDB } from '@/services/storage/getDB';
-import { OPFSService } from '@/services/storage/OPFSService';
+import { clearAllUserData } from '@/services/storage/clearAllUserData';
 import { formatBytes } from '@/utils/formatBytes';
 import styles from './Settings.module.css';
 
@@ -418,6 +417,7 @@ function PrivacyStorageSection() {
   const [storageEstimate, setStorageEstimate] = useState<StorageEstimate | null>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -446,31 +446,18 @@ function PrivacyStorageSection() {
 
   const handleClearAllData = useCallback(async () => {
     setClearing(true);
+    setClearError(null);
     try {
-      // Destroy IndexedDB
-      const db = await getDB();
-      await db.destroy();
-      resetDB();
-
-      // Clear OPFS
-      try {
-        const opfs = new OPFSService();
-        await opfs.deleteAll();
-      } catch {
-        // OPFS may not be available in all browsers
-      }
-
-      // Clear localStorage for app data (preserve nothing)
-      localStorage.removeItem('cpap-settings');
-      localStorage.removeItem('cpap-theme');
-
-      // Reset stores to defaults
-      useSettingsStore.getState().resetToDefaults();
-    } catch {
-      // Best effort — some cleanup may have succeeded
+      // Single shared wipe of all durable + in-memory user data. Privacy-critical:
+      // a failure here means data may remain, so it propagates rather than being
+      // swallowed, keeping the dialog open with an error.
+      await clearAllUserData();
+      setShowClearDialog(false);
+    } catch (err: unknown) {
+      // Surface the failure — never silently report success on a deletion path.
+      setClearError(err instanceof Error ? err.message : 'Failed to clear all data.');
     } finally {
       setClearing(false);
-      setShowClearDialog(false);
     }
   }, []);
 
@@ -544,7 +531,10 @@ function PrivacyStorageSection() {
           <div>
             <Button
               variant="danger"
-              onClick={() => setShowClearDialog(true)}
+              onClick={() => {
+                setClearError(null);
+                setShowClearDialog(true);
+              }}
               disabled={clearing}
               loading={clearing}
             >
@@ -563,6 +553,11 @@ function PrivacyStorageSection() {
         <p className={styles.sectionDescription}>
           Are you sure you want to continue? This action <strong>cannot be undone</strong>.
         </p>
+        {clearError && (
+          <p className={styles.clearError} role="alert">
+            {clearError}
+          </p>
+        )}
         <div className={styles.dialogActions}>
           <Button variant="secondary" onClick={() => setShowClearDialog(false)}>
             Cancel

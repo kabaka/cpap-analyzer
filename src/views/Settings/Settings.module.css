@@ -222,6 +222,13 @@
   margin: 0;
 }
 
+/* Clear-all-data error message (shown inside the confirmation dialog) */
+.clearError {
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+  margin: var(--space-3) 0 0;
+}
+
 /* Dialog actions */
 .dialogActions {
   display: flex;
