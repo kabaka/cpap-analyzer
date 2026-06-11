@@ -38,7 +38,9 @@ const CSP_DIRECTIVES = [
   // - data: URIs from canvas.toDataURL('image/png') in PDF reports
   //   (src/services/reports/pdf/charts.ts)
   "img-src 'self' data: blob:",
-  "font-src 'self'",
+  // data: needed because Vite may inline small font files (e.g. KaTeX woff2)
+  // as data: URIs even with assetsInlineLimit: 0 in edge cases.
+  "font-src 'self' data:",
   // No live external network calls exist yet — Fitbit/weather/LLM integrations
   // are scaffolded in settings but unimplemented ("coming soon"). When they
   // ship, add their hosts here:
