@@ -65,17 +65,12 @@ interface UseImportResult {
   reset: () => void;
 }
 
-/** The Vite-statically-analyzable worker URL for the EDF parser. */
-function edfWorkerUrl(): URL {
-  return new URL('../services/workers/edfParser.worker.ts', import.meta.url);
-}
-
 /** Create an EDF worker factory for the ImportService (single-worker fallback). */
 function makeWorkerFactory(): EDFWorkerFactory {
   return () =>
     createWorker<EDFParserWorkerAPI>(
       () =>
-        new Worker(edfWorkerUrl(), {
+        new Worker(new URL('../services/workers/edfParser.worker.ts', import.meta.url), {
           type: 'module',
           name: 'edf-parser',
         }),
@@ -101,7 +96,11 @@ function makeWorkerPoolFactory(): EDFWorkerPoolFactory {
   return () => {
     const maxWorkers = recommendedPoolSize();
     return new WorkerPool<EDFParserWorkerAPI>({
-      workerUrl: edfWorkerUrl(),
+      workerFactory: (name?: string) =>
+        new Worker(new URL('../services/workers/edfParser.worker.ts', import.meta.url), {
+          type: 'module',
+          name: name ?? 'edf-parser',
+        }),
       minWorkers: 1,
       maxWorkers,
       taskTimeoutMs: 60_000,
