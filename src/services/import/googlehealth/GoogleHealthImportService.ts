@@ -147,6 +147,51 @@ export class GoogleHealthImportService {
 
     emit({ status: 'parsing' });
 
+    // Resolve the actual export root (the scanner does the same thing
+    // internally during scan, but the import method receives the original
+    // user-selected handle which may be a parent of the real root).
+    const { resolveRoot } = await import('./scanner');
+    const root = await resolveRoot(dirHandle);
+    if (!root) {
+      const importRecord: IntegrationImportRecord = {
+        id: crypto.randomUUID(),
+        source: SOURCE,
+        importedAt: new Date().toISOString(),
+        dateRangeStart: scanResult.dateRange?.start ?? '',
+        dateRangeEnd: scanResult.dateRange?.end ?? '',
+        dataTypes: options.selectedDataTypes,
+        recordsImported: 0,
+        recordsSkipped: 0,
+        recordsErrored: 1,
+        errors: [
+          {
+            fileName: '',
+            error: 'Could not locate Google Health export root',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+        durationSeconds: Math.round(((Date.now() - startTime) / 1000) * 100) / 100,
+        fileHashes: [],
+      };
+      try {
+        await this.db.addIntegrationImportRecord(importRecord);
+      } catch {
+        // Best-effort: if we can't even record the failure, still return.
+      }
+      emit({
+        status: 'error',
+        errors: [
+          {
+            fileName: '',
+            error: 'Could not locate Google Health export root',
+            recoverable: false,
+          },
+        ],
+        currentStage: 'Import failed',
+      });
+      return importRecord;
+    }
+
     // Lazy-import the parsers module.
     const parsers = await import('./parsers');
 
@@ -185,7 +230,7 @@ export class GoogleHealthImportService {
 
       try {
         // 1. Read File objects from directory handle.
-        const files = await this.readFilesForDataType(dirHandle, dtInfo, errors);
+        const files = await this.readFilesForDataType(root, dtInfo, errors);
         if (files.length === 0) {
           warnings.push(`No readable files found for ${dtInfo.label}`);
           continue;

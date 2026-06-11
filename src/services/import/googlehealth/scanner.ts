@@ -197,7 +197,7 @@ export async function scanGoogleHealthExport(
 
       for (const entry of fileEntries) {
         if (source.pattern.test(entry.name)) {
-          matchingFiles.push(entry.name);
+          matchingFiles.push(`${dirName}/${entry.name}`);
           // Use the File API's `size` property for estimates when available.
           // File System Access API's FileSystemFileHandle has no sync size,
           // so we estimate based on filename count (sizes measured during parse).
@@ -262,7 +262,7 @@ export async function scanGoogleHealthExport(
           recordCount: csvFiles.length,
           dateRange: null,
           estimatedSizeBytes: estimatedSize,
-          files: csvFiles.map((f) => f.name),
+          files: csvFiles.map((f) => `Physical Activity_GoogleData/${f.name}`),
         });
         totalFileCount += csvFiles.length;
         totalEstimatedSize += estimatedSize;
@@ -309,7 +309,7 @@ export async function scanGoogleHealthExport(
  * 2. The root is at `<selected>/Google Health/`
  * 3. The root is at `<selected>/Takeout/Google Health/`
  */
-async function resolveRoot(
+export async function resolveRoot(
   dirHandle: FileSystemDirectoryHandle,
 ): Promise<FileSystemDirectoryHandle | null> {
   // Case 1: check if the selected directory itself is the root
