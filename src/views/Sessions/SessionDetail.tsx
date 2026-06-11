@@ -22,7 +22,6 @@ import {
   TableHead,
   TableCell,
   Tooltip,
-  TooltipProvider,
 } from '@/components/ui';
 import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
 import type { Event, EventType, MachineType, NightlyAggregate } from '@/types';
@@ -156,70 +155,68 @@ function EventTimeline({ events, sessionStart, sessionEnd }: EventTimelineProps)
   if (sessionDurationMs <= 0) return null;
 
   return (
-    <TooltipProvider>
-      <div className={styles.timelineSection}>
-        <h2 className={styles.sectionTitle}>Event Timeline</h2>
-        <div
-          className={styles.timelineContainer}
-          role="img"
-          aria-label={`Event timeline showing ${events.length} events across the session`}
-        >
-          {events.map((event) => {
-            const leftPct = ((event.timestamp - sessionStart) / sessionDurationMs) * 100;
-            const widthPct = ((event.duration * 1000) / sessionDurationMs) * 100;
-            const color = EVENT_COLORS[event.type] ?? 'var(--color-text-muted)';
+    <div className={styles.timelineSection}>
+      <h2 className={styles.sectionTitle}>Event Timeline</h2>
+      <div
+        className={styles.timelineContainer}
+        role="img"
+        aria-label={`Event timeline showing ${events.length} events across the session`}
+      >
+        {events.map((event) => {
+          const leftPct = ((event.timestamp - sessionStart) / sessionDurationMs) * 100;
+          const widthPct = ((event.duration * 1000) / sessionDurationMs) * 100;
+          const color = EVENT_COLORS[event.type] ?? 'var(--color-text-muted)';
 
-            return (
-              <Tooltip
-                key={event.id}
-                content={`${EVENT_TYPE_LABELS[event.type] ?? event.type}: ${event.duration.toFixed(1)}s`}
-                side="top"
-              >
-                <div
-                  className={styles.timelineEvent}
-                  data-left={Math.max(0, Math.min(leftPct, 100))}
-                  data-width={Math.max(0.3, Math.min(widthPct, 100 - leftPct))}
-                  data-color={color}
-                  ref={(el) => {
-                    if (el) {
-                      el.style.setProperty('--evt-left', `${Math.max(0, Math.min(leftPct, 100))}%`);
-                      el.style.setProperty(
-                        '--evt-width',
-                        `${Math.max(0.3, Math.min(widthPct, 100 - leftPct))}%`,
-                      );
-                      el.style.setProperty('--evt-color', color);
-                    }
-                  }}
-                />
-              </Tooltip>
-            );
-          })}
-        </div>
-        <div className={styles.timelineLabels}>
-          <span>{formatTime(new Date(sessionStart).toISOString())}</span>
-          <span>{formatTime(new Date(sessionEnd).toISOString())}</span>
-        </div>
-        <div className={styles.timelineLegend}>
-          {[
-            { label: 'Obstructive', color: 'var(--color-status-severe)' },
-            { label: 'Central', color: 'var(--color-status-moderate)' },
-            { label: 'Hypopnea', color: 'var(--color-status-mild)' },
-            { label: 'RERA', color: 'var(--color-chart-4)' },
-            { label: 'Other', color: 'var(--color-text-muted)' },
-          ].map((item) => (
-            <span key={item.label} className={styles.legendItem}>
-              <span
-                className={styles.legendSwatch}
+          return (
+            <Tooltip
+              key={event.id}
+              content={`${EVENT_TYPE_LABELS[event.type] ?? event.type}: ${event.duration.toFixed(1)}s`}
+              side="top"
+            >
+              <div
+                className={styles.timelineEvent}
+                data-left={Math.max(0, Math.min(leftPct, 100))}
+                data-width={Math.max(0.3, Math.min(widthPct, 100 - leftPct))}
+                data-color={color}
                 ref={(el) => {
-                  if (el) el.style.setProperty('--swatch-color', item.color);
+                  if (el) {
+                    el.style.setProperty('--evt-left', `${Math.max(0, Math.min(leftPct, 100))}%`);
+                    el.style.setProperty(
+                      '--evt-width',
+                      `${Math.max(0.3, Math.min(widthPct, 100 - leftPct))}%`,
+                    );
+                    el.style.setProperty('--evt-color', color);
+                  }
                 }}
               />
-              {item.label}
-            </span>
-          ))}
-        </div>
+            </Tooltip>
+          );
+        })}
       </div>
-    </TooltipProvider>
+      <div className={styles.timelineLabels}>
+        <span>{formatTime(new Date(sessionStart).toISOString())}</span>
+        <span>{formatTime(new Date(sessionEnd).toISOString())}</span>
+      </div>
+      <div className={styles.timelineLegend}>
+        {[
+          { label: 'Obstructive', color: 'var(--color-status-severe)' },
+          { label: 'Central', color: 'var(--color-status-moderate)' },
+          { label: 'Hypopnea', color: 'var(--color-status-mild)' },
+          { label: 'RERA', color: 'var(--color-chart-4)' },
+          { label: 'Other', color: 'var(--color-text-muted)' },
+        ].map((item) => (
+          <span key={item.label} className={styles.legendItem}>
+            <span
+              className={styles.legendSwatch}
+              ref={(el) => {
+                if (el) el.style.setProperty('--swatch-color', item.color);
+              }}
+            />
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
