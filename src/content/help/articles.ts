@@ -259,6 +259,75 @@ export const helpArticles: readonly HelpArticle[] = [
     ],
   },
 
+  // ─── INTERPRETING GRANGER CAUSALITY ───────────────────────────────
+  {
+    slug: 'interpreting-granger-causality',
+    title: 'Interpreting Granger Causality',
+    summary:
+      'How to read the Granger Causality tab: predictive precedence vs. causation, directionality, the exploratory flag, non-stationarity, confidence, and the AIC-by-lag chart.',
+    icon: 'statistics',
+    sections: [
+      {
+        heading: 'What Granger causality is (and is not)',
+        paragraphs: [
+          'Granger causality answers a forecasting question, not a mechanistic one. It fits two nested vector-autoregression (VAR) models for the target metric Y: a restricted model using only Y’s own lagged history, $y_t = \\sum \\alpha_i y_{t-i} + \\varepsilon$, and an unrestricted model that also adds the lagged history of a second metric X, $y_t = \\sum \\alpha_i y_{t-i} + \\sum \\beta_i x_{t-i} + \\varepsilon$. An F-test then asks whether the X terms jointly improve the prediction (i.e. whether all $\\beta_i = 0$ can be rejected). If they do, X is said to "Granger-cause" Y — meaning the past of X has predictive precedence over Y.',
+          'This is predictive precedence, not proof of physical causation. A lurking third variable — a behavior, an illness, a seasonal factor, or an equipment change that drives both series — can produce exactly the same pattern. Granger causality narrows down candidate relationships to investigate; it never establishes a mechanism on its own, and it is never by itself a basis for a clinical decision.',
+        ],
+      },
+      {
+        heading: 'Directionality: X→Y and Y→X are separate tests',
+        paragraphs: [
+          'The three statistics in the Directional detail panel — the F-statistic, the p-value, and the reported lag — describe the X→Y direction only: does the past of X help predict Y? The reverse question, does the past of Y help predict X, is a distinct test with its own F-statistic and p-value.',
+          'The verdict and confidence shown at the top of the tab consider both directions; the directional statistics shown below them do not. The two directions can disagree — it is common for X→Y to be significant while Y→X is not, which is itself informative about which metric tends to lead.',
+        ],
+      },
+      {
+        heading: 'The "Exploratory p-value (lag auto-selected)" flag',
+        paragraphs: [
+          'In Exploratory mode the lag is chosen automatically by minimizing the Akaike Information Criterion (AIC) over the candidate lags — and then the F-test is run at that same lag on the same nights. When the data both chooses and tests the model, the resulting p-value is selection-affected: it is anti-conservative and understates the true false-positive rate, so causality is declared too readily. This is a post-selection inference problem (Leeb & Pötscher 2005), and CPAP Analyzer flags it rather than presenting such a p-value as a clean inferential quantity.',
+          'Read a flagged result as hypothesis-generating, not confirmed. To obtain a clean inferential p-value, switch to Confirmatory mode and fix the lag in advance — ideally a lag chosen from prior knowledge or estimated on a separate stretch of nights, not read off the AIC chart for the very data you are testing.',
+        ],
+      },
+      {
+        heading: 'The non-stationarity caution',
+        paragraphs: [
+          'The VAR F-test assumes its inputs are at least trend-stationary — their mean does not drift systematically over time. CPAP nightly series often violate this (acclimatization, weight change, seasonal leak). When CPAP Analyzer detects a significant deterministic linear trend in either input series, it raises a non-stationarity caution naming the affected metric.',
+          'This matters because a trend shared by two otherwise unrelated series can manufacture spurious Granger causality — the same mechanism behind spurious regression (Granger & Newbold 1974), where independent trending series appear strongly related. The usual remedy is first-differencing: analyze night-to-night changes ($\\Delta x_t = x_t - x_{t-1}$) instead of levels, which removes a linear trend and often restores stationarity before re-running the test.',
+        ],
+      },
+      {
+        heading: 'Confidence levels',
+        paragraphs: [
+          'The confidence chip summarizes the strength of evidence based on the more significant of the two directions: high when $p < 0.01$, moderate when $p < 0.05$, and low otherwise. Confidence is shown with a label and a dot indicator, not by color alone.',
+          'Confidence reflects statistical strength only. A "high" confidence result that carries the exploratory flag is still selection-affected, and even a clean high-confidence result is predictive precedence, not proof of causation. Always weigh confidence together with the exploratory and non-stationarity flags.',
+        ],
+      },
+      {
+        heading: 'The AIC-by-lag chart',
+        paragraphs: [
+          'AIC (Akaike Information Criterion) scores each candidate lag’s model by balancing fit against complexity: $\\text{AIC} = n\\ln(\\text{RSS}/n) + 2k$, where lower is better. Only differences in AIC between lags are meaningful — it is a comparison tool, not an absolute measure of fit.',
+          'Each point on the chart is the AIC for the unrestricted X→Y model at that lag. In Exploratory mode the lag with the lowest AIC is the one tested, marked by the reference line — which is precisely why that result’s p-value is selection-affected. Lags that cannot be fit because too few paired nights remain appear as gaps (infeasible lags), not as zero.',
+        ],
+      },
+      {
+        heading: 'Assumptions and limitations',
+        paragraphs: [
+          'The test assumes: (1) (trend-)stationary inputs — a significant linear trend triggers the non-stationarity caution; (2) roughly equal time spacing — CPAP Analyzer uses one value per night; and (3) a linear lagged relationship — purely non-linear dependence may be missed.',
+          'Data requirements: the test needs at least $2 \\cdot \\text{maxLag} + 2$ paired nights (nights where both metrics have a finite value); below that threshold the result reports as insufficient data and you can reduce the max lag. A constant metric (no variation across nights) carries no information to test and cannot be used.',
+          'Because the per-pair p-values are not corrected for multiple comparisons, scanning many metric pairs further inflates false positives — another reason to treat Exploratory findings as leads to confirm. CPAP Analyzer reports Granger results for exploration and does not diagnose.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Granger, C. W. J. (1969). Investigating causal relations by econometric models and cross-spectral methods. Econometrica, 37(3), 424–438.',
+          'Granger, C. W. J., & Newbold, P. (1974). Spurious regressions in econometrics. Journal of Econometrics, 2(2), 111–120.',
+          'Leeb, H., & Pötscher, B. M. (2005). Model selection and inference: facts and fiction. Econometric Theory, 21(1), 21–59.',
+        ],
+      },
+    ],
+  },
+
   // ─── EVENT ANALYSIS ───────────────────────────────────────────────
   {
     slug: 'event-analysis',

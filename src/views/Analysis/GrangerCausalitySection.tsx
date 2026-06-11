@@ -15,11 +15,13 @@
  */
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { ChartContainer, ThemedLineChart } from '@/components/charts';
 import type { ReferenceLineConfig } from '@/components/charts';
 import { Badge } from '@/components/ui/Badge';
+import { HelpPopover } from '@/components/help';
 import type { GrangerCausalityResult } from '@/analysis/correlation/granger';
 import { EmptyState, MetadataBanner, AssumptionsPanel } from './StatisticalAnalysis';
 import {
@@ -86,6 +88,74 @@ function WarningTriangleIcon() {
       <line x1="8" y1="6.25" x2="8" y2="9.75" />
       <line x1="8" y1="11.5" x2="8" y2="11.75" />
     </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Interpretation guide (contextual "how to read this" help)
+// ---------------------------------------------------------------------------
+
+/**
+ * Expandable explainer that complements — and does not duplicate — the inline
+ * honesty copy already in the result body (the selection-badge disclosure, the
+ * predictive-not-causal interpretation note, and the AssumptionsPanel). It
+ * gives a single "how to interpret this tab" entry point and links to the full
+ * Interpreting Granger Causality help article. Built on a native <details>
+ * element, so it is keyboard-operable with a visible focus ring out of the box.
+ */
+function InterpretationGuide() {
+  return (
+    <details className={styles.interpretGuide}>
+      <summary>How to interpret these results</summary>
+      <dl className={styles.interpretGuideBody}>
+        <dt>Predictive precedence, not proof of cause</dt>
+        <dd>
+          A Granger result means the past of one metric helps forecast the other beyond that
+          other&rsquo;s own past. It is not proof of physical causation — a lurking third factor
+          driving both metrics can produce the same pattern.
+        </dd>
+
+        <dt>Directionality is one-way</dt>
+        <dd>
+          The F-statistic, p-value, and lag in the Directional detail panel are for the
+          X&nbsp;&rarr; Y direction only. The verdict and confidence consider both directions;
+          X&nbsp;&rarr;&nbsp;Y and Y&nbsp;&rarr;&nbsp;X are separate tests that can disagree.
+        </dd>
+
+        <dt>Exploratory vs. Confirmatory</dt>
+        <dd>
+          In Exploratory mode the lag is auto-selected by minimizing AIC on the same nights the test
+          uses, so the p-value is selection-affected (anti-conservative) and understates the
+          false-positive rate — treat it as hypothesis-generating. For a clean inferential p-value,
+          use Confirmatory mode with a lag fixed from prior knowledge or a separate time period.
+        </dd>
+
+        <dt>Watch for non-stationarity</dt>
+        <dd>
+          A significant linear trend in an input violates the test&rsquo;s stationarity assumption;
+          a shared trend can manufacture spurious causality. When that is detected the tab shows a
+          caution — consider first-differencing (analyzing night-to-night changes) and re-running.
+        </dd>
+
+        <dt>Confidence reflects statistics only</dt>
+        <dd>
+          High (p&nbsp;&lt;&nbsp;0.01), moderate (p&nbsp;&lt;&nbsp;0.05), or low, based on the more
+          significant of the two directions. It does not override the exploratory or
+          non-stationarity flags, and high confidence still means predictive precedence, not
+          causation.
+        </dd>
+
+        <dt>Reading the AIC-by-lag chart</dt>
+        <dd>
+          AIC scores each lag&rsquo;s model by fit minus complexity (lower is better). In
+          Exploratory mode the lag with the lowest AIC is the one tested — which is exactly why that
+          p-value is selection-affected. Lags with too few paired nights to fit appear as gaps.
+        </dd>
+      </dl>
+      <Link className={styles.interpretGuideLink} to="/help/interpreting-granger-causality">
+        Read the full guide: Interpreting Granger Causality &rarr;
+      </Link>
+    </details>
   );
 }
 
@@ -326,11 +396,18 @@ export const GrangerCausalitySection = React.memo(function GrangerCausalitySecti
 
   return (
     <div className={shared.section}>
-      <h2 className={shared.sectionTitle}>
-        Granger Causality — {xMeta.label} vs. {yMeta.label}
-      </h2>
+      <div className={styles.titleRow}>
+        <h2 className={shared.sectionTitle} style={{ marginBottom: 0 }}>
+          Granger Causality — {xMeta.label} vs. {yMeta.label}
+        </h2>
+        <HelpPopover termId="granger-causality" side="bottom">
+          What is this?
+        </HelpPopover>
+      </div>
 
       {controls}
+
+      <InterpretationGuide />
 
       {metadata && <MetadataBanner metadata={metadata} />}
 

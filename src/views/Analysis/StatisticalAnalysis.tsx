@@ -8,7 +8,7 @@
  * @module views/Analysis/StatisticalAnalysis
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import {
   ChartContainer,
@@ -553,6 +553,50 @@ export function StatisticalAnalysis() {
 
   const selectedMetric = METRICS.find((m) => m.id === metric) ?? DEFAULT_METRIC;
 
+  // Refs to each tab button, keyed by tab index, for roving-tabindex focus
+  // management (WAI-ARIA Tabs pattern, manual activation).
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  // Keyboard navigation for the tablist. Manual activation: ArrowLeft/Right,
+  // Home, and End move focus only; Enter/Space activate the focused tab. This
+  // avoids triggering an analysis computation on every arrow press.
+  const handleTabKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+      const lastIndex = TABS.length - 1;
+      let nextIndex: number | null = null;
+
+      switch (event.key) {
+        case 'ArrowRight':
+          nextIndex = index === lastIndex ? 0 : index + 1;
+          break;
+        case 'ArrowLeft':
+          nextIndex = index === 0 ? lastIndex : index - 1;
+          break;
+        case 'Home':
+          nextIndex = 0;
+          break;
+        case 'End':
+          nextIndex = lastIndex;
+          break;
+        case 'Enter':
+        case ' ': {
+          // Activate the focused tab (manual activation). Prevent default on
+          // Space to avoid page scroll.
+          event.preventDefault();
+          const focusedTab = TABS[index];
+          if (focusedTab) setActiveTab(focusedTab.id);
+          return;
+        }
+        default:
+          return;
+      }
+
+      event.preventDefault();
+      tabRefs.current[nextIndex]?.focus();
+    },
+    [],
+  );
+
   return (
     <div className={styles.page} role="main" aria-labelledby="stat-heading">
       <h1 id="stat-heading" className={styles.heading}>
@@ -600,15 +644,20 @@ export function StatisticalAnalysis() {
 
       {/* Section navigation */}
       <div className={styles.tabs} role="tablist" aria-label="Analysis sections">
-        {TABS.map((tab) => (
+        {TABS.map((tab, index) => (
           <button
             key={tab.id}
+            ref={(el) => {
+              tabRefs.current[index] = el;
+            }}
             role="tab"
             aria-selected={activeTab === tab.id}
             aria-controls={`panel-${tab.id}`}
             id={`tab-${tab.id}`}
+            tabIndex={activeTab === tab.id ? 0 : -1}
             className={`${styles.tab} ${activeTab === tab.id ? styles.tabActive : ''}`}
             onClick={() => setActiveTab(tab.id)}
+            onKeyDown={(e) => handleTabKeyDown(e, index)}
             type="button"
           >
             {tab.label}

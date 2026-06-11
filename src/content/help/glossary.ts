@@ -711,6 +711,62 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'y = \\beta_0 + \\beta_1 x + \\varepsilon, \\quad \\hat{\\beta}_1 = \\frac{\\sum(x_i - \\bar{x})(y_i - \\bar{y})}{\\sum(x_i - \\bar{x})^2}',
     relatedTerms: ['correlation', 'trend', 'loess'],
   },
+  {
+    id: 'granger-causality',
+    term: 'Granger Causality',
+    category: 'statistics',
+    aliases: ['Granger Test', 'Predictive Causality'],
+    quick:
+      'A test of whether the past of one series helps predict another beyond that series’ own past — predictive precedence, not proof of true causation.',
+    standard:
+      'Granger causality asks a forecasting question: do past values of X improve the prediction of Y beyond what Y’s own past already provides? It fits two nested vector-autoregression (VAR) models — one using only Y’s lagged history, one adding X’s lagged history — and compares them with an F-test. A significant result means X has predictive precedence over Y. Crucially it is NOT proof of physical causation: a lurking third variable that drives both series can produce the same pattern. X→Y and Y→X are separate tests, and the two directions can disagree.',
+    detailed:
+      'For a chosen lag p, the test compares a restricted AR model y_t = Σ αᵢ y_{t−i} + ε against an unrestricted VAR model y_t = Σ αᵢ y_{t−i} + Σ βᵢ x_{t−i} + ε, and tests H₀: all βᵢ = 0 with an F-statistic on the residual sum of squares. Rejecting H₀ means X’s lagged values carry information about Y not already in Y’s past. In CPAP Analyzer the unit of observation is one value per night, so a "lag" is a number of nights. Interpretation guidance: (1) Read it as predictive precedence, never as a mechanism — confounding by a common driver (a behavior, illness, or seasonal factor affecting both metrics) yields the same signal. (2) The reported F-statistic, p-value, and lag describe the X→Y direction only; the verdict and confidence consider both directions, and X→Y ≠ Y→X in general. (3) If the lag was chosen by minimizing AIC on the same nights used for the test, the p-value is selection-affected (exploratory / anti-conservative) and understates the true false-positive rate — treat it as hypothesis-generating and confirm with a fixed lag chosen from prior knowledge or a separate time period. (4) The VAR F-test assumes (trend-)stationary inputs; a shared deterministic trend can manufacture spurious Granger causality, so a significant linear trend in either series triggers a non-stationarity caution and first-differencing is advised. Requirements: at least 2·maxLag + 2 paired nights, roughly equal time spacing, and a non-constant metric (a constant series carries no information to test). This tool reports Granger results for exploration and does not diagnose.',
+    relatedTerms: ['f-test', 'aic', 'stationarity', 'correlation', 'p-value'],
+  },
+  {
+    id: 'f-test',
+    term: 'F-test',
+    category: 'statistics',
+    aliases: ['F-statistic', 'F-ratio'],
+    quick:
+      'A test comparing two nested models (or two variances) via a ratio that follows the F-distribution under the null.',
+    standard:
+      'An F-test compares the fit of two nested models by forming a ratio of explained to unexplained variance. In a nested-model setting, it asks whether the extra parameters in the larger model reduce the residual sum of squares (RSS) by more than chance would predict. A large F-statistic — and the small p-value it implies — is evidence that the added terms matter. The Granger causality test is an F-test of whether adding another series’ lagged history improves the prediction of the target.',
+    detailed:
+      'For nested models with the larger (unrestricted) model adding q parameters, F = [(RSS_restricted − RSS_unrestricted)/q] / [RSS_unrestricted/(n − k)], where n is the sample size and k is the number of parameters in the unrestricted model. Under H₀ (the added parameters are jointly zero) and the usual linear-model assumptions, F follows an F-distribution with (q, n − k) degrees of freedom; the p-value is the upper-tail probability. Assumptions include linearity, independent and (approximately) normally distributed errors with constant variance. CPAP Analyzer derives the p-value from the F-distribution using the regularized incomplete beta function. Caveat for the Granger setting: when the model (here, the lag) is chosen from the same data the F-test is then run on, the nominal F p-value no longer has its advertised false-positive rate — it becomes selection-affected.',
+    formula:
+      'F = \\frac{(\\text{RSS}_{\\text{restricted}} - \\text{RSS}_{\\text{unrestricted}})/q}{\\text{RSS}_{\\text{unrestricted}}/(n - k)}',
+    relatedTerms: ['granger-causality', 'p-value', 'regression', 'aic'],
+  },
+  {
+    id: 'aic',
+    term: 'AIC (Akaike Information Criterion)',
+    category: 'statistics',
+    aliases: ['Akaike Information Criterion'],
+    quick:
+      'A model-selection score balancing goodness of fit against complexity — lower AIC indicates a better-fitting, less-overfit model.',
+    standard:
+      'The Akaike Information Criterion (AIC) scores a fitted model by trading off how well it fits the data against how many parameters it uses. Lower AIC is better: it rewards reducing residual error but penalizes each extra parameter, discouraging overfitting. AIC is used to pick a lag order in Granger causality — the candidate lag with the lowest AIC is the one tested. Because that lag is chosen from the same data, the subsequent p-value is selection-affected, which is exactly why the AIC-selected (Exploratory) result is flagged as anti-conservative.',
+    detailed:
+      'AIC = 2k − 2 ln(L̂), where k is the number of estimated parameters and L̂ is the maximized likelihood. For Gaussian errors this reduces to AIC = n·ln(RSS/n) + 2k (up to an additive constant), the form CPAP Analyzer uses per candidate lag for the unrestricted X→Y model. AIC estimates relative out-of-sample predictive loss (Kullback–Leibler divergence from the true process), so it is a tool for comparison, not an absolute measure of fit; only differences in AIC between models are meaningful. In the Granger AIC-by-lag chart, each point is the AIC for that lag’s model and the lowest point is the lag selected in Exploratory mode; infeasible lags (too few paired nights to fit the model) appear as gaps. Choosing the lag by minimizing AIC and then testing at that lag on the same data makes the F p-value post-selection — anti-conservative — so a clean inferential p-value requires fixing the lag in advance (Confirmatory mode). Related criteria: BIC (2k replaced by k·ln n) penalizes complexity more heavily.',
+    formula:
+      '\\text{AIC} = 2k - 2\\ln(\\hat{L}) = n\\ln\\!\\left(\\frac{\\text{RSS}}{n}\\right) + 2k',
+    relatedTerms: ['granger-causality', 'f-test', 'regression'],
+  },
+  {
+    id: 'stationarity',
+    term: 'Stationarity',
+    category: 'statistics',
+    aliases: ['Stationary Series', 'Non-stationarity'],
+    quick:
+      'A time series is stationary when its statistical properties (notably the mean) do not change over time; a trend violates this.',
+    standard:
+      'A time series is (weakly) stationary when its mean, variance, and autocovariance structure are constant over time. Many time-series tests, including the Granger causality F-test, assume their inputs are at least trend-stationary. A series with a persistent upward or downward drift is non-stationary. This matters because two unrelated series that happen to share a trend can appear strongly related — a shared deterministic trend can manufacture spurious Granger causality. The usual remedy is first-differencing: analyze night-to-night changes rather than levels.',
+    detailed:
+      'Weak (covariance) stationarity requires a constant mean E[x_t] = μ, a constant finite variance, and an autocovariance Cov(x_t, x_{t+h}) that depends only on the lag h, not on t. CPAP nightly series frequently violate this — acclimatization, weight change, seasonal leak, or equipment changes induce trends. The classic hazard is spurious regression (Granger & Newbold 1974): regressing one trending series on another independent trending series yields significant-looking coefficients and high R² driven entirely by the shared trend, not any real relationship; the same mechanism inflates Granger causality. CPAP Analyzer runs a lightweight test for a significant deterministic linear trend in each input and raises a non-stationarity caution when one is found. Remedies: first-differencing (Δx_t = x_t − x_{t−1}) removes a linear trend and often restores stationarity; detrending by regression, or differencing again for stronger trends, are alternatives. Formal unit-root tests (ADF, KPSS) characterize stationarity more rigorously than the linear-trend screen used here.',
+    relatedTerms: ['granger-causality', 'trend', 'regression'],
+  },
 
   // ─── DATA & FORMATS ────────────────────────────────────────────────
 

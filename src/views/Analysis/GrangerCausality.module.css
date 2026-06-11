@@ -130,6 +130,74 @@
   color: var(--color-status-moderate);
 }
 
+/* ── Section title with inline help affordance ────────────────── */
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* The interpret-guide disclosure reuses the same visual language as the
+   other .disclosure blocks but carries a slightly stronger framing because
+   it is the primary "how to read this tab" entry point. */
+.interpretGuide {
+  margin: var(--space-3) 0 0 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.interpretGuide summary {
+  cursor: pointer;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.interpretGuide summary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.interpretGuideBody {
+  margin: var(--space-2) 0 0 0;
+}
+
+.interpretGuideBody dt {
+  margin-top: var(--space-2);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.interpretGuideBody dd {
+  margin: var(--space-1) 0 0 0;
+  line-height: var(--line-height-relaxed);
+  max-width: 72ch;
+}
+
+.interpretGuideLink {
+  display: inline-block;
+  margin-top: var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-link);
+}
+
+.interpretGuideLink:hover {
+  color: var(--color-text-link-hover);
+}
+
+.interpretGuideLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* ── Honesty flags ────────────────────────────────────────────── */
 
 .disclosure {

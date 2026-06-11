@@ -219,6 +219,114 @@ describe('StatisticalAnalysis', () => {
     expect(correlationTab).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('should implement roving tabindex on the tablist', () => {
+    render(<StatisticalAnalysis />);
+
+    const selected = screen.getByRole('tab', { selected: true });
+    expect(selected).toHaveAttribute('tabindex', '0');
+
+    screen
+      .getAllByRole('tab')
+      .filter((t) => t.getAttribute('aria-selected') !== 'true')
+      .forEach((t) => expect(t).toHaveAttribute('tabindex', '-1'));
+  });
+
+  it('should move focus with ArrowRight/ArrowLeft without activating (manual activation)', async () => {
+    const user = userEvent.setup();
+    render(<StatisticalAnalysis />);
+
+    const firstTab = screen.getByRole('tab', { name: 'Descriptive Stats' });
+    const secondTab = screen.getByRole('tab', { name: 'Trends' });
+
+    firstTab.focus();
+    expect(firstTab).toHaveFocus();
+
+    await user.keyboard('{ArrowRight}');
+
+    // Focus moved, but active tab did NOT change (manual activation)
+    expect(secondTab).toHaveFocus();
+    expect(firstTab).toHaveAttribute('aria-selected', 'true');
+    expect(secondTab).toHaveAttribute('aria-selected', 'false');
+
+    await user.keyboard('{ArrowLeft}');
+    expect(firstTab).toHaveFocus();
+  });
+
+  it('should wrap focus around with arrow keys', async () => {
+    const user = userEvent.setup();
+    render(<StatisticalAnalysis />);
+
+    const firstTab = screen.getByRole('tab', { name: 'Descriptive Stats' });
+    const lastTab = screen.getByRole('tab', { name: 'Hypothesis Testing' });
+
+    firstTab.focus();
+    await user.keyboard('{ArrowLeft}');
+    expect(lastTab).toHaveFocus();
+
+    await user.keyboard('{ArrowRight}');
+    expect(firstTab).toHaveFocus();
+  });
+
+  it('should move focus to first/last tab with Home/End', async () => {
+    const user = userEvent.setup();
+    render(<StatisticalAnalysis />);
+
+    const firstTab = screen.getByRole('tab', { name: 'Descriptive Stats' });
+    const lastTab = screen.getByRole('tab', { name: 'Hypothesis Testing' });
+
+    firstTab.focus();
+    await user.keyboard('{End}');
+    expect(lastTab).toHaveFocus();
+
+    await user.keyboard('{Home}');
+    expect(firstTab).toHaveFocus();
+  });
+
+  it('should activate the focused tab with Enter and Space', async () => {
+    const user = userEvent.setup();
+
+    mockUseAnalysis.mockImplementation((opts: { type: string }) => {
+      if (opts.type === 'descriptive-stats') {
+        return makeAnalysisResult({
+          count: 50,
+          mean: 3.5,
+          median: 3.2,
+          stdDev: 1.1,
+          min: 0.5,
+          max: 8.0,
+          iqr: 1.5,
+          skewness: 0.3,
+          kurtosis: 2.8,
+        });
+      }
+      if (opts.type === 'correlation-matrix') {
+        return makeAnalysisResult({
+          labels: ['ahi', 'leakMedian'],
+          matrix: [
+            [1, -0.3],
+            [-0.3, 1],
+          ],
+        });
+      }
+      return makeAnalysisResult(null);
+    });
+
+    render(<StatisticalAnalysis />);
+
+    const trendsTab = screen.getByText('Trends');
+    const correlationTab = screen.getByText('Correlation');
+
+    // Focus the Trends tab and activate with Enter
+    trendsTab.focus();
+    await user.keyboard('{Enter}');
+    expect(trendsTab).toHaveAttribute('aria-selected', 'true');
+
+    // Focus the Correlation tab and activate with Space
+    correlationTab.focus();
+    await user.keyboard('[Space]');
+    expect(correlationTab).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('should call useAnalysis with the selected metric', async () => {
     const user = userEvent.setup();
     render(<StatisticalAnalysis />);
