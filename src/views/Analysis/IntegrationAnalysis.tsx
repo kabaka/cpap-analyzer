@@ -992,7 +992,7 @@ export default function IntegrationAnalysis() {
             CPAP therapy metrics with sleep scores, heart rate variability, SpO&#x2082; readings,
             and more.
           </p>
-          <Link to="/import" className={styles.emptyLink}>
+          <Link to="/data/import" className={styles.emptyLink}>
             Go to Import &rarr;
           </Link>
         </div>

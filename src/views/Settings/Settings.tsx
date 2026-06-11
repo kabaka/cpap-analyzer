@@ -302,7 +302,7 @@ function IntegrationsSection() {
                   <span className={styles.integrationStatLabel}>No data imported yet</span>
                 )}
               </div>
-              <Button variant="primary" onClick={() => void navigate('/import')}>
+              <Button variant="primary" onClick={() => void navigate('/data/import')}>
                 Import Data
               </Button>
             </div>
