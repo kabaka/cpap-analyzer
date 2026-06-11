@@ -18,6 +18,7 @@ import {
 } from '@/components/charts';
 import type { ReferenceLineConfig } from '@/components/charts';
 import { useAppStore } from '@/stores/useAppStore';
+import { GrangerCausalitySection } from './GrangerCausalitySection';
 import styles from './StatisticalAnalysis.module.css';
 
 // ---------------------------------------------------------------------------
@@ -43,7 +44,7 @@ const METRICS: readonly MetricOption[] = [
 
 const WINDOW_OPTIONS = [3, 7, 14, 30] as const;
 
-type TabId = 'descriptive' | 'trends' | 'distribution' | 'correlation' | 'hypothesis';
+type TabId = 'descriptive' | 'trends' | 'distribution' | 'correlation' | 'causality' | 'hypothesis';
 
 interface TabDef {
   id: TabId;
@@ -55,6 +56,7 @@ const TABS: readonly TabDef[] = [
   { id: 'trends', label: 'Trends' },
   { id: 'distribution', label: 'Distribution' },
   { id: 'correlation', label: 'Correlation' },
+  { id: 'causality', label: 'Granger Causality' },
   { id: 'hypothesis', label: 'Hypothesis Testing' },
 ];
 
@@ -502,7 +504,7 @@ const HypothesisSection = React.memo(function HypothesisSection({
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-function EmptyState() {
+export function EmptyState() {
   return (
     <div className={styles.emptyState} role="status">
       <h2>No data available</h2>
@@ -511,7 +513,7 @@ function EmptyState() {
   );
 }
 
-function MetadataBanner({
+export function MetadataBanner({
   metadata,
 }: {
   metadata: { computedAt: string; computationTimeMs: number; sampleSize: number } | null;
@@ -526,7 +528,7 @@ function MetadataBanner({
   );
 }
 
-function AssumptionsPanel({ assumptions }: { assumptions: string[] | undefined }) {
+export function AssumptionsPanel({ assumptions }: { assumptions: string[] | undefined }) {
   if (!assumptions || assumptions.length === 0) return null;
   return (
     <details className={styles.assumptions}>
@@ -620,6 +622,7 @@ export function StatisticalAnalysis() {
         {activeTab === 'trends' && <TrendsSection metric={selectedMetric} window={window} />}
         {activeTab === 'distribution' && <DistributionSection metric={selectedMetric} />}
         {activeTab === 'correlation' && <CorrelationSection />}
+        {activeTab === 'causality' && <GrangerCausalitySection />}
         {activeTab === 'hypothesis' && <HypothesisSection metric={selectedMetric} />}
       </div>
     </div>

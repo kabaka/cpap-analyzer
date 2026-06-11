@@ -81,6 +81,41 @@ export interface GrangerCausalityResult {
    * affected series; callers should consider first-differencing.
    */
   readonly stationarityWarning: string | null;
+  /**
+   * Explicit discriminant for *why* a finite test could not be produced, so
+   * consumers never have to infer the cause from other fields (e.g. an empty
+   * `aicValues` no longer doubles as a proxy for "insufficient data"). Exactly
+   * one of the following holds:
+   *
+   * - `'insufficient-data'` — the finite-paired sample (see {@link nPaired})
+   *   was `< 2 × maxLag + 2`, the minimum the bi-directional VAR F-test needs
+   *   at the requested `maxLag`. The remedy is more data or a smaller `maxLag`.
+   * - `'constant-series'` — after finite filtering at least one input has zero
+   *   variance. There is enough data, but a constant series carries no
+   *   predictive information, so the test is undefined. The remedy is a metric
+   *   that varies over the period — *not* more nights.
+   * - `'singular-fit'` — both guards passed (sufficient, non-constant data) but
+   *   the F-statistic is non-finite: at the tested lag the residual degrees of
+   *   freedom collapsed (`df2 ≤ 0`), the normal-equation system was singular,
+   *   or an RSS was non-finite. The remedy is a smaller lag or different data.
+   * - `null` — a finite, fully computed result (the normal success case).
+   *
+   * @remarks Distinguishing these is required for honest messaging: a constant
+   * metric with ample nights must not be reported as "not enough nights"
+   * (Correctness is core principle #2). Branch on this field, not on the shape
+   * of `aicValues` or the NaN-ness of `fStatistic`.
+   */
+  readonly unavailableReason: 'insufficient-data' | 'constant-series' | 'singular-fit' | null;
+  /**
+   * The finite-paired sample size actually available to the test: the number
+   * of index positions at which *both* `x` and `y` are finite (see
+   * {@link filterFinitePairs}). This is the honest denominator for "N nights
+   * available" — unlike a raw row count it excludes positions dropped for a
+   * missing value in either series, so it can be strictly smaller than either
+   * input length. It is always populated, including on the early-return guard
+   * paths, so consumers can report a meaningful count regardless of outcome.
+   */
+  readonly nPaired: number;
 }
 
 /** Options for {@link grangerCausality}. */
@@ -397,8 +432,10 @@ function confidenceFromP(p: number): 'high' | 'moderate' | 'low' {
  * @param options Optional settings; pass `{ lag }` to report a clean,
  *                non-selection-affected F-test at a fixed lag.
  * @returns       Test statistics, reported lag, directional classification,
- *                confidence level, a `selectionAffected` flag, and a
- *                `stationarityWarning`.
+ *                confidence level, a `selectionAffected` flag, a
+ *                `stationarityWarning`, an `unavailableReason` discriminant for
+ *                non-finite results, and the finite-paired sample size
+ *                `nPaired`.
  *
  * @remarks
  * **Assumptions**:
@@ -412,10 +449,16 @@ function confidenceFromP(p: number): 'high' | 'moderate' | 'low' {
  * exploratory. Supply `options.lag` (e.g. selected on a training split) for a
  * clean p-value.
  *
- * **Edge cases**:
- * - Fewer than `2 × maxLag + 2` observations → returns NaN values
- *   with `causality = 'none'`.
- * - Constant series → returns NaN values with `causality = 'none'`.
+ * **Edge cases** (all set `causality = 'none'` and NaN statistics; the
+ * `unavailableReason` discriminant identifies which one occurred, and
+ * `nPaired` always reports the finite-paired count):
+ * - Fewer than `2 × maxLag + 2` finite-paired observations →
+ *   `unavailableReason = 'insufficient-data'`.
+ * - Constant input series (zero variance after finite filtering) →
+ *   `unavailableReason = 'constant-series'`.
+ * - Sufficient, non-constant data but a degenerate fit at the tested lag →
+ *   `unavailableReason = 'singular-fit'`.
+ * A finite, computed result has `unavailableReason = null`.
  *
  * @example
  * ```ts
@@ -438,7 +481,13 @@ export function grangerCausality(
   const { fx, fy } = filterFinitePairs(x, y);
   const n = fx.length;
 
-  const nanResult: GrangerCausalityResult = {
+  // Shared template for the early-return guard paths. Each guard clones this
+  // and stamps its OWN `unavailableReason`, so one guard can never mask the
+  // other. `nPaired` is the finite-paired count, computed above and therefore
+  // meaningful even when we return before fitting any model.
+  const guardResult = (
+    unavailableReason: Exclude<GrangerCausalityResult['unavailableReason'], null>,
+  ): GrangerCausalityResult => ({
     fStatistic: NaN,
     pValue: NaN,
     optimalLag: lag ?? maxLag,
@@ -447,16 +496,20 @@ export function grangerCausality(
     aicValues: [],
     selectionAffected: lag === undefined,
     stationarityWarning: null,
-  };
+    unavailableReason,
+    nPaired: n,
+  });
 
-  // Guard: insufficient data
+  // Guard: insufficient data. Uses the finite-paired count `n` (= nPaired), so
+  // the reason and the reported count are consistent with each other.
   if (n < 2 * maxLag + 2) {
-    return nanResult;
+    return guardResult('insufficient-data');
   }
 
-  // Guard: constant series
+  // Guard: constant series. Reached only with sufficient data, so the reason is
+  // unambiguously zero-variance — never "not enough nights".
   if (isConstant(fx) || isConstant(fy)) {
-    return nanResult;
+    return guardResult('constant-series');
   }
 
   // Stationarity guard: flag deterministic trends that can induce spurious
@@ -499,6 +552,15 @@ export function grangerCausality(
     Number.isFinite(yx.pValue) ? yx.pValue : 1,
   );
 
+  // Normal flow. Both guards passed, so any non-finite F-statistic here is a
+  // singular/degenerate fit at the tested lag (df2 ≤ 0, singular system, or
+  // non-finite RSS — see grangerOneDirection), not a data-quantity problem.
+  const unavailableReason: GrangerCausalityResult['unavailableReason'] = Number.isFinite(
+    xy.fStatistic,
+  )
+    ? null
+    : 'singular-fit';
+
   return {
     fStatistic: xy.fStatistic,
     pValue: xy.pValue,
@@ -508,5 +570,7 @@ export function grangerCausality(
     aicValues: xy.aicValues,
     selectionAffected: xy.selectionAffected || yx.selectionAffected,
     stationarityWarning,
+    unavailableReason,
+    nPaired: n,
   };
 }

@@ -280,6 +280,14 @@ export class AnalysisEngine {
         return worker.spearmanCorrelation(values, y);
       }
 
+      case 'granger-causality': {
+        const metric2 = (input.parameters.metric2 as string) ?? 'leakMedian';
+        const maxLag = (input.parameters.maxLag as number) ?? 7;
+        const lag = input.parameters.lag as number | undefined;
+        const y = this.extractMetricValues(data, metric2);
+        return worker.grangerCausality(values, y, maxLag, lag === undefined ? {} : { lag });
+      }
+
       case 'correlation-matrix': {
         const metrics = (input.parameters.metrics as string[]) ?? [
           'ahi',
@@ -401,6 +409,15 @@ export class AnalysisEngine {
 
       case 'spearman-correlation':
         return ['Relationship is monotonic', 'Observations are independent'];
+
+      case 'granger-causality':
+        return [
+          'Both series are stationary or approximately trend-stationary',
+          'Observations are equally spaced in time (one value per night)',
+          'The relationship, if any, is linear',
+          'When the lag is auto-selected by AIC, the reported p-value is selection-affected (anti-conservative) and exploratory, not clean inference',
+          'A significant linear trend in either series can induce spurious Granger causality',
+        ];
 
       case 'correlation-matrix':
         return [

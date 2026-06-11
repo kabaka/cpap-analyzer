@@ -76,6 +76,19 @@ describe('grangerCausality', () => {
       expect(result.pValue).toBeNaN();
       expect(result.causality).toBe('none');
     });
+
+    it('should report unavailableReason "insufficient-data" with nPaired = finite-paired count', () => {
+      const x = [1, 2, 3, 4, 5];
+      const y = [5, 4, 3, 2, 1];
+      const maxLag = 3; // needs 2*3+2 = 8 observations; only 5 available
+
+      const result = grangerCausality(x, y, maxLag);
+
+      expect(result.unavailableReason).toBe('insufficient-data');
+      // All 5 pairs are finite, so nPaired is the full length.
+      expect(result.nPaired).toBe(5);
+      expect(result.aicValues).toHaveLength(0);
+    });
   });
 
   describe('empty arrays', () => {
@@ -86,6 +99,13 @@ describe('grangerCausality', () => {
       expect(result.pValue).toBeNaN();
       expect(result.causality).toBe('none');
       expect(result.confidenceLevel).toBe('low');
+    });
+
+    it('should report unavailableReason "insufficient-data" with nPaired 0', () => {
+      const result = grangerCausality([], []);
+
+      expect(result.unavailableReason).toBe('insufficient-data');
+      expect(result.nPaired).toBe(0);
     });
   });
 
@@ -99,6 +119,34 @@ describe('grangerCausality', () => {
       expect(result.fStatistic).toBeNaN();
       expect(result.pValue).toBeNaN();
       expect(result.causality).toBe('none');
+    });
+
+    it('should report unavailableReason "constant-series" when nights ARE sufficient (blocker regression)', () => {
+      // 20 paired nights at default maxLag=7 → 2*7+2 = 16 needed, 20 available.
+      // Data is plentiful; the metrics simply have zero variance. This MUST
+      // report a constant-series reason, never "insufficient-data": reporting a
+      // shortage of nights here would be factually wrong (the QA blocker).
+      const x = [5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
+      const y = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3];
+
+      const result = grangerCausality(x, y);
+
+      expect(result.unavailableReason).toBe('constant-series');
+      // Sufficiency is real: the finite-paired count clears the threshold.
+      expect(result.nPaired).toBe(20);
+      expect(result.nPaired).toBeGreaterThanOrEqual(2 * 7 + 2);
+    });
+
+    it('should report "constant-series" when only ONE series is constant', () => {
+      // x varies, y is constant. With sufficient nights this is still a
+      // zero-variance failure, not a data shortage.
+      const x = [2, 5, 1, 4, 3, 5, 1, 4, 2, 3, 5, 1, 4, 2, 5, 3, 1, 4, 2, 5];
+      const y = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3];
+
+      const result = grangerCausality(x, y);
+
+      expect(result.unavailableReason).toBe('constant-series');
+      expect(result.nPaired).toBe(20);
     });
   });
 
@@ -114,6 +162,21 @@ describe('grangerCausality', () => {
       expect(['X causes Y', 'Y causes X', 'bidirectional', 'none']).toContain(result.causality);
     });
 
+    it('should set nPaired to the finite-paired count, strictly below raw length', () => {
+      // x has 22 entries (1 NaN at index 1); y has 22 entries (1 NaN at index
+      // 11). filterFinitePairs aligns on the shorter length (22) and drops any
+      // index where either is non-finite → indices 1 and 11 are removed → 20
+      // finite pairs. nPaired must be 20, well below the 22-element raw input.
+      const x = [1, NaN, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+      const y = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, NaN, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
+
+      const result = grangerCausality(x, y);
+
+      expect(result.nPaired).toBe(20);
+      expect(result.nPaired).toBeLessThan(x.length);
+      expect(result.nPaired).toBeLessThan(y.length);
+    });
+
     it('should return NaN result when too many NaN values leave insufficient data', () => {
       const x = [1, NaN, NaN, NaN, 5];
       const y = [NaN, 2, NaN, 4, NaN];
@@ -122,6 +185,19 @@ describe('grangerCausality', () => {
 
       expect(result.causality).toBe('none');
       expect(result.fStatistic).toBeNaN();
+    });
+
+    it('should report insufficient-data with the post-filter nPaired when NaNs leave too few pairs', () => {
+      // No index has both x and y finite → 0 finite pairs after filtering.
+      const x = [1, NaN, NaN, NaN, 5];
+      const y = [NaN, 2, NaN, 4, NaN];
+
+      const result = grangerCausality(x, y);
+
+      expect(result.unavailableReason).toBe('insufficient-data');
+      // nPaired is the finite-paired count (0), NOT the raw length (5). This is
+      // the honesty fix: the UI must report usable nights, not raw rows.
+      expect(result.nPaired).toBe(0);
     });
   });
 
@@ -231,6 +307,66 @@ describe('grangerCausality', () => {
       expect(
         result.stationarityWarning === null || typeof result.stationarityWarning === 'string',
       ).toBe(true);
+    });
+
+    it('should expose unavailableReason and nPaired fields', () => {
+      const result = grangerCausality(x, y, maxLag);
+
+      expect(['insufficient-data', 'constant-series', 'singular-fit', null]).toContain(
+        result.unavailableReason,
+      );
+      expect(typeof result.nPaired).toBe('number');
+      expect(result.nPaired).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Availability discriminant: the normal (finite) success path
+  // -----------------------------------------------------------------------
+
+  describe('unavailableReason on a normal finite result', () => {
+    // Non-monotonic, mean-stationary inputs with a genuine X→Y relationship so
+    // the F-statistic is finite and the test fully computes.
+    const x = [2, 5, 1, 4, 3, 5, 1, 4, 2, 3, 5, 1, 4, 2, 5, 3, 1, 4, 2, 5];
+    const y = [
+      2.0, 1.8, 3.9, 1.1, 3.0, 2.5, 4.2, 0.7, 3.5, 1.4, 2.5, 3.7, 1.0, 3.1, 1.9, 3.8, 2.5, 0.7, 3.4,
+      1.3,
+    ];
+
+    it('should set unavailableReason = null for a finite, computed result', () => {
+      const result = grangerCausality(x, y, 1);
+
+      expect(Number.isFinite(result.fStatistic)).toBe(true);
+      expect(result.unavailableReason).toBeNull();
+    });
+
+    it('should set nPaired to the finite-paired count actually used', () => {
+      const result = grangerCausality(x, y, 1);
+
+      // All 20 pairs are finite → nPaired equals the input length.
+      expect(result.nPaired).toBe(20);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Availability discriminant: degenerate fit (singular-fit)
+  // -----------------------------------------------------------------------
+
+  describe('unavailableReason "singular-fit" on a degenerate fit', () => {
+    it('should report singular-fit when both guards pass but df2 collapses at the tested lag', () => {
+      // n = 4 finite pairs, maxLag = 1: the insufficiency guard needs
+      // n >= 2*1+2 = 4, so n = 4 PASSES (not < 4). Data is non-constant, so the
+      // constant guard PASSES too. At lag 1 the residual df2 = nEff - 2*lag - 1
+      // = (4-1) - 2 - 1 = 0 ≤ 0, so grangerOneDirection cannot form an F-stat
+      // and returns NaN through the normal flow → singular-fit.
+      const x = [2, 5, 1, 4];
+      const y = [3, 1, 4, 2];
+
+      const result = grangerCausality(x, y, 1);
+
+      expect(result.nPaired).toBe(4);
+      expect(result.fStatistic).toBeNaN();
+      expect(result.unavailableReason).toBe('singular-fit');
     });
   });
 
