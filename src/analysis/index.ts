@@ -17,3 +17,4 @@ export * from './events';
 export * from './survival';
 export * from './pressure';
 export * from './crossSource';
+export * from './breathing';
