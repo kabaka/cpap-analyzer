@@ -23,7 +23,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { SignalRenderer } from '@/components/charts/canvas/SignalRenderer';
 import {
@@ -43,6 +43,7 @@ import { lttbImpl } from '@/services/workers/downsample.worker';
 import { useAppStore } from '@/stores/useAppStore';
 import type { Event as TherapyEvent } from '@/types';
 
+import { evaluateDeepLink } from './deepLinkGuard';
 import {
   applyOrder,
   lanePrefsKey,
@@ -212,6 +213,19 @@ function formatEventType(type: string): string {
 export default function SignalViewer() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  /**
+   * Optional deep-link target: `?t=<epochMs>` centers the initial viewport
+   * around the given absolute timestamp (e.g. when arriving from the Event
+   * Explorer's event table). Parsed once; `null` when absent/invalid.
+   */
+  const deepLinkTargetMs = useMemo(() => {
+    const raw = searchParams.get('t');
+    if (raw === null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, [searchParams]);
 
   // ── Session + event data from IndexedDB ──────────────────────
   const { session, loading: sessionLoading, error: sessionError } = useSessionDetail(sessionId);
@@ -297,6 +311,39 @@ export default function SignalViewer() {
   );
 
   const opfsSupported = useMemo(() => OPFSService.isSupported(), []);
+
+  /**
+   * Apply a `?t=` deep-link once the session data is ready: center a focused
+   * window (±1 min) on the target timestamp.
+   *
+   * The applied-ref is only stamped when the target was actually IN-RANGE and
+   * applied. An out-of-range target sets an "outside range" notice but does
+   * NOT poison the ref, so a subsequent navigation that updates `t` can be
+   * retried against fresh session bounds without being short-circuited.
+   *
+   * The decision is delegated to {@link evaluateDeepLink} so it can be
+   * unit-tested without mounting this canvas-heavy component.
+   */
+  const appliedDeepLinkRef = useRef<number | null>(null);
+  /** aria-live status when the deep-link target falls outside the session. */
+  const [deepLinkStatus, setDeepLinkStatus] = useState('');
+  useEffect(() => {
+    const decision = evaluateDeepLink({
+      deepLinkTargetMs,
+      fullDataReady,
+      totalDurationMs,
+      session,
+      sessionStartMs,
+      appliedTarget: appliedDeepLinkRef.current,
+    });
+    if (decision.kind === 'apply') {
+      setViewport({ startTime: decision.start, endTime: decision.end });
+      setDeepLinkStatus('');
+      appliedDeepLinkRef.current = deepLinkTargetMs;
+    } else if (decision.kind === 'out-of-range') {
+      setDeepLinkStatus(decision.message);
+    }
+  }, [deepLinkTargetMs, fullDataReady, totalDurationMs, sessionStartMs, session]);
 
   /**
    * Resolved theme name — used as a memo key so theme-resolved colours/heights
@@ -1420,6 +1467,11 @@ export default function SignalViewer() {
       {/* Live region for keyboard lane grab/move/drop reordering. */}
       <div className={styles.srOnly} aria-live="polite" role="status">
         {laneReorderAnnouncement}
+      </div>
+
+      {/* Live region for out-of-range `?t=` deep-link targets. */}
+      <div className={styles.srOnly} aria-live="polite" role="status">
+        {deepLinkStatus}
       </div>
 
       {/* ── Status bar ────────────────────────────────────────── */}

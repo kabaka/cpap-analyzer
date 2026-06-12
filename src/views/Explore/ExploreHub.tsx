@@ -53,7 +53,7 @@ const EXPLORE_CARDS: readonly ExploreCard[] = [
   {
     title: 'Event Explorer',
     description:
-      'Event density, duration distributions, cluster detection, survival analysis, false-negative screening, and inter-event interval patterns.',
+      'Ad-hoc query tool for respiratory events: filter by type, duration, pressure, leak, SpO₂, and time of night, then explore the matched set through duration histograms, scatter plots, per-type distributions, inter-event intervals, and clustering.',
     path: '/explore/events',
     iconClass: styles.iconEvents,
     iconLabel: '⚡',

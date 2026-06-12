@@ -1,0 +1,229 @@
+.builder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.resetBtn,
+.clearBtn {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  background: none;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.resetBtn:hover,
+.clearBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.muted {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--color-primary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.chipSelected {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-secondary);
+  border-color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.detectionTag,
+.exampleTag {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tonRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tonLabel {
+  flex: 1;
+  min-width: 0;
+}
+
+.timeInput,
+.saveInput {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-primary);
+  color: var(--color-text-primary);
+}
+
+.timeInput:focus-visible,
+.saveInput:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.savedList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.savedRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.savedItem {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.savedItem:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.savedItem:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.savedItem:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleteBtn {
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  color: var(--color-text-muted);
+  background: none;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.deleteBtn:hover {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.saveForm {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.saveBtn {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-inverse);
+  background-color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.saveBtn:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

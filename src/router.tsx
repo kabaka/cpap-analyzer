@@ -17,7 +17,7 @@ const SessionComparison = lazy(() => import('@/views/Sessions/SessionComparison'
 const Trends = lazy(() => import('@/views/Trends/Trends'));
 const ExploreHub = lazy(() => import('@/views/Explore/ExploreHub'));
 const Correlations = lazy(() => import('@/views/Explore/Correlations'));
-const EventAnalysis = lazy(() => import('@/views/Explore/EventAnalysis'));
+const EventExplorer = lazy(() => import('@/views/Explore/EventExplorer/EventExplorer'));
 const PressureOptimization = lazy(() => import('@/views/Explore/PressureOptimization'));
 const Reports = lazy(() => import('@/views/Reports/Reports'));
 const DataManagement = lazy(() => import('@/views/DataManagement/DataManagement'));
@@ -103,7 +103,7 @@ export const router = createBrowserRouter(
               path: 'events',
               element: (
                 <SuspenseWrapper>
-                  <EventAnalysis />
+                  <EventExplorer />
                 </SuspenseWrapper>
               ),
             },
