@@ -67,4 +67,56 @@ describe('savedQueries', () => {
     expect([...eq.types]).toEqual(['ObstructiveApnea']);
     expect(eq.duration).toEqual({ min: 30, max: null });
   });
+
+  describe('isSavedQuery validator (refuse malformed blobs)', () => {
+    /**
+     * Persisted blobs cross a trust boundary (localStorage can be edited by
+     * anyone with DevTools or by a buggy older build), so the validator must
+     * refuse anything that doesn't match the SavedQuery shape exactly. Loading
+     * a malformed blob and returning it as a "valid" SavedQuery would crash
+     * the UI later (e.g. URLSearchParams over non-string param values, or a
+     * `requiresField` outside the literal union mis-disabling examples).
+     */
+    function loadWith(raw: unknown): ReturnType<typeof loadSavedQueries> {
+      storage.setItem(SAVED_QUERIES_STORAGE_KEY, JSON.stringify(raw));
+      return loadSavedQueries(storage);
+    }
+
+    it('drops entries whose params is not a plain string→string record', () => {
+      // Non-string param value.
+      expect(loadWith([{ id: 'a', name: 'x', params: { types: 12 } }])).toEqual([]);
+      // params is an array, not an object.
+      expect(loadWith([{ id: 'a', name: 'x', params: ['ObstructiveApnea'] }])).toEqual([]);
+      // params is null.
+      expect(loadWith([{ id: 'a', name: 'x', params: null }])).toEqual([]);
+      // params is a scalar.
+      expect(loadWith([{ id: 'a', name: 'x', params: 5 }])).toEqual([]);
+    });
+
+    it('drops entries with a requiresField outside the literal union', () => {
+      expect(
+        loadWith([
+          { id: 'a', name: 'x', params: { types: 'ObstructiveApnea' }, requiresField: 'flow' },
+        ]),
+      ).toEqual([]);
+      expect(loadWith([{ id: 'a', name: 'x', params: {}, requiresField: 42 }])).toEqual([]);
+    });
+
+    it('drops entries with a non-boolean example flag', () => {
+      expect(loadWith([{ id: 'a', name: 'x', params: {}, example: 'yes' }])).toEqual([]);
+    });
+
+    it('keeps a well-formed entry alongside dropped malformed siblings', () => {
+      const loaded = loadWith([
+        { id: 'good', name: 'ok', params: { types: 'ObstructiveApnea' } },
+        { id: 'bad', name: 'x', params: { types: 12 } },
+        { id: 'good-with-req', name: 'spo2', params: {}, requiresField: 'spo2' },
+      ]);
+      expect(loaded.map((q) => q.id)).toEqual(['good', 'good-with-req']);
+    });
+
+    it('refuses non-object/array entries (defensive: arrays-of-anything)', () => {
+      expect(loadWith([null, 5, 'string', ['a']])).toEqual([]);
+    });
+  });
 });

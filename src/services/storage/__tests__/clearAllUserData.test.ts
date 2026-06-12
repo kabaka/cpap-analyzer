@@ -198,6 +198,42 @@ describe('clearAllUserData', () => {
       expect(localStorage.getItem('unrelated-thing')).toBe('keep-me');
       expect(survivors).toEqual(['unrelated-thing']);
     });
+
+    it('removes dotted cpap.* keys (Event Explorer saved queries + future dotted feature keys)', async () => {
+      // Specific known dotted key — the Event Explorer's saved queries blob,
+      // which can encode therapy intent + date ranges in user-named queries
+      // and therefore MUST not survive a delete-everything sweep.
+      localStorage.setItem(
+        'cpap.eventExplorer.savedQueries.v1',
+        '[{"id":"q:1","name":"long obstructive","params":{"types":"ObstructiveApnea"}}]',
+      );
+      // Generic dotted key to prove the `cpap.` prefix covers any future
+      // `cpap.<feature>.<...>` writer by convention, not by registration.
+      localStorage.setItem('cpap.foo', 'bar');
+      localStorage.setItem('cpap.someFeature.v2', '{"x":1}');
+      // Hyphen-form keys still work alongside dotted-form keys.
+      localStorage.setItem('cpap-theme', 'dark');
+      // Third-party keys with cpap as a substring must NOT be touched.
+      localStorage.setItem('unrelated-thing', 'keep-me');
+      localStorage.setItem('other.cpap.thing', 'also-keep');
+
+      await clearAllUserData();
+
+      expect(localStorage.getItem('cpap.eventExplorer.savedQueries.v1')).toBeNull();
+      expect(localStorage.getItem('cpap.foo')).toBeNull();
+      expect(localStorage.getItem('cpap.someFeature.v2')).toBeNull();
+      expect(localStorage.getItem('cpap-theme')).toBeNull();
+
+      const survivors = Object.keys(localStorage);
+      expect(survivors.filter((k) => k.startsWith('cpap.'))).toEqual([]);
+      expect(survivors.filter((k) => k.startsWith('cpap-'))).toEqual([]);
+
+      // Non-app keys preserved — the `cpap.` prefix is anchored at the start,
+      // so a substring match like `other.cpap.thing` is untouched.
+      expect(localStorage.getItem('unrelated-thing')).toBe('keep-me');
+      expect(localStorage.getItem('other.cpap.thing')).toBe('also-keep');
+      expect(survivors.sort()).toEqual(['other.cpap.thing', 'unrelated-thing']);
+    });
   });
 
   // -----------------------------------------------------------------------

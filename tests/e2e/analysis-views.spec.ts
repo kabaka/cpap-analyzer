@@ -267,10 +267,8 @@ test.describe('Analysis Views — Navigation', () => {
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
   });
 
-  test('event analysis route renders heading', async ({ page }) => {
-    await page.goto('/explore/events');
-    await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
-  });
+  // Event Explorer (`/explore/events`) smoke navigation lives in
+  // `tests/e2e/explore-views.spec.ts` (post-IA heading: `Event Explorer`).
 
   test('pressure optimization route renders heading', async ({ page }) => {
     await page.goto('/explore/pressure');
@@ -294,13 +292,10 @@ test.describe('Analysis Views — Empty State', () => {
     await expect(countRow).toContainText('0');
   });
 
-  test('event analysis shows empty state without data', async ({ page }) => {
-    await page.goto('/explore/events');
-    await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
-
-    // Wait for loading to finish and empty state text to appear
-    await expect(page.getByText(/no data available/i)).toBeVisible({ timeout: 15_000 });
-  });
+  // Event Explorer empty-state coverage lives in
+  // `tests/e2e/explore-views.spec.ts` (asserts the post-IA "No events in this
+  // date range" heading rather than the deleted EventAnalysis "No data
+  // available" string).
 
   test('pressure optimization shows empty state without data', async ({ page }) => {
     await page.goto('/explore/pressure');
@@ -383,30 +378,11 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
     await expect(page.getByText(/comparing the first half vs\./i)).toBeVisible({ timeout: 15_000 });
   });
 
-  test('event analysis renders sections with injected events', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-    await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
-
-    // Summary cards should show event counts
-    await expect(page.getByText('Total Events')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText('Filtered Events')).toBeVisible();
-    await expect(page.getByText('Nights Analyzed')).toBeVisible();
-
-    // Event Density section should have a chart
-    await expect(page.getByText('Event Density Over Time')).toBeVisible();
-    await expect(
-      page.locator('[role="figure"]').filter({ hasText: /Events Per Night/i }),
-    ).toBeVisible();
-  });
-
-  test('event analysis renders duration distribution section', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    await expect(page.getByText('Event Duration Distribution')).toBeVisible({ timeout: 15_000 });
-    await expect(
-      page.locator('[role="figure"]').filter({ hasText: /Mean Duration/i }),
-    ).toBeVisible();
-  });
+  // EventAnalysis section/chart assertions (Total/Filtered Events cards,
+  // Event Density Over Time, Event Duration Distribution) targeted the
+  // deleted EventAnalysis UI. Equivalent coverage of the post-IA Event
+  // Explorer lives in `src/views/Explore/EventExplorer/__tests__/` and the
+  // explore-views smoke spec.
 
   test('pressure optimization renders sections with data', async ({ page }) => {
     await setupAndNavigate(page, '/explore/pressure');
@@ -473,40 +449,9 @@ test.describe('Analysis Views — Parameter Changes', () => {
     await expect(page.getByText(/14-day rolling mean/i)).toBeVisible({ timeout: 10_000 });
   });
 
-  test('event analysis filter changes filtered event count', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    // Wait for summary cards
-    await expect(page.getByText('Filtered Events')).toBeVisible({ timeout: 15_000 });
-
-    // Get the "Total Events" count
-    const totalCard = page.locator('text=Total Events').locator('..');
-    const totalText = await totalCard.textContent();
-
-    // Filter to ObstructiveApnea only
-    await page.locator('#event-filter').selectOption('ObstructiveApnea');
-
-    // Filtered Events count should be less than total (or equal if all are obstructive)
-    const filteredCard = page.locator('text=Filtered Events').locator('..');
-    await expect(filteredCard).not.toHaveText(totalText ?? '', { timeout: 10_000 });
-  });
-
-  test('event analysis cluster preset changes cluster results', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    // Wait for cluster section to appear — target the section heading (h2) specifically
-    await expect(page.locator('h2', { hasText: /event clusters/i })).toBeVisible({
-      timeout: 15_000,
-    });
-
-    // Default preset is "balanced" — change to "strict"
-    await page.locator('#cluster-preset').selectOption('strict');
-
-    // Cluster heading updates to reflect the preset
-    await expect(page.locator('h2', { hasText: /Event Clusters \(strict\)/i })).toBeVisible({
-      timeout: 10_000,
-    });
-  });
+  // EventAnalysis filter and cluster-preset controls (`#event-filter`,
+  // `#cluster-preset`) no longer exist post-IA. The Event Explorer's filter
+  // surface is covered by `EventExplorer.test.tsx`.
 
   test('pressure optimization grouping selector changes box plot', async ({ page }) => {
     await setupAndNavigate(page, '/explore/pressure');
@@ -648,17 +593,9 @@ test.describe('Analysis Views — Chart Containers', () => {
     expect(realErrors).toHaveLength(0);
   });
 
-  test('event analysis charts have export buttons', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    // Event Density chart should have export button
-    const densityChart = page.locator('[role="figure"]').filter({ hasText: /Events Per Night/i });
-    await expect(densityChart).toBeVisible({ timeout: 15_000 });
-
-    const exportButton = densityChart.getByLabel('Export chart as PNG');
-    await expect(exportButton).toBeVisible();
-    await expect(exportButton).toBeEnabled();
-  });
+  // EventAnalysis chart container assertions ("Events Per Night" figure)
+  // targeted the deleted EventAnalysis UI. Event Explorer renders a different
+  // results surface — its export controls are covered by its unit tests.
 
   test('pressure optimization charts have export buttons', async ({ page }) => {
     await setupAndNavigate(page, '/explore/pressure');
@@ -712,30 +649,7 @@ test.describe('Analysis Views — Theme Changes', () => {
     expect(realErrors).toHaveLength(0);
   });
 
-  test('event analysis charts survive theme toggle', async ({ page }) => {
-    const consoleErrors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') consoleErrors.push(msg.text());
-    });
-
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    const densityChart = page.locator('[role="figure"]').filter({ hasText: /Events Per Night/i });
-    await expect(densityChart).toBeVisible({ timeout: 15_000 });
-
-    // Toggle theme to dark
-    const themeToggle = page.getByRole('button', { name: /switch theme/i });
-    await themeToggle.click(); // system → light
-    await themeToggle.click(); // light → dark
-
-    // Chart still visible
-    await expect(densityChart).toBeVisible();
-
-    const realErrors = consoleErrors.filter(
-      (msg) => !msg.includes('React Router') && !msg.includes('DevTools'),
-    );
-    expect(realErrors).toHaveLength(0);
-  });
+  // EventAnalysis theme-toggle chart assertion targeted the deleted UI.
 
   test('pressure optimization charts survive theme toggle', async ({ page }) => {
     const consoleErrors: string[] = [];
@@ -783,10 +697,10 @@ test.describe('Analysis Views — No Console Errors', () => {
     const events = createTestEvents(sessions);
     await injectTestData(page, sessions, aggregates, events);
 
-    // Visit each analysis view
+    // Visit each analysis view. `/explore/events` (Event Explorer) is
+    // exercised by `tests/e2e/explore-views.spec.ts`.
     const routes = [
       { path: '/explore/correlations', heading: /statistical analysis/i },
-      { path: '/explore/events', heading: /event analysis/i },
       { path: '/explore/pressure', heading: /pressure optimization/i },
     ];
 
@@ -865,15 +779,8 @@ test.describe('Analysis Views — Controls Accessibility', () => {
     await expect(page.locator('label[for="window-select"]')).toBeVisible();
   });
 
-  test('event analysis has labeled controls toolbar', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    const toolbar = page.locator('[role="toolbar"][aria-label="Event analysis controls"]');
-    await expect(toolbar).toBeVisible({ timeout: 15_000 });
-
-    await expect(page.locator('#event-filter')).toBeVisible();
-    await expect(page.locator('#cluster-preset')).toBeVisible();
-  });
+  // EventAnalysis controls toolbar (`#event-filter`, `#cluster-preset`) no
+  // longer exists post-IA. Event Explorer's query builder is unit-tested.
 
   test('pressure optimization has labeled controls toolbar', async ({ page }) => {
     await setupAndNavigate(page, '/explore/pressure');
@@ -915,32 +822,9 @@ test.describe('Analysis Views — Controls Accessibility', () => {
     await expect(options.nth(3)).toHaveText('30 days');
   });
 
-  test('event analysis filter select has all options', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    const filterSelect = page.locator('#event-filter');
-    await expect(filterSelect).toBeVisible({ timeout: 15_000 });
-
-    const options = filterSelect.locator('option');
-    await expect(options).toHaveCount(4);
-    await expect(options.nth(0)).toHaveText('All Events');
-    await expect(options.nth(1)).toHaveText('Obstructive Apnea');
-    await expect(options.nth(2)).toHaveText('Central Apnea');
-    await expect(options.nth(3)).toHaveText('Hypopnea');
-  });
-
-  test('event analysis cluster preset has all options', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    const presetSelect = page.locator('#cluster-preset');
-    await expect(presetSelect).toBeVisible({ timeout: 15_000 });
-
-    const options = presetSelect.locator('option');
-    await expect(options).toHaveCount(3);
-    await expect(options.nth(0)).toHaveText('Strict');
-    await expect(options.nth(1)).toHaveText('Balanced');
-    await expect(options.nth(2)).toHaveText('Lenient');
-  });
+  // EventAnalysis filter/cluster-preset options enumerations targeted the
+  // deleted UI's `<option>` lists. The Event Explorer query builder exposes
+  // a different filter surface, covered by its unit tests.
 
   test('pressure optimization grouping select has all options', async ({ page }) => {
     await setupAndNavigate(page, '/explore/pressure');
@@ -956,46 +840,15 @@ test.describe('Analysis Views — Controls Accessibility', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 10. Event Analysis — Summary Cards
+// 10. Event Analysis — Summary Cards (REMOVED post-IA)
+//
+// The EventAnalysis summary cards (`Total Events` / `Filtered Events` /
+// `Nights Analyzed`) belonged to the deleted EventAnalysis view. The Event
+// Explorer surfaces equivalent counts through a different UI shape (matched
+// count strip + table) covered by
+// `src/views/Explore/EventExplorer/__tests__/EventExplorer.test.tsx` and the
+// `tests/e2e/explore-views.spec.ts` smoke spec.
 // ═══════════════════════════════════════════════════════════════════════════
-
-test.describe('Analysis Views — Event Summary Cards', () => {
-  test('event analysis summary cards show correct counts', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    // Wait for summary cards
-    await expect(page.getByText('Total Events')).toBeVisible({ timeout: 15_000 });
-
-    // 14 sessions × 5 events = 70 total events
-    const totalCard = page.locator('text=Total Events').locator('..');
-    await expect(totalCard).toContainText('70');
-
-    // All filters → Filtered Events = Total Events
-    const filteredCard = page.locator('text=Filtered Events').locator('..');
-    await expect(filteredCard).toContainText('70');
-
-    // 14 nights analysed
-    const nightsCard = page.locator('text=Nights Analyzed').locator('..');
-    await expect(nightsCard).toContainText('14');
-  });
-
-  test('event analysis summary cards update when filter changes', async ({ page }) => {
-    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
-
-    await expect(page.getByText('Total Events')).toBeVisible({ timeout: 15_000 });
-
-    // Filter to Obstructive only
-    await page.locator('#event-filter').selectOption('ObstructiveApnea');
-
-    // Filtered count should be less than total (28 of 70 — events at index 0 and 3 are Obstructive)
-    const filteredCard = page.locator('text=Filtered Events').locator('..');
-    await expect(filteredCard).toContainText('28');
-
-    // Total should remain the same
-    const totalCard = page.locator('text=Total Events').locator('..');
-    await expect(totalCard).toContainText('70');
-  });
-});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 11. Cross-View Integration — Multiple views in sequence
@@ -1023,10 +876,9 @@ test.describe('Analysis Views — Cross-View Navigation', () => {
     const table = page.locator('table[aria-label*="Descriptive statistics"]');
     await expect(table).toBeVisible({ timeout: 15_000 });
 
-    // Navigate to Event Analysis
-    await page.goto('/explore/events');
-    await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
-    await expect(page.getByText('Total Events')).toBeVisible({ timeout: 15_000 });
+    // Event Explorer (`/explore/events`) cross-view navigation is exercised
+    // by `tests/e2e/explore-views.spec.ts`; including it here would assert
+    // against the deleted EventAnalysis heading and "Total Events" card.
 
     // Navigate to Pressure Optimization
     await page.goto('/explore/pressure');

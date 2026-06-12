@@ -10,7 +10,11 @@ import { formatDate, parseLocalDate } from '@/utils/formatDate';
  * On store change, URL params are updated (debounced, using `replace`
  * to avoid polluting browser history).
  *
- * Synced parameters:
+ * Synced parameters (THIS HOOK OWNS ONLY THESE THREE — every other query
+ * param is preserved verbatim across writes, so view-state-in-URL patterns
+ * elsewhere in the app (e.g. `/explore/correlations?tab=cross-source`,
+ * `/explore/events?types=Hypopnea&dur=30-`) survive a date-range or session
+ * change without being silently wiped):
  * - `start` / `end` — the active date range (ISO date strings)
  * - `session` — the currently selected session ID
  */
@@ -56,15 +60,28 @@ export function useURLStateSync(): void {
     timerRef.current = setTimeout(() => {
       const { dateRange, selectedSessionId } = useAppStore.getState();
 
-      const next = new URLSearchParams();
-      next.set('start', formatDate(dateRange.start));
-      next.set('end', formatDate(dateRange.end));
-
-      if (selectedSessionId) {
-        next.set('session', selectedSessionId);
-      }
-
-      setSearchParams(next, { replace: true });
+      // Build the next params from the CURRENT URL so unknown params (e.g.
+      // `?tab=cross-source`, Event Explorer filters) survive this write. We
+      // only own start/end/session — set/overwrite those, delete them when
+      // their store value is empty, and leave every other key untouched.
+      //
+      // Reading via `setSearchParams(prev => …)` gives us the freshest URL
+      // params even if the URL changed between the debounce schedule and
+      // fire (a closure over the React-state `searchParams` would be stale).
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set('start', formatDate(dateRange.start));
+          next.set('end', formatDate(dateRange.end));
+          if (selectedSessionId) {
+            next.set('session', selectedSessionId);
+          } else {
+            next.delete('session');
+          }
+          return next;
+        },
+        { replace: true },
+      );
       timerRef.current = null;
     }, 300);
   }, [setSearchParams]);

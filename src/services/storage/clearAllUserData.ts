@@ -39,19 +39,39 @@ import { OPFSService } from './OPFSService';
  * signal viewer writes one `signal-viewer-lanes-<sessionId>` key per session,
  * so the full set is only known at runtime.
  *
+ * App-key naming convention — TWO valid `cpap` prefixes coexist:
+ *  - `cpap-<name>`           — zustand persist stores written via the persist
+ *                             middleware: `cpap-theme` (useAppStore),
+ *                             `cpap-settings` (useSettingsStore). The hyphen
+ *                             form is fixed by the persist middleware's key
+ *                             config and is what existing builds wrote.
+ *  - `cpap.<feature>.<...>`  — feature-specific, dotted-namespace keys for
+ *                             non-zustand state (e.g.
+ *                             `cpap.eventExplorer.savedQueries.v1`).
+ *
+ * Both conventions are valid going forward; new writers should pick whichever
+ * fits, but MUST start with `cpap-` or `cpap.`. Each form needs its own entry
+ * here because a `cpap-` prefix sweep silently misses every dotted key (this
+ * is the privacy regression that landed the Event Explorer's saved-queries
+ * blob outside the delete-everything sweep).
+ *
  * Derived from an exhaustive audit of every localStorage writer in `src/`:
- *  - `cpap-`                 — zustand persist stores: `cpap-theme`
- *                             (useAppStore), `cpap-settings` (useSettingsStore).
+ *  - `cpap-`                 — zustand persist stores: `cpap-theme`,
+ *                             `cpap-settings`.
+ *  - `cpap.`                 — dotted feature keys, including
+ *                             `cpap.eventExplorer.savedQueries.v1`. Covers any
+ *                             future `cpap.<feature>.<...>` key by convention.
  *  - `signal-viewer-lanes-`  — per-session lane UI state (order/visibility/
  *                             collapse/preset) written by SignalViewer.tsx.
  *  - `signal-viewer-hidden-` — legacy per-session hidden-channel UI state from
  *                             earlier builds; kept so old keys are also cleaned.
  *
- * If a new localStorage writer is added, register its prefix here so the wipe
- * stays total.
+ * If a new localStorage writer is added under a different top-level namespace,
+ * register its prefix here so the wipe stays total.
  */
 const APP_LOCAL_STORAGE_PREFIXES = [
   'cpap-',
+  'cpap.',
   'signal-viewer-lanes-',
   'signal-viewer-hidden-',
 ] as const;
