@@ -6,7 +6,8 @@
  * **minutes since NOON** of the record's calendar date — ResMed splits days at
  * noon. A value `> 720` therefore crosses midnight into the next calendar day
  * and must NOT be discarded. A non-positive value (`0` or `-1`) marks an unused
- * slot. The `Date` channel holds the ResMed Excel-serial day value.
+ * slot. The `Date` channel holds the ResMed day value: days since the Unix
+ * epoch (1970-01-01 UTC), NOT an Excel/Lotus serial value.
  *
  * (An earlier revision of this parser treated the values as minutes-of-day from
  * midnight with a hard `> 1440` reject. That was wrong: it conflicted with
@@ -17,9 +18,13 @@
 import { describe, it, expect } from 'vitest';
 import { STRParser } from '@/parsers/resmed/STRParser';
 
-/** ResMed Excel-serial day value for a given local calendar date. */
+/**
+ * ResMed STR `Date` day value for a given local calendar date: whole days
+ * since the Unix epoch (1970-01-01 UTC). Mirrors the real hardware convention
+ * decoded by STRParser (see RESMED_STR_DAY_EPOCH_MS), not the Excel/Lotus epoch.
+ */
 function dayValue(year: number, month1: number, day: number): number {
-  const epoch = Date.UTC(1899, 11, 30);
+  const epoch = Date.UTC(1970, 0, 1);
   const target = Date.UTC(year, month1 - 1, day);
   return Math.round((target - epoch) / 86_400_000);
 }
