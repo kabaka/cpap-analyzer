@@ -263,17 +263,17 @@ async function setupAndNavigate(
 
 test.describe('Analysis Views — Navigation', () => {
   test('statistical analysis route renders heading', async ({ page }) => {
-    await page.goto('/analysis/statistical');
+    await page.goto('/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
   });
 
   test('event analysis route renders heading', async ({ page }) => {
-    await page.goto('/analysis/events');
+    await page.goto('/explore/events');
     await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
   });
 
   test('pressure optimization route renders heading', async ({ page }) => {
-    await page.goto('/analysis/pressure');
+    await page.goto('/explore/pressure');
     await expect(page.getByRole('heading', { name: /pressure optimization/i })).toBeVisible();
   });
 });
@@ -284,7 +284,7 @@ test.describe('Analysis Views — Navigation', () => {
 
 test.describe('Analysis Views — Empty State', () => {
   test('statistical analysis shows empty state without data', async ({ page }) => {
-    await page.goto('/analysis/statistical');
+    await page.goto('/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     // StatisticalAnalysis always renders controls+tabs; with no data, descriptive stats table shows Count=0
@@ -295,7 +295,7 @@ test.describe('Analysis Views — Empty State', () => {
   });
 
   test('event analysis shows empty state without data', async ({ page }) => {
-    await page.goto('/analysis/events');
+    await page.goto('/explore/events');
     await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
 
     // Wait for loading to finish and empty state text to appear
@@ -303,7 +303,7 @@ test.describe('Analysis Views — Empty State', () => {
   });
 
   test('pressure optimization shows empty state without data', async ({ page }) => {
-    await page.goto('/analysis/pressure');
+    await page.goto('/explore/pressure');
     await expect(page.getByRole('heading', { name: /pressure optimization/i })).toBeVisible();
 
     // Wait for loading to finish and empty state text to appear
@@ -317,7 +317,7 @@ test.describe('Analysis Views — Empty State', () => {
 
 test.describe('Analysis Views — Data-Injected Rendering', () => {
   test('statistical analysis renders descriptive stats table with data', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     // Default tab is Descriptive Stats — wait for the statistics table
@@ -332,7 +332,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
   });
 
   test('statistical analysis trends tab renders chart', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     // Switch to Trends tab
@@ -347,7 +347,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
   });
 
   test('statistical analysis distribution tab renders histogram', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
 
     const distTab = page.getByRole('tab', { name: 'Distribution' });
     await distTab.click();
@@ -360,7 +360,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
   });
 
   test('statistical analysis correlation tab renders heatmap', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
 
     const corrTab = page.getByRole('tab', { name: 'Correlation' });
     await corrTab.click();
@@ -373,7 +373,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
   });
 
   test('statistical analysis hypothesis tab renders comparison', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
 
     const hypoTab = page.getByRole('tab', { name: 'Hypothesis Testing' });
     await hypoTab.click();
@@ -384,7 +384,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
   });
 
   test('event analysis renders sections with injected events', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
     await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
 
     // Summary cards should show event counts
@@ -400,7 +400,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
   });
 
   test('event analysis renders duration distribution section', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     await expect(page.getByText('Event Duration Distribution')).toBeVisible({ timeout: 15_000 });
     await expect(
@@ -409,7 +409,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
   });
 
   test('pressure optimization renders sections with data', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/pressure');
+    await setupAndNavigate(page, '/explore/pressure');
     await expect(page.getByRole('heading', { name: /pressure optimization/i })).toBeVisible();
 
     // Pressure-Response scatter should render
@@ -420,7 +420,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
   });
 
   test('pressure optimization renders variability section', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/pressure');
+    await setupAndNavigate(page, '/explore/pressure');
 
     await expect(page.getByText('Pressure Variability')).toBeVisible({ timeout: 15_000 });
     // Should show summary cards for mean pressure, range, CV
@@ -429,7 +429,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
   });
 
   test('pressure optimization renders titration recommendations', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/pressure');
+    await setupAndNavigate(page, '/explore/pressure');
 
     await expect(page.getByText('Titration Recommendations')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('Optimal Pressure Range').first()).toBeVisible();
@@ -442,7 +442,7 @@ test.describe('Analysis Views — Data-Injected Rendering', () => {
 
 test.describe('Analysis Views — Parameter Changes', () => {
   test('statistical analysis metric selector changes displayed metric', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     // Default metric is AHI — table should show AHI label
@@ -458,7 +458,7 @@ test.describe('Analysis Views — Parameter Changes', () => {
   });
 
   test('statistical analysis window selector updates trends', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
     await page.getByRole('tab', { name: 'Trends' }).click();
 
     // Default window is 7 — chart title should reflect it
@@ -474,7 +474,7 @@ test.describe('Analysis Views — Parameter Changes', () => {
   });
 
   test('event analysis filter changes filtered event count', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     // Wait for summary cards
     await expect(page.getByText('Filtered Events')).toBeVisible({ timeout: 15_000 });
@@ -492,7 +492,7 @@ test.describe('Analysis Views — Parameter Changes', () => {
   });
 
   test('event analysis cluster preset changes cluster results', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     // Wait for cluster section to appear — target the section heading (h2) specifically
     await expect(page.locator('h2', { hasText: /event clusters/i })).toBeVisible({
@@ -509,7 +509,7 @@ test.describe('Analysis Views — Parameter Changes', () => {
   });
 
   test('pressure optimization grouping selector changes box plot', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/pressure');
+    await setupAndNavigate(page, '/explore/pressure');
 
     // Wait for variability section
     await expect(page.getByText('Pressure Variability')).toBeVisible({ timeout: 15_000 });
@@ -535,7 +535,7 @@ test.describe('Analysis Views — Parameter Changes', () => {
 
 test.describe('Analysis Views — Tab Navigation', () => {
   test('tabs switch content panels correctly', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     const descriptiveTab = page.getByRole('tab', { name: 'Descriptive Stats' });
@@ -576,7 +576,7 @@ test.describe('Analysis Views — Tab Navigation', () => {
   });
 
   test('all tabs exist in the analysis sections nav', async ({ page }) => {
-    await page.goto('/analysis/statistical');
+    await page.goto('/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     const tablist = page.locator('[role="tablist"][aria-label="Analysis sections"]');
@@ -596,7 +596,7 @@ test.describe('Analysis Views — Tab Navigation', () => {
 
 test.describe('Analysis Views — Chart Containers', () => {
   test('chart containers have titles and export buttons', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
 
     // Navigate to Trends tab which has a chart
     await page.getByRole('tab', { name: 'Trends' }).click();
@@ -610,7 +610,7 @@ test.describe('Analysis Views — Chart Containers', () => {
   });
 
   test('export PNG button is enabled when chart is visible', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
 
     await page.getByRole('tab', { name: 'Trends' }).click();
 
@@ -627,7 +627,7 @@ test.describe('Analysis Views — Chart Containers', () => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
 
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
 
     await page.getByRole('tab', { name: 'Trends' }).click();
 
@@ -649,7 +649,7 @@ test.describe('Analysis Views — Chart Containers', () => {
   });
 
   test('event analysis charts have export buttons', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     // Event Density chart should have export button
     const densityChart = page.locator('[role="figure"]').filter({ hasText: /Events Per Night/i });
@@ -661,7 +661,7 @@ test.describe('Analysis Views — Chart Containers', () => {
   });
 
   test('pressure optimization charts have export buttons', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/pressure');
+    await setupAndNavigate(page, '/explore/pressure');
 
     const scatterChart = page.locator('[role="figure"]').filter({ hasText: /AHI vs. Pressure/i });
     await expect(scatterChart).toBeVisible({ timeout: 15_000 });
@@ -683,7 +683,7 @@ test.describe('Analysis Views — Theme Changes', () => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
 
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
 
     // Navigate to Trends tab which has a chart
     await page.getByRole('tab', { name: 'Trends' }).click();
@@ -718,7 +718,7 @@ test.describe('Analysis Views — Theme Changes', () => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
 
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     const densityChart = page.locator('[role="figure"]').filter({ hasText: /Events Per Night/i });
     await expect(densityChart).toBeVisible({ timeout: 15_000 });
@@ -743,7 +743,7 @@ test.describe('Analysis Views — Theme Changes', () => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
 
-    await setupAndNavigate(page, '/analysis/pressure');
+    await setupAndNavigate(page, '/explore/pressure');
 
     const scatterChart = page.locator('[role="figure"]').filter({ hasText: /AHI vs. Pressure/i });
     await expect(scatterChart).toBeVisible({ timeout: 15_000 });
@@ -785,9 +785,9 @@ test.describe('Analysis Views — No Console Errors', () => {
 
     // Visit each analysis view
     const routes = [
-      { path: '/analysis/statistical', heading: /statistical analysis/i },
-      { path: '/analysis/events', heading: /event analysis/i },
-      { path: '/analysis/pressure', heading: /pressure optimization/i },
+      { path: '/explore/correlations', heading: /statistical analysis/i },
+      { path: '/explore/events', heading: /event analysis/i },
+      { path: '/explore/pressure', heading: /pressure optimization/i },
     ];
 
     for (const route of routes) {
@@ -813,7 +813,7 @@ test.describe('Analysis Views — No Console Errors', () => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
 
-    await setupAndNavigate(page, '/analysis/statistical');
+    await setupAndNavigate(page, '/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     // Wait for initial load
@@ -850,7 +850,7 @@ test.describe('Analysis Views — No Console Errors', () => {
 
 test.describe('Analysis Views — Controls Accessibility', () => {
   test('statistical analysis has labeled controls toolbar', async ({ page }) => {
-    await page.goto('/analysis/statistical');
+    await page.goto('/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     const toolbar = page.locator('[role="toolbar"][aria-label="Analysis controls"]');
@@ -866,7 +866,7 @@ test.describe('Analysis Views — Controls Accessibility', () => {
   });
 
   test('event analysis has labeled controls toolbar', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     const toolbar = page.locator('[role="toolbar"][aria-label="Event analysis controls"]');
     await expect(toolbar).toBeVisible({ timeout: 15_000 });
@@ -876,7 +876,7 @@ test.describe('Analysis Views — Controls Accessibility', () => {
   });
 
   test('pressure optimization has labeled controls toolbar', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/pressure');
+    await setupAndNavigate(page, '/explore/pressure');
 
     const toolbar = page.locator('[role="toolbar"][aria-label="Pressure analysis controls"]');
     await expect(toolbar).toBeVisible({ timeout: 15_000 });
@@ -885,7 +885,7 @@ test.describe('Analysis Views — Controls Accessibility', () => {
   });
 
   test('statistical analysis metric select has all options', async ({ page }) => {
-    await page.goto('/analysis/statistical');
+    await page.goto('/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     const metricSelect = page.locator('#metric-select');
@@ -901,7 +901,7 @@ test.describe('Analysis Views — Controls Accessibility', () => {
   });
 
   test('statistical analysis window select has all options', async ({ page }) => {
-    await page.goto('/analysis/statistical');
+    await page.goto('/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
     const windowSelect = page.locator('#window-select');
@@ -916,7 +916,7 @@ test.describe('Analysis Views — Controls Accessibility', () => {
   });
 
   test('event analysis filter select has all options', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     const filterSelect = page.locator('#event-filter');
     await expect(filterSelect).toBeVisible({ timeout: 15_000 });
@@ -930,7 +930,7 @@ test.describe('Analysis Views — Controls Accessibility', () => {
   });
 
   test('event analysis cluster preset has all options', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     const presetSelect = page.locator('#cluster-preset');
     await expect(presetSelect).toBeVisible({ timeout: 15_000 });
@@ -943,7 +943,7 @@ test.describe('Analysis Views — Controls Accessibility', () => {
   });
 
   test('pressure optimization grouping select has all options', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/pressure');
+    await setupAndNavigate(page, '/explore/pressure');
 
     const groupingSelect = page.locator('#grouping-select');
     await expect(groupingSelect).toBeVisible({ timeout: 15_000 });
@@ -961,7 +961,7 @@ test.describe('Analysis Views — Controls Accessibility', () => {
 
 test.describe('Analysis Views — Event Summary Cards', () => {
   test('event analysis summary cards show correct counts', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     // Wait for summary cards
     await expect(page.getByText('Total Events')).toBeVisible({ timeout: 15_000 });
@@ -980,7 +980,7 @@ test.describe('Analysis Views — Event Summary Cards', () => {
   });
 
   test('event analysis summary cards update when filter changes', async ({ page }) => {
-    await setupAndNavigate(page, '/analysis/events', { includeEvents: true });
+    await setupAndNavigate(page, '/explore/events', { includeEvents: true });
 
     await expect(page.getByText('Total Events')).toBeVisible({ timeout: 15_000 });
 
@@ -1018,23 +1018,23 @@ test.describe('Analysis Views — Cross-View Navigation', () => {
     await injectTestData(page, sessions, aggregates, events);
 
     // Visit Statistical Analysis
-    await page.goto('/analysis/statistical');
+    await page.goto('/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
     const table = page.locator('table[aria-label*="Descriptive statistics"]');
     await expect(table).toBeVisible({ timeout: 15_000 });
 
     // Navigate to Event Analysis
-    await page.goto('/analysis/events');
+    await page.goto('/explore/events');
     await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
     await expect(page.getByText('Total Events')).toBeVisible({ timeout: 15_000 });
 
     // Navigate to Pressure Optimization
-    await page.goto('/analysis/pressure');
+    await page.goto('/explore/pressure');
     await expect(page.getByRole('heading', { name: /pressure optimization/i })).toBeVisible();
     await expect(page.getByText('Pressure-Response Relationship')).toBeVisible({ timeout: 15_000 });
 
     // Back to Statistical Analysis
-    await page.goto('/analysis/statistical');
+    await page.goto('/explore/correlations');
     await expect(page.locator('table[aria-label*="Descriptive statistics"]')).toBeVisible({
       timeout: 15_000,
     });

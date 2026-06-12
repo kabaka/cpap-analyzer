@@ -39,7 +39,7 @@ vi.mock('../StatisticalAnalysis.module.css', () => ({
   default: new Proxy({}, { get: (_target, prop) => String(prop) }),
 }));
 
-import { StatisticalAnalysis } from '@/views/Analysis/StatisticalAnalysis';
+import { StatisticalAnalysis } from '@/views/Explore/StatisticalAnalysis';
 
 // ---------------------------------------------------------------------------
 // Helpers

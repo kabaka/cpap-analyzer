@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy } from 'react';
 import RootLayout from '@/components/layouts/RootLayout';
 import { SuspenseWrapper } from '@/components/SuspenseWrapper';
@@ -15,11 +15,10 @@ const SessionDetail = lazy(() => import('@/views/Sessions/SessionDetail'));
 const SignalViewer = lazy(() => import('@/views/Sessions/KeyedSignalViewer'));
 const SessionComparison = lazy(() => import('@/views/Sessions/SessionComparison'));
 const Trends = lazy(() => import('@/views/Trends/Trends'));
-const AnalysisHub = lazy(() => import('@/views/Analysis/AnalysisHub'));
-const StatisticalAnalysis = lazy(() => import('@/views/Analysis/StatisticalAnalysis'));
-const EventAnalysis = lazy(() => import('@/views/Analysis/EventAnalysis'));
-const PressureOptimization = lazy(() => import('@/views/Analysis/PressureOptimization'));
-const IntegrationAnalysis = lazy(() => import('@/views/Analysis/IntegrationAnalysis'));
+const ExploreHub = lazy(() => import('@/views/Explore/ExploreHub'));
+const Correlations = lazy(() => import('@/views/Explore/Correlations'));
+const EventAnalysis = lazy(() => import('@/views/Explore/EventAnalysis'));
+const PressureOptimization = lazy(() => import('@/views/Explore/PressureOptimization'));
 const Reports = lazy(() => import('@/views/Reports/Reports'));
 const DataManagement = lazy(() => import('@/views/DataManagement/DataManagement'));
 const ImportWizard = lazy(() => import('@/views/DataManagement/ImportWizard'));
@@ -90,21 +89,13 @@ export const router = createBrowserRouter(
           ),
         },
         {
-          path: 'analysis',
+          path: 'explore',
           children: [
             {
               index: true,
               element: (
                 <SuspenseWrapper>
-                  <AnalysisHub />
-                </SuspenseWrapper>
-              ),
-            },
-            {
-              path: 'statistical',
-              element: (
-                <SuspenseWrapper>
-                  <StatisticalAnalysis />
+                  <ExploreHub />
                 </SuspenseWrapper>
               ),
             },
@@ -117,6 +108,14 @@ export const router = createBrowserRouter(
               ),
             },
             {
+              path: 'correlations',
+              element: (
+                <SuspenseWrapper>
+                  <Correlations />
+                </SuspenseWrapper>
+              ),
+            },
+            {
               path: 'pressure',
               element: (
                 <SuspenseWrapper>
@@ -124,14 +123,22 @@ export const router = createBrowserRouter(
                 </SuspenseWrapper>
               ),
             },
+          ],
+        },
+        // Legacy redirects: the old "Analysis" routes were reorganized into the
+        // "Explore" hub. Preserve existing bookmarks and deep links. `replace`
+        // avoids polluting browser history with the deprecated path.
+        {
+          path: 'analysis',
+          children: [
+            { index: true, element: <Navigate to="/explore" replace /> },
+            { path: 'statistical', element: <Navigate to="/explore/correlations" replace /> },
             {
               path: 'integrations',
-              element: (
-                <SuspenseWrapper>
-                  <IntegrationAnalysis />
-                </SuspenseWrapper>
-              ),
+              element: <Navigate to="/explore/correlations?tab=cross-source" replace />,
             },
+            { path: 'events', element: <Navigate to="/explore/events" replace /> },
+            { path: 'pressure', element: <Navigate to="/explore/pressure" replace /> },
           ],
         },
         {

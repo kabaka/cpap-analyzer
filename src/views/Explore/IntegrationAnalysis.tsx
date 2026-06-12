@@ -5,7 +5,7 @@
  * across three analysis tabs: Correlation Explorer, Correlation Matrix,
  * and Metric Comparison.
  *
- * @module views/Analysis/IntegrationAnalysis
+ * @module views/Explore/IntegrationAnalysis
  */
 
 import React, { useMemo, useState } from 'react';
@@ -976,11 +976,11 @@ export default function IntegrationAnalysis() {
   // --- Empty state: no wearable data ---
   if (!summaryLoading && summary && !summary.hasData) {
     return (
-      <div className={styles.page} role="main" aria-labelledby="integration-heading">
+      <div className={styles.page} aria-labelledby="integration-heading">
         <div className={styles.header}>
-          <h1 id="integration-heading" className={styles.heading}>
+          <h2 id="integration-heading" className={styles.heading}>
             Cross-Source Analysis
-          </h1>
+          </h2>
         </div>
         <div className={styles.emptyState}>
           <span className={styles.emptyIcon} aria-hidden="true">
@@ -1003,11 +1003,11 @@ export default function IntegrationAnalysis() {
   // --- Empty state: no date range overlap ---
   if (!loading && summary?.hasData && data.length === 0 && !summary.overlapDateRange) {
     return (
-      <div className={styles.page} role="main" aria-labelledby="integration-heading">
+      <div className={styles.page} aria-labelledby="integration-heading">
         <div className={styles.header}>
-          <h1 id="integration-heading" className={styles.heading}>
+          <h2 id="integration-heading" className={styles.heading}>
             Cross-Source Analysis
-          </h1>
+          </h2>
           <DateRangeSelector />
         </div>
         <div className={styles.emptyState}>
@@ -1068,11 +1068,11 @@ export default function IntegrationAnalysis() {
   ];
 
   return (
-    <div className={styles.page} role="main" aria-labelledby="integration-heading">
+    <div className={styles.page} aria-labelledby="integration-heading">
       <div className={styles.header}>
-        <h1 id="integration-heading" className={styles.heading}>
+        <h2 id="integration-heading" className={styles.heading}>
           Cross-Source Analysis
-        </h1>
+        </h2>
         <DateRangeSelector />
       </div>
 

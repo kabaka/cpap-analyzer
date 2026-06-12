@@ -25,7 +25,7 @@ test.describe('Application Shell', () => {
     const nav = page.getByRole('navigation');
     await expect(nav.getByRole('link', { name: /dashboard/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /sessions/i })).toBeVisible();
-    await expect(nav.getByRole('link', { name: /analysis/i })).toBeVisible();
+    await expect(nav.getByRole('link', { name: /explore/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /reports/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /data/i })).toBeVisible();
     await expect(nav.getByRole('link', { name: /settings/i })).toBeVisible();

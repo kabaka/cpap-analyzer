@@ -1,20 +1,40 @@
 /**
- * Analysis Hub — landing page for all analysis views.
+ * Explore Hub — intent-oriented landing page for the analysis tools.
  *
- * Displays cards linking to the statistical, event, and pressure
- * analysis views. Provides brief descriptions and navigation.
+ * Renders a grid of cards, one per "exploration" the user can perform. The
+ * card list is data-driven via {@link EXPLORE_CARDS} so that future feature
+ * views (e.g. Breathing Patterns, Machine Configurations) can be surfaced by
+ * appending a single entry — no JSX changes required.
  *
- * @module views/Analysis/AnalysisHub
+ * ## Adding a new card (extension point)
+ *
+ * Append an {@link ExploreCard} to {@link EXPLORE_CARDS}:
+ *
+ * ```ts
+ * {
+ *   title: 'Breathing Patterns',
+ *   description: 'Periodic breathing, flow limitation, and TECSA detection.',
+ *   path: '/explore/breathing',
+ *   iconClass: styles.iconBreathing, // add a matching class in the CSS module
+ *   iconLabel: '🫁',
+ * }
+ * ```
+ *
+ * Also register the matching route under `/explore` in `src/router.tsx`. Cards
+ * may set `disabled: true` (with an optional `badge`) to advertise a view that
+ * is not yet navigable.
+ *
+ * @module views/Explore/ExploreHub
  */
 
 import { Link } from 'react-router-dom';
-import styles from './AnalysisHub.module.css';
+import styles from './ExploreHub.module.css';
 
 // ---------------------------------------------------------------------------
 // Card data
 // ---------------------------------------------------------------------------
 
-interface AnalysisCard {
+interface ExploreCard {
   title: string;
   description: string;
   path: string;
@@ -24,38 +44,35 @@ interface AnalysisCard {
   badge?: string;
 }
 
-const CARDS: readonly AnalysisCard[] = [
+/**
+ * The hub's card list. This is the single extension point for the Explore
+ * hub: add an entry here (and a corresponding route in `src/router.tsx`) to
+ * surface a new exploration. Order here is the display order.
+ */
+const EXPLORE_CARDS: readonly ExploreCard[] = [
   {
-    title: 'Statistical Analysis',
-    description:
-      'Descriptive statistics, time-series trends, distribution tests, correlation matrices, and hypothesis testing for your therapy metrics.',
-    path: '/analysis/statistical',
-    iconClass: styles.iconStatistical,
-    iconLabel: '📊',
-  },
-  {
-    title: 'Event Analysis',
+    title: 'Event Explorer',
     description:
       'Event density, duration distributions, cluster detection, survival analysis, false-negative screening, and inter-event interval patterns.',
-    path: '/analysis/events',
+    path: '/explore/events',
     iconClass: styles.iconEvents,
     iconLabel: '⚡',
+  },
+  {
+    title: 'Correlations',
+    description:
+      'Descriptive statistics, trends, distribution tests, and hypothesis testing for your therapy metrics — plus cross-source correlation with wearable and lifestyle data.',
+    path: '/explore/correlations',
+    iconClass: styles.iconStatistical,
+    iconLabel: '📊',
   },
   {
     title: 'Pressure Optimization',
     description:
       'Pressure-response relationships, variability assessment, titration recommendations, and BiPAP effectiveness analysis.',
-    path: '/analysis/pressure',
+    path: '/explore/pressure',
     iconClass: styles.iconPressure,
     iconLabel: '🎯',
-  },
-  {
-    title: 'Integration Analysis',
-    description:
-      'Correlate therapy data with external sources such as sleep trackers, weather, and lifestyle metrics.',
-    path: '/analysis/integrations',
-    iconClass: styles.iconIntegration,
-    iconLabel: '🔗',
   },
 ];
 
@@ -63,19 +80,19 @@ const CARDS: readonly AnalysisCard[] = [
 // Component
 // ---------------------------------------------------------------------------
 
-export function AnalysisHub() {
+export function ExploreHub() {
   return (
-    <div className={styles.hub} role="main" aria-labelledby="analysis-heading">
-      <h1 id="analysis-heading" className={styles.heading}>
-        Analysis
+    <div className={styles.hub} role="main" aria-labelledby="explore-heading">
+      <h1 id="explore-heading" className={styles.heading}>
+        Explore
       </h1>
       <p className={styles.subtitle}>
-        Explore your CPAP therapy data with statistical methods, event clustering, and pressure
-        optimisation tools.
+        Dig into your CPAP therapy data with statistical methods, event clustering, cross-source
+        correlation, and pressure optimisation tools.
       </p>
 
-      <nav className={styles.grid} aria-label="Analysis types">
-        {CARDS.map((card) =>
+      <nav className={styles.grid} aria-label="Exploration types">
+        {EXPLORE_CARDS.map((card) =>
           card.disabled ? (
             <div key={card.path} className={styles.disabledCard} aria-disabled="true">
               <div className={styles.cardHeader}>
@@ -112,4 +129,4 @@ export function AnalysisHub() {
   );
 }
 
-export default AnalysisHub;
+export default ExploreHub;

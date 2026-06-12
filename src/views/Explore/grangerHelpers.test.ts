@@ -11,7 +11,7 @@ import {
   interpretationClause,
   unavailableMessage,
   MAX_LAG_OPTIONS,
-} from '@/views/Analysis/grangerHelpers';
+} from '@/views/Explore/grangerHelpers';
 
 // The raw stationarity warning strings are produced by the worker in
 // src/analysis/correlation/granger.ts. They are copied here VERBATIM so that

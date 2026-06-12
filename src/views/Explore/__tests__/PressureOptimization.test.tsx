@@ -48,7 +48,7 @@ vi.mock('../PressureOptimization.module.css', () => ({
   default: new Proxy({}, { get: (_target, prop) => String(prop) }),
 }));
 
-import { PressureOptimization } from '@/views/Analysis/PressureOptimization';
+import { PressureOptimization } from '@/views/Explore/PressureOptimization';
 
 // ---------------------------------------------------------------------------
 // Helpers

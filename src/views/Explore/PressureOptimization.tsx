@@ -4,7 +4,7 @@
  * Provides pressure-response analysis, variability assessment,
  * titration recommendations, and BiPAP effectiveness metrics.
  *
- * @module views/Analysis/PressureOptimization
+ * @module views/Explore/PressureOptimization
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';

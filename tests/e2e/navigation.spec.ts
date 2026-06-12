@@ -13,9 +13,9 @@ test.describe('Navigation', () => {
     await nav.getByRole('link', { name: /sessions/i }).click();
     await expect(page.getByRole('heading', { name: /^sessions$/i })).toBeVisible();
 
-    // Navigate to Analysis
-    await nav.getByRole('link', { name: /analysis/i }).click();
-    await expect(page.getByRole('heading', { name: /^analysis$/i })).toBeVisible();
+    // Navigate to Explore
+    await nav.getByRole('link', { name: /explore/i }).click();
+    await expect(page.getByRole('heading', { name: /^explore$/i })).toBeVisible();
 
     // Navigate to Reports
     await nav.getByRole('link', { name: /reports/i }).click();
@@ -48,7 +48,7 @@ test.describe('Navigation', () => {
   });
 
   test('should navigate via direct URL to nested route', async ({ page }) => {
-    await page.goto('/analysis/statistical');
+    await page.goto('/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
   });
 
@@ -57,7 +57,7 @@ test.describe('Navigation', () => {
     const routes = [
       { path: '/', heading: /cpap analyzer/i },
       { path: '/sessions', heading: /^sessions$/i },
-      { path: '/analysis', heading: /^analysis$/i },
+      { path: '/explore', heading: /^explore$/i },
       { path: '/reports', heading: /^reports$/i },
       { path: '/data', heading: /data management/i },
       { path: '/settings', heading: /^settings$/i },
