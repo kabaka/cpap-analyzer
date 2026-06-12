@@ -167,11 +167,14 @@ describe('clearAllUserData', () => {
   // -----------------------------------------------------------------------
 
   describe('localStorage prefix sweep (privacy regression guard)', () => {
-    it('removes every app-prefixed key — including all signal-viewer-hidden-* — and leaves non-app keys untouched', async () => {
+    it('removes every app-prefixed key — including all signal-viewer-lanes-* and legacy signal-viewer-hidden-* — and leaves non-app keys untouched', async () => {
       localStorage.setItem('cpap-theme', 'dark');
       localStorage.setItem('cpap-settings', '{"foo":1}');
+      // Current per-session lane UI state.
+      localStorage.setItem('signal-viewer-lanes-session-1', '{"order":["cpap:flow"]}');
+      localStorage.setItem('signal-viewer-lanes-session-2', '{"hidden":["cpap:leak"]}');
+      // Legacy per-session hidden-channel keys from earlier builds.
       localStorage.setItem('signal-viewer-hidden-session-1', '["Flow"]');
-      localStorage.setItem('signal-viewer-hidden-session-2', '["Pressure"]');
       localStorage.setItem('signal-viewer-hidden-abc-def-ghi', '["SpO2"]');
       localStorage.setItem('unrelated-thing', 'keep-me');
 
@@ -180,12 +183,14 @@ describe('clearAllUserData', () => {
       // Every app-owned key is gone.
       expect(localStorage.getItem('cpap-theme')).toBeNull();
       expect(localStorage.getItem('cpap-settings')).toBeNull();
+      expect(localStorage.getItem('signal-viewer-lanes-session-1')).toBeNull();
+      expect(localStorage.getItem('signal-viewer-lanes-session-2')).toBeNull();
       expect(localStorage.getItem('signal-viewer-hidden-session-1')).toBeNull();
-      expect(localStorage.getItem('signal-viewer-hidden-session-2')).toBeNull();
       expect(localStorage.getItem('signal-viewer-hidden-abc-def-ghi')).toBeNull();
 
-      // No signal-viewer-hidden-* residue of any kind survives.
+      // No signal-viewer-* residue of any kind survives.
       const survivors = Object.keys(localStorage);
+      expect(survivors.filter((k) => k.startsWith('signal-viewer-lanes-'))).toEqual([]);
       expect(survivors.filter((k) => k.startsWith('signal-viewer-hidden-'))).toEqual([]);
       expect(survivors.filter((k) => k.startsWith('cpap-'))).toEqual([]);
 

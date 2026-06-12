@@ -14,6 +14,23 @@
 
 // ── Public interfaces ────────────────────────────────────────────
 
+/**
+ * The kind of lane. CPAP lanes are high-frequency waveforms routed through the
+ * existing 60 fps line path; wearable lanes are low-rate health signals rendered
+ * directly without downsampling.
+ */
+export type LaneKind = 'cpap' | 'wearable';
+
+/**
+ * How a channel's samples are drawn.
+ * - `line`   — continuous polyline (default; CPAP waveforms, dense HR).
+ * - `step`   — stepAfter hold with a filled dot at each real sample, dashed
+ *   connector across large gaps (sparse series such as HRV).
+ * - `ribbon` — categorical stacked bands (the hypnogram). Never read as a
+ *   waveform: no `lineTo` between segments.
+ */
+export type LaneRender = 'line' | 'step' | 'ribbon';
+
 /** One signal channel to render. */
 export interface SignalChannel {
   /** Display name (e.g. "Flow", "MaskPress"). */
@@ -30,6 +47,47 @@ export interface SignalChannel {
   readonly physicalMin: number;
   /** Physical maximum for Y-axis scaling. */
   readonly physicalMax: number;
+  /** Lane kind. Defaults to `'cpap'`. */
+  readonly kind?: LaneKind;
+  /** Render style. Defaults to `'line'`. */
+  readonly render?: LaneRender;
+  /**
+   * Marks a low-cadence series whose individual samples should be emphasised
+   * (filled dots) and whose gaps should not be bridged with a solid line.
+   * Implied by `render === 'step'`.
+   */
+  readonly sparse?: boolean;
+  /** Override stroke width in CSS pixels. Defaults to the dense CPAP width. */
+  readonly lineWidth?: number;
+  /**
+   * Absolute timestamps (ms, session-relative, same base as the viewport) for
+   * each sample. Required for sparse/step series so dots and gap detection land
+   * on the real sample times rather than an assumed uniform cadence. When
+   * omitted, samples are assumed evenly spaced across the viewport (CPAP path).
+   */
+  readonly sampleTimes?: Float64Array;
+  /**
+   * Explicit lane height in CSS pixels. When omitted, the renderer falls back to
+   * {@link RenderOptions.channelHeight}. Enables tall hero lanes and short
+   * hypnogram/collapsed lanes within one stack.
+   */
+  readonly height?: number;
+}
+
+/**
+ * A categorical band definition for ribbon (hypnogram) lanes, ordered top→bottom.
+ * The renderer maps each sample value to the matching band by `value` and fills
+ * that band's sub-row.
+ */
+export interface RibbonBand {
+  /** Ordinal sample value this band represents. */
+  readonly value: number;
+  /** Short row label shown at the left (e.g. "W", "REM", "N1–2", "N3"). */
+  readonly label: string;
+  /** Resolved fill colour. */
+  readonly color: string;
+  /** Draw a diagonal hatch overlay as a redundant non-colour cue (REM). */
+  readonly hatch?: boolean;
 }
 
 /** Current viewport time range and channel data to render. */
@@ -54,6 +112,25 @@ export interface EventMarker {
   readonly color: string;
 }
 
+/**
+ * An app-detected breathing-pattern episode (Phase 3 prep). Parallels
+ * {@link EventMarker} but carries a confidence score that drives the wash
+ * opacity and border weight, and is rendered with a hatched, dashed-border
+ * treatment to distinguish app-derived detections from device-reported events.
+ *
+ * Render-only for now: no detection data is wired into the viewer yet.
+ */
+export interface DetectionEpisode {
+  /** Start time in ms offset from signal start. */
+  readonly startTime: number;
+  /** Duration in ms. */
+  readonly duration: number;
+  /** Detection type/category label. */
+  readonly type: string;
+  /** Confidence in [0, 1]; drives wash alpha and border width. */
+  readonly confidence: number;
+}
+
 /** Options controlling visual overlays and layout. */
 export interface RenderOptions {
   /** Whether to draw the crosshair overlay. */
@@ -64,7 +141,20 @@ export interface RenderOptions {
   readonly showGrid: boolean;
   /** Event markers to render as semi-transparent rectangles. */
   readonly eventMarkers: readonly EventMarker[];
-  /** Pixel height per channel strip. */
+  /**
+   * App-detected breathing episodes drawn with a hatched, dashed-border wash.
+   * Optional; defaults to none. Render-only (Phase 3 prep).
+   */
+  readonly detectionEpisodes?: readonly DetectionEpisode[];
+  /**
+   * Ribbon band definitions keyed by channel name, for `render === 'ribbon'`
+   * lanes (the hypnogram). Ordered top→bottom.
+   */
+  readonly ribbonBands?: Readonly<Record<string, readonly RibbonBand[]>>;
+  /**
+   * Default pixel height per channel strip. Individual channels may override via
+   * {@link SignalChannel.height}.
+   */
   readonly channelHeight: number;
   /** Padding around the plot area. */
   readonly padding: Readonly<{
@@ -90,11 +180,30 @@ export interface ValueAtPosition {
 /** Minimum pixels between grid/label tick marks. */
 const MIN_TICK_SPACING_PX = 80;
 
-/** Crosshair + readout styling. */
-const CROSSHAIR_COLOR = 'rgba(120, 120, 120, 0.6)';
+/** Crosshair + readout styling. Colours resolve from CSS tokens at render time. */
+const CROSSHAIR_FALLBACK = 'rgba(120, 120, 120, 0.6)';
 const READOUT_FONT_SIZE = 11;
-const READOUT_BG = 'rgba(0, 0, 0, 0.75)';
-const READOUT_FG = '#ffffff';
+const READOUT_BG_FALLBACK = 'rgba(0, 0, 0, 0.75)';
+const READOUT_FG_FALLBACK = '#ffffff';
+
+/** Default stroke width for dense CPAP waveforms (CSS px). */
+const DENSE_LINE_WIDTH = 1.2;
+
+/**
+ * Gap factor for sparse/step series: a gap larger than this multiple of the
+ * median inter-sample spacing is drawn as a dashed connector rather than a solid
+ * hold, signalling missing coverage.
+ */
+const SPARSE_GAP_FACTOR = 2.5;
+
+/** Detection wash alpha range, mapped from confidence [0, 1]. */
+const DETECTION_ALPHA_MIN = 0.06;
+const DETECTION_ALPHA_MAX = 0.2;
+/** Detection border width range (CSS px), mapped from confidence [0, 1]. */
+const DETECTION_BORDER_MIN = 1;
+const DETECTION_BORDER_MAX = 2;
+/** Detection hatch geometry. */
+const DETECTION_HATCH_PERIOD = 6;
 
 /** Grid styling. */
 const GRID_DASH = [4, 4];
@@ -165,6 +274,46 @@ export function chooseYTicks(physMin: number, physMax: number, maxTicks: number)
     ticks.push(Math.round(v * 1e6) / 1e6); // avoid float drift
   }
   return ticks;
+}
+
+/** Vertical placement of one lane within the stack. */
+export interface LaneLayoutEntry {
+  /** Top Y (CSS px) of the lane strip. */
+  readonly top: number;
+  /** Height (CSS px) of the lane strip. */
+  readonly height: number;
+}
+
+/**
+ * Compute the cumulative top offset and height of each lane, honouring per-lane
+ * `height` overrides and falling back to `defaultHeight`. Pure and exported so
+ * the host can hit-test and position HTML lane headers identically to the canvas.
+ */
+export function computeLaneLayout(
+  channels: readonly { readonly height?: number }[],
+  defaultHeight: number,
+  paddingTop: number,
+): LaneLayoutEntry[] {
+  const out: LaneLayoutEntry[] = [];
+  let top = paddingTop;
+  for (const ch of channels) {
+    const height = ch.height && ch.height > 0 ? ch.height : defaultHeight;
+    out.push({ top, height });
+    top += height;
+  }
+  return out;
+}
+
+/** Total stack height (px) below `paddingTop` for the given lanes. */
+export function totalLaneHeight(
+  channels: readonly { readonly height?: number }[],
+  defaultHeight: number,
+): number {
+  let h = 0;
+  for (const ch of channels) {
+    h += ch.height && ch.height > 0 ? ch.height : defaultHeight;
+  }
+  return h;
 }
 
 // ── SignalRenderer ────────────────────────────────────────────────
@@ -263,11 +412,14 @@ export class SignalRenderer {
     const time = this.getTimeAtX(x, viewport, options);
     if (time < viewport.startTime || time > viewport.endTime) return null;
 
+    const layout = computeLaneLayout(viewport.channels, channelHeight, padding.top);
+
     for (let i = 0; i < viewport.channels.length; i++) {
       const ch = viewport.channels[i];
-      if (!ch) continue;
-      const stripTop = padding.top + i * channelHeight;
-      const stripBottom = stripTop + channelHeight;
+      const entry = layout[i];
+      if (!ch || !entry) continue;
+      const stripTop = entry.top;
+      const stripBottom = stripTop + entry.height;
 
       if (y >= stripTop && y <= stripBottom) {
         // Map Y to physical value (top = physicalMax, bottom = physicalMin)
@@ -284,41 +436,131 @@ export class SignalRenderer {
   }
 
   /**
+   * Sample value at a session-relative time for one channel, honouring sparse
+   * series sample times. Returns `null` when the time falls outside coverage.
+   */
+  private sampleValueAtTime(
+    ch: SignalChannel,
+    time: number,
+    viewport: ViewportState,
+  ): number | null {
+    const { data } = ch;
+    if (data.length === 0) return null;
+
+    if (ch.sampleTimes && ch.sampleTimes.length === data.length) {
+      // Step / sparse series: hold the most recent sample at or before `time`.
+      const times = ch.sampleTimes;
+      const first = times[0];
+      if (first === undefined || time < first) return null;
+      // Binary search for the last index with time <= target.
+      let lo = 0;
+      let hi = times.length - 1;
+      let idx = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const t = times[mid];
+        if (t === undefined) break;
+        if (t <= time) {
+          idx = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      return data[idx] ?? null;
+    }
+
+    const durationMs = viewport.endTime - viewport.startTime;
+    if (durationMs <= 0) return null;
+    const msPerSample = durationMs / data.length;
+    const sampleIdx = Math.round((time - viewport.startTime) / msPerSample);
+    if (sampleIdx < 0 || sampleIdx >= data.length) return null;
+    return data[sampleIdx] ?? null;
+  }
+
+  /**
    * Get the physical value and Y position for ALL channels at a given canvas X coordinate.
    */
   getValuesAtTime(
     x: number,
     viewport: ViewportState,
     options: RenderOptions,
-  ): { channel: string; value: number; unit: string; color: string; y: number }[] {
+  ): {
+    channel: string;
+    value: number;
+    unit: string;
+    color: string;
+    y: number;
+    label?: string;
+  }[] {
     const time = this.getTimeAtX(x, viewport, options);
-    const results: { channel: string; value: number; unit: string; color: string; y: number }[] =
-      [];
+    const results: {
+      channel: string;
+      value: number;
+      unit: string;
+      color: string;
+      y: number;
+      label?: string;
+    }[] = [];
+
+    const layout = computeLaneLayout(viewport.channels, options.channelHeight, options.padding.top);
 
     for (let i = 0; i < viewport.channels.length; i++) {
       const ch = viewport.channels[i];
-      if (!ch || ch.data.length === 0) continue;
+      const entry = layout[i];
+      if (!ch || !entry || ch.data.length === 0) continue;
 
-      const durationMs = viewport.endTime - viewport.startTime;
-      if (durationMs <= 0) continue;
+      const value = this.sampleValueAtTime(ch, time, viewport);
+      if (value === null) continue;
 
-      const msPerSample = durationMs / ch.data.length;
-      const sampleIdx = Math.round((time - viewport.startTime) / msPerSample);
-      if (sampleIdx < 0 || sampleIdx >= ch.data.length) continue;
-
-      const value = ch.data[sampleIdx] ?? 0;
-
-      const stripTop = options.padding.top + i * options.channelHeight;
+      const stripTop = entry.top;
       const innerTop = stripTop + 16;
-      const innerBottom = stripTop + options.channelHeight - 8;
+      const innerBottom = stripTop + entry.height - 8;
       const physRange = ch.physicalMax - ch.physicalMin;
       const normY = physRange > 0 ? (value - ch.physicalMin) / physRange : 0.5;
       const y = innerBottom - normY * (innerBottom - innerTop);
+
+      // Ribbon lanes (hypnogram) report a stage label, not a number, and place
+      // the readout dot at the centre of the matching band sub-row.
+      if (ch.render === 'ribbon') {
+        const bands = options.ribbonBands?.[ch.name];
+        const band = bands?.find((b) => b.value === value);
+        const bandY = bands ? this.ribbonBandCenterY(bands, value, stripTop, entry.height) : y;
+        results.push({
+          channel: ch.name,
+          value,
+          unit: ch.unit,
+          color: band?.color ?? ch.color,
+          y: bandY,
+          label: band?.label,
+        });
+        continue;
+      }
 
       results.push({ channel: ch.name, value, unit: ch.unit, color: ch.color, y });
     }
 
     return results;
+  }
+
+  /** Vertical centre (px) of the band whose `value` matches, within a ribbon strip. */
+  private ribbonBandCenterY(
+    bands: readonly RibbonBand[],
+    value: number,
+    stripTop: number,
+    stripHeight: number,
+  ): number {
+    const innerTop = stripTop + 14;
+    const innerBottom = stripTop + stripHeight - 4;
+    const innerHeight = innerBottom - innerTop;
+    const rows = bands.length;
+    if (rows === 0 || innerHeight <= 0) return stripTop + stripHeight / 2;
+    const rowH = innerHeight / rows;
+    const idx = Math.max(
+      0,
+      bands.findIndex((b) => b.value === value),
+    );
+    return innerTop + idx * rowH + rowH / 2;
   }
 
   /** Cancel any pending frame and release references. */
@@ -352,48 +594,74 @@ export class SignalRenderer {
     if (durationMs <= 0) return;
 
     const plotLeft = padding.left;
+    const layout = computeLaneLayout(viewport.channels, channelHeight, padding.top);
 
     // Draw each channel strip
     for (let i = 0; i < viewport.channels.length; i++) {
       const ch = viewport.channels[i];
-      if (!ch) continue;
-      const stripTop = padding.top + i * channelHeight;
+      const entry = layout[i];
+      if (!ch || !entry) continue;
+      const stripTop = entry.top;
+      const stripHeight = entry.height;
 
-      this.drawChannelBackground(plotLeft, stripTop, plotWidth, channelHeight, i);
+      this.drawChannelBackground(plotLeft, stripTop, plotWidth, stripHeight, i);
 
-      if (options.showGrid) {
-        this.drawYGrid(ch, plotLeft, plotWidth, stripTop, channelHeight);
+      const isRibbon = ch.render === 'ribbon';
+
+      // Grid only for value-axis lanes (ribbon/hypnogram has no numeric ticks).
+      if (options.showGrid && !isRibbon) {
+        this.drawYGrid(ch, plotLeft, plotWidth, stripTop, stripHeight);
       }
 
-      // Draw event markers within this channel strip
+      // Event markers + detection washes within this channel strip.
       this.drawEventMarkers(
         options.eventMarkers,
         viewport,
         plotLeft,
         plotWidth,
         stripTop,
-        channelHeight,
+        stripHeight,
       );
+      if (options.detectionEpisodes && options.detectionEpisodes.length > 0) {
+        this.drawDetectionEpisodes(
+          options.detectionEpisodes,
+          viewport,
+          plotLeft,
+          plotWidth,
+          stripTop,
+          stripHeight,
+        );
+      }
 
-      // Draw signal waveform
-      this.drawWaveform(ch, viewport, plotLeft, plotWidth, stripTop, channelHeight);
+      // Signal rendering dispatched by render style.
+      if (isRibbon) {
+        this.drawRibbon(ch, viewport, options, plotLeft, plotWidth, stripTop, stripHeight);
+      } else if (ch.render === 'step' || ch.sparse) {
+        this.drawStep(ch, viewport, plotLeft, plotWidth, stripTop, stripHeight);
+      } else {
+        this.drawLine(ch, viewport, plotLeft, plotWidth, stripTop, stripHeight);
+      }
 
       // Channel name label
       this.drawChannelLabel(ch, plotLeft, stripTop);
 
-      // Y-axis labels
-      this.drawYAxis(ch, plotLeft, stripTop, channelHeight);
+      // Y-axis labels (ribbon lanes draw their own fixed row labels).
+      if (!isRibbon) {
+        this.drawYAxis(ch, plotLeft, stripTop, stripHeight);
+      }
     }
+
+    const totalH = totalLaneHeight(viewport.channels, channelHeight);
 
     // X-axis (time) at the bottom of all channels
     if (options.showGrid) {
-      this.drawXGrid(viewport, plotLeft, plotWidth, padding.top, options);
+      this.drawXGrid(viewport, plotLeft, plotWidth, padding.top, totalH);
     }
-    this.drawXAxis(viewport, plotLeft, plotWidth, padding.top, options);
+    this.drawXAxis(viewport, plotLeft, plotWidth, padding.top, totalH);
 
     // Crosshair overlay
     if (options.showCrosshair && options.crosshairX !== null) {
-      this.drawCrosshair(viewport, options, plotLeft, plotWidth);
+      this.drawCrosshair(viewport, options, plotLeft, plotWidth, totalH);
     }
   }
 
@@ -416,56 +684,62 @@ export class SignalRenderer {
 
   // ── Waveform drawing ───────────────────────────────────────────
 
-  private drawWaveform(
+  /**
+   * Continuous polyline — the original CPAP 60 fps path. When `sampleTimes` is
+   * present (wearable line lanes such as the HR hero), X is positioned by real
+   * timestamps; otherwise samples are assumed uniform across the viewport.
+   */
+  private drawLine(
     ch: SignalChannel,
     viewport: ViewportState,
     plotLeft: number,
     plotWidth: number,
     stripTop: number,
-    channelHeight: number,
+    stripHeight: number,
   ): void {
     const { ctx } = this;
-    const { data, sampleRate } = ch;
-    if (data.length === 0 || sampleRate <= 0) return;
+    const { data } = ch;
+    if (data.length === 0) return;
 
     const durationMs = viewport.endTime - viewport.startTime;
     if (durationMs <= 0) return;
 
-    // Inner drawing area within the channel strip (leave room for label)
     const innerTop = stripTop + 16;
-    const innerBottom = stripTop + channelHeight - 8;
+    const innerBottom = stripTop + stripHeight - 8;
     const innerHeight = innerBottom - innerTop;
     if (innerHeight <= 0) return;
 
     const physRange = ch.physicalMax - ch.physicalMin;
     if (physRange <= 0) return;
 
-    // The data array covers the viewport time range (already sliced/downsampled).
-    // Map data points directly to fill the viewport width.
+    const times = ch.sampleTimes && ch.sampleTimes.length === data.length ? ch.sampleTimes : null;
     const msPerSample = durationMs / data.length;
 
     ctx.save();
     ctx.beginPath();
-    ctx.rect(plotLeft, stripTop, plotWidth, channelHeight);
+    ctx.rect(plotLeft, stripTop, plotWidth, stripHeight);
     ctx.clip();
 
     ctx.strokeStyle = ch.color;
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = ch.lineWidth ?? DENSE_LINE_WIDTH;
     ctx.lineJoin = 'round';
     ctx.beginPath();
 
     let firstPoint = true;
-
     for (let s = 0; s < data.length; s++) {
-      const sampleTimeMs = s * msPerSample;
-      const x = plotLeft + (sampleTimeMs / durationMs) * plotWidth;
-
-      // Skip samples clearly outside the visible area
-      if (x < plotLeft - 2) continue;
-      if (x > plotLeft + plotWidth + 2) break;
+      const tMs = times ? (times[s] ?? 0) - viewport.startTime : s * msPerSample;
+      const x = plotLeft + (tMs / durationMs) * plotWidth;
+      if (x < plotLeft - 2) {
+        if (!times) continue;
+        // For timestamped data we may still need the prior point; keep scanning.
+      }
+      if (x > plotLeft + plotWidth + 2 && !times) break;
 
       const sample = data[s];
-      if (sample === undefined) continue;
+      if (sample === undefined || Number.isNaN(sample)) {
+        firstPoint = true; // break the line across missing samples
+        continue;
+      }
       const normY = (sample - ch.physicalMin) / physRange;
       const y = innerBottom - normY * innerHeight;
 
@@ -477,6 +751,307 @@ export class SignalRenderer {
       }
     }
 
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Step (stepAfter) render for sparse series (e.g. HRV RMSSD): hold each value
+   * until the next sample, draw a filled dot at every real sample, and switch to
+   * a dashed connector when the gap to the next sample exceeds the typical
+   * spacing (signalling missing coverage rather than a genuine plateau).
+   */
+  private drawStep(
+    ch: SignalChannel,
+    viewport: ViewportState,
+    plotLeft: number,
+    plotWidth: number,
+    stripTop: number,
+    stripHeight: number,
+  ): void {
+    const { ctx } = this;
+    const { data } = ch;
+    if (data.length === 0) return;
+
+    const durationMs = viewport.endTime - viewport.startTime;
+    if (durationMs <= 0) return;
+
+    const innerTop = stripTop + 16;
+    const innerBottom = stripTop + stripHeight - 8;
+    const innerHeight = innerBottom - innerTop;
+    if (innerHeight <= 0) return;
+
+    const physRange = ch.physicalMax - ch.physicalMin;
+    if (physRange <= 0) return;
+
+    const times = ch.sampleTimes && ch.sampleTimes.length === data.length ? ch.sampleTimes : null;
+    const msPerSample = durationMs / data.length;
+
+    const xAt = (s: number): number => {
+      const tMs = times ? (times[s] ?? 0) - viewport.startTime : s * msPerSample;
+      return plotLeft + (tMs / durationMs) * plotWidth;
+    };
+    const yAt = (v: number): number =>
+      innerBottom - ((v - ch.physicalMin) / physRange) * innerHeight;
+
+    // Median inter-sample spacing → gap threshold.
+    let gapThresholdMs = Number.POSITIVE_INFINITY;
+    if (times && times.length > 1) {
+      const diffs: number[] = [];
+      for (let s = 1; s < times.length; s++) {
+        const a = times[s - 1];
+        const b = times[s];
+        if (a !== undefined && b !== undefined) diffs.push(b - a);
+      }
+      diffs.sort((p, q) => p - q);
+      const median = diffs[Math.floor(diffs.length / 2)] ?? 0;
+      if (median > 0) gapThresholdMs = median * SPARSE_GAP_FACTOR;
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plotLeft, stripTop, plotWidth, stripHeight);
+    ctx.clip();
+    ctx.strokeStyle = ch.color;
+    ctx.lineWidth = ch.lineWidth ?? DENSE_LINE_WIDTH;
+    ctx.lineJoin = 'round';
+
+    let prevX: number | null = null;
+    let prevY: number | null = null;
+    let prevT: number | null = null;
+
+    for (let s = 0; s < data.length; s++) {
+      const sample = data[s];
+      if (sample === undefined || Number.isNaN(sample)) continue;
+      const x = xAt(s);
+      const y = yAt(sample);
+      const tMs = times ? (times[s] ?? 0) : s * msPerSample;
+
+      if (prevX !== null && prevY !== null) {
+        const gap = prevT !== null ? tMs - prevT : 0;
+        const dashed = gap > gapThresholdMs;
+        ctx.beginPath();
+        ctx.setLineDash(dashed ? [4, 3] : []);
+        // stepAfter: horizontal hold at prevY, then vertical riser to new y.
+        ctx.moveTo(prevX, prevY);
+        ctx.lineTo(x, prevY);
+        if (!dashed) ctx.lineTo(x, y);
+        ctx.stroke();
+        if (dashed) {
+          // Riser drawn solid after a dashed connector for legibility.
+          ctx.beginPath();
+          ctx.setLineDash([]);
+          ctx.moveTo(x, prevY);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+      }
+      prevX = x;
+      prevY = y;
+      prevT = tMs;
+    }
+
+    // Filled dots at each real sample.
+    ctx.setLineDash([]);
+    ctx.fillStyle = ch.color;
+    const dotR = this.resolveCSSVarNumber('--signal-sparse-dot-radius', 2.5);
+    for (let s = 0; s < data.length; s++) {
+      const sample = data[s];
+      if (sample === undefined || Number.isNaN(sample)) continue;
+      const x = xAt(s);
+      if (x < plotLeft - dotR || x > plotLeft + plotWidth + dotR) continue;
+      ctx.beginPath();
+      ctx.arc(x, yAt(sample), dotR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Ribbon render for the hypnogram: categorical stacked bands, top→bottom in
+   * the order given by `ribbonBands` (Wake → REM → Light → Deep). Each segment
+   * is a `fillRect` in the matching band's sub-row — deliberately NOT a polyline,
+   * so it never reads as a waveform. Faint vertical ticks mark transitions; the
+   * REM band carries a diagonal hatch as a redundant non-colour cue. Fixed row
+   * labels (W/REM/N1–2/N3) are drawn at the left; no numeric Y ticks.
+   */
+  private drawRibbon(
+    ch: SignalChannel,
+    viewport: ViewportState,
+    options: RenderOptions,
+    plotLeft: number,
+    plotWidth: number,
+    stripTop: number,
+    stripHeight: number,
+  ): void {
+    const { ctx } = this;
+    const { data } = ch;
+    const bands = options.ribbonBands?.[ch.name];
+    if (!bands || bands.length === 0 || data.length === 0) return;
+
+    const durationMs = viewport.endTime - viewport.startTime;
+    if (durationMs <= 0) return;
+
+    const innerTop = stripTop + 14;
+    const innerBottom = stripTop + stripHeight - 4;
+    const innerHeight = innerBottom - innerTop;
+    if (innerHeight <= 0) return;
+
+    const rowH = innerHeight / bands.length;
+    const times = ch.sampleTimes && ch.sampleTimes.length === data.length ? ch.sampleTimes : null;
+    const msPerSample = durationMs / data.length;
+
+    const bandIndex = (value: number): number => bands.findIndex((b) => b.value === value);
+    const xAt = (s: number): number => {
+      const tMs = times ? (times[s] ?? 0) - viewport.startTime : s * msPerSample;
+      return plotLeft + (tMs / durationMs) * plotWidth;
+    };
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plotLeft, stripTop, plotWidth, stripHeight);
+    ctx.clip();
+
+    const sep = this.resolveCSSVar('--color-surface-primary', '#ffffff');
+    const transitionXs: number[] = [];
+
+    // Fill each segment as a rectangle from this sample's x to the next sample's x.
+    for (let s = 0; s < data.length; s++) {
+      const value = data[s];
+      if (value === undefined || Number.isNaN(value)) continue;
+      const idx = bandIndex(value);
+      if (idx < 0) continue;
+
+      const x1 = Math.max(plotLeft, xAt(s));
+      const x2 =
+        s + 1 < data.length ? Math.min(plotLeft + plotWidth, xAt(s + 1)) : plotLeft + plotWidth;
+      const segW = Math.max(0, x2 - x1);
+      if (segW <= 0) continue;
+
+      const rowTop = innerTop + idx * rowH;
+      const band = bands[idx];
+      if (!band) continue;
+
+      ctx.fillStyle = band.color;
+      ctx.fillRect(x1, rowTop, segW, rowH);
+
+      if (band.hatch) {
+        this.fillDiagonalHatch(x1, rowTop, segW, rowH, sep, 5, 0.45);
+      }
+
+      // 1px surface separator between band rows for crisp edges.
+      ctx.fillStyle = sep;
+      ctx.fillRect(x1, rowTop, segW, 1);
+
+      if (s > 0) transitionXs.push(x1);
+    }
+
+    // Faint vertical ticks at transitions.
+    ctx.strokeStyle = this.resolveCSSVar('--color-chart-grid', '#e5e7eb');
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.7;
+    for (const tx of transitionXs) {
+      ctx.beginPath();
+      ctx.moveTo(tx, innerTop);
+      ctx.lineTo(tx, innerBottom);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Fixed row labels at the left gutter.
+    ctx.fillStyle = this.resolveCSSVar('--color-chart-axis', '#6b7280');
+    ctx.font = `${AXIS_FONT_SIZE}px ${this.fontFamily()}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'right';
+    for (let i = 0; i < bands.length; i++) {
+      const band = bands[i];
+      if (!band) continue;
+      ctx.fillText(band.label, plotLeft - 4, innerTop + i * rowH + rowH / 2);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * App-detected breathing episodes (Phase 3 prep): a hatched wash with a dashed
+   * border. Confidence drives both the wash alpha and the border width so a
+   * stronger detection reads more solidly. Render-only.
+   */
+  private drawDetectionEpisodes(
+    episodes: readonly DetectionEpisode[],
+    viewport: ViewportState,
+    plotLeft: number,
+    plotWidth: number,
+    stripTop: number,
+    stripHeight: number,
+  ): void {
+    const { ctx } = this;
+    const durationMs = viewport.endTime - viewport.startTime;
+    if (durationMs <= 0) return;
+
+    const fill = this.resolveCSSVar('--color-detection', '#7c3aed');
+    const wash = this.resolveCSSVar('--color-detection-bg', 'rgba(124,58,237,0.08)');
+    const border = this.resolveCSSVar('--color-detection-border', '#6d28d9');
+
+    for (const ep of episodes) {
+      const epEnd = ep.startTime + ep.duration;
+      if (epEnd < viewport.startTime || ep.startTime > viewport.endTime) continue;
+
+      const x1 =
+        plotLeft + Math.max(0, (ep.startTime - viewport.startTime) / durationMs) * plotWidth;
+      const x2 = plotLeft + Math.min(1, (epEnd - viewport.startTime) / durationMs) * plotWidth;
+      const w = Math.max(2, x2 - x1);
+      const conf = Math.max(0, Math.min(1, ep.confidence));
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x1, stripTop, w, stripHeight);
+      ctx.clip();
+
+      // Base wash.
+      ctx.fillStyle = wash;
+      ctx.fillRect(x1, stripTop, w, stripHeight);
+
+      // 45° hatch in the detection colour, alpha driven by confidence.
+      const alpha = DETECTION_ALPHA_MIN + conf * (DETECTION_ALPHA_MAX - DETECTION_ALPHA_MIN);
+      this.fillDiagonalHatch(x1, stripTop, w, stripHeight, fill, DETECTION_HATCH_PERIOD, alpha);
+      ctx.restore();
+
+      // Dashed border, width driven by confidence.
+      ctx.save();
+      ctx.strokeStyle = border;
+      ctx.lineWidth = DETECTION_BORDER_MIN + conf * (DETECTION_BORDER_MAX - DETECTION_BORDER_MIN);
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(x1, stripTop + 0.5, w, stripHeight - 1);
+      ctx.restore();
+    }
+  }
+
+  /** Fill a 45° diagonal hatch within a rectangle (used by ribbon REM + detections). */
+  private fillDiagonalHatch(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    color: string,
+    period: number,
+    alpha: number,
+  ): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    for (let d = -h; d < w + h; d += period) {
+      ctx.moveTo(x + d, y);
+      ctx.lineTo(x + d + h, y + h);
+    }
     ctx.stroke();
     ctx.restore();
   }
@@ -525,7 +1100,7 @@ export class SignalRenderer {
     plotLeft: number,
     plotWidth: number,
     plotTop: number,
-    options: RenderOptions,
+    laneStackHeight: number,
   ): void {
     const { ctx } = this;
     const durationMs = viewport.endTime - viewport.startTime;
@@ -534,7 +1109,7 @@ export class SignalRenderer {
     const tickInterval = chooseTimeTickInterval(durationMs, plotWidth);
     const firstTick = Math.ceil(viewport.startTime / tickInterval) * tickInterval;
 
-    const totalHeight = options.padding.top + viewport.channels.length * options.channelHeight;
+    const totalHeight = plotTop + laneStackHeight;
 
     ctx.save();
     ctx.strokeStyle = this.resolveCSSVar('--color-chart-grid', '#e5e7eb');
@@ -604,8 +1179,8 @@ export class SignalRenderer {
     viewport: ViewportState,
     plotLeft: number,
     plotWidth: number,
-    _plotTop: number,
-    options: RenderOptions,
+    plotTop: number,
+    laneStackHeight: number,
   ): void {
     const { ctx } = this;
     const durationMs = viewport.endTime - viewport.startTime;
@@ -614,7 +1189,7 @@ export class SignalRenderer {
     const tickInterval = chooseTimeTickInterval(durationMs, plotWidth);
     const firstTick = Math.ceil(viewport.startTime / tickInterval) * tickInterval;
 
-    const axisY = options.padding.top + viewport.channels.length * options.channelHeight + 4;
+    const axisY = plotTop + laneStackHeight + 4;
 
     ctx.save();
     ctx.fillStyle = this.resolveCSSVar('--color-chart-axis', '#6b7280');
@@ -673,17 +1248,18 @@ export class SignalRenderer {
     options: RenderOptions,
     plotLeft: number,
     plotWidth: number,
+    laneStackHeight: number,
   ): void {
     const { ctx } = this;
-    const { crosshairX, channelHeight, padding } = options;
+    const { crosshairX, padding } = options;
 
     if (crosshairX === null) return;
 
-    const totalHeight = padding.top + viewport.channels.length * channelHeight;
+    const totalHeight = padding.top + laneStackHeight;
 
     // Vertical crosshair line
     ctx.save();
-    ctx.strokeStyle = CROSSHAIR_COLOR;
+    ctx.strokeStyle = this.resolveCSSVar('--color-crosshair', CROSSHAIR_FALLBACK);
     ctx.lineWidth = 1;
     ctx.setLineDash([]);
 
@@ -701,46 +1277,62 @@ export class SignalRenderer {
     // Value readouts + intersection dots for ALL channels
     const values = this.getValuesAtTime(crosshairX, viewport, options);
     for (const v of values) {
-      // Intersection dot on the waveform
+      // Intersection dot on the waveform / band
       ctx.fillStyle = v.color;
       ctx.beginPath();
       ctx.arc(crosshairX, v.y, 4, 0, Math.PI * 2);
       ctx.fill();
 
-      // Coloured readout badge at the right edge
-      const label = `${v.value.toFixed(2)} ${v.unit}`;
-      this.drawColoredReadoutBadge(plotLeft + plotWidth + 4, v.y, label, v.color);
+      // Hypnogram (ribbon) lanes show the stage name, not a number.
+      const label =
+        v.label !== undefined ? v.label : `${v.value.toFixed(2)}${v.unit ? ` ${v.unit}` : ''}`;
+      this.drawLaneReadoutBadge(plotLeft + plotWidth + 4, v.y, label, v.color);
     }
 
     ctx.restore();
   }
 
-  /** Draw a small coloured text badge at the given position. */
-  private drawColoredReadoutBadge(x: number, y: number, text: string, color: string): void {
+  /**
+   * Per-lane crosshair readout: surface-elevated fill, 1px lane-colour border,
+   * primary-text label, and a 4px lane-colour chip at the left. This fixes the
+   * white-on-light contrast problem the old solid-colour badge had in dark mode,
+   * while keeping the lane colour as a redundant (non-sole) cue.
+   */
+  private drawLaneReadoutBadge(x: number, y: number, text: string, laneColor: string): void {
     const { ctx } = this;
     ctx.save();
 
     ctx.font = `${READOUT_FONT_SIZE}px ${this.fontFamily()}`;
     const metrics = ctx.measureText(text);
-    const pw = 4;
+    const pw = 5;
     const ph = 2;
-    const boxW = metrics.width + pw * 2;
-    const boxH = READOUT_FONT_SIZE + ph * 2;
+    const chipW = 4;
+    const chipGap = 4;
+    const boxW = metrics.width + pw * 2 + chipW + chipGap;
+    const boxH = READOUT_FONT_SIZE + ph * 2 + 2;
 
     const bx = Math.max(0, Math.min(x, this.logicalWidth - boxW));
     const by = Math.max(0, y - boxH / 2);
 
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.85;
+    // Fill + border.
+    ctx.fillStyle = this.resolveCSSVar('--color-surface-elevated', READOUT_BG_FALLBACK);
+    ctx.strokeStyle = laneColor;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
     ctx.beginPath();
-    ctx.roundRect(bx, by, boxW, boxH, 3);
+    ctx.roundRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1, 3);
     ctx.fill();
-    ctx.globalAlpha = 1.0;
+    ctx.stroke();
 
-    ctx.fillStyle = READOUT_FG;
-    ctx.textBaseline = 'top';
+    // Lane-colour chip at the left.
+    ctx.fillStyle = laneColor;
+    ctx.fillRect(bx + pw, by + ph + 1, chipW, boxH - ph * 2 - 2);
+
+    // Label text.
+    ctx.fillStyle = this.resolveCSSVar('--color-text-primary', READOUT_FG_FALLBACK);
+    ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.fillText(text, bx + pw, by + ph);
+    ctx.fillText(text, bx + pw + chipW + chipGap, by + boxH / 2);
 
     ctx.restore();
   }
@@ -772,12 +1364,15 @@ export class SignalRenderer {
     bx = Math.max(0, Math.min(bx, this.logicalWidth - boxW));
     by = Math.max(0, by);
 
-    ctx.fillStyle = READOUT_BG;
+    ctx.fillStyle = this.resolveCSSVar('--color-surface-elevated', READOUT_BG_FALLBACK);
+    ctx.strokeStyle = this.resolveCSSVar('--color-border-default', 'transparent');
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.roundRect(bx, by, boxW, boxH, 3);
+    ctx.roundRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1, 3);
     ctx.fill();
+    ctx.stroke();
 
-    ctx.fillStyle = READOUT_FG;
+    ctx.fillStyle = this.resolveCSSVar('--color-text-primary', READOUT_FG_FALLBACK);
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
     ctx.fillText(text, bx + pw, by + ph);
@@ -796,6 +1391,14 @@ export class SignalRenderer {
     } catch {
       return fallback;
     }
+  }
+
+  /** Resolve a CSS custom property to a number (parsing a leading `px`), with fallback. */
+  private resolveCSSVarNumber(varName: string, fallback: number): number {
+    const raw = this.resolveCSSVar(varName, '');
+    if (!raw) return fallback;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : fallback;
   }
 
   /** Return the sans-serif font family from CSS tokens. */

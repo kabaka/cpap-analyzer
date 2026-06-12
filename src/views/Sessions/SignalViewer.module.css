@@ -126,6 +126,69 @@
   opacity: 0.5;
 }
 
+/* ── No-data hint bar (non-error affordance) ──────────────────── */
+
+.hintBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: var(--color-info-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
+.hintActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* ── Legend group headings + lane pill ────────────────────────── */
+
+.legendGroupHeading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.lanePill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-tertiary);
+  margin-left: var(--space-1);
+}
+
+.lanePill[data-kind='CPAP'] {
+  color: var(--color-chart-1);
+  border-color: var(--color-chart-1);
+}
+
+.lanePill[data-kind='WEAR'] {
+  color: var(--color-wearable-hr);
+  border-color: var(--color-wearable-hr);
+}
+
+.lanePill[data-kind='SLEEP'] {
+  color: var(--color-hypno-rem);
+  border-color: var(--color-hypno-rem);
+}
+
 /* ── Canvas area ──────────────────────────────────────────────── */
 
 .canvasWrapper {
@@ -135,6 +198,173 @@
   overflow-x: hidden;
   overflow-y: auto;
   cursor: crosshair;
+}
+
+.canvas:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+/* ── Lane headers (HTML overlay over the canvas) ──────────────── */
+
+.laneHeaders {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.laneHeader {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  max-width: 100%;
+  pointer-events: auto;
+}
+
+.laneHeader[data-grabbed='true'] {
+  background: var(--color-surface-overlay);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.laneGrip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: grab;
+  border-radius: var(--radius-sm);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.laneGrip:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.laneGrip[aria-pressed='true'] {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.laneAccent {
+  display: inline-block;
+  width: var(--signal-lane-accent-width, 3px);
+  height: 14px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.laneName {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  text-shadow: 0 0 3px var(--color-surface-primary);
+}
+
+.laneUnit {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.laneIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 11px;
+  line-height: 1;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.laneIconButton:hover {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-primary);
+}
+
+.laneIconButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+/* ── Lanes drawer ─────────────────────────────────────────────── */
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 280px;
+}
+
+.drawerPresets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.drawerPresetButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.drawerGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.drawerHeading {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.drawerList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.drawerRow {
+  display: flex;
+  align-items: center;
+}
+
+/* ── Screen-reader-only live region ───────────────────────────── */
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .canvasWrapper[data-panning='true'] {

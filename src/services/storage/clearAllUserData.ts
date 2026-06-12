@@ -11,8 +11,9 @@
  *  - IndexedDB — structured session/aggregate/analysis records.
  *  - OPFS — full-resolution signal data and the downsample cache.
  *  - localStorage — every app-owned key (zustand-persisted stores under the
- *    `cpap-` namespace, plus the dynamic per-session `signal-viewer-hidden-*`
- *    UI state written by the signal viewer).
+ *    `cpap-` namespace, plus the dynamic per-session `signal-viewer-lanes-*`
+ *    UI state written by the signal viewer, and any legacy
+ *    `signal-viewer-hidden-*` keys from earlier builds).
  *  - In-memory analysis/session cache held in the data store.
  *  - The persisted settings store, reset to defaults.
  *
@@ -35,19 +36,25 @@ import { OPFSService } from './OPFSService';
  *
  * A key is app-owned if it starts with one of these. Matching by prefix (rather
  * than a hardcoded key list) is what closes the residual-metadata gap: the
- * signal viewer writes one `signal-viewer-hidden-<sessionId>` key per session,
+ * signal viewer writes one `signal-viewer-lanes-<sessionId>` key per session,
  * so the full set is only known at runtime.
  *
  * Derived from an exhaustive audit of every localStorage writer in `src/`:
- *  - `cpap-`                — zustand persist stores: `cpap-theme`
- *                            (useAppStore), `cpap-settings` (useSettingsStore).
- *  - `signal-viewer-hidden-` — per-session hidden-channel UI state
- *                            (SignalViewer.tsx).
+ *  - `cpap-`                 — zustand persist stores: `cpap-theme`
+ *                             (useAppStore), `cpap-settings` (useSettingsStore).
+ *  - `signal-viewer-lanes-`  — per-session lane UI state (order/visibility/
+ *                             collapse/preset) written by SignalViewer.tsx.
+ *  - `signal-viewer-hidden-` — legacy per-session hidden-channel UI state from
+ *                             earlier builds; kept so old keys are also cleaned.
  *
  * If a new localStorage writer is added, register its prefix here so the wipe
  * stays total.
  */
-const APP_LOCAL_STORAGE_PREFIXES = ['cpap-', 'signal-viewer-hidden-'] as const;
+const APP_LOCAL_STORAGE_PREFIXES = [
+  'cpap-',
+  'signal-viewer-lanes-',
+  'signal-viewer-hidden-',
+] as const;
 
 /**
  * Remove every app-owned key from a Web Storage area, matched by prefix.
@@ -90,7 +97,8 @@ export async function clearAllUserData(): Promise<void> {
   await new OPFSService().deleteAll();
 
   // 3. localStorage — every app-owned key, including the dynamic per-session
-  //    `signal-viewer-hidden-*` keys that leak session IDs and channel choices.
+  //    `signal-viewer-lanes-*` keys (and any legacy `signal-viewer-hidden-*`
+  //    keys) that leak session IDs and lane choices.
   clearAppKeys(localStorage);
 
   // 4. sessionStorage — no known app writers today, but clear app-owned keys
