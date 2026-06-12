@@ -1,0 +1,109 @@
+.wrapper {
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--color-surface-primary);
+}
+
+.grid {
+  display: block;
+}
+
+.tableHeader {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 0.8fr;
+  border-bottom: 1px solid var(--color-border-default);
+  background-color: var(--color-surface-secondary);
+}
+
+.headerCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.headerCell:hover {
+  color: var(--color-text-primary);
+}
+
+.headerCell:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.numeric {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.sortArrow {
+  font-size: 0.65em;
+}
+
+.scrollArea {
+  overflow-y: auto;
+  position: relative;
+}
+
+.scrollArea:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 0.8fr;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-border-subtle);
+  cursor: pointer;
+  text-align: left;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.row:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.typeLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.caption {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border-subtle);
+  margin: 0;
+}

@@ -45,6 +45,16 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
+// ResizeObserver stub — jsdom doesn't implement it, but several Radix UI
+// primitives (Slider, Popover, …) construct one on mount.
+if (!('ResizeObserver' in globalThis)) {
+  globalThis.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // OPFS stub — jsdom doesn't implement the File System Access API
 const mockDirectoryHandle = {} as FileSystemDirectoryHandle;
 

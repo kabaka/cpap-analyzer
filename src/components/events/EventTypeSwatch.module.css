@@ -1,0 +1,21 @@
+.swatch {
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background-color: var(--swatch-color);
+  vertical-align: middle;
+}
+
+/* Detection types: diagonal hatched fill keeps them distinguishable without
+   relying on hue alone. */
+.hatched {
+  background-color: transparent;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--swatch-color),
+    var(--swatch-color) 2px,
+    transparent 2px,
+    transparent 4px
+  );
+  border: 1px solid var(--swatch-color);
+}
