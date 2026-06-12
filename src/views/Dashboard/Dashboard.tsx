@@ -22,6 +22,7 @@ import KPIRow from './panels/KPIRow';
 import TherapyOverview from './panels/TherapyOverview';
 import EventDistribution from './panels/EventDistribution';
 import InsightsPanel from './panels/InsightsPanel';
+import BreathingStabilityPanel from './panels/BreathingStabilityPanel';
 import MachineSettingsPanel from './panels/MachineSettingsPanel';
 import RecentSessions from './panels/RecentSessions';
 import WearableOverview from './panels/WearableOverview';
@@ -90,6 +91,11 @@ export default function Dashboard() {
       <div className={styles.analyticsRow}>
         <EventDistribution trendData={trendData} loading={loading} />
         <InsightsPanel insights={insights} loading={loading} />
+      </div>
+
+      {/* Breathing-stability insight (app-computed TECSA trajectory). */}
+      <div className={styles.breathingRow}>
+        <BreathingStabilityPanel loading={loading} />
       </div>
 
       {/* Wearable Data Overview (when available) */}

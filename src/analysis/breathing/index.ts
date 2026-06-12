@@ -21,3 +21,15 @@ export {
 } from './envelope';
 export { detectPeriodicBreathing, spectralBandEnergyFraction } from './detectPeriodicBreathing';
 export { classifyTecsa, flagTecsaNights } from './classifyTecsa';
+export {
+  confidenceTier,
+  confidenceTierLabel,
+  CONFIDENCE_LOW_MAX,
+  CONFIDENCE_MODERATE_MAX,
+  type ConfidenceTier,
+} from './confidenceTier';
+export {
+  tecsaPresentation,
+  TECSA_PRESENTATION_ORDER,
+  type TecsaPresentation,
+} from './tecsaPresentation';

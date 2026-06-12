@@ -16,6 +16,12 @@ export interface LanePrefs {
   readonly collapsed: readonly string[];
   /** Active drawer preset key, if any. */
   readonly preset?: string;
+  /**
+   * Whether to render the app-computed breathing-detection overlay
+   * (PB / CSR candidate episodes). Defaults to `true` when undefined for
+   * back-compat with prefs stored before the detection lane existed.
+   */
+  readonly showDetections?: boolean;
 }
 
 export const EMPTY_LANE_PREFS: LanePrefs = { order: [], hidden: [], collapsed: [] };
@@ -41,6 +47,8 @@ export function parseLanePrefs(raw: string | null): LanePrefs {
         ? parsed.collapsed.filter((x) => typeof x === 'string')
         : [],
       preset: typeof parsed.preset === 'string' ? parsed.preset : undefined,
+      showDetections:
+        typeof parsed.showDetections === 'boolean' ? parsed.showDetections : undefined,
     };
   } catch {
     return EMPTY_LANE_PREFS;

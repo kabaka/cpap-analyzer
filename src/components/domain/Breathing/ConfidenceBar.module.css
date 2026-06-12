@@ -1,0 +1,60 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 120px;
+}
+
+.track {
+  flex: 1;
+  height: 8px;
+  background: var(--color-surface-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+}
+
+.fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-detection);
+  transition: width 0.2s ease;
+}
+
+.readout {
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Tier-driven colour: keep the violet detection accent for moderate/high,
+   and tone down to a neutral border-info-tier shade for low. Colour is
+   redundant with the numeric readout and the data-tier ARIA attribute. */
+.root[data-tier='low'] .fill {
+  background: var(--color-text-muted);
+}
+
+.root[data-tier='moderate'] .fill {
+  background: var(--color-detection);
+  opacity: 0.7;
+}
+
+.root[data-tier='high'] .fill {
+  background: var(--color-detection);
+}
+
+.compact {
+  min-width: 80px;
+  gap: var(--space-1);
+}
+
+.compact .track {
+  height: 6px;
+}
+
+.compact .readout {
+  font-size: 11px;
+  min-width: 28px;
+}
