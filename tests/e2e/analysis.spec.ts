@@ -168,10 +168,12 @@ test.describe('Explore Routes — Navigation', () => {
     await expect(page.getByRole('heading', { name: /cross-source analysis/i })).toBeVisible();
   });
 
-  test('event explorer route renders', async ({ page }) => {
-    await page.goto('/explore/events');
-    await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
-  });
+  // Event Explorer (`/explore/events`) smoke coverage now lives in
+  // `tests/e2e/explore-views.spec.ts`, which asserts against the post-IA
+  // EventExplorer heading (`Event Explorer`). The previous test here targeted
+  // the deleted EventAnalysis view's `Event Analysis` heading and is dropped
+  // rather than rewritten — see `src/views/Explore/EventExplorer/__tests__/`
+  // for the rich coverage that replaces it.
 
   test('pressure optimization route renders', async ({ page }) => {
     await page.goto('/explore/pressure');
@@ -210,11 +212,10 @@ test.describe('Explore Routes — Navigation', () => {
     await expect(page.getByRole('heading', { name: /cross-source analysis/i })).toBeVisible();
   });
 
-  test('legacy /analysis/events redirects to /explore/events', async ({ page }) => {
-    await page.goto('/analysis/events');
-    await expect(page).toHaveURL(/\/explore\/events$/);
-    await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
-  });
+  // Legacy `/analysis/events → /explore/events` redirect coverage now lives in
+  // `tests/e2e/explore-views.spec.ts` alongside the EventExplorer smoke tests
+  // (the post-IA destination heading is `Event Explorer`, not the deleted
+  // `Event Analysis`).
 
   test('legacy /analysis/pressure redirects to /explore/pressure', async ({ page }) => {
     await page.goto('/analysis/pressure');
@@ -593,11 +594,14 @@ test.describe('Analysis Engine — Integration', () => {
     const aggregates = sessions.map((s, i) => makeAggregate(`agg-${i}`, s.id, s.date, 2 + i * 0.5));
     await injectTestData(page, sessions, aggregates);
 
-    // Navigate to each analysis route and verify no errors
+    // Navigate to each analysis route and verify no errors.
+    // `/explore/events` (Event Explorer, post-IA) is exercised by the
+    // explore-views smoke spec — leaving it out here keeps this suite focused
+    // on the Statistical Analysis + Pressure Optimization views that still
+    // ship from this file's analysis-engine surface.
     const routes = [
       { path: '/explore', heading: /^explore$/i },
       { path: '/explore/correlations', heading: /statistical analysis/i },
-      { path: '/explore/events', heading: /event analysis/i },
       { path: '/explore/pressure', heading: /pressure optimization/i },
       { path: '/explore/correlations?tab=cross-source', heading: /cross-source analysis/i },
     ];

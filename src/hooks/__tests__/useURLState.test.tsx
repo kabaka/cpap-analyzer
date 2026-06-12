@@ -144,6 +144,81 @@ describe('useURLStateSync', () => {
     });
   });
 
+  describe('unknown-param preservation (deep-link IA regression guard)', () => {
+    /**
+     * The IA introduced view-state-in-URL patterns owned by individual views
+     * — e.g. `/explore/correlations?tab=cross-source` for the inner tab, or
+     * `/explore/events?types=Hypopnea&dur=30-` for Event Explorer filters.
+     * useURLStateSync only owns start/end/session and MUST NOT clobber any
+     * other query param when it writes its three keys. A previous regression
+     * built a fresh URLSearchParams with only the three owned keys, silently
+     * wiping every other param ~300 ms after mount on every route mount and
+     * on every date-range change.
+     */
+
+    it('preserves an unrelated `tab` param across a date-range write', () => {
+      const { Wrapper, getSearch } = makeWrapper(
+        '/?start=2025-05-05&end=2025-05-15&tab=cross-source',
+      );
+      renderHook(() => useURLStateSync(), { wrapper: Wrapper });
+
+      // A genuine post-hydration store change flushes the debounce.
+      setStoreRange(new Date(2025, 7, 1), new Date(2025, 7, 10));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      const search = new URLSearchParams(getSearch());
+      expect(search.get('start')).toBe('2025-08-01');
+      expect(search.get('end')).toBe('2025-08-10');
+      // The view-owned `tab` param must survive — this is the regression.
+      expect(search.get('tab')).toBe('cross-source');
+    });
+
+    it('preserves multiple unrelated params (Event Explorer-style filters)', () => {
+      const { Wrapper, getSearch } = makeWrapper(
+        '/?start=2025-05-05&end=2025-05-15&types=Hypopnea&dur=30-',
+      );
+      renderHook(() => useURLStateSync(), { wrapper: Wrapper });
+
+      setStoreRange(new Date(2025, 7, 1), new Date(2025, 7, 10));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      const search = new URLSearchParams(getSearch());
+      expect(search.get('types')).toBe('Hypopnea');
+      expect(search.get('dur')).toBe('30-');
+      expect(search.get('start')).toBe('2025-08-01');
+    });
+
+    it('clearing the store session removes `session=…` but keeps unrelated params', () => {
+      const { Wrapper, getSearch } = makeWrapper(
+        '/?start=2025-05-05&end=2025-05-15&session=abc&tab=cross-source',
+      );
+      renderHook(() => useURLStateSync(), { wrapper: Wrapper });
+
+      // Confirm hydration picked up the session before we clear it.
+      expect(useAppStore.getState().selectedSessionId).toBe('abc');
+
+      act(() => {
+        useAppStore.getState().setSelectedSession(null);
+      });
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      const search = new URLSearchParams(getSearch());
+      // session is removed when the store clears it.
+      expect(search.get('session')).toBeNull();
+      // The view-owned `tab` param must survive the session clear.
+      expect(search.get('tab')).toBe('cross-source');
+      // start/end remain as serialized from the store.
+      expect(search.get('start')).toBe('2025-05-05');
+      expect(search.get('end')).toBe('2025-05-15');
+    });
+  });
+
   describe('isHydrating guard', () => {
     it('does not echo the hydrated range straight back to the URL on mount', () => {
       // URL carries a range; on mount the hook hydrates the store from it. The

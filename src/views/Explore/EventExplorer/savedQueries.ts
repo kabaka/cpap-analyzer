@@ -104,8 +104,43 @@ export function createSavedQuery(name: string, query: EventQuery): SavedQuery {
   };
 }
 
+const REQUIRES_FIELD_VALUES = ['pressure', 'leak', 'spo2'] as const;
+type RequiresField = (typeof REQUIRES_FIELD_VALUES)[number];
+
+function isRequiresField(value: unknown): value is RequiresField {
+  return typeof value === 'string' && (REQUIRES_FIELD_VALUES as readonly string[]).includes(value);
+}
+
+/**
+ * `params` is a string→string record (the URL-serialized query). Accept only
+ * plain objects whose own enumerable values are all strings — defensively
+ * refuse arrays, prototype-poisoned shapes, and JSON like `{params: 5}` or
+ * `{params: {types: 12}}` that would otherwise sneak past the legacy
+ * `typeof === 'object'` check and crash downstream consumers that assume
+ * strings.
+ */
+function isParamRecord(value: unknown): value is Record<string, string> {
+  if (typeof value !== 'object' || value === null) return false;
+  if (Array.isArray(value)) return false;
+  // Reject anything that isn't a plain object literal — class instances, Maps,
+  // etc. (`Object.getPrototypeOf(null)` returns null too, hence the dual check).
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return false;
+  for (const v of Object.values(value as Record<string, unknown>)) {
+    if (typeof v !== 'string') return false;
+  }
+  return true;
+}
+
 function isSavedQuery(value: unknown): value is SavedQuery {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
-  return typeof v.id === 'string' && typeof v.name === 'string' && typeof v.params === 'object';
+  if (typeof v.id !== 'string' || typeof v.name !== 'string') return false;
+  if (!isParamRecord(v.params)) return false;
+  // Optional fields: validate only if present so malformed blobs are refused
+  // cleanly rather than producing a SavedQuery whose `requiresField` is any
+  // arbitrary string (which would mis-disable example queries in the UI).
+  if (v.requiresField !== undefined && !isRequiresField(v.requiresField)) return false;
+  if (v.example !== undefined && typeof v.example !== 'boolean') return false;
+  return true;
 }
