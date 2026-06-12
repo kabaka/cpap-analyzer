@@ -1,0 +1,426 @@
+/**
+ * Machine Configurations view styles.
+ *
+ * Mirrors the spacing / surface register used by other Explore views
+ * (`Breathing.module.css`, `EventExplorer.module.css`): page-level flex column
+ * inside a max-width container, Card surfaces for each section, and a tabular
+ * config-period readout with selection affordances.
+ *
+ * Theme tokens only — no hardcoded colors. Severity dots map to the existing
+ * status palette so they read identically in light + dark themes.
+ */
+
+/* ── Page shell ──────────────────────────────────────────────────────────── */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  padding: var(--space-lg);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.pageTitle {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.pageSubtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  max-width: 760px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Section header (used inside Cards) ──────────────────────────────────── */
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.sectionTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-1) 0;
+}
+
+.sectionSubtitle {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.muted {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.errorText {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+/* ── Period table card ──────────────────────────────────────────────────── */
+
+.tableCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.shortToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--color-surface-secondary);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.table tbody td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
+  color: var(--color-text-primary);
+  vertical-align: middle;
+}
+
+.row {
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.row:hover {
+  background: var(--color-surface-secondary);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.rowSelected {
+  background: var(--color-info-bg);
+}
+
+.rowSelected:hover {
+  background: var(--color-info-bg);
+}
+
+.rowDimmed {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.rowDimmed:hover {
+  background: transparent;
+}
+
+.colSelect {
+  width: 36px;
+  text-align: center;
+}
+
+.checkboxWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.kindMarker {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-base);
+}
+
+.numCol {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.nights {
+  font-weight: var(--font-weight-medium);
+}
+
+.smallBadge {
+  margin-left: var(--space-2);
+}
+
+.dateRange {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.datePill {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.chip {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.metricCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.metricUnit {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+/* ── Severity dots (mirror the global status palette) ───────────────────── */
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.dot-normal {
+  background: var(--color-success);
+}
+
+.dot-mild {
+  background: var(--color-info);
+}
+
+.dot-moderate {
+  background: var(--color-warning);
+}
+
+.dot-severe {
+  background: var(--color-error);
+}
+
+/* ── Compare card ───────────────────────────────────────────────────────── */
+
+.compareCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.compareBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.modeToggle {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tabs {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+.metricRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: flex-end;
+}
+
+.metricLabel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+  min-width: 180px;
+}
+
+.axisCaption {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* ── Single-period strip ────────────────────────────────────────────────── */
+
+.strip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+}
+
+.stripCaption {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+/* ── Diff readout (n=2) ─────────────────────────────────────────────────── */
+
+.diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.diffHeadlineFavourable,
+.diffHeadlineUnfavourable {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The arrow + sign carry the directional signal; colour is a *muted* secondary
+ * cue so favourability is not the sole channel (WCAG SC 1.4.1 — colour is
+ * never used alone).
+ */
+.diffHeadlineFavourable {
+  color: var(--color-success);
+}
+
+.diffHeadlineUnfavourable {
+  color: var(--color-text-primary);
+}
+
+.diffGlyph {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-bold);
+}
+
+.diffPct {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-medium);
+}
+
+.diffSubtitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.diffBadge {
+  align-self: flex-start;
+}
+
+/* ── Optimize svg ───────────────────────────────────────────────────────── */
+
+.optimizeSvg {
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
+/* ── Empty / single states ──────────────────────────────────────────────── */
+
+.emptyCard,
+.singleCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-6);
+}
+
+.emptyLink {
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+}
+
+.emptyLink:hover,
+.emptyLink:focus-visible {
+  text-decoration: underline;
+}

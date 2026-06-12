@@ -23,6 +23,7 @@ import { useChartColors } from '@/components/charts/useChartColors';
 import { useSyncedChart } from '../context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
+import { renderSettingsChangeMarkers } from './SettingsChangeMarkers';
 import ChartPanel from './ChartPanel';
 
 interface UsageChartProps {
@@ -122,16 +123,8 @@ const UsageChart = React.memo(function UsageChart({
             label={{ value: '6h', position: 'right', fill: colors.axis, fontSize: 10 }}
           />
 
-          {/* Settings change markers */}
-          {settingsChanges.map((sc) => (
-            <ReferenceLine
-              key={`sc-${sc.date}`}
-              x={sc.date}
-              stroke={colors.axis}
-              strokeDasharray="4 4"
-              strokeOpacity={0.5}
-            />
-          ))}
+          {/* Settings change markers — shared helper with <title> hover. */}
+          {renderSettingsChangeMarkers(settingsChanges, { stroke: colors.axis })}
 
           {/* Synced crosshair */}
           {activeDate && <ReferenceLine x={activeDate} stroke={colors.axis} strokeOpacity={0.4} />}

@@ -20,6 +20,7 @@ const Correlations = lazy(() => import('@/views/Explore/Correlations'));
 const EventExplorer = lazy(() => import('@/views/Explore/EventExplorer/EventExplorer'));
 const PressureOptimization = lazy(() => import('@/views/Explore/PressureOptimization'));
 const Breathing = lazy(() => import('@/views/Explore/Breathing/Breathing'));
+const Configurations = lazy(() => import('@/views/Explore/Configurations/Configurations'));
 const Reports = lazy(() => import('@/views/Reports/Reports'));
 const DataManagement = lazy(() => import('@/views/DataManagement/DataManagement'));
 const ImportWizard = lazy(() => import('@/views/DataManagement/ImportWizard'));
@@ -129,6 +130,14 @@ export const router = createBrowserRouter(
               element: (
                 <SuspenseWrapper>
                   <Breathing />
+                </SuspenseWrapper>
+              ),
+            },
+            {
+              path: 'configs',
+              element: (
+                <SuspenseWrapper>
+                  <Configurations />
                 </SuspenseWrapper>
               ),
             },
