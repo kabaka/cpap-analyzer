@@ -51,6 +51,8 @@ export type {
   FitbitDailyPayloadMap,
   FitbitDailyType,
   FitbitDataType,
+  FitbitHeartRateIntraday,
+  FitbitHeartRateIntradaySample,
   FitbitHRVDaily,
   FitbitHRVDetail,
   FitbitHRVDetailInterval,

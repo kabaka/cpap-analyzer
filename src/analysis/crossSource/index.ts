@@ -828,3 +828,10 @@ export function extractWearableMetricSeries<T extends FitbitDailyType>(
 // ---------------------------------------------------------------------------
 
 export { FITBIT_DATA_TYPE_LABEL };
+
+// ---------------------------------------------------------------------------
+// Intraday aggregate helpers (windowed summary stats for intraday series)
+// ---------------------------------------------------------------------------
+
+export { aggregateIntraday, selectWindowSamples } from './intradayAggregates';
+export type { IntradaySample, TimeWindow, IntradayAggregate } from './intradayAggregates';
