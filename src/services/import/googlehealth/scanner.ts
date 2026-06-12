@@ -95,6 +95,15 @@ const DATA_TYPE_SOURCES: Readonly<Record<string, readonly DataTypeSource[]>> = {
       pattern: /^resting_heart_rate-\d{4}-\d{2}-\d{2}\.json$/,
       tier: 2,
     },
+    {
+      // Intraday (≈5-second cadence) heart rate. Distinct from the `Heart Rate`
+      // directory's daily resting-HR `heart_rate-*.json`: this one lives under
+      // `Global Export Data` and its files are large JSON arrays of per-sample
+      // { dateTime, value: { bpm, confidence } } objects.
+      dataType: 'heart_rate_intraday',
+      pattern: /^heart_rate-\d{4}-\d{2}-\d{2}\.json$/,
+      tier: 2,
+    },
   ],
   'Daily Readiness': [
     {

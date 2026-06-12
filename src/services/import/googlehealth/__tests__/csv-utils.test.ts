@@ -12,6 +12,7 @@ import {
   parseCSV,
   extractDate,
   parseFitbitLegacyDate,
+  parseFitbitLegacyDateTime,
   parseTimestamp,
   parseNumericField,
   parseNumericFieldWithDefault,
@@ -197,6 +198,53 @@ describe('parseFitbitLegacyDate', () => {
 
   it('should throw for a non-date string', () => {
     expect(() => parseFitbitLegacyDate('not-a-date')).toThrow();
+  });
+});
+
+describe('parseFitbitLegacyDateTime', () => {
+  it('should parse MM/DD/YY HH:MM:SS to a wall-clock-as-UTC epoch and date', () => {
+    const { epochMs, date } = parseFitbitLegacyDateTime('08/25/16 06:44:18');
+    expect(date).toBe('2016-08-25');
+    // Wall-clock interpreted as UTC: deterministic regardless of runtime TZ.
+    expect(epochMs).toBe(Date.UTC(2016, 7, 25, 6, 44, 18));
+  });
+
+  it('should be timezone-independent (does not use new Date on the string)', () => {
+    // A naive `new Date("08/25/16 06:44:18")` would shift by the runtime offset.
+    // Our parser must yield the literal wall-clock instant as UTC.
+    const { epochMs } = parseFitbitLegacyDateTime('01/15/17 23:00:00');
+    expect(new Date(epochMs).getUTCHours()).toBe(23);
+    expect(new Date(epochMs).getUTCFullYear()).toBe(2017);
+  });
+
+  it('should assume 21st century for 2-digit years', () => {
+    expect(parseFitbitLegacyDateTime('12/31/05 00:00:00').date).toBe('2005-12-31');
+  });
+
+  it('should parse single-digit month/day/hour', () => {
+    const { date, epochMs } = parseFitbitLegacyDateTime('3/4/21 5:06:07');
+    expect(date).toBe('2021-03-04');
+    expect(epochMs).toBe(Date.UTC(2021, 2, 4, 5, 6, 7));
+  });
+
+  it('should handle leading/trailing whitespace', () => {
+    expect(parseFitbitLegacyDateTime('  06/10/25 12:00:00  ').date).toBe('2025-06-10');
+  });
+
+  it('should throw for a missing time portion', () => {
+    expect(() => parseFitbitLegacyDateTime('08/25/16')).toThrow();
+  });
+
+  it('should throw for an out-of-range month', () => {
+    expect(() => parseFitbitLegacyDateTime('13/01/16 00:00:00')).toThrow();
+  });
+
+  it('should throw for an out-of-range hour', () => {
+    expect(() => parseFitbitLegacyDateTime('01/01/16 24:00:00')).toThrow();
+  });
+
+  it('should throw for an empty string', () => {
+    expect(() => parseFitbitLegacyDateTime('')).toThrow();
   });
 });
 

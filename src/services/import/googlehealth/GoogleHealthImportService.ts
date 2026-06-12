@@ -537,6 +537,12 @@ export class GoogleHealthImportService {
         case 'hrv_detail':
           return { daily: [], timeseries: await parsers.parseHRVDetailFiles(files) };
 
+        case 'heart_rate_intraday':
+          return {
+            daily: [],
+            timeseries: await parsers.parseHeartRateIntradayFiles(files),
+          };
+
         // -- Data types without dedicated parsers yet -------------------
         case 'body_weight':
         case 'body_vo2max':

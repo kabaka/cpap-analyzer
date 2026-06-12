@@ -14,6 +14,7 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 - **Wearable data on the Dashboard.** When wearable data is available, a new panel shows key metrics (Sleep Score, HRV, Resting HR, SpO₂, Readiness, Steps) with 7-day trend indicators, plus a link to the Cross-Source Analysis view.
 - **Help documentation for integrations.** Updated the "Importing Data" help article with Google Health instructions and supported data types. Added a new "Cross-Source Analysis" help article explaining correlation methods, interpretation guidance, and statistical caveats.
 - **IndexedDB schema v3.** New `integration_timeseries` and `integration_import_history` object stores, plus compound indexes for efficient date-range and type-filtered queries. Automatic migration from v2.
+- **Intraday heart-rate import.** Full-resolution (~5-second cadence) heart-rate samples from a Google Health export's `Global Export Data/heart_rate-*.json` files are now parsed and stored per night, in addition to the existing daily resting heart rate. This is the foundation for overlaying heart rate alongside CPAP airflow in the signal viewer and for within-night correlation. Stored at full resolution to preserve short-timescale features (≈0.4–0.6 MB per day); all parsing remains client-side.
 
 ### Changed
 

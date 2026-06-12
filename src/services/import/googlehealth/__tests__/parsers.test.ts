@@ -15,6 +15,7 @@ import {
   parseRestingHeartRateFiles,
   parseRespiratoryRateFiles,
   parseHRVDailyFiles,
+  parseHeartRateIntradayFiles,
 } from '../parsers';
 
 // ---------------------------------------------------------------------------
@@ -481,5 +482,116 @@ describe('parseHRVDailyFiles', () => {
     // The row with the invalid timestamp will be skipped (extractDate throws
     // inside the try/catch)
     expect(results).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseHeartRateIntradayFiles
+// ---------------------------------------------------------------------------
+
+interface RawHREntry {
+  dateTime: string;
+  value: { bpm: number; confidence: number };
+}
+
+function hrEntry(dateTime: string, bpm: number, confidence = 2): RawHREntry {
+  return { dateTime, value: { bpm, confidence } };
+}
+
+describe('parseHeartRateIntradayFiles', () => {
+  it('should parse samples and compute offsets from the first sample', async () => {
+    const file = makeJsonFile('heart_rate-2016-08-24.json', [
+      hrEntry('08/24/16 23:59:54', 70, 3),
+      hrEntry('08/24/16 23:59:59', 72, 2),
+    ]);
+
+    const results = await parseHeartRateIntradayFiles([file]);
+
+    expect(results).toHaveLength(1);
+    const rec = results[0]!;
+    expect(rec.date).toBe('2016-08-24');
+    expect(rec.data.baseTimestampMs).toBe(Date.UTC(2016, 7, 24, 23, 59, 54));
+    expect(rec.data.sampleCount).toBe(2);
+    expect(rec.data.samples).toEqual([
+      { offsetSec: 0, bpm: 70, confidence: 3 },
+      { offsetSec: 5, bpm: 72, confidence: 2 },
+    ]);
+  });
+
+  it('should handle the 2-digit-year / local-time base deterministically', async () => {
+    // 2-digit year -> 21st century; local wall-clock -> UTC (no TZ shift).
+    const file = makeJsonFile('heart_rate-2017-01-15.json', [hrEntry('01/15/17 06:00:00', 60, 1)]);
+
+    const { data } = (await parseHeartRateIntradayFiles([file]))[0]!;
+    expect(data.baseTimestampMs).toBe(Date.UTC(2017, 0, 15, 6, 0, 0));
+    expect(new Date(data.baseTimestampMs).getUTCFullYear()).toBe(2017);
+    expect(new Date(data.baseTimestampMs).getUTCHours()).toBe(6);
+  });
+
+  it('should split a midnight-straddling file into one record per calendar date', async () => {
+    // Real exports: heart_rate-2016-08-24.json can begin on 08/25/16, and a
+    // night straddles midnight. Date key comes from each sample, not the file.
+    const file = makeJsonFile('heart_rate-2016-08-24.json', [
+      hrEntry('08/24/16 23:59:50', 65),
+      hrEntry('08/25/16 00:00:05', 66),
+      hrEntry('08/25/16 00:00:10', 67),
+    ]);
+
+    const results = await parseHeartRateIntradayFiles([file]);
+    const byDate = Object.fromEntries(results.map((r) => [r.date, r]));
+
+    expect(Object.keys(byDate).sort()).toEqual(['2016-08-24', '2016-08-25']);
+    expect(byDate['2016-08-24']!.data.sampleCount).toBe(1);
+    expect(byDate['2016-08-25']!.data.sampleCount).toBe(2);
+    // Each record's base is its own first sample.
+    expect(byDate['2016-08-25']!.data.baseTimestampMs).toBe(Date.UTC(2016, 7, 25, 0, 0, 5));
+    expect(byDate['2016-08-25']!.data.samples[1]!.offsetSec).toBe(5);
+  });
+
+  it('should sort out-of-order samples chronologically before computing offsets', async () => {
+    const file = makeJsonFile('heart_rate-2020-02-02.json', [
+      hrEntry('02/02/20 08:00:10', 80),
+      hrEntry('02/02/20 08:00:00', 78),
+      hrEntry('02/02/20 08:00:05', 79),
+    ]);
+
+    const { data } = (await parseHeartRateIntradayFiles([file]))[0]!;
+    expect(data.baseTimestampMs).toBe(Date.UTC(2020, 1, 2, 8, 0, 0));
+    expect(data.samples.map((s) => s.offsetSec)).toEqual([0, 5, 10]);
+    expect(data.samples.map((s) => s.bpm)).toEqual([78, 79, 80]);
+  });
+
+  it('should skip malformed rows (bad date, missing/non-numeric bpm) without throwing', async () => {
+    const file = makeJsonFile('heart_rate-2020-03-03.json', [
+      hrEntry('03/03/20 10:00:00', 90),
+      { dateTime: 'not-a-date', value: { bpm: 91, confidence: 2 } },
+      { dateTime: '03/03/20 10:00:10', value: { confidence: 2 } } as unknown as RawHREntry,
+      { value: { bpm: 92, confidence: 1 } } as unknown as RawHREntry,
+      hrEntry('03/03/20 10:00:20', 93),
+    ]);
+
+    const results = await parseHeartRateIntradayFiles([file]);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.data.sampleCount).toBe(2);
+    expect(results[0]!.data.samples.map((s) => s.bpm)).toEqual([90, 93]);
+  });
+
+  it('should default missing confidence to 0', async () => {
+    const file = makeJsonFile('heart_rate-2020-04-04.json', [
+      { dateTime: '04/04/20 09:00:00', value: { bpm: 55 } } as unknown as RawHREntry,
+    ]);
+
+    const { data } = (await parseHeartRateIntradayFiles([file]))[0]!;
+    expect(data.samples[0]!.confidence).toBe(0);
+  });
+
+  it('should return an empty array for an empty file', async () => {
+    const file = makeJsonFile('heart_rate-2020-05-05.json', []);
+    expect(await parseHeartRateIntradayFiles([file])).toEqual([]);
+  });
+
+  it('should not throw on invalid JSON, returning empty results', async () => {
+    const file = makeFile('heart_rate-2020-06-06.json', '{ this is not json');
+    expect(await parseHeartRateIntradayFiles([file])).toEqual([]);
   });
 });

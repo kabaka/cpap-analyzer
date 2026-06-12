@@ -164,6 +164,61 @@ export function parseFitbitLegacyDate(dateStr: string): string {
 }
 
 /**
+ * Parse the legacy Fitbit intraday datetime format (`MM/DD/YY HH:MM:SS`) into
+ * a *wall-clock epoch* and its calendar date.
+ *
+ * The Fitbit export gives local wall-clock time with no timezone indicator.
+ * Parsing with `new Date("08/25/16 06:44:18")` would interpret the string in
+ * the *runtime's* timezone, which differs between the user's machine and CI and
+ * would silently shift every sample. To stay deterministic and to match the
+ * convention CPAP session timestamps use (wall-clock, not UTC-shifted), we
+ * parse the components by hand and feed them to {@link Date.UTC}. The resulting
+ * epoch represents the literal wall-clock instant as if it were UTC.
+ *
+ * @param dateTime - `MM/DD/YY HH:MM:SS` (two-digit year, assumed 21st century).
+ * @returns `{ epochMs, date }` where `date` is the YYYY-MM-DD calendar date.
+ * @throws If the string does not match the expected format or yields an
+ *         invalid calendar date.
+ */
+export function parseFitbitLegacyDateTime(dateTime: string): {
+  readonly epochMs: number;
+  readonly date: string;
+} {
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{2})\s+(\d{1,2}):(\d{2}):(\d{2})/.exec(dateTime.trim());
+  if (
+    !match ||
+    match[1] === undefined ||
+    match[2] === undefined ||
+    match[3] === undefined ||
+    match[4] === undefined ||
+    match[5] === undefined ||
+    match[6] === undefined
+  ) {
+    throw new Error(`Cannot parse Fitbit legacy datetime: "${dateTime}"`);
+  }
+
+  const month = parseInt(match[1], 10);
+  const day = parseInt(match[2], 10);
+  const year = 2000 + parseInt(match[3], 10);
+  const hour = parseInt(match[4], 10);
+  const minute = parseInt(match[5], 10);
+  const second = parseInt(match[6], 10);
+
+  // Range-validate so that an impossible date (e.g. month 13, day 32) is
+  // rejected rather than silently rolling over via Date.UTC normalisation.
+  if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) {
+    throw new Error(`Invalid Fitbit legacy datetime: "${dateTime}"`);
+  }
+
+  const epochMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  if (Number.isNaN(epochMs)) {
+    throw new Error(`Invalid Fitbit legacy datetime: "${dateTime}"`);
+  }
+
+  return { epochMs, date: formatDateParts(year, month, day) };
+}
+
+/**
  * Parse an ISO 8601 datetime string to a Date object.
  *
  * When the string lacks a timezone suffix the timestamp is treated as

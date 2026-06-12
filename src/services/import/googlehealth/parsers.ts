@@ -24,6 +24,8 @@ import type {
   FitbitSleepScore,
   FitbitSpO2Daily,
   FitbitSpO2Intraday,
+  FitbitHeartRateIntraday,
+  FitbitHeartRateIntradaySample,
   FitbitHRVDaily,
   FitbitHRVDetail,
   FitbitHRVDetailInterval,
@@ -43,6 +45,7 @@ import {
   parseCSV,
   extractDate,
   parseFitbitLegacyDate,
+  parseFitbitLegacyDateTime,
   parseNumericField,
   parseNumericFieldWithDefault,
 } from './csv-utils';
@@ -662,6 +665,139 @@ export async function parseRestingHeartRateFiles(
       }
     } catch (e) {
       console.warn(`[GoogleHealth] Failed to parse resting HR file ${file.name}:`, e);
+    }
+  }
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Intraday heart rate (JSON)
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw intraday heart-rate entry from `Global Export Data/heart_rate-*.json`.
+ *
+ * One file holds ~17k entries (≈5-second cadence) and may span the midnight
+ * boundary, so entries are grouped by their own calendar date rather than by
+ * the filename's date.
+ */
+interface RawHeartRateIntradayEntry {
+  /** Local wall-clock time, `MM/DD/YY HH:MM:SS`, no timezone. */
+  readonly dateTime?: string;
+  readonly value?: {
+    readonly bpm?: number;
+    readonly confidence?: number;
+  };
+}
+
+/**
+ * Parse intraday (≈5-second cadence) heart-rate JSON files.
+ *
+ * Source: `Global Export Data/heart_rate-YYYY-MM-DD.json`
+ *
+ * **Timezone**: `dateTime` is local wall-clock time in `MM/DD/YY HH:MM:SS`
+ * format with no timezone indicator. We convert each sample to a wall-clock
+ * epoch via {@link parseFitbitLegacyDateTime} (which uses `Date.UTC` on the
+ * literal components, so results are timezone-independent and align with CPAP
+ * session wall-clock times).
+ *
+ * **Date grouping**: the filename date is unreliable — a file named
+ * `heart_rate-2016-08-24.json` can begin at `08/25/16`, and a night of samples
+ * straddles midnight. Samples are therefore grouped by the calendar date of
+ * each sample's own timestamp, so one file may yield two date records.
+ *
+ * ## Storage volume strategy — full-resolution, no downsampling
+ *
+ * At ~5-second cadence a full day is ~17k samples. Each stored sample is
+ * `{ offsetSec, bpm, confidence }` — three small integers. Empirically a day's
+ * record serialises to roughly 0.4–0.6 MB in IndexedDB's structured clone, and
+ * ~3500 days (≈10 years) totals on the order of 1.5–2 GB.
+ *
+ * We deliberately keep FULL resolution rather than downsampling on import:
+ *
+ * - **Correctness (principle #2) first.** Intraday HR will drive breathing /
+ *   arousal correlation against per-second CPAP flow; silently coarsening to
+ *   15–30s would blunt exactly the short-timescale features that analysis
+ *   targets. Any downsampling must be an explicit, opt-in, documented step —
+ *   not a hidden import-time loss.
+ * - **Records are independently loadable.** One record == one calendar date,
+ *   keyed for O(1) lookup, so per-query cost is bounded by a single night's
+ *   samples regardless of how many years are stored. Total DB footprint — not
+ *   per-query latency — is the only concern, and IndexedDB origin quotas
+ *   (typically a large fraction of free disk) comfortably absorb it. The
+ *   quota-awareness layer warns the user as usage grows.
+ * - **Confidence-0 noise is NOT dropped.** In sampled real exports confidence-0
+ *   readings are only ~4% of samples; dropping them would save little while
+ *   discarding data the consumer may legitimately want to weight. We retain
+ *   `confidence` per sample so filtering/weighting is a downstream choice.
+ *
+ * Samples that fail to parse (bad timestamp, missing/non-numeric bpm) are
+ * skipped individually; whole-file failures are caught and logged.
+ */
+export async function parseHeartRateIntradayFiles(
+  files: File[],
+): Promise<ParsedRecord<FitbitHeartRateIntraday>[]> {
+  const results: ParsedRecord<FitbitHeartRateIntraday>[] = [];
+
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const entries: RawHeartRateIntradayEntry[] = JSON.parse(text) as RawHeartRateIntradayEntry[];
+
+      // Group raw (epochMs, bpm, confidence) tuples by calendar date.
+      const grouped = new Map<string, { epochMs: number; bpm: number; confidence: number }[]>();
+
+      for (const entry of entries) {
+        try {
+          const bpm = entry.value?.bpm;
+          if (entry.dateTime === undefined || typeof bpm !== 'number' || !Number.isFinite(bpm)) {
+            continue;
+          }
+
+          const { epochMs, date } = parseFitbitLegacyDateTime(entry.dateTime);
+          const rawConfidence = entry.value?.confidence;
+          const confidence =
+            typeof rawConfidence === 'number' && Number.isFinite(rawConfidence) ? rawConfidence : 0;
+
+          let group = grouped.get(date);
+          if (!group) {
+            group = [];
+            grouped.set(date, group);
+          }
+          group.push({ epochMs, bpm, confidence });
+        } catch {
+          // Skip malformed sample silently for high-frequency intraday data.
+        }
+      }
+
+      for (const [date, raw] of grouped) {
+        if (raw.length === 0) continue;
+
+        // Sort chronologically so offsets are non-negative and monotonic.
+        raw.sort((a, b) => a.epochMs - b.epochMs);
+
+        const base = raw[0];
+        if (!base) continue;
+        const baseTimestampMs = base.epochMs;
+
+        const samples: FitbitHeartRateIntradaySample[] = raw.map((r) => ({
+          offsetSec: Math.round((r.epochMs - baseTimestampMs) / 1000),
+          bpm: r.bpm,
+          confidence: r.confidence,
+        }));
+
+        results.push({
+          date,
+          data: {
+            baseTimestampMs,
+            samples,
+            sampleCount: samples.length,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn(`[GoogleHealth] Failed to parse intraday heart rate file ${file.name}:`, e);
     }
   }
 

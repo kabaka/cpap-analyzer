@@ -33,7 +33,8 @@ export type FitbitTimeseriesType =
   | 'spo2_intraday'
   | 'hrv_detail'
   | 'sleep_stages'
-  | 'snoring_segments';
+  | 'snoring_segments'
+  | 'heart_rate_intraday';
 
 /** Combined discriminator for all Fitbit data types. */
 export type FitbitDataType = FitbitDailyType | FitbitTimeseriesType;
@@ -192,6 +193,57 @@ export interface FitbitSpO2Intraday {
   readonly sampleCount: number;
 }
 
+/**
+ * A single intraday heart-rate sample.
+ *
+ * Offsets are relative to {@link FitbitHeartRateIntraday.baseTimestampMs} to
+ * keep the per-record payload compact (an `offsetSec` is far smaller than a
+ * repeated absolute timestamp across the ~17k samples/day this data carries).
+ */
+export interface FitbitHeartRateIntradaySample {
+  /** Seconds elapsed since {@link FitbitHeartRateIntraday.baseTimestampMs}. */
+  readonly offsetSec: number;
+  /** Beats per minute. */
+  readonly bpm: number;
+  /**
+   * Fitbit's optical-sensor confidence for this reading, 0–3 (3 = highest).
+   * Retained so downstream consumers can weight or filter low-confidence noise
+   * rather than us discarding it at import time.
+   */
+  readonly confidence: number;
+}
+
+/**
+ * Fitbit intraday (≈5-second cadence) heart-rate data for a single calendar
+ * date.
+ *
+ * ## Time base
+ *
+ * The Fitbit export records each sample's local wall-clock time with no
+ * timezone (`MM/DD/YY HH:MM:SS`). {@link baseTimestampMs} is the epoch value of
+ * the first sample's wall-clock interpreted as UTC — i.e. the same convention
+ * CPAP session timestamps use, so the viewer can align lanes by wall-clock
+ * without timezone math. Each sample's absolute time is therefore
+ * `baseTimestampMs + offsetSec * 1000`.
+ *
+ * ## Storage strategy
+ *
+ * Stored at full native resolution (no downsampling). See the parser
+ * (`parseHeartRateIntradayFiles`) for the rationale and per-record size
+ * envelope. One record corresponds to one calendar date; a single export file
+ * spans the midnight boundary and may produce two date records.
+ */
+export interface FitbitHeartRateIntraday {
+  /**
+   * Epoch milliseconds of the first sample, computed from the local wall-clock
+   * components via {@link Date.UTC} (NOT timezone-shifted). Adding
+   * `offsetSec * 1000` to this yields each sample's wall-clock epoch.
+   */
+  readonly baseTimestampMs: number;
+  readonly samples: readonly FitbitHeartRateIntradaySample[];
+  readonly sampleCount: number;
+}
+
 /** A single HRV measurement interval. */
 export interface FitbitHRVDetailInterval {
   readonly timestamp: string;
@@ -260,6 +312,7 @@ export type FitbitTimeseriesPayloadMap = {
   readonly hrv_detail: FitbitHRVDetail;
   readonly sleep_stages: FitbitSleepStages;
   readonly snoring_segments: FitbitSnoringSegments;
+  readonly heart_rate_intraday: FitbitHeartRateIntraday;
 };
 
 // ---------------------------------------------------------------------------
@@ -309,6 +362,7 @@ export const FITBIT_DATA_TYPE_TIER: Record<FitbitDataType, 1 | 2 | 3 | 4> = {
   hrv_daily: 2,
   hrv_detail: 2,
   heart_rate_resting: 2,
+  heart_rate_intraday: 2,
   readiness: 2,
   stress: 2,
   temperature: 2,
@@ -331,6 +385,7 @@ export const FITBIT_DATA_TYPE_LABEL: Record<FitbitDataType, string> = {
   hrv_daily: 'HRV (Daily)',
   hrv_detail: 'HRV (Detailed)',
   heart_rate_resting: 'Resting Heart Rate',
+  heart_rate_intraday: 'Heart Rate (Intraday)',
   readiness: 'Readiness Score',
   stress: 'Stress Score',
   temperature: 'Skin Temperature',
