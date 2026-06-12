@@ -82,6 +82,14 @@ const EXPLORE_CARDS: readonly ExploreCard[] = [
     iconClass: styles.iconBreathing,
     iconLabel: '🫁',
   },
+  {
+    title: 'Machine Configurations',
+    description:
+      'Compare therapy outcomes across periods where your machine settings stayed the same — answer "which max pressure gave me the lowest AHI?" with side-by-side distributions and an optimize sub-mode.',
+    path: '/explore/configs',
+    iconClass: styles.iconConfigs,
+    iconLabel: '⚙',
+  },
 ];
 
 // ---------------------------------------------------------------------------

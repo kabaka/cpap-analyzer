@@ -96,6 +96,12 @@
   color: var(--color-detection);
 }
 
+.iconConfigs {
+  composes: icon;
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-primary);
+}
+
 .cardTitle {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);

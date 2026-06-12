@@ -20,6 +20,7 @@ import { useChartColors } from '@/components/charts/useChartColors';
 import { useSyncedChart } from '../context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
+import { renderSettingsChangeMarkers } from './SettingsChangeMarkers';
 import ChartPanel from './ChartPanel';
 
 interface AHITrendChartProps {
@@ -107,16 +108,9 @@ const AHITrendChart = React.memo(function AHITrendChart({
             formatter={(value: number) => [value.toFixed(1), 'AHI']}
           />
 
-          {/* Settings change markers */}
-          {settingsChanges.map((sc) => (
-            <ReferenceLine
-              key={`sc-${sc.date}`}
-              x={sc.date}
-              stroke={colors.axis}
-              strokeDasharray="4 4"
-              strokeOpacity={0.5}
-            />
-          ))}
+          {/* Settings change markers — shared helper renders a dashed
+              vertical line per change with a native-SVG <title> tooltip. */}
+          {renderSettingsChangeMarkers(settingsChanges, { stroke: colors.axis })}
 
           {/* Synced crosshair */}
           {activeDate && <ReferenceLine x={activeDate} stroke={colors.axis} strokeOpacity={0.4} />}
