@@ -21,13 +21,35 @@
  * - `S.ClimateControl` — Auto climate control
  * - `S.HumLevel`     — Humidifier level
  * - `Mode`           — Therapy mode
- * - `Date`           — Day index (EDF days since a reference epoch)
+ * - `Date`           — Day index: **days since the Unix epoch (1970-01-01 UTC)**
+ *
+ * Note on the `Date` epoch: ResMed STR.edf encodes the `Date` channel as the
+ * number of whole days since the Unix epoch (1970-01-01 UTC), NOT the
+ * Excel/Lotus serial epoch (1899-12-30). This is a non-obvious ResMed hardware
+ * convention — using the Excel epoch shifts every record back ~70 years (to
+ * 1955–1956), which silently breaks the date-keyed settings lookup in
+ * {@link SessionBuilder}. See {@link RESMED_STR_DAY_EPOCH_MS}.
  *
  * @module parsers/resmed/STRParser
  */
 
 import type { MachineSettings } from '@/types/session';
 import type { ResMedInterpretation, StandardChannel } from './ResMedInterpreter';
+
+/**
+ * Epoch for the ResMed STR.edf `Date` channel (and the MaskOn/MaskOff noon
+ * anchor derived from it): **days since the Unix epoch, 1970-01-01 UTC**.
+ *
+ * ResMed encodes STR day indices as days since the Unix epoch — NOT the
+ * Excel/Lotus serial epoch (1899-12-30) that spreadsheet software uses. The two
+ * differ by 25569 days (~70 years), so decoding with the wrong epoch dates every
+ * record to 1955–1956 instead of the real therapy dates, and the exact-date
+ * settings lookup in SessionBuilder never matches the session's date.
+ *
+ * Defined once here and referenced by both {@link STRParser.dayValueToDate} and
+ * {@link STRParser.dayValueToLocalNoon} so the two decode sites cannot drift.
+ */
+const RESMED_STR_DAY_EPOCH_MS = Date.UTC(1970, 0, 1);
 
 // ---------------------------------------------------------------------------
 // Exported types
@@ -265,10 +287,10 @@ export class STRParser {
       let recordDate: string;
 
       if (dateChannel && recordIdx < dateChannel.samples.length) {
-        // The Date channel contains days since some epoch.
-        // ResMed uses a custom epoch: the value represents YYYYMMDD
-        // as a number, or days since a reference. In practice,
-        // we compute from the EDF start date + record index.
+        // The Date channel contains days since the Unix epoch
+        // (1970-01-01 UTC) — see RESMED_STR_DAY_EPOCH_MS. We decode it to a
+        // calendar date via dayValueToDate; when absent we fall back to the
+        // EDF start date + record index.
         const dayValue = dateChannel.samples[recordIdx] ?? 0;
         recordDate = this.dayValueToDate(dayValue, startDate);
       } else {
@@ -558,16 +580,17 @@ export class STRParser {
    *
    * ResMed MaskOn/MaskOff values are minutes-since-noon, so the anchor for
    * converting them to absolute wall-clock time is local noon of the record's
-   * calendar date. Mirrors {@link dayValueToDate}'s Excel-serial epoch for the
+   * calendar date. Mirrors {@link dayValueToDate}'s Unix-epoch decoding
+   * (days since 1970-01-01 UTC, {@link RESMED_STR_DAY_EPOCH_MS}) for the
    * Y/M/D, then sets the local time to 12:00. Falls back to
    * (startDate + recordIdx days) at local noon when the day value is absent.
    */
   private dayValueToLocalNoon(dayValue: number, startDate: Date, recordIdx: number): Date {
     if (dayValue > 0) {
-      // Excel-serial epoch interpreted in UTC, then projected to local noon
-      // via its calendar Y/M/D so the result matches dayValueToDate's string.
-      const epochMs = Date.UTC(1899, 11, 30);
-      const utc = new Date(epochMs + dayValue * 86_400_000);
+      // Unix epoch (days since 1970-01-01 UTC) interpreted in UTC, then
+      // projected to local noon via its calendar Y/M/D so the result matches
+      // dayValueToDate's string.
+      const utc = new Date(RESMED_STR_DAY_EPOCH_MS + dayValue * 86_400_000);
       return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate(), 12, 0, 0, 0);
     }
     const d = new Date(
@@ -590,23 +613,48 @@ export class STRParser {
   /**
    * Convert a ResMed day value to an ISO date string.
    *
-   * The STR.edf `Date` channel stores dates as the number of days
-   * since December 30, 1899 (the Excel/Lotus epoch used by ResMed).
-   * A value of 0 means no session data for that record.
+   * The STR.edf `Date` channel stores dates as the number of whole days
+   * since the Unix epoch (1970-01-01 UTC) — see {@link RESMED_STR_DAY_EPOCH_MS}.
+   * This is a ResMed hardware convention and is NOT the Excel/Lotus serial epoch
+   * (1899-12-30) that spreadsheet tools use. A value of 0 means no session data
+   * for that record.
    */
   private dayValueToDate(dayValue: number, fallbackStartDate: Date): string {
     if (dayValue <= 0) {
       return this.formatDate(fallbackStartDate);
     }
 
-    // ResMed epoch: 1899-12-30 (same as Excel serial date)
-    // dayValue = number of days since this epoch
-    const epochMs = Date.UTC(1899, 11, 30); // Dec 30, 1899
-    const dateMs = epochMs + dayValue * 86_400_000;
-    return this.formatDate(new Date(dateMs));
+    // ResMed STR epoch: 1970-01-01 UTC (days since the Unix epoch).
+    // dayValue = number of days since this epoch. The result is a UTC-midnight
+    // instant for the intended calendar day, so it MUST be formatted with UTC
+    // components — using local getters would shift the date by one day in any
+    // timezone with a non-zero UTC offset (e.g. a machine run in UTC-7 would
+    // report 2025-05-07 for the 2025-05-08 day index), re-breaking the
+    // date-keyed settings lookup this epoch fix is meant to repair.
+    const dateMs = RESMED_STR_DAY_EPOCH_MS + dayValue * 86_400_000;
+    return this.formatDateUTC(new Date(dateMs));
   }
 
-  /** Format a Date to ISO YYYY-MM-DD. */
+  /**
+   * Format a Date to ISO YYYY-MM-DD using its **UTC** calendar components.
+   *
+   * Used for the STR `Date` channel, whose decoded value is a UTC-midnight
+   * instant representing a calendar day index (not a wall-clock time).
+   */
+  private formatDateUTC(date: Date): string {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  /**
+   * Format a Date to ISO YYYY-MM-DD using its **local** calendar components.
+   *
+   * Used for mask-interval keys and date-offset fallbacks, where the Date holds
+   * a local wall-clock time (e.g. the noon anchor) that must be reported in the
+   * same local calendar day a session built from the EDF window would report.
+   */
   private formatDate(date: Date): string {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');

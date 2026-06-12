@@ -505,9 +505,13 @@ describe('percentile values unchanged by sort-once refactor', () => {
 // session window by date and clipped to compute usage.
 // ---------------------------------------------------------------------------
 
-/** ResMed Excel-serial day value for a local calendar date. */
+/**
+ * ResMed STR `Date` day value for a local calendar date: whole days since the
+ * Unix epoch (1970-01-01 UTC), matching the real hardware convention decoded by
+ * STRParser (RESMED_STR_DAY_EPOCH_MS) — not the Excel/Lotus serial epoch.
+ */
 function strDayValue(year: number, month1: number, day: number): number {
-  const epoch = Date.UTC(1899, 11, 30);
+  const epoch = Date.UTC(1970, 0, 1);
   return Math.round((Date.UTC(year, month1 - 1, day) - epoch) / 86_400_000);
 }
 
