@@ -37,6 +37,18 @@ const mockWorkerProxy = {
   correlationMatrix: vi.fn().mockResolvedValue({ labels: [], matrix: [] }),
   partialCorrelation: vi.fn().mockResolvedValue({ r: 0.6, p: 0.05 }),
   crossCorrelation: vi.fn().mockResolvedValue({ lags: [], values: [] }),
+  classifyTecsa: vi.fn().mockResolvedValue({
+    available: true,
+    class: 'emergent',
+    earlyCai: 1,
+    lateCai: 12,
+    earlyNights: 7,
+    lateNights: 7,
+    usableNightFraction: 1,
+    confidence: 0.8,
+    caiThreshold: 5,
+  }),
+  flagTecsaNights: vi.fn().mockResolvedValue([]),
 };
 
 const mockDispose = vi.fn();
@@ -313,6 +325,73 @@ describe('AnalysisEngine', () => {
         leakMedian: [4.5, 5.2, 3.8],
         pressureMean: [10, 11, 9.5],
       });
+    });
+
+    it('should dispatch tecsa-classification with mapped night records', async () => {
+      await engine.execute(makeInput({ type: 'tecsa-classification' }));
+
+      // Nightly aggregates are mapped to TecsaNightRecord[]:
+      //   ahiCentral → centralApneaIndex, ahiObstructive → obstructiveIndex,
+      //   ahiHypopnea → hypopneaIndex, leakMedian → leakMetric,
+      //   usageHours → usableHours.
+      expect(mockWorkerProxy.classifyTecsa).toHaveBeenCalledWith(
+        [
+          {
+            date: '2024-01-01',
+            centralApneaIndex: 0.5,
+            obstructiveIndex: 1.0,
+            hypopneaIndex: 1.3,
+            leakMetric: 4.5,
+            usableHours: 7,
+          },
+          {
+            date: '2024-01-02',
+            centralApneaIndex: 0.5,
+            obstructiveIndex: 1.0,
+            hypopneaIndex: 1.3,
+            leakMetric: 5.2,
+            usableHours: 6.5,
+          },
+          {
+            date: '2024-01-03',
+            centralApneaIndex: 0.5,
+            obstructiveIndex: 1.0,
+            hypopneaIndex: 1.3,
+            leakMetric: 3.8,
+            usableHours: 7.5,
+          },
+        ],
+        {},
+      );
+    });
+
+    it('should forward tecsaParams overrides to the worker', async () => {
+      await engine.execute(
+        makeInput({
+          type: 'tecsa-classification',
+          parameters: { tecsaParams: { caiThreshold: 10, minNightsPerWindow: 5 } },
+        }),
+      );
+
+      expect(mockWorkerProxy.classifyTecsa).toHaveBeenCalledWith(expect.any(Array), {
+        caiThreshold: 10,
+        minNightsPerWindow: 5,
+      });
+    });
+
+    it('should return and cache the tecsa-classification result', async () => {
+      const input = makeInput({ type: 'tecsa-classification' });
+
+      const first = await engine.execute(input);
+      expect(first.results).toEqual(
+        expect.objectContaining({ available: true, class: 'emergent' }),
+      );
+      expect(cache.size).toBe(1);
+
+      // Second call hits the cache: worker is not invoked again.
+      const second = await engine.execute(input);
+      expect(second).toBe(first);
+      expect(mockWorkerProxy.classifyTecsa).toHaveBeenCalledTimes(1);
     });
 
     it('should throw for unknown analysis type', async () => {

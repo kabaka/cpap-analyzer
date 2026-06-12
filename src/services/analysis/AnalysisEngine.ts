@@ -16,6 +16,7 @@
 import type { Remote } from 'comlink';
 
 import type { AnalysisInput, AnalysisOutput, NightlyAggregate } from '@/types';
+import type { TecsaNightRecord } from '@/analysis/breathing';
 import { CacheService } from '@/services/storage/CacheService';
 import type { DataProvider } from '@/types/storage';
 import { createWorker, type WrappedWorker } from '@/services/workers/createWorker';
@@ -315,6 +316,17 @@ export class AnalysisEngine {
         return worker.crossCorrelation(values, y, (input.parameters.maxLag as number) ?? undefined);
       }
 
+      // -- Breathing-pattern detection (ADR 0017) --
+      // TECSA is a longitudinal classifier over nightly aggregates, which the
+      // engine already fetches. The PB/CSR episode detectors operate on raw
+      // per-session signal arrays the engine does not load and are therefore
+      // invoked directly through the worker by the UI/plumbing workstream.
+      case 'tecsa-classification': {
+        const records = this.toTecsaNightRecords(data);
+        const tecsaParams = (input.parameters.tecsaParams as Record<string, unknown>) ?? {};
+        return worker.classifyTecsa(records, tecsaParams);
+      }
+
       default:
         throw new Error(`Unknown analysis type: ${input.type}`);
     }
@@ -335,6 +347,23 @@ export class AnalysisEngine {
       const value = (d as unknown as Record<string, unknown>)[metric];
       return typeof value === 'number' ? value : NaN;
     });
+  }
+
+  /**
+   * Map nightly aggregates to the per-night records the TECSA classifier
+   * consumes (ADR 0017). Central / obstructive / hypopnea indices come from the
+   * aggregate AHI components; the leak gate uses median leak; usable hours come
+   * from `usageHours`.
+   */
+  private toTecsaNightRecords(data: NightlyAggregate[]): TecsaNightRecord[] {
+    return data.map((d) => ({
+      date: d.date,
+      centralApneaIndex: d.ahiCentral,
+      obstructiveIndex: d.ahiObstructive,
+      hypopneaIndex: d.ahiHypopnea,
+      leakMetric: d.leakMedian,
+      usableHours: d.usageHours,
+    }));
   }
 
   // -----------------------------------------------------------------------
@@ -430,6 +459,14 @@ export class AnalysisEngine {
 
       case 'cross-correlation':
         return ['Both time series are weakly stationary', 'Observations are equally spaced'];
+
+      case 'tecsa-classification':
+        return [
+          'Nightly central-apnea index (CAI) reliably reflects central events (degraded under high mask leak; high-leak nights are excluded)',
+          'Early- and late-treatment windows are separated by enough usable nights to compare medians',
+          'Candidate trajectory classification only — not a diagnosis of treatment-emergent central sleep apnea',
+          'Sparse or short history yields an explicit "insufficient data" result rather than a fabricated class',
+        ];
 
       default:
         return [];

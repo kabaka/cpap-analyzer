@@ -62,6 +62,7 @@ import {
   bipapEffectiveness,
   pressureVariability,
 } from '@/analysis/pressure';
+import { detectPeriodicBreathing, classifyTecsa, flagTecsaNights } from '@/analysis/breathing';
 
 const analysisAPI = {
   // Descriptive
@@ -118,6 +119,14 @@ const analysisAPI = {
   pressureResponseCurve,
   bipapEffectiveness,
   pressureVariability,
+
+  // Breathing-pattern detection (ADR 0017): app-computed candidate detections.
+  // PB/CSR take caller-supplied signal arrays (flow/minuteVent + sampleRate +
+  // optional device event flags), which the UI/plumbing workstream will source
+  // from OPFS/IndexedDB. TECSA takes nightly aggregates.
+  detectPeriodicBreathing,
+  classifyTecsa,
+  flagTecsaNights,
 };
 
 /** Public API type for consumers creating a Comlink Remote<T>. */
