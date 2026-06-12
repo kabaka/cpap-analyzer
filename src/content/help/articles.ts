@@ -576,6 +576,243 @@ export const helpArticles: readonly HelpArticle[] = [
     ],
   },
 
+  // ─── BREATHING PATTERNS ───────────────────────────────────────────
+  {
+    slug: 'breathing-patterns',
+    title: 'Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA',
+    summary:
+      'How CPAP Analyzer detects periodic breathing, Cheyne-Stokes respiration, and treatment-emergent central sleep apnea — methods, defaults, confidence, and the clinical caveats that frame every result.',
+    icon: 'clinical',
+    sections: [
+      {
+        heading: 'What these patterns are',
+        paragraphs: [
+          'Periodic breathing (PB), Cheyne-Stokes respiration (CSR), and treatment-emergent central sleep apnea (TECSA, also called complex sleep apnea or CompSA) are three faces of the same underlying problem: an unstable respiratory control loop. Healthy breathing is regulated by chemoreceptors that sense arterial CO₂ and adjust ventilation to keep it near a setpoint. When the control loop has high gain — meaning a small change in CO₂ provokes a large ventilatory response — the system overshoots, drives CO₂ below the apneic threshold (the CO₂ level below which the brainstem stops issuing inspiratory drive), and a central apnea results. Ventilation then resumes, CO₂ rebuilds and overshoots, and the cycle repeats. The three patterns differ in how that instability manifests, not in their root mechanism.',
+          'Periodic breathing (PB) is the umbrella term: a repeating cycle of waxing and waning tidal volume that may or may not include frank central apneas. It can appear at altitude, in heart failure, on opioids, in some neurological conditions, and idiopathically.',
+          'Cheyne-Stokes respiration (CSR) is a specific morphology of PB defined by a crescendo-decrescendo envelope around each central apnea (breaths grow louder/deeper, then quieter/shallower into the apnea), with cycle lengths of 40–120 s (typically 45–90 s). Per AASM scoring, a CSR run requires ≥3 consecutive central apneas separated by crescendo-decrescendo breathing; at the session level the standard further requires either ≥5 central events per hour or ≥2 hours of cyclic pattern. CSR is most often seen with congestive heart failure but also occurs after stroke and in some renal disease.',
+          'TECSA (treatment-emergent central sleep apnea) is a longitudinal pattern, not a per-night one: predominantly obstructive breathing at diagnosis converts to predominantly central breathing once CPAP is started, then often resolves on its own as the patient adapts. The widely cited Liu et al. 2017 cohort of ~133,000 patients identifies four such trajectories — obstructive (stable), transient (central early, resolves), persistent (central throughout), and emergent (obstructive at first, central later). TECSA is operationally defined when the central-apnea index (CAI) crosses a threshold (commonly 5/h) on therapy.',
+          'How these differ from obstructive events matters for what the data look like. In an obstructive apnea the airway is closed but respiratory effort continues — flow stops while chest and abdominal motion persist. In a central apnea both flow and effort stop — the brain is not asking for a breath. ResMed machines distinguish the two by briefly modulating mask pressure during an apnea (forced oscillation technique, FOT) and listening for an airway response; an open airway implies central, a closed airway implies obstructive. PB and CSR are populations of central events with cyclic morphology, not a separate event type.',
+        ],
+      },
+      {
+        heading: 'Why this matters — and why it is not a diagnosis',
+        paragraphs: [
+          'CSR has a recognized association with reduced cardiac function. Studies of CSR cycle length consistently find that longer cycles track lower cardiac output and worse heart-failure severity: the cycle length is roughly twice the lung-to-chemoreceptor circulation time, which lengthens as cardiac output falls (Midelet et al. 2023; Javed et al. 2018). The presence of CSR on a CPAP report is therefore a candidate signal that warrants conversation with a clinician — particularly if it is new, sustained, or progressive. It is not a heart-failure diagnosis. Many causes are possible, and a cardiac evaluation is the appropriate next step if a clinician thinks the signal warrants one.',
+          'TECSA, despite its alarming name, is most often self-limiting. Across the literature, somewhere on the order of 60–80% of patients with treatment-emergent central events show spontaneous resolution within roughly the first three months of continued CPAP as the respiratory control loop re-adapts (Nigam et al. 2016 systematic review; Kwok et al. 2022). The Liu et al. 2017 trajectory model exists precisely to distinguish patients who will resolve from those who will not — which is why we surface the trajectory rather than a single yes/no label.',
+          'The single most important clinical caveat: do not self-prescribe adaptive servo-ventilation (ASV) on the basis of CSR or central-apnea findings here. The SERVE-HF randomized trial (Cowie et al. 2015) showed increased all-cause and cardiovascular mortality with ASV in patients who had symptomatic chronic heart failure with reduced ejection fraction (LVEF ≤ 45% with predominantly central sleep apnea), and a subsequent American Heart Association / American College of Cardiology scientific statement (Somers et al. 2018) formalized the contraindication. Adjusting therapy mode — particularly moving to ASV — is a clinician decision informed by echocardiography and the full clinical picture, not by a software flag. CPAP Analyzer surfaces candidate patterns for discussion; it does not diagnose, does not recommend therapy changes, and does not classify ejection fraction.',
+        ],
+      },
+      {
+        heading: 'What ResMed flags — and what it does not',
+        paragraphs: [
+          'ResMed machines apply forced oscillation technique (FOT) during apneas to classify them as ClearAirway (central) or obstructive, and they include an on-device CSR detector that flags a CSR run when it observes ≥15 consecutive minutes of cyclic crescendo-decrescendo breathing with cycle length in the 40–120 s band. These flags are conservative and binary: they fire only above the device-internal thresholds and surface no morphology — no cycle length, no modulation depth, no graded confidence.',
+          'What the device does not surface, and what CPAP Analyzer adds: sub-threshold periodic breathing (cyclic envelopes that do not reach the device CSR criterion), short CSR runs (shorter than the 15-minute device floor), the morphology of each candidate episode (cycle length, modulation depth, crescendo-decrescendo shape score), and the cross-night TECSA trajectory. These are computed in-browser from the same raw data the device already records; nothing leaves your machine.',
+        ],
+      },
+      {
+        heading: 'How CPAP Analyzer detects PB and CSR',
+        paragraphs: [
+          'PB and CSR detection runs per-session on the airflow / minute-ventilation envelope, not on raw 25 Hz flow. Breaths are segmented from the flow signal, then summarized into a per-breath envelope (tidal volume or minute ventilation). The envelope is the substrate every literature-validated single-channel method works on (Weinreich et al. 2009; Javed et al. 2018; Guyot et al. 2019; Midelet et al. 2023). No esophageal or respiratory-effort belt is required, and CPAP data does not provide one.',
+          'Periodicity is established by autocorrelation of the envelope. A dominant lag in the 40–120 s band, with a sufficiently sharp peak, is the necessary signature of cyclic ventilation. The modulation index — a Guyot-style measure on $[0, 1]$ of how strongly the envelope oscillates relative to its mean — is the primary confidence basis: a near-flat envelope scores near $0$, a deeply modulated cyclic envelope scores near $1$.',
+          'Morphology — the crescendo-decrescendo shape that distinguishes CSR from generic oscillation — is scored separately with a harmonic-ratio measure: the fraction of in-band spectral energy concentrated at the fundamental cycle frequency, $\\text{HR} = E_{\\text{fundamental}} / E_{\\text{in-band total}}$. A pure crescendo-decrescendo waveform is nearly sinusoidal at its fundamental and scores high; a noisy or non-sinusoidal cyclic envelope scores lower. This separates CSR-shaped runs from other periodic patterns.',
+          'CSR is then scored against the AASM morphology criteria: a candidate run requires ≥3 consecutive central events with crescendo-decrescendo envelopes between them and a cycle length ≥40 s (typically 45–90 s). The session-level criterion — ≥5 central events per hour over ≥2 hours of cyclic pattern, the threshold ResMed uses internally — is computed and reported as a separate boolean field, `sessionCriterionMet`, so that short or borderline runs are not silently promoted to a session-level CSR label. Device `ClearAirway` flags are used to anchor the cycle nadirs of each candidate run, which both improves boundary accuracy and reduces false positives on flow artifacts.',
+          'Sub-threshold periodic breathing (PB without sufficient central events to meet CSR) and short CSR runs that fall below the device 15-minute floor are surfaced explicitly as "candidate / below device threshold," not silently dropped and not promoted to formal flags. The distinction is preserved in the rendering: device-asserted CSR shows one way, computed candidates show another. (See "How to read these in the app" below.)',
+          'Every detection carries a confidence on $[0, 1]$ with discrete bands. The confidence integrates the modulation index, the harmonic ratio, the cycle-length plausibility, and the alignment with `ClearAirway` events. SpO₂ desaturation coupling, when wearable oximetry data is available, can corroborate but is never required (see Intraday Health Signals & Overlays for what coupling looks like, and how strong it tends to be around CSR cycles).',
+        ],
+      },
+      {
+        heading: 'How CPAP Analyzer classifies TECSA',
+        paragraphs: [
+          'TECSA classification is longitudinal — it operates over many nights, not within a single session. The implementation follows the four-class trajectory model of Liu et al. 2017 (Chest, DOI 10.1016/j.chest.2017.06.010), the largest published study of treatment-emergent central apnea trajectories (≈133,000 patients). A nightly central-apnea index (CAI) is compared across an early treatment window and a late treatment window; the combination of below- vs. above-threshold CAI in each window assigns the user to one of four classes:',
+          '• Obstructive (stable): CAI below threshold in both windows — predominantly obstructive breathing throughout, the expected response to CPAP.',
+          '• Transient (TECSA, self-limiting): CAI above threshold in the early window, below in the late window — the most common TECSA pattern, consistent with the ~60–80% spontaneous-resolution literature.',
+          '• Persistent (central): CAI above threshold in both windows — central physiology present from the start and continuing.',
+          '• Emergent: CAI below threshold in the early window, above in the late window — central events appearing late in therapy.',
+          'The default CAI threshold is 5/h (the conventional cutoff used by Liu et al. and reflected in the AASM CSA definition), and the default early/late windows are configurable. Nights with high leak are excluded from the classifier because FOT-based central/obstructive classification is degraded under large leak — a corrupted ClearAirway count would otherwise contaminate the trajectory. Each class assignment carries a confidence reflecting the number of usable nights in each window and the separation between the early and late CAI distributions; sparse or short histories yield an explicit "insufficient data" outcome rather than a guess.',
+          'All TECSA output is a candidate trajectory label, never a diagnosis, never a prescription. In particular, a Transient or Emergent label does not on its own justify a switch to ASV — see the SERVE-HF caveat above.',
+        ],
+      },
+      {
+        heading: 'All thresholds are configurable',
+        paragraphs: [
+          'Every numeric threshold mentioned above is exposed as a configurable parameter, defaulted to the cited literature value: the cycle-length band (40–120 s, with the 45–90 s "typical" band as a sub-parameter), the minimum consecutive central events for CSR (3), the modulation-index threshold for candidate vs. confirmed, the harmonic-ratio threshold for crescendo-decrescendo morphology, the session-level CSR rate (5/h) and duration (2 h) gates, the TECSA CAI threshold (5/h), the early/late window definitions, and the leak threshold above which a night is excluded from TECSA. Because detection runs on-demand via the analysis layer — not at import time — changing a threshold takes effect immediately, with no re-import required. (This is a deliberate architectural choice; see ADR 0017.)',
+        ],
+      },
+      {
+        heading: 'How to read these in the app',
+        paragraphs: [
+          'In the per-session signal viewer, computed PB and CSR episodes are drawn as overlay bands distinct from device-asserted events: a hatched fill pattern marks computed detections, a confidence chip annotates each band, and dashed boundaries denote candidate / below-threshold episodes. Device-asserted CSR runs use the existing solid event styling. The provenance is never ambiguous — a band that originated from the device cannot be confused with one this app computed, and vice versa. (For an overlay walk-through and what the wearable-overlay context adds — including HR elevation around central events and the characteristic desaturation lag — see Intraday Health Signals & Overlays.)',
+          'A dedicated Breathing view collects the longitudinal TECSA trajectory plot (CAI per night with early/late windows shaded), the episode catalog (every detected PB/CSR run with its cycle length, modulation depth, harmonic ratio, confidence, and link back to its source session), and the threshold controls (so a parameter change can be inspected immediately). A Dashboard "Breathing Stability" insight card surfaces the headline state — quiet, isolated candidate episodes, persistent PB, or a TECSA trajectory worth discussing — without ever asserting a diagnosis. A future Trends lane will show cycle-length over time, which is the signal most directly tied to circulation time in the cardiac-output literature.',
+          'When using the Event Explorer to slice respiratory events by type, computed PB/CSR candidates carry their own filterable type tag and a hatched marker that distinguishes them from device-flagged PeriodicBreathing — so a query for "all PeriodicBreathing events" can be scoped to device-asserted, to computed candidates, or to both.',
+        ],
+      },
+      {
+        heading: 'Pitfalls and limitations',
+        paragraphs: [
+          'Leak artifact is the most common source of false positives. Large unintentional mask leak corrupts both the flow envelope (because the machine compensates) and the FOT-based central/obstructive classification (because the perturbation signal disperses through the leak path). CPAP Analyzer down-weights high-leak nights in TECSA and lowers the confidence of any PB/CSR episode that overlaps a high-leak segment, but a long leak event can still produce envelope oscillations that look cyclic. Treat any cyclic episode that coincides with a leak excursion with skepticism.',
+          'Movement and arousal can mimic short oscillations in the envelope. Cycles shorter than 40 s are deliberately rejected by the cycle-length filter, but borderline events near the lower bound are inherently noisier.',
+          'No respiratory-effort belt. PSG distinguishes central from obstructive events with thoracoabdominal effort signals (RIP belts or esophageal manometry); we have only flow plus FOT. This is sufficient for clinically useful PB/CSR detection (the literature cited above all operates from flow alone), but it is a strictly weaker channel than PSG. A clinical sleep study is the standard if the picture here is unclear.',
+          'TECSA depends on history. A robust trajectory needs enough usable nights in both the early and late windows; sparse or recent imports will report low-confidence or "insufficient data" rather than guess.',
+          'These are candidate flags. CPAP Analyzer is not a medical device, not FDA-cleared, and does not diagnose sleep-disordered breathing or cardiac disease. All output here is informational. Bring concerning findings — particularly new or sustained CSR, or a non-resolving TECSA trajectory — to your sleep physician and cardiologist.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Berry, R. B. et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. — Scoring rules for periodic breathing and Cheyne-Stokes respiration.',
+          'Weinreich, G., Armitstead, J., Töpfer, V., Wang, Y.-M., Wang, Y., & Teschler, H. (2009). Validation of ApneaLink as screening device for Cheyne-Stokes respiration. Sleep, 32(4), 553–557. — Single-channel nasal-airflow CSR detection: airflow alone is sufficient.',
+          'Javed, F., Fox, N., & Armitstead, J. (2018). ResCSRF: algorithm to automatically extract Cheyne-Stokes respiration features from respiratory signals. IEEE Transactions on Biomedical Engineering, 65(3), 669–677. DOI: 10.1109/TBME.2017.2712102. — Automated CSR feature extraction from flow.',
+          'Midelet, A. et al. (2023). Airflow signal-based detection of periodic breathing during sleep. Biomedical Signal Processing and Control. — Airflow-based PB/CSR detection; cycle length tracks cardiac output.',
+          'Guyot, N. et al. (2019). Modulation-index–based periodic breathing detection. PLoS ONE. — Continuous flow-modulation index as a confidence measure for periodic breathing.',
+          'Liu, D., Armitstead, J., Benjafield, A., Shao, S., Malhotra, A., Cistulli, P. A., Pepin, J.-L., & Woehrle, H. (2017). Trajectories of emergent central sleep apnea during continuous positive airway pressure therapy. Chest, 152(4), 751–760. DOI: 10.1016/j.chest.2017.06.010. — Four-class TECSA trajectory model from ~133,000 patients.',
+          'Nigam, G., Pathak, C., & Riaz, M. (2016). A systematic review on prevalence and risk factors associated with treatment-emergent central sleep apnea. Annals of Thoracic Medicine, 11(3), 202–210. DOI: 10.4103/1817-1737.185761. — Systematic review of TECSA prevalence and risk factors.',
+          'Kwok, K.-L. et al. (2022). Spontaneous resolution of treatment-emergent central sleep apnea. Respirology Case Reports. DOI: 10.1002/rcr2.916. — Self-limiting nature of TECSA on continued CPAP.',
+          'Cowie, M. R., Woehrle, H., Wegscheider, K., Angermann, C., d’Ortho, M.-P., Erdmann, E. et al. (2015). Adaptive servo-ventilation for central sleep apnea in systolic heart failure. New England Journal of Medicine, 373(12), 1095–1105. — SERVE-HF trial: increased mortality with ASV in HFrEF.',
+          'Somers, V. K. et al. (2018). Sleep apnea and cardiovascular disease: a scientific statement from the American Heart Association. — Formalizes the ASV contraindication for symptomatic HFrEF with predominantly central sleep apnea (LVEF ≤ 45%).',
+        ],
+      },
+    ],
+  },
+
+  // ─── INTRADAY HEALTH SIGNALS & OVERLAYS ───────────────────────────
+  {
+    slug: 'intraday-overlays',
+    title: 'Intraday Health Signals & Overlays',
+    summary:
+      'How wearable heart-rate, SpO₂, HRV, snoring, and sleep-stage data are aligned with CPAP signals in the per-session signal viewer, and how to read sparse vs. dense lanes.',
+    icon: 'integrations',
+    sections: [
+      {
+        heading: 'What the overlays add',
+        paragraphs: [
+          'The per-session signal viewer can now display wearable health signals on a shared time axis with the CPAP channels (flow, pressure, leak). When a Google Health / Fitbit import is present and intraday data exists for the night, additional lanes appear below the CPAP lanes — heart rate (the hero lane, ~5 s cadence), wearable SpO₂, HRV (5-min cadence, step-rendered), snoring intensity, and a sleep-stage hypnogram (Wake / REM / Light / Deep as a categorical ribbon). All lanes share one time cursor, so a respiratory event in the CPAP flow can be read against simultaneous cardiac, oxygen, and sleep-stage context within the same view.',
+          'Wearable lanes load asynchronously after the CPAP signal paints, so they never delay the first paint of flow and pressure. If the imported Google Health export does not include intraday data for that night, or if no Google Health import has been done, the lanes degrade gracefully — they either hide or show a hint linking to the Import Wizard. Daily-summary-only data (e.g., a single resting heart rate per day) is not used for intraday overlay, because it has no within-night structure.',
+        ],
+      },
+      {
+        heading: 'How alignment works',
+        paragraphs: [
+          'CPAP and wearable data are aligned by wall-clock timestamp. The viewer assumes "wall-clock-as-UTC" — that is, every timestamp is treated as if labelled in the same calendar time, and the viewer\'s displayed time zone equals the time zone of the night the data was recorded in. This is the right convention as long as you have not crossed time zones between the CPAP night and the Fitbit night being viewed: the lanes line up to the nearest sample.',
+          'If you crossed a time zone (e.g., imported a night recorded abroad), or if the wearable\'s clock and the CPAP machine\'s clock disagreed when the night was recorded, the overlay will be shifted by the disagreement. There is no automatic re-alignment; the assumption is documented here so that an apparent lead/lag between cardiac and respiratory events can be sanity-checked against "was I in a different time zone that night?" before being read as physiology.',
+          'Per-sample timestamps within a night are preserved exactly. No resampling is performed on the wearable side; CPAP 25 Hz data is downsampled for display (LTTB) but the underlying time index is unchanged.',
+        ],
+      },
+      {
+        heading: 'Sparse vs. dense lanes — how to read them',
+        paragraphs: [
+          'CPAP flow and pressure are dense: 25 samples per second, continuous across the session. Wearable signals are not: heart rate is roughly one sample every 5 s, HRV is one value every 5 min, and sleep stages are coarse intervals (a few minutes each). The viewer renders these honestly so you can tell at a glance how much signal is actually present.',
+          'Dense lanes (heart rate, flow, pressure, leak): rendered as a continuous line.',
+          "Sparse lanes (HRV in particular, but also any sparse cadence): rendered as a step function — the line holds the last sample's value until the next sample arrives — with a sample dot at each measurement so it is visually obvious where the actual data points are. Reading the height of the line between dots tells you the held value at that instant; the dots tell you where new evidence arrived.",
+          "Dashed connectors imply uncertainty. When two adjacent samples are far apart in time (gap larger than the lane's expected cadence), the segment between them is drawn dashed to signal that the interpolation across the gap is not actual data. A solid line between samples means the gap is within the expected cadence; dashed means a dropout occurred and the held value is not trustworthy across that interval. Sleep stages render as filled categorical blocks; a missing stretch shows as no block, not as Wake.",
+        ],
+      },
+      {
+        heading: 'What intraday data can reveal',
+        paragraphs: [
+          'Around obstructive and central apneas, heart rate often shows a characteristic two-step response: a brief bradycardia during the apnea (vagal response to the breath-hold), followed by a tachycardic rebound on arousal. The magnitude varies with autonomic tone, age, beta-blocker use, and event severity. The overlay makes this readable directly: zoom to a candidate apnea on the flow lane and look at the heart-rate lane underneath.',
+          'SpO₂ desaturations from the wearable lag the respiratory event because of circulation time — typically 15–30 s between the start of the apnea and the SpO₂ nadir (see the Desaturation glossary entry). The lag depends on baseline SpO₂, lung volume, and cardiac output, and is informative in its own right: a long lag is consistent with reduced cardiac output. Wearable SpO₂ is generally less precise than dedicated pulse oximetry (motion artifact, perfusion, skin pigmentation effects on optical sensors); treat the wearable SpO₂ lane as corroborative, not as a primary metric. Where they are available, CPAP-paired oximetry signals remain the higher-fidelity source.',
+          'HRV (heart-rate variability, typically reported by Fitbit as RMSSD in milliseconds) tends to be depressed during REM with frequent respiratory events. Cycle-to-cycle modulation of HRV around CSR cycles has been described in the heart-failure literature and is sometimes visible at the 5-min cadence Fitbit provides — though the cadence is too coarse to resolve individual cycles. Read HRV as a context lane for autonomic state across the night, not as a beat-to-beat measure.',
+          'The sleep-stage hypnogram lets you locate REM-dominant clusters of events: respiratory events typically intensify in REM (loss of accessory-muscle tone, more airway collapsibility). If your event clusters concentrate over the REM bars, that is consistent with REM-dominant disease and is a different therapy conversation than evenly distributed events.',
+          'For computed CSR episodes (see Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA), the overlays make the cycle visible across modalities: the flow envelope crescendos and decrescendos, heart rate often modulates in counter-phase, and SpO₂ traces the cyclic desaturations a few seconds late.',
+        ],
+      },
+      {
+        heading: 'Requirements and how to import',
+        paragraphs: [
+          'The overlays require a Google Health / Fitbit import that includes intraday data for the night in question. Daily-only summaries (one heart rate per day, one HRV per day) are not enough — within-night lanes need within-night samples. Not every Fitbit device records every type: older trackers may lack SpO₂, HRV, or skin temperature sensors entirely, and even capable devices may not record on every night.',
+          'To get intraday data into the app, follow the Google Takeout export workflow in the Importing Data article (Google Takeout → Google Health → extract → Import Wizard → Google Health source). The Importing Data article lists all supported data types and which are intraday vs. daily.',
+        ],
+      },
+      {
+        heading: 'The Lanes drawer, presets, and keyboard cursor',
+        paragraphs: [
+          'The set of visible lanes, their order, and their collapsed/expanded state are controlled from a Lanes drawer, accessible from the viewer toolbar or by pressing L. Lanes can be reordered (drag, or keyboard) and individually toggled. The state persists per session, so reopening the same night restores your last layout.',
+          'Presets group the lanes for common reading tasks: Respiratory focus (flow + pressure + leak + snoring), Cardio focus (flow + heart rate + HRV), Sleep architecture (flow + hypnogram + heart rate + SpO₂), and Everything (all available lanes). Picking a preset is non-destructive — you can fine-tune from there.',
+          'A keyboard data cursor (arrow keys) walks through the session sample-by-sample and announces a synchronized multi-lane readout at the cursor — value, units, and time — for every visible lane. This gives screen-reader and keyboard-only users equivalent access to what the visual cursor shows on hover. Lanes are also reorderable from the keyboard alone.',
+        ],
+      },
+      {
+        heading: 'Privacy',
+        paragraphs: [
+          'All wearable data is read from the local Google Health export and stored in the same local IndexedDB / OPFS used for CPAP data. No data is uploaded for parsing or display. The signal viewer composes everything in-browser. Removing the integration (Settings → Integrations) removes the stored wearable data; deleting all data removes both sources.',
+        ],
+      },
+    ],
+  },
+
+  // ─── EVENT EXPLORER ───────────────────────────────────────────────
+  {
+    slug: 'event-explorer',
+    title: 'Event Explorer',
+    summary:
+      'How to query, slice, visualize, and export respiratory events with the Event Explorer — filters, null-field semantics, lenses, URL-serialized and saved queries, and CSV/JSON export.',
+    icon: 'events',
+    sections: [
+      {
+        heading: 'What the Event Explorer is',
+        paragraphs: [
+          'The Event Explorer (Explore → Event Explorer, route `/explore/events`) is an ad-hoc query tool for respiratory events across your imported nights. Rather than a fixed dashboard, it pairs a query builder with a swappable set of visualization lenses, all driven by the same matched set. The intent is to let you ask specific questions — "all hypopneas longer than 30 s above pressure 12 in the first two hours of the night, last 90 days" — and see them as a distribution, a scatter, a per-type comparison, or a cluster map without rebuilding the filter each time.',
+        ],
+      },
+      {
+        heading: 'Filters and how they combine',
+        paragraphs: [
+          'Filters in the left-rail query builder are combined with logical AND: every active filter must be satisfied for an event to be included in the matched set. The available filters are event type (one or more types from a chip selector — including obstructive apnea, central apnea, hypopnea, mixed apnea, RERA, snoring, flow limitation, and the sustained "detection" patterns like PeriodicBreathing, which carries a distinct hatched marker to distinguish device-asserted from computed candidates), duration (range), pressure at the event (range), leak at the event (range), SpO₂ at the event (range), time-of-night window (local clock-time range that may wrap past midnight, e.g. 22:00–06:00), and date range within the loaded set.',
+          'Filters that are inactive — meaning the user has not constrained that field — let every event through on that field. The matched-count "trust strip" above the lenses ("N of M events match K filters") updates live as you adjust filters and is announced to screen readers via aria-live; the proportion bar gives an at-a-glance sense of how restrictive the query is.',
+          'Range filters bound by a numeric slider always come with paired min/max numeric inputs, so a precise value can be typed (e.g. duration ≥ 10.0 s) without dragging. A range filter disables itself with an explanatory chip when the underlying field has no data in the currently matched set — for example, SpO₂ filters disable when no oximetry-bearing events match the other filters.',
+        ],
+      },
+      {
+        heading: 'Null-field semantics (important)',
+        paragraphs: [
+          'CPAP events do not all carry every field. An apnea recorded without paired oximetry has no SpO₂ value attached to it; a flow-limitation event may not have an associated discrete pressure reading; older imports may lack some fields entirely. The Event Explorer applies an explicit convention so these missing fields behave predictably.',
+          'A bounded range on a field excludes events that are missing that field. If you set "SpO₂ between 88 and 92," only events with a recorded SpO₂ in that band are included; events with no SpO₂ value are excluded — they cannot be evaluated against the constraint, and including them would be silently fabricating data.',
+          'An unbounded range on a field passes nulls through. If you leave SpO₂ unset (no min, no max), every event passes the SpO₂ filter regardless of whether SpO₂ was recorded — so the matched set is not silently narrowed by a constraint you never imposed.',
+          'In practice this means: if you want "events on nights where SpO₂ is recorded, restricted to the 88–92 range," set the bounded range. If you want "all events, irrespective of oximetry," leave the field unbounded. The matched-count strip will reflect the effect of each choice immediately.',
+        ],
+      },
+      {
+        heading: 'Lenses (the visualization views)',
+        paragraphs: [
+          'All lenses operate on the same matched set; switching lenses does not change the query. A summary-stats strip above the lens area shows the matched event count, the per-type breakdown, and basic descriptive stats; the lens itself answers a more specific question.',
+          'Duration histogram. A configurable-bin-width histogram of event durations, with an optional split-by-type stacking so the contributions of different event types stack into each bar. Bin width is set in the lens toolbar. An overflow bin is provided at the right edge so long-tail outliers (a 5-minute leak-induced event) do not force the rest of the histogram to compress into the first few bars — those events land in the overflow bin instead of being clipped.',
+          'Scatter. Duration on the x-axis against a configurable y-axis: pressure, leak, SpO₂, or time-of-night. Points are colored by event type. For matched sets larger than 5,000 points, uniform-stride decimation is applied (every k-th point) so the scatter remains interactive and readable; the stride is chosen to keep approximately 5,000 points on screen, and the lens annotates that decimation is in effect so a partial view is never confused with the full set.',
+          'Per-type box / violin. Small-multiples of duration distributions, one per event type, rendered as a box plot with violin overlay so both the quartiles and the full distribution shape are visible. This is the right lens for "how does the central-apnea duration distribution compare to the obstructive-apnea distribution in this set?"',
+          'Inter-event intervals. The distribution of time gaps between consecutive events in the matched set. A long-tailed distribution indicates isolated events; a peaked distribution at short intervals indicates clustering. Useful in combination with a time-of-night filter for asking "do my apneas cluster in the first two hours?"',
+          'Clusters. A density / cluster view based on the FLG-bridged clustering primitive (selectable as strict, balanced, or lenient) that groups events occurring close together in time into clusters. Strict mode requires tighter temporal proximity; lenient mode joins farther-apart events into the same cluster. The view shows cluster sizes, durations, and locations within the night.',
+        ],
+      },
+      {
+        heading: 'URL-serialized and saved queries',
+        paragraphs: [
+          'The entire filter state — every active filter, the chosen lens, lens-specific settings (bin width, scatter axis, cluster mode) — is serialized into the URL. This means a query is bookmarkable, back/forward-able, and shareable: opening a URL restores the exact view the URL encodes. (No data is shared by a URL; only the query parameters.) The browser history works the way you would expect.',
+          'Saved queries persist to local storage. Give a query a name and it is added to your saved-query list; selecting it restores the filters and lens in one click. Four examples ship by default to demonstrate the pattern. Saved queries live entirely in the browser — there is no account, nothing is synced.',
+        ],
+      },
+      {
+        heading: 'The event table and Signal-Viewer deep-links',
+        paragraphs: [
+          "Below the lens, a virtualized event table lists the events in the matched set (windowed for large sets, with a \"showing N of M\" note so the truncation is transparent), sortable by every column. Clicking any row deep-links into the Signal Viewer for that event's session, centered (±1 minute) on the event's timestamp. The Signal Viewer accepts a `?t=<epochMs>` parameter for this purpose; targets outside the session's recording are ignored, and the snap applies once so subsequent panning and zooming preserve your interaction.",
+          'For computed PeriodicBreathing / CSR candidates (see Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA), the deep link lands on the cyclic episode in question with the wearable overlays available alongside (see Intraday Health Signals & Overlays).',
+        ],
+      },
+      {
+        heading: 'Export',
+        paragraphs: [
+          'The matched set can be exported to CSV (one row per event, with all available fields) or JSON (the same event objects the app uses, useful for downstream analysis in R, Python, or pandas). Export happens entirely in-browser using the matched set already in memory — no data is uploaded to any server.',
+          'Very large exports show a warning before generating the file because writing tens or hundreds of thousands of rows can take noticeable time and produce a large download. The warning includes the row count so you can decide whether to narrow the query first.',
+        ],
+      },
+      {
+        heading: 'Privacy and limits',
+        paragraphs: [
+          'The Event Explorer operates entirely on data already loaded into the app from your local storage. No queries, filters, or exports leave your browser. Saved queries are stored locally. URLs encode the query parameters but not the data itself; sharing a URL does not share your events.',
+          'The Explorer queries device-scored and app-computed events; it does not re-detect anything from raw signal. For methods and confidence on computed breathing detections, see Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA.',
+        ],
+      },
+    ],
+  },
+
   // ─── CROSS-SOURCE ANALYSIS ────────────────────────────────────────
   {
     slug: 'cross-source-analysis',

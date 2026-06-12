@@ -90,6 +90,12 @@
   color: var(--color-text-muted);
 }
 
+.iconBreathing {
+  composes: icon;
+  background: var(--color-detection-bg);
+  color: var(--color-detection);
+}
+
 .cardTitle {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);

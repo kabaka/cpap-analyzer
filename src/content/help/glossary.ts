@@ -307,6 +307,137 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['compliance', 'ramp-time'],
   },
 
+  {
+    id: 'cai',
+    term: 'CAI (Central Apnea Index)',
+    category: 'cpap-therapy',
+    aliases: ['Central Apnea Index'],
+    quick:
+      'The number of central apneas per hour of analyzed sleep — the central-event analog of AHI.',
+    standard:
+      'CAI counts only central apneas (events with absent airflow and absent respiratory effort) per hour of mask-on / analyzed time. It is the central-event subset of AHI. A CAI above 5/h is the conventional threshold for clinically meaningful central sleep apnea, and is the cutoff used in the Liu et al. (2017) TECSA trajectory classifier. On ResMed devices the central/obstructive distinction is made by forced oscillation technique (FOT) during apneas.',
+    detailed:
+      'CAI = total central apneas / hours of analyzed sleep. Central apneas are scored when ≥10 s of airflow cessation occurs without respiratory effort; on CPAP machines the classification rests on the airway response to a brief forced-oscillation perturbation during the apnea (open airway → central, closed airway → obstructive). Caveats: CAI computed from FOT is degraded under high mask leak, because the perturbation signal dissipates through the leak path; CPAP Analyzer down-weights or excludes high-leak nights from CAI-driven longitudinal analyses (notably TECSA classification). A persistent CAI > 5/h on therapy is the operational definition of treatment-emergent central sleep apnea in Liu et al. 2017 (Chest, DOI 10.1016/j.chest.2017.06.010).',
+    formula: '\\text{CAI} = \\frac{\\text{Central Apneas}}{\\text{Hours of Analyzed Sleep}}',
+    relatedTerms: ['central-apnea', 'csa', 'tecsa', 'ahi', 'fot'],
+  },
+  {
+    id: 'fot',
+    term: 'FOT (Forced Oscillation Technique)',
+    category: 'cpap-therapy',
+    aliases: ['Forced Oscillation Technique'],
+    quick:
+      'A brief pressure oscillation applied during an apnea to test whether the airway is open (central) or closed (obstructive).',
+    standard:
+      "Forced oscillation technique applies a small, brief pressure perturbation through the mask during a scored apnea and measures the airway's response. An open airway transmits the oscillation freely (low impedance), implying a central apnea — the brain is not driving inspiration, but nothing is blocking it. A closed airway reflects the oscillation (high impedance), implying an obstructive apnea — the airway has collapsed. ResMed CPAP and APAP machines use FOT to label apneas as ClearAirway (central) vs. obstructive.",
+    detailed:
+      "ResMed's implementation emits a 4 Hz pressure oscillation during a scored apnea and measures the resulting flow response; the impedance ratio classifies the airway state. FOT is well established in respiratory mechanics and is what gives consumer CPAP machines a way to distinguish central from obstructive events without thoracoabdominal effort belts. Important limitations: FOT classification is degraded under high mask leak (the perturbation signal dissipates through the leak path before reaching the airway), so high-leak nights produce unreliable ClearAirway counts. CPAP Analyzer down-weights or excludes high-leak nights from CAI-driven longitudinal analyses (notably TECSA) for this reason. FOT does not detect partial obstruction (hypopneas); it is used only during full apneas.",
+    relatedTerms: ['central-apnea', 'obstructive-apnea', 'cai', 'mask-leak'],
+  },
+  {
+    id: 'hypoxic-burden',
+    term: 'Hypoxic Burden',
+    category: 'cpap-therapy',
+    aliases: ['Sleep Apnea-Specific Hypoxic Burden'],
+    quick:
+      'The total area "under the curve" of event-related desaturations during sleep — combines frequency, depth, and duration of nocturnal hypoxemia in a single number.',
+    standard:
+      'Hypoxic burden integrates the area under each desaturation curve (depth × duration), summed across the night and normalized by sleep time. Unlike AHI or ODI, which count events, hypoxic burden captures how much oxygen exposure was actually lost. It is an emerging metric for sleep-apnea-related cardiovascular risk, with evidence that it predicts mortality more strongly than AHI in some cohorts (Azarbarzin et al. 2019, European Heart Journal).',
+    detailed:
+      'The sleep apnea-specific hypoxic burden is defined as the total area under the SpO₂ desaturation curve associated with respiratory events, expressed in %·min/h of sleep. Methodology: for each scored respiratory event, the event-related desaturation is identified and its area below baseline SpO₂ is integrated; the per-night sum is divided by sleep hours. Higher hypoxic burden indicates that events tend to be deeper or longer in their oxygen impact, not merely more frequent. Like other oximetry-derived metrics, hypoxic burden requires adequate SpO₂ coverage to be meaningful — interpret alongside the coverage % (see SpO₂ Coverage). CPAP Analyzer reports hypoxic burden for information; it does not diagnose.',
+    relatedTerms: ['odi', 'spo2', 't90', 'desaturation', 'spo2-coverage'],
+  },
+  {
+    id: 'tecsa',
+    term: 'TECSA (Treatment-Emergent Central Sleep Apnea)',
+    category: 'cpap-therapy',
+    aliases: ['Treatment-Emergent Central Sleep Apnea', 'CompSA', 'Complex Sleep Apnea'],
+    quick:
+      'Central apneas that emerge once CPAP is started in a patient whose untreated disease was predominantly obstructive; often resolves on its own.',
+    standard:
+      'Treatment-emergent central sleep apnea (TECSA, also called complex sleep apnea or CompSA) describes the appearance of central apneas after CPAP initiation in a patient whose pre-treatment study was predominantly obstructive. The prevailing literature finds roughly 60–80% spontaneous resolution within ~3 months of continued CPAP as the respiratory control loop re-adapts (Nigam et al. 2016 systematic review; Kwok et al. 2022). The Liu et al. (2017) four-class trajectory model (obstructive / transient / persistent / emergent) distinguishes self-limiting TECSA from persistent or late-emerging central patterns.',
+    detailed:
+      'Operationally, TECSA is defined when the central apnea index (CAI) exceeds a threshold (commonly 5/h) on therapy, with prior obstructive disease. CPAP Analyzer implements the Liu et al. 2017 (Chest, DOI 10.1016/j.chest.2017.06.010) trajectory classifier longitudinally over nightly CAI: early-window CAI is compared to late-window CAI, both at the 5/h threshold, to assign one of four classes (obstructive stable, transient TECSA, persistent central, emergent central). High-leak nights are excluded because FOT-derived CAI is degraded under leak. The single most important clinical caveat: TECSA does not by itself justify a switch to adaptive servo-ventilation (ASV). The SERVE-HF randomized trial (Cowie et al. 2015) found increased mortality with ASV in symptomatic chronic heart failure with reduced ejection fraction (LVEF ≤ 45%) with predominantly central sleep apnea; subsequent AHA/ACC scientific statements formalized the contraindication (Somers et al. 2018). Therapy-mode changes are clinician decisions informed by echocardiography and the full clinical picture, not by a software flag. CPAP Analyzer reports TECSA trajectory as a candidate finding for discussion; it does not diagnose.',
+    relatedTerms: ['central-apnea', 'csa', 'cai', 'asv', 'loop-gain'],
+  },
+  {
+    id: 'periodic-breathing',
+    term: 'Periodic Breathing',
+    category: 'cpap-therapy',
+    aliases: ['PB'],
+    quick:
+      'A repeating cycle of waxing and waning ventilation during sleep, with or without central apneas at the cycle nadirs.',
+    standard:
+      'Periodic breathing (PB) is a repeating oscillation in tidal volume / minute ventilation during sleep — breath depth grows, then falls, then grows again, typically with a cycle length of 40–120 seconds. When the nadirs are deep enough to include central apneas and the envelope is clearly crescendo-decrescendo, the pattern qualifies as Cheyne-Stokes respiration (CSR). PB without those criteria is the broader category, common at altitude, in heart failure, on opioids, and in some neurological conditions. ResMed devices flag formal CSR but not sub-threshold PB; CPAP Analyzer surfaces both.',
+    detailed:
+      'PB arises from instability of the chemoreflex-driven control of ventilation — high loop gain combined with a long circulation delay produces oscillatory feedback that overshoots in both directions, with central apneas at the troughs when PaCO₂ falls below the apneic threshold. Single-channel airflow methods (Weinreich 2009, Javed 2018, Midelet 2023, Guyot 2019) can detect PB from the flow envelope alone; CPAP Analyzer combines AASM-style morphology rules with an autocorrelation-based periodicity check, a Guyot-style modulation index (0–1) for confidence, and a harmonic-ratio crescendo-decrescendo morphology score. Sub-threshold PB and short CSR runs that fall below the ResMed 15-minute device floor are surfaced as "candidate / below device threshold" rather than silently dropped or promoted to formal CSR flags. See the help article "Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA" for the full method.',
+    relatedTerms: [
+      'cheyne-stokes',
+      'central-apnea',
+      'csa',
+      'tecsa',
+      'loop-gain',
+      'apneic-threshold',
+      'modulation-index',
+      'harmonic-ratio',
+    ],
+  },
+  {
+    id: 'loop-gain',
+    term: 'Loop Gain',
+    category: 'sleep-medicine',
+    quick:
+      'A measure of how strongly the respiratory control system responds to disturbances — high loop gain causes oscillatory, unstable breathing.',
+    standard:
+      'Loop gain is a control-systems quantity describing how strongly ventilation responds to a perturbation in blood-gas (typically CO₂). High loop gain means a small rise in CO₂ provokes a large ventilatory response, which overshoots, drops CO₂ below the apneic threshold, and produces a central apnea. The cycle repeats, producing periodic breathing or Cheyne-Stokes respiration. Heart failure, long circulation times, and chemoreflex hypersensitivity all raise loop gain.',
+    detailed:
+      'Loop gain is the product of plant gain (how strongly ventilation changes CO₂), feedback gain (chemoreflex sensitivity to CO₂ change), and mixing gain (efficiency of CO₂ transport from lung to chemoreceptor). Mathematically, $\\text{LG} = \\frac{\\text{ventilatory response}}{\\text{disturbance}}$; values above ~1 sustain oscillation. In heart failure, prolonged circulation time delays CO₂ feedback to central chemoreceptors, raising mixing gain and producing the characteristic long Cheyne-Stokes cycle length (60–90 s, roughly twice the lung-to-brain circulation time). CPAP Analyzer does not compute loop gain directly (no PSG signals), but the cycle length and modulation depth of detected periodic breathing episodes are observable proxies — longer cycles are consistent with higher mixing gain and reduced cardiac output (Midelet et al. 2023).',
+    relatedTerms: [
+      'periodic-breathing',
+      'cheyne-stokes',
+      'central-apnea',
+      'apneic-threshold',
+      'tecsa',
+    ],
+  },
+  {
+    id: 'apneic-threshold',
+    term: 'Apneic Threshold',
+    category: 'sleep-medicine',
+    quick:
+      'The level of arterial CO₂ below which the brainstem stops issuing inspiratory drive, producing a central apnea.',
+    standard:
+      'The apneic threshold is the PaCO₂ value below which respiratory drive ceases during sleep, producing a central apnea. It sits just below the eupneic (normal) PaCO₂. A ventilatory overshoot that drives PaCO₂ below this threshold is the immediate cause of central apneas in periodic breathing and Cheyne-Stokes respiration. Narrow CO₂ reserve (apneic threshold close to eupneic PaCO₂) makes a person more prone to unstable breathing.',
+    detailed:
+      'The CO₂ reserve = eupneic PaCO₂ − apneic threshold PaCO₂. A small reserve (a few mmHg) means a modest hyperventilation can cross the threshold and silence breathing; a large reserve is protective. The apneic threshold is lower in NREM sleep than wake and is one reason central apneas tend to appear at sleep onset and at sleep-stage transitions. It interacts with loop gain: high loop gain plus a narrow CO₂ reserve is the classic high-altitude / heart-failure / opioid pattern that generates periodic breathing. This concept underlies why hyperventilation (anxiety, sleep-onset transitions) can trigger a central apnea, and why hypercapnic drugs / supplemental CO₂ have been studied for high-loop-gain CSA.',
+    relatedTerms: ['loop-gain', 'central-apnea', 'periodic-breathing', 'cheyne-stokes'],
+  },
+  {
+    id: 'modulation-index',
+    term: 'Modulation Index',
+    category: 'statistics',
+    quick:
+      'A 0–1 score for how strongly a signal oscillates relative to its mean — used to score periodic breathing confidence from the airflow envelope.',
+    standard:
+      'The modulation index quantifies the amplitude of an oscillation relative to the baseline level of the signal it modulates. Values near 0 indicate an essentially flat envelope; values near 1 indicate a deeply modulated cyclic envelope. CPAP Analyzer uses a Guyot-style modulation index on the airflow / minute-ventilation envelope as the continuous confidence basis for periodic breathing detection (Guyot et al. 2019).',
+    detailed:
+      'For a periodic envelope with peaks $p_i$ and troughs $t_i$, a common form is $\\text{MI} = \\frac{p - t}{p + t}$, evaluated on the smoothed envelope of the airflow signal. Values near 0 indicate a steady envelope; values approaching 1 indicate near-complete modulation (deep troughs, often coinciding with central apneas). The modulation index is robust to slow drift in baseline ventilation and is dimensionless, which is why it is preferred over raw amplitude for cross-night and cross-subject comparison. In CPAP Analyzer, MI is one of three inputs to the periodic-breathing confidence score; the others are the autocorrelation-based periodicity peak in the 40–120 s band and the harmonic-ratio crescendo-decrescendo morphology score. Higher MI indicates a more confidently periodic envelope, not a more severe disease — interpret confidence and severity separately.',
+    relatedTerms: ['periodic-breathing', 'cheyne-stokes', 'harmonic-ratio', 'correlation'],
+  },
+  {
+    id: 'harmonic-ratio',
+    term: 'Harmonic Ratio',
+    category: 'statistics',
+    quick:
+      'The fraction of in-band spectral energy concentrated at the fundamental cycle frequency — a measure of how "shape-like" a sinusoid an oscillation is.',
+    standard:
+      'The harmonic ratio is the fraction of in-band spectral energy concentrated at the fundamental frequency of a periodic signal, $\\text{HR} = E_{\\text{fundamental}} / E_{\\text{in-band total}}$. A pure sinusoid scores near 1; a noisy or non-sinusoidal cyclic signal scores lower. CPAP Analyzer uses it as a crescendo-decrescendo morphology score on the airflow envelope: CSR-shaped cycles are nearly sinusoidal at their fundamental and score high, separating CSR from generic oscillations.',
+    detailed:
+      'After estimating the dominant cycle frequency $f_0$ in the 40–120 s band by autocorrelation, the harmonic ratio is computed as the ratio of spectral energy in a narrow band around $f_0$ to the total spectral energy across the in-band region. It complements the modulation index: MI measures how *deep* the modulation is; HR measures how *clean* the modulation shape is. A high MI with a low HR indicates a strongly modulated but irregular envelope (could be arousal, leak, or noise); a high MI with a high HR is consistent with crescendo-decrescendo CSR morphology. The combined score is what drives the CPAP Analyzer CSR-vs-PB distinction and the per-episode confidence.',
+    formula: '\\text{HR} = \\frac{E_{\\text{fundamental}}}{E_{\\text{in-band total}}}',
+    relatedTerms: ['modulation-index', 'periodic-breathing', 'cheyne-stokes'],
+  },
+
   // ─── SLEEP MEDICINE ─────────────────────────────────────────────────
 
   {

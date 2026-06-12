@@ -74,6 +74,14 @@ const EXPLORE_CARDS: readonly ExploreCard[] = [
     iconClass: styles.iconPressure,
     iconLabel: '🎯',
   },
+  {
+    title: 'Breathing Patterns',
+    description:
+      'App-computed candidate detections of periodic breathing, Cheyne-Stokes respiration, and the treatment-emergent (TECSA) trajectory across your therapy history. Candidate flags, not diagnoses.',
+    path: '/explore/breathing',
+    iconClass: styles.iconBreathing,
+    iconLabel: '🫁',
+  },
 ];
 
 // ---------------------------------------------------------------------------

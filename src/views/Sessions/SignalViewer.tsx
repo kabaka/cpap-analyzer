@@ -23,18 +23,22 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { SignalRenderer } from '@/components/charts/canvas/SignalRenderer';
 import {
   computeLaneLayout,
+  type DetectionEpisode,
   type EventMarker,
   type RenderOptions,
   type RibbonBand,
   type SignalChannel,
   type ViewportState,
 } from '@/components/charts/canvas/SignalRenderer';
-import { Button, Dialog, Skeleton, Switch } from '@/components/ui';
+import { Button, Dialog, Popover, Skeleton, Switch } from '@/components/ui';
+import { ConfidenceBar, DetectionDisclaimer } from '@/components/domain/Breathing';
+import { confidenceTier, confidenceTierLabel, type BreathingEpisode } from '@/analysis/breathing';
+import { useBreathingEpisodes } from '@/hooks/useBreathingEpisodes';
 import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
 import { useWearableLanes, type WearableSeries } from '@/hooks/useWearableLanes';
 import type { SignalManifest, ChannelDescriptor } from '@/services/storage/OPFSService';
@@ -208,6 +212,91 @@ function formatEventType(type: string): string {
   return type.replace(/([A-Z])/g, ' $1').trim();
 }
 
+// ── Breathing-detection confidence chip (overlay) ────────────────
+
+/**
+ * Anchored, clickable confidence chip for an app-computed breathing episode.
+ * The chip sits at the top of the airflow lane region at the episode's
+ * session-relative start. Tier (low / moderate / high), short label
+ * ("PB" / "CSR"), and a numeric confidence are all redundant cues so colour is
+ * never the sole signal.
+ *
+ * Clicking the chip opens a popover with episode features and the persistent
+ * "candidate, not diagnosis" disclaimer.
+ */
+function DetectionChip({
+  episode,
+  leftPct,
+}: {
+  episode: BreathingEpisode;
+  leftPct: number;
+}): JSX.Element {
+  const tier = confidenceTier(episode.confidence);
+  const tierName = confidenceTierLabel(tier);
+  const shortLabel = episode.type === 'CheyneStokes' ? 'CSR' : 'PB';
+  const pct = Math.round(episode.confidence * 100);
+  const nadirLabel =
+    episode.meanNadirType === 'apnea'
+      ? 'central apnea nadirs'
+      : episode.meanNadirType === 'hypopnea'
+        ? 'hypopnea nadirs'
+        : 'nadir type unknown';
+  return (
+    <Popover
+      side="bottom"
+      align="start"
+      trigger={
+        <button
+          type="button"
+          className={styles.detectionChip}
+          data-tier={tier}
+          data-belowdevice={episode.belowDeviceThreshold ? 'true' : 'false'}
+          style={{ left: `${leftPct}%` }}
+          aria-label={`${shortLabel} candidate, ${tierName}, ${pct}% confidence`}
+        >
+          <span className={styles.detectionChipDot} aria-hidden="true" />
+          <span className={styles.detectionChipLabel}>{shortLabel}</span>
+          <span className={styles.detectionChipPct}>{pct}%</span>
+        </button>
+      }
+    >
+      <div className={styles.detectionPopover}>
+        <h4 className={styles.detectionPopoverTitle}>
+          {episode.type === 'CheyneStokes'
+            ? 'Cheyne-Stokes (candidate)'
+            : 'Periodic breathing (candidate)'}
+        </h4>
+        <dl className={styles.detectionPopoverList}>
+          <dt>Confidence</dt>
+          <dd>
+            <ConfidenceBar value={episode.confidence} label="Episode confidence" compact />
+          </dd>
+          <dt>Cycle length</dt>
+          <dd>{episode.cycleLengthSec.toFixed(1)} s</dd>
+          <dt>Cycles</dt>
+          <dd>{episode.cycleCount}</dd>
+          <dt>Modulation depth</dt>
+          <dd>{episode.modulationDepth.toFixed(2)}</dd>
+          <dt>Duration</dt>
+          <dd>{(episode.durationSec / 60).toFixed(1)} min</dd>
+          <dt>Nadirs</dt>
+          <dd>{nadirLabel}</dd>
+          {episode.belowDeviceThreshold && (
+            <>
+              <dt>Threshold</dt>
+              <dd>Sub-threshold candidate (below device reporting gate)</dd>
+            </>
+          )}
+        </dl>
+        <DetectionDisclaimer compact />
+        <Link className={styles.detectionPopoverLink} to="/help/breathing-patterns">
+          What does this mean? →
+        </Link>
+      </div>
+    </Popover>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────
 
 export default function SignalViewer() {
@@ -291,12 +380,42 @@ export default function SignalViewer() {
   /** Whether the "no wearable data connected" hint has been dismissed this view. */
   const [hintDismissed, setHintDismissed] = useState(false);
 
+  /**
+   * Whether app-computed breathing-detection overlays (PB/CSR candidates) are
+   * shown. Persisted in lane prefs alongside other toggles. Defaults to `true`
+   * — an existing pref of `undefined` (pre-detection) is treated as enabled.
+   */
+  const showDetections = lanePrefs.showDetections ?? true;
+
+  /**
+   * Defer breathing detection until after the CPAP canvas has its first paint
+   * so the detector never blocks first frame (priority #3 — performance).
+   */
+  const [detectionEnabled, setDetectionEnabled] = useState(false);
+  useEffect(() => {
+    if (!fullDataReady) return;
+    // Defer one frame so the canvas paints first.
+    const handle = window.requestAnimationFrame(() => setDetectionEnabled(true));
+    return () => window.cancelAnimationFrame(handle);
+  }, [fullDataReady]);
+
   // ── Derived values ───────────────────────────────────────────────
 
   const sessionStartMs = useMemo(
     () => (session ? new Date(session.startTime).getTime() : 0),
     [session],
   );
+
+  const {
+    episodes: detectionEpisodesRaw,
+    loading: detectionLoading,
+    error: detectionError,
+  } = useBreathingEpisodes({
+    sessionId,
+    sessionStartMs,
+    events,
+    enabled: detectionEnabled && showDetections,
+  });
 
   /** Wall-clock-as-UTC epoch of the session start (wearable alignment base). */
   const wallClockEpoch = useMemo(
@@ -761,12 +880,22 @@ export default function SignalViewer() {
     };
 
     const eventMarkers = buildEventMarkers(events, sessionStartMs, container);
+    const detectionMarkers: DetectionEpisode[] | undefined =
+      showDetections && detectionEpisodesRaw && detectionEpisodesRaw.length > 0
+        ? detectionEpisodesRaw.map((ep) => ({
+            startTime: ep.startMs - sessionStartMs,
+            duration: ep.endMs - ep.startMs,
+            type: ep.type === 'CheyneStokes' ? 'CSR' : 'PB',
+            confidence: ep.confidence,
+          }))
+        : undefined;
     const currentCrosshairX = crosshairXRef.current;
     const options: RenderOptions = {
       showCrosshair: currentCrosshairX !== null,
       crosshairX: currentCrosshairX,
       showGrid: true,
       eventMarkers,
+      ...(detectionMarkers ? { detectionEpisodes: detectionMarkers } : {}),
       ribbonBands,
       channelHeight: CHANNEL_HEIGHT,
       padding: PADDING,
@@ -786,6 +915,8 @@ export default function SignalViewer() {
     renderLanes,
     buildCpapChannel,
     baseWearableChannels,
+    detectionEpisodesRaw,
+    showDetections,
   ]);
 
   // ── Lane mutations ───────────────────────────────────────────
@@ -796,6 +927,13 @@ export default function SignalViewer() {
 
   const toggleCollapse = useCallback((laneId: string) => {
     setLanePrefs((prev) => ({ ...prev, collapsed: toggleId(prev.collapsed, laneId) }));
+  }, []);
+
+  const toggleDetections = useCallback(() => {
+    setLanePrefs((prev) => ({
+      ...prev,
+      showDetections: !(prev.showDetections ?? true),
+    }));
   }, []);
 
   const reorderLane = useCallback(
@@ -1147,6 +1285,20 @@ export default function SignalViewer() {
     [renderLanes],
   );
 
+  /**
+   * Pixel `top` of the first CPAP airflow lane (or the first lane as a fallback),
+   * used to anchor breathing-detection confidence chips so they sit at the top
+   * of the flow lane region rather than floating above the canvas.
+   */
+  const airflowChipTop = useMemo(() => {
+    const flowIdx = renderLanes.findIndex(
+      (r) => r.lane.group === 'cpap' && /flow/i.test(r.lane.name),
+    );
+    const idx = flowIdx >= 0 ? flowIdx : 0;
+    const entry = laneLayout[idx];
+    return entry ? entry.top + 2 : PADDING.top + 2;
+  }, [renderLanes, laneLayout]);
+
   // ── Global keyboard shortcut: 'L' opens the lanes drawer ─────
 
   useEffect(() => {
@@ -1363,12 +1515,26 @@ export default function SignalViewer() {
           </>
         )}
         <span className={styles.legendSeparator}>|</span>
-        <span
-          className={styles.legendGroupHeading}
-          title="App-detected breathing episodes (coming soon)"
+        <span className={styles.legendGroupHeading}>DETECTIONS</span>
+        <button
+          type="button"
+          className={`${styles.legendItem} ${!showDetections ? styles.legendItemHidden : ''}`}
+          onClick={toggleDetections}
+          aria-pressed={showDetections}
+          title="Toggle app-computed breathing-pattern detections (PB / CSR candidates)"
         >
-          DETECTIONS
+          <span className={styles.detectionSwatch} aria-hidden="true" />
+          Periodic Breathing / CSR
+        </button>
+        <span className={styles.detectionDisclaimerInline}>
+          Detections are candidate patterns, not diagnoses.
         </span>
+        {detectionLoading && <span className={styles.detectionStatus}>Detecting…</span>}
+        {detectionError && (
+          <span className={styles.detectionStatus} title={detectionError}>
+            Detection unavailable
+          </span>
+        )}
       </div>
 
       {/* ── Canvas + lane-header overlay ──────────────────────── */}
@@ -1457,6 +1623,30 @@ export default function SignalViewer() {
             );
           })}
         </div>
+
+        {/* App-computed breathing-pattern detection chip overlay. */}
+        {showDetections && detectionEpisodesRaw && detectionEpisodesRaw.length > 0 && (
+          <div
+            className={styles.detectionChips}
+            aria-label="App-computed breathing pattern detections"
+            style={{
+              top: `${airflowChipTop}px`,
+              left: `${PADDING.left}px`,
+              right: `${PADDING.right}px`,
+            }}
+          >
+            {detectionEpisodesRaw.map((ep) => {
+              const startRel = ep.startMs - sessionStartMs;
+              const endRel = ep.endMs - sessionStartMs;
+              if (endRel < viewport.startTime || startRel > viewport.endTime) return null;
+              const span = viewport.endTime - viewport.startTime;
+              if (span <= 0) return null;
+              const frac = (startRel - viewport.startTime) / span;
+              const leftPct = Math.max(0, Math.min(1, frac)) * 100;
+              return <DetectionChip key={ep.id} episode={ep} leftPct={leftPct} />;
+            })}
+          </div>
+        )}
       </div>
 
       {/* Live region for the keyboard data cursor readout. */}
@@ -1534,6 +1724,19 @@ export default function SignalViewer() {
               </div>
             );
           })}
+
+          <div className={styles.drawerGroup}>
+            <span className={styles.drawerHeading}>Detections</span>
+            <ul className={styles.drawerList}>
+              <li className={styles.drawerRow}>
+                <Switch
+                  label="Periodic Breathing / CSR (candidate)"
+                  checked={showDetections}
+                  onCheckedChange={toggleDetections}
+                />
+              </li>
+            </ul>
+          </div>
         </div>
       </Dialog>
     </div>

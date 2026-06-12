@@ -38,6 +38,11 @@
   grid-column: 1 / -1;
 }
 
+/* Breathing-stability insight row */
+.breathingRow {
+  grid-column: 1 / -1;
+}
+
 /* Bottom row: Machine Settings + Recent Sessions */
 .bottomRow {
   grid-column: 1 / -1;
