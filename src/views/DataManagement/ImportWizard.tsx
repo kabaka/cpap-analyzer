@@ -282,7 +282,7 @@ export default function ImportWizard() {
   }, [navigate]);
 
   const handleExploreCorrelations = useCallback(() => {
-    void navigate('/analysis/integrations');
+    void navigate('/explore/correlations?tab=cross-source');
   }, [navigate]);
 
   // Determine which steps to show based on source

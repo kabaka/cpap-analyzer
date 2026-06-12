@@ -152,40 +152,74 @@ async function injectTestData(
 // 1. Analysis Route Navigation
 // ═══════════════════════════════════════════════════════════════════════════
 
-test.describe('Analysis Routes — Navigation', () => {
-  test('analysis hub route renders', async ({ page }) => {
-    await page.goto('/analysis');
-    await expect(page.getByRole('heading', { name: /^analysis$/i })).toBeVisible();
+test.describe('Explore Routes — Navigation', () => {
+  test('explore hub route renders', async ({ page }) => {
+    await page.goto('/explore');
+    await expect(page.getByRole('heading', { name: /^explore$/i })).toBeVisible();
   });
 
-  test('statistical analysis route renders', async ({ page }) => {
-    await page.goto('/analysis/statistical');
+  test('correlations route renders statistical tab by default', async ({ page }) => {
+    await page.goto('/explore/correlations');
     await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
   });
 
-  test('event analysis route renders', async ({ page }) => {
-    await page.goto('/analysis/events');
+  test('correlations route deep-links to cross-source tab', async ({ page }) => {
+    await page.goto('/explore/correlations?tab=cross-source');
+    await expect(page.getByRole('heading', { name: /cross-source analysis/i })).toBeVisible();
+  });
+
+  test('event explorer route renders', async ({ page }) => {
+    await page.goto('/explore/events');
     await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
   });
 
   test('pressure optimization route renders', async ({ page }) => {
-    await page.goto('/analysis/pressure');
+    await page.goto('/explore/pressure');
     await expect(page.getByRole('heading', { name: /pressure optimization/i })).toBeVisible();
   });
 
-  test('integration analysis route renders', async ({ page }) => {
-    await page.goto('/analysis/integrations');
-    await expect(page.getByRole('heading', { name: /cross-source analysis/i })).toBeVisible();
-  });
-
-  test('sidebar navigation to analysis hub', async ({ page }) => {
+  test('sidebar navigation to explore hub', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('h1').first()).toBeVisible();
 
     const nav = page.getByRole('navigation');
-    await nav.getByRole('link', { name: /analysis/i }).click();
+    await nav.getByRole('link', { name: /explore/i }).click();
 
-    await expect(page.getByRole('heading', { name: /^analysis$/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /^explore$/i })).toBeVisible();
+  });
+
+  // ── Legacy redirects ──────────────────────────────────────────────────────
+
+  test('legacy /analysis redirects to /explore', async ({ page }) => {
+    await page.goto('/analysis');
+    await expect(page).toHaveURL(/\/explore$/);
+    await expect(page.getByRole('heading', { name: /^explore$/i })).toBeVisible();
+  });
+
+  test('legacy /analysis/statistical redirects to /explore/correlations', async ({ page }) => {
+    await page.goto('/analysis/statistical');
+    await expect(page).toHaveURL(/\/explore\/correlations/);
+    await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
+  });
+
+  test('legacy /analysis/integrations redirects to correlations cross-source tab', async ({
+    page,
+  }) => {
+    await page.goto('/analysis/integrations');
+    await expect(page).toHaveURL(/\/explore\/correlations\?tab=cross-source/);
+    await expect(page.getByRole('heading', { name: /cross-source analysis/i })).toBeVisible();
+  });
+
+  test('legacy /analysis/events redirects to /explore/events', async ({ page }) => {
+    await page.goto('/analysis/events');
+    await expect(page).toHaveURL(/\/explore\/events$/);
+    await expect(page.getByRole('heading', { name: /event analysis/i })).toBeVisible();
+  });
+
+  test('legacy /analysis/pressure redirects to /explore/pressure', async ({ page }) => {
+    await page.goto('/analysis/pressure');
+    await expect(page).toHaveURL(/\/explore\/pressure$/);
+    await expect(page.getByRole('heading', { name: /pressure optimization/i })).toBeVisible();
   });
 });
 
@@ -561,11 +595,11 @@ test.describe('Analysis Engine — Integration', () => {
 
     // Navigate to each analysis route and verify no errors
     const routes = [
-      { path: '/analysis', heading: /^analysis$/i },
-      { path: '/analysis/statistical', heading: /statistical analysis/i },
-      { path: '/analysis/events', heading: /event analysis/i },
-      { path: '/analysis/pressure', heading: /pressure optimization/i },
-      { path: '/analysis/integrations', heading: /cross-source analysis/i },
+      { path: '/explore', heading: /^explore$/i },
+      { path: '/explore/correlations', heading: /statistical analysis/i },
+      { path: '/explore/events', heading: /event analysis/i },
+      { path: '/explore/pressure', heading: /pressure optimization/i },
+      { path: '/explore/correlations?tab=cross-source', heading: /cross-source analysis/i },
     ];
 
     for (const route of routes) {

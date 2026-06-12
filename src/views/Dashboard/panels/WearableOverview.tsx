@@ -318,7 +318,7 @@ const WearableOverview = React.memo(function WearableOverview({ summary }: Weara
         <span className={styles.footerDays}>
           {dayCount} {dayCount === 1 ? 'day' : 'days'} of wearable data
         </span>
-        <Link to="/analysis/integrations" className={styles.exploreLink}>
+        <Link to="/explore/correlations?tab=cross-source" className={styles.exploreLink}>
           Explore correlations &rarr;
         </Link>
       </div>

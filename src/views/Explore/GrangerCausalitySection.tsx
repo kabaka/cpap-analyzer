@@ -11,7 +11,7 @@
  * panel rather than the global toolbar, because the global Metric / Rolling
  * Window controls are not meaningful for a bivariate causality test.
  *
- * @module views/Analysis/GrangerCausalitySection
+ * @module views/Explore/GrangerCausalitySection
  */
 
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';

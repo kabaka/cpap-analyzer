@@ -278,7 +278,7 @@ async function setupAndOpenGrangerTab(page: Page, nights: number) {
   const { sessions, aggregates } = createGrangerNights(nights);
   await injectTestData(page, sessions, aggregates);
 
-  await page.goto('/analysis/statistical');
+  await page.goto('/explore/correlations');
   await expect(page.getByRole('heading', { name: /statistical analysis/i })).toBeVisible();
 
   const tab = page.getByRole('tab', { name: 'Granger Causality' });

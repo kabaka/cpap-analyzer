@@ -5,7 +5,7 @@
  * distribution testing, correlation analysis, and hypothesis testing
  * for selected therapy metrics.
  *
- * @module views/Analysis/StatisticalAnalysis
+ * @module views/Explore/StatisticalAnalysis
  */
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
@@ -598,10 +598,10 @@ export function StatisticalAnalysis() {
   );
 
   return (
-    <div className={styles.page} role="main" aria-labelledby="stat-heading">
-      <h1 id="stat-heading" className={styles.heading}>
+    <div className={styles.page} aria-labelledby="stat-heading">
+      <h2 id="stat-heading" className={styles.heading}>
         Statistical Analysis
-      </h1>
+      </h2>
 
       {/* Controls bar */}
       <div className={styles.controls} role="toolbar" aria-label="Analysis controls">

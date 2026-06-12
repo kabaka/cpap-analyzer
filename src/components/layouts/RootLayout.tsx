@@ -18,7 +18,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: '📊' },
   { to: '/sessions', label: 'Sessions', icon: '📋' },
   { to: '/trends', label: 'Trends', icon: '📈' },
-  { to: '/analysis', label: 'Analysis', icon: '🔬' },
+  { to: '/explore', label: 'Explore', icon: '🔬' },
   { to: '/reports', label: 'Reports', icon: '📄' },
   { to: '/data', label: 'Data', icon: '💾' },
 ];

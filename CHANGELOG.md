@@ -21,6 +21,7 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 - The Settings → Integrations → Fitbit section now reflects the file-based Google Health import (no longer shows an OAuth access token field). Shows import status, record count, and a link to the import wizard.
 - The Analysis Hub's "Integration Analysis" card is no longer disabled/coming-soon.
+- Reorganized the "Analysis" section into an intent-oriented "Explore" hub (`/explore`) with three explorations: Event Explorer (`/explore/events`), Correlations (`/explore/correlations`), and Pressure Optimization (`/explore/pressure`). The former Statistical Analysis and Cross-Source (Integration) Analysis are now combined under Correlations as deep-linkable tabs (`?tab=cross-source`). Old `/analysis/*` links redirect to their new locations.
 
 ### Security
 

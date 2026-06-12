@@ -34,7 +34,7 @@ vi.mock('../EventAnalysis.module.css', () => ({
   default: new Proxy({}, { get: (_target, prop) => String(prop) }),
 }));
 
-import { EventAnalysis } from '@/views/Analysis/EventAnalysis';
+import { EventAnalysis } from '@/views/Explore/EventAnalysis';
 
 describe('EventAnalysis', () => {
   beforeEach(() => {

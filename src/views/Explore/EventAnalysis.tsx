@@ -9,7 +9,7 @@
  * the AnalysisEngine worker), so data is fetched from IndexedDB and
  * analysis runs in the main thread with memoisation.
  *
- * @module views/Analysis/EventAnalysis
+ * @module views/Explore/EventAnalysis
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';

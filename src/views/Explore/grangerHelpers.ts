@@ -4,7 +4,7 @@
  * Kept in a non-component module so they can be unit-tested in isolation and so
  * the section component file only exports React components (React Fast Refresh).
  *
- * @module views/Analysis/grangerHelpers
+ * @module views/Explore/grangerHelpers
  */
 
 import type { GrangerCausalityResult } from '@/analysis/correlation/granger';
