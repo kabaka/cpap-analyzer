@@ -9,9 +9,11 @@ import {
   formatTimeLabel,
   chooseTimeTickInterval,
   chooseYTicks,
+  computeLaneLayout,
+  totalLaneHeight,
   SignalRenderer,
 } from '../SignalRenderer';
-import type { ViewportState, RenderOptions, SignalChannel } from '../SignalRenderer';
+import type { ViewportState, RenderOptions, SignalChannel, RibbonBand } from '../SignalRenderer';
 
 // ── Canvas mock for jsdom ────────────────────────────────────────
 
@@ -33,6 +35,9 @@ function createMockContext2D(): CanvasRenderingContext2D {
     roundRect: vi.fn(),
     fill: vi.fn(),
     clearRect: vi.fn(),
+    arc: vi.fn(),
+    strokeRect: vi.fn(),
+    setLineDash: vi.fn(),
     canvas: document.createElement('canvas'),
     getContextAttributes: vi.fn(),
   } as unknown as CanvasRenderingContext2D;
@@ -486,5 +491,125 @@ describe('SignalRenderer', () => {
         renderer.dispose();
       }).not.toThrow();
     });
+  });
+
+  describe('variable lane heights + multi-lane render', () => {
+    /** Run a render synchronously by stubbing rAF to invoke immediately. */
+    function renderSync(viewport: ViewportState, options: RenderOptions): void {
+      const rafSpy = vi
+        .spyOn(globalThis, 'requestAnimationFrame')
+        .mockImplementation((cb: FrameRequestCallback) => {
+          cb(0);
+          return 0;
+        });
+      try {
+        renderer.render(viewport, options);
+      } finally {
+        rafSpy.mockRestore();
+      }
+    }
+
+    it('hit-tests against per-lane heights (hero lane on top)', () => {
+      const hero = makeChannel({ name: 'Heart Rate', height: 200 });
+      const normal = makeChannel({ name: 'Flow', height: 100 });
+      const viewport = makeViewport({ channels: [hero, normal] });
+      const options = makeOptions({ channelHeight: 100, padding: defaultPadding });
+
+      // A Y inside the second lane requires accounting for the tall first lane.
+      const yInSecond = defaultPadding.top + 200 + 10;
+      const hit = renderer.getValueAtPosition(
+        defaultPadding.left + 10,
+        yInSecond,
+        viewport,
+        options,
+      );
+      expect(hit?.channel).toBe('Flow');
+    });
+
+    it('renders a stack mixing line, step, and ribbon lanes without throwing', () => {
+      const bands: RibbonBand[] = [
+        { value: 3, label: 'W', color: '#f59e0b' },
+        { value: 2, label: 'REM', color: '#8b5cf6', hatch: true },
+        { value: 1, label: 'N1–2', color: '#38bdf8' },
+        { value: 0, label: 'N3', color: '#1e3a8a' },
+      ];
+      const line = makeChannel({ name: 'Flow', render: 'line' });
+      const step = makeChannel({
+        name: 'HRV',
+        render: 'step',
+        sparse: true,
+        data: new Float32Array([30, 40, 38]),
+        sampleTimes: new Float64Array([0, 5000, 9000]),
+      });
+      const ribbon = makeChannel({
+        name: 'Sleep Stages',
+        render: 'ribbon',
+        data: new Float32Array([3, 2, 1, 0]),
+        sampleTimes: new Float64Array([0, 2000, 5000, 8000]),
+        physicalMin: 0,
+        physicalMax: 3,
+      });
+      const viewport = makeViewport({ channels: [line, step, ribbon] });
+      const options = makeOptions({ showGrid: true, ribbonBands: { 'Sleep Stages': bands } });
+
+      expect(() => renderSync(viewport, options)).not.toThrow();
+    });
+
+    it('reports a stage label (not a number) for ribbon lanes in getValuesAtTime', () => {
+      const bands: RibbonBand[] = [
+        { value: 3, label: 'W', color: '#f59e0b' },
+        { value: 2, label: 'REM', color: '#8b5cf6' },
+      ];
+      const ribbon = makeChannel({
+        name: 'Sleep Stages',
+        render: 'ribbon',
+        data: new Float32Array([3, 2]),
+        sampleTimes: new Float64Array([0, 6000]),
+        physicalMin: 0,
+        physicalMax: 3,
+      });
+      const viewport = makeViewport({ channels: [ribbon] });
+      const options = makeOptions({ ribbonBands: { 'Sleep Stages': bands } });
+
+      const plotLeft = defaultPadding.left;
+      const plotWidth = 800 - defaultPadding.left - defaultPadding.right;
+      const values = renderer.getValuesAtTime(plotLeft + plotWidth * 0.1, viewport, options);
+      const sleep = values.find((v) => v.channel === 'Sleep Stages');
+      expect(sleep?.label).toBe('W');
+    });
+
+    it('renders detection episodes without throwing', () => {
+      const line = makeChannel({ name: 'Flow' });
+      const viewport = makeViewport({ channels: [line] });
+      const options = makeOptions({
+        detectionEpisodes: [{ startTime: 1000, duration: 2000, type: 'CSR', confidence: 0.8 }],
+      });
+      expect(() => renderSync(viewport, options)).not.toThrow();
+    });
+  });
+});
+
+describe('computeLaneLayout', () => {
+  it('stacks lanes with cumulative tops, honouring per-lane height overrides', () => {
+    const layout = computeLaneLayout([{ height: 200 }, {}, { height: 28 }], 100, 20);
+    expect(layout).toEqual([
+      { top: 20, height: 200 },
+      { top: 220, height: 100 },
+      { top: 320, height: 28 },
+    ]);
+  });
+
+  it('falls back to the default height for non-positive overrides', () => {
+    const layout = computeLaneLayout([{ height: 0 }, { height: -5 }], 100, 0);
+    expect(layout).toEqual([
+      { top: 0, height: 100 },
+      { top: 100, height: 100 },
+    ]);
+  });
+});
+
+describe('totalLaneHeight', () => {
+  it('sums lane heights with the default fallback', () => {
+    expect(totalLaneHeight([{ height: 200 }, {}, { height: 28 }], 100)).toBe(328);
   });
 });

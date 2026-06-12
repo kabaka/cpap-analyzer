@@ -26,6 +26,28 @@ export interface ChartColors {
   textPrimary: string;
   textSecondary: string;
   surfacePrimary: string;
+  surfaceElevated: string;
+  crosshair: string;
+  // Wearable signal lanes
+  wearableHr: string;
+  wearableSpo2: string;
+  wearableHrv: string;
+  wearableSnore: string;
+  // Hypnogram (sleep stage) bands
+  hypnoWake: string;
+  hypnoRem: string;
+  hypnoLight: string;
+  hypnoDeep: string;
+  hypnoUnknown: string;
+  // Detection-episode overlay
+  detection: string;
+  detectionBg: string;
+  detectionBorder: string;
+  // TECSA classification
+  tecsaObstructive: string;
+  tecsaTransient: string;
+  tecsaPersistent: string;
+  tecsaEmergent: string;
 }
 
 const PALETTE_KEYS: readonly (keyof ChartColors)[] = [
@@ -61,6 +83,24 @@ function resolveColors(): ChartColors {
     textPrimary: readCSSVar('--color-text-primary'),
     textSecondary: readCSSVar('--color-text-secondary'),
     surfacePrimary: readCSSVar('--color-surface-primary'),
+    surfaceElevated: readCSSVar('--color-surface-elevated'),
+    crosshair: readCSSVar('--color-crosshair'),
+    wearableHr: readCSSVar('--color-wearable-hr'),
+    wearableSpo2: readCSSVar('--color-wearable-spo2'),
+    wearableHrv: readCSSVar('--color-wearable-hrv'),
+    wearableSnore: readCSSVar('--color-wearable-snore'),
+    hypnoWake: readCSSVar('--color-hypno-wake'),
+    hypnoRem: readCSSVar('--color-hypno-rem'),
+    hypnoLight: readCSSVar('--color-hypno-light'),
+    hypnoDeep: readCSSVar('--color-hypno-deep'),
+    hypnoUnknown: readCSSVar('--color-hypno-unknown'),
+    detection: readCSSVar('--color-detection'),
+    detectionBg: readCSSVar('--color-detection-bg'),
+    detectionBorder: readCSSVar('--color-detection-border'),
+    tecsaObstructive: readCSSVar('--color-tecsa-obstructive'),
+    tecsaTransient: readCSSVar('--color-tecsa-transient'),
+    tecsaPersistent: readCSSVar('--color-tecsa-persistent'),
+    tecsaEmergent: readCSSVar('--color-tecsa-emergent'),
   };
 }
 

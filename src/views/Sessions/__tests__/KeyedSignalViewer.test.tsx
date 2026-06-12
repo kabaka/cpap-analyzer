@@ -7,16 +7,17 @@ import { useEffect } from 'react';
  * Lightweight verification of the audit fix that keys SignalViewer by the
  * active `:sessionId` (the `key={sessionId}` in KeyedSignalViewer).
  *
- * The concern: SignalViewer seeds per-session state (the hidden-channel set)
- * from localStorage in a lazy `useState` initializer that runs ONCE per mount.
- * If the component were reused across `:sessionId` route changes, that state
- * would leak from one session into the next. Keying on `sessionId` forces a
- * fresh mount per session, re-running the initializer.
+ * The concern: SignalViewer seeds per-session state (the lane prefs) from
+ * localStorage in a lazy `useState` initializer that runs ONCE per mount. If the
+ * component were reused across `:sessionId` route changes, that state would leak
+ * from one session into the next. Keying on `sessionId` forces a fresh mount per
+ * session, re-running the initializer.
  *
  * Rather than mount the real (canvas/OPFS-heavy) SignalViewer, we stub it with
  * a probe that records mount events and reads its per-session seed in a lazy
- * initializer — mirroring the real seeding contract — and assert the probe
- * remounts (and re-seeds) when only the sessionId changes.
+ * initializer — mirroring the real seeding contract (the `signal-viewer-lanes-
+ * <sessionId>` key written by laneState) — and assert the probe remounts (and
+ * re-seeds) when only the sessionId changes.
  */
 
 const mountLog: string[] = [];
@@ -32,9 +33,9 @@ vi.mock('../SignalViewer', async () => {
     default: function SignalViewerProbe() {
       const { sessionId } = useParams<{ sessionId: string }>();
       // Lazy initializer — runs once per mount, mirroring the real component's
-      // localStorage-seeded hidden-channel state.
+      // localStorage-seeded lane prefs.
       const [seed] = useState<string | null>(() => {
-        const value = sessionId ? localStorage.getItem(`signal-viewer-hidden-${sessionId}`) : null;
+        const value = sessionId ? localStorage.getItem(`signal-viewer-lanes-${sessionId}`) : null;
         seedLog.push({ sessionId, seed: value });
         return value;
       });
@@ -81,9 +82,12 @@ describe('KeyedSignalViewer', () => {
   });
 
   it('remounts (fresh mount) when navigating to a different sessionId so per-session state cannot leak', () => {
-    // Seed distinct hidden-channel sets for the two sessions in localStorage.
-    localStorage.setItem('signal-viewer-hidden-sess-a', JSON.stringify(['Flow']));
-    localStorage.setItem('signal-viewer-hidden-sess-b', JSON.stringify(['Pressure']));
+    // Seed distinct lane prefs for the two sessions in localStorage.
+    localStorage.setItem('signal-viewer-lanes-sess-a', JSON.stringify({ hidden: ['cpap:flow'] }));
+    localStorage.setItem(
+      'signal-viewer-lanes-sess-b',
+      JSON.stringify({ hidden: ['cpap:maskPressure'] }),
+    );
 
     render(
       <MemoryRouter initialEntries={['/sessions/sess-a']}>
@@ -101,13 +105,13 @@ describe('KeyedSignalViewer', () => {
     // Each mount re-ran the lazy seed initializer against its OWN session's
     // localStorage key — the seeds differ, confirming state did not leak.
     expect(seedLog).toEqual([
-      { sessionId: 'sess-a', seed: JSON.stringify(['Flow']) },
-      { sessionId: 'sess-b', seed: JSON.stringify(['Pressure']) },
+      { sessionId: 'sess-a', seed: JSON.stringify({ hidden: ['cpap:flow'] }) },
+      { sessionId: 'sess-b', seed: JSON.stringify({ hidden: ['cpap:maskPressure'] }) },
     ]);
 
     // Final render reflects sess-b's seed, not sess-a's.
     expect(screen.getByTestId('probe').getAttribute('data-seed')).toBe(
-      JSON.stringify(['Pressure']),
+      JSON.stringify({ hidden: ['cpap:maskPressure'] }),
     );
   });
 });
