@@ -29,6 +29,40 @@
 import type { PeriodicityResult, VentilationEnvelope } from './types';
 
 // ---------------------------------------------------------------------------
+// Resampling safety bounds (DoS hardening — see threat note below)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lowest source sample rate (Hz) the envelope builders will accept. Any rate
+ * below this is treated as invalid and yields an empty envelope.
+ *
+ * **Rationale (physiological + safety).** No legitimate CPAP channel is sampled
+ * below ~0.5 Hz (ResMed MinuteVent is 0.5 Hz; flow is 25 Hz). 0.01 Hz is a safe
+ * floor an order of magnitude below the slowest real channel, so it never
+ * rejects valid data.
+ *
+ * **Threat.** Output length is `floor((n / sampleRateHz) · envelopeRateHz)`. A
+ * crafted EDF can carry an attacker-controlled, arbitrarily tiny positive
+ * `sampleRate` (e.g. 1e-6 Hz, from an unbounded `dataRecordDuration` header),
+ * which makes the output length explode to 1e9–1e12 samples and allocate
+ * gigabytes-to-terabytes of `Float32Array`/`Float64Array`, OOM-crashing the
+ * analysis worker on import. Rejecting sub-floor rates here neutralizes that
+ * unbounded allocation for every direct caller. (The upstream EDF parser not
+ * bounding `sampleRate` is a separate, out-of-scope fix.)
+ */
+export const MIN_ENVELOPE_SOURCE_RATE_HZ = 0.01;
+
+/**
+ * Defense-in-depth cap on how many output samples the resampler may emit per
+ * source sample. Upsampling from the slowest real source (0.5 Hz) to the 1 Hz
+ * envelope is only a 2× factor, so 64× is generous headroom for any legitimate
+ * rate while bounding the worst-case allocation even if a near-floor rate slips
+ * through the rate guard. Output length is clamped to `n · this` so a tiny rate
+ * can never inflate the allocation far beyond the source size.
+ */
+export const MAX_UPSAMPLE_FACTOR = 64;
+
+// ---------------------------------------------------------------------------
 // Small numeric helpers (local to keep this module dependency-free)
 // ---------------------------------------------------------------------------
 
@@ -173,6 +207,21 @@ export function buildEnvelopeFromFlow(
   envelopeRateHz = 1,
   useTidalProxy = false,
 ): VentilationEnvelope {
+  // Reject sub-floor / non-finite source rates before any allocation: a tiny
+  // positive rate would make `outLen` explode (see MIN_ENVELOPE_SOURCE_RATE_HZ).
+  if (
+    flow.length === 0 ||
+    !Number.isFinite(sampleRateHz) ||
+    sampleRateHz < MIN_ENVELOPE_SOURCE_RATE_HZ ||
+    envelopeRateHz <= 0
+  ) {
+    return {
+      timestampsMs: new Float64Array(0),
+      values: new Float32Array(0),
+      sampleRateHz: envelopeRateHz,
+    };
+  }
+
   const breaths = segmentBreaths(flow, sampleRateHz);
   if (breaths.length === 0) {
     return {
@@ -183,7 +232,12 @@ export function buildEnvelopeFromFlow(
   }
 
   const totalSeconds = flow.length / sampleRateHz;
-  const outLen = Math.max(1, Math.floor(totalSeconds * envelopeRateHz));
+  // Cap the output length to a bounded multiple of the source (defense in depth
+  // against a near-floor rate inflating the allocation).
+  const outLen = Math.min(
+    Math.max(1, Math.floor(totalSeconds * envelopeRateHz)),
+    flow.length * MAX_UPSAMPLE_FACTOR,
+  );
   const values = new Float32Array(outLen);
   const timestampsMs = new Float64Array(outLen);
   const stepMs = 1000 / envelopeRateHz;
@@ -207,14 +261,45 @@ export function buildEnvelopeFromFlow(
 
 /**
  * Build a uniform ventilation envelope from a pre-computed minute-ventilation
- * channel by averaging within each output bin (decimation). This is the
- * preferred, cleaner path when the device exposes minute ventilation.
+ * channel, resampled to a uniform `envelopeRateHz`. This is the preferred,
+ * cleaner path when the device exposes minute ventilation.
+ *
+ * **Resampling contract.** The envelope is always emitted at a *fixed* uniform
+ * target rate (default 1 Hz), independent of the source rate, so the detector
+ * behaves identically across sessions and devices. 1 Hz cleanly resolves the
+ * 40–100 s periodic-breathing band (Nyquist 0.5 Hz ≫ the ~0.01–0.025 Hz
+ * oscillation; ≥40 samples per cycle for lag-resolution by autocorrelation).
+ * Three regimes are handled explicitly:
+ *
+ * - **source > target** (e.g. flow-derived proxies, or high-rate MinVent):
+ *   anti-aliased decimation by bin-averaging the source samples falling in each
+ *   output bin.
+ * - **source < target** (the real ResMed case — MinVent is stored at 0.5 Hz,
+ *   so we upsample 0.5 → 1 Hz): **linear interpolation** between the two
+ *   bracketing source samples. This is the critical fix: the previous
+ *   bin-average path silently emitted 0 for output bins that contained no source
+ *   sample (`samplesPerBin = 0.5/1 = 0.5`), turning the envelope into a
+ *   real/zero comb and degenerating every downstream metric.
+ * - **source == target**: passthrough (a copy).
+ *
+ * Non-finite source samples are **bridged**, not zeroed: they are skipped when
+ * locating interpolation/averaging neighbours so a brief dropout is interpolated
+ * across the nearest finite samples (carrying the edge value past a leading or
+ * trailing run of non-finite samples). An output time with *no* finite source
+ * sample anywhere is the only case that yields 0; with at least one finite
+ * source sample the envelope is never silently zero-filled.
  *
  * @param minuteVent   Minute-ventilation samples (L/min).
  * @param sampleRateHz Sample rate of `minuteVent` in Hz.
  * @param startMs      Epoch ms of the first sample (default 0).
  * @param envelopeRateHz Target envelope rate in Hz (default 1).
- * @returns            A {@link VentilationEnvelope}.
+ * @returns            A {@link VentilationEnvelope} at exactly `envelopeRateHz`.
+ *
+ * @remarks
+ * **Assumptions / guards.** A non-finite or non-positive `sampleRateHz`, or
+ * empty input, returns an empty envelope (no garbage from a bad rate). The
+ * output length spans the same wall-clock duration as the source
+ * (`floor(n / sampleRateHz · envelopeRateHz)`, at least 1 sample).
  */
 export function buildEnvelopeFromMinuteVent(
   minuteVent: Float32Array,
@@ -223,7 +308,15 @@ export function buildEnvelopeFromMinuteVent(
   envelopeRateHz = 1,
 ): VentilationEnvelope {
   const n = minuteVent.length;
-  if (n === 0 || sampleRateHz <= 0) {
+  // A sub-floor `sampleRateHz` (e.g. a crafted 1e-6 Hz) is rejected here, not
+  // just <= 0: a tiny positive rate would make `outLen` explode and allocate
+  // gigabytes (see MIN_ENVELOPE_SOURCE_RATE_HZ).
+  if (
+    n === 0 ||
+    !Number.isFinite(sampleRateHz) ||
+    sampleRateHz < MIN_ENVELOPE_SOURCE_RATE_HZ ||
+    envelopeRateHz <= 0
+  ) {
     return {
       timestampsMs: new Float64Array(0),
       values: new Float32Array(0),
@@ -231,37 +324,122 @@ export function buildEnvelopeFromMinuteVent(
     };
   }
 
+  const stepMs = 1000 / envelopeRateHz;
+
   if (sampleRateHz === envelopeRateHz) {
+    // Passthrough, but still bridge any non-finite samples so the contract
+    // ("never silently zero-fill") holds on this path too.
     const ts = new Float64Array(n);
-    const stepMs = 1000 / envelopeRateHz;
     for (let i = 0; i < n; i++) ts[i] = startMs + i * stepMs;
-    return { timestampsMs: ts, values: minuteVent.slice(), sampleRateHz: envelopeRateHz };
+    return {
+      timestampsMs: ts,
+      values: bridgeNonFinite(minuteVent),
+      sampleRateHz: envelopeRateHz,
+    };
   }
 
   const totalSeconds = n / sampleRateHz;
-  const outLen = Math.max(1, Math.floor(totalSeconds * envelopeRateHz));
+  // Cap the output length to a bounded multiple of the source (defense in depth
+  // against a near-floor rate inflating the allocation).
+  const outLen = Math.min(
+    Math.max(1, Math.floor(totalSeconds * envelopeRateHz)),
+    n * MAX_UPSAMPLE_FACTOR,
+  );
   const values = new Float32Array(outLen);
   const timestampsMs = new Float64Array(outLen);
-  const stepMs = 1000 / envelopeRateHz;
-  const samplesPerBin = sampleRateHz / envelopeRateHz;
 
-  for (let k = 0; k < outLen; k++) {
-    const lo = Math.floor(k * samplesPerBin);
-    const hi = Math.min(n, Math.floor((k + 1) * samplesPerBin));
-    let sum = 0;
-    let count = 0;
-    for (let i = lo; i < hi; i++) {
-      const v = minuteVent[i] as number;
-      if (Number.isFinite(v)) {
-        sum += v;
-        count += 1;
+  if (sampleRateHz > envelopeRateHz) {
+    // -- Anti-aliased decimation: bin-average source samples per output bin. --
+    const samplesPerBin = sampleRateHz / envelopeRateHz;
+    for (let k = 0; k < outLen; k++) {
+      const lo = Math.floor(k * samplesPerBin);
+      const hi = Math.min(n, Math.floor((k + 1) * samplesPerBin));
+      let sum = 0;
+      let count = 0;
+      for (let i = lo; i < hi; i++) {
+        const v = minuteVent[i] as number;
+        if (Number.isFinite(v)) {
+          sum += v;
+          count += 1;
+        }
       }
+      // A bin with no finite sample (e.g. an empty bin from rounding, or an
+      // all-NaN dropout) falls back to nearest-finite interpolation at the bin
+      // centre rather than emitting 0.
+      values[k] =
+        count > 0 ? sum / count : interpolateFinite(minuteVent, (k + 0.5) * samplesPerBin);
+      timestampsMs[k] = startMs + k * stepMs;
     }
-    values[k] = count > 0 ? sum / count : 0;
-    timestampsMs[k] = startMs + k * stepMs;
+    return { timestampsMs, values, sampleRateHz: envelopeRateHz };
   }
 
+  // -- Upsampling: linear interpolation between bracketing source samples. ----
+  // Output time k maps to fractional source index `k · sampleRateHz /
+  // envelopeRateHz`; we interpolate the two nearest *finite* source samples
+  // around it (bridging non-finite samples), so a 0.5 Hz → 1 Hz upsample yields
+  // a smooth ventilation oscillation, never a real/zero comb.
+  const srcPerOut = sampleRateHz / envelopeRateHz; // < 1
+  for (let k = 0; k < outLen; k++) {
+    values[k] = interpolateFinite(minuteVent, k * srcPerOut);
+    timestampsMs[k] = startMs + k * stepMs;
+  }
   return { timestampsMs, values, sampleRateHz: envelopeRateHz };
+}
+
+/**
+ * Linearly interpolate `samples` at the (possibly fractional) source index
+ * `pos`, skipping non-finite samples by reaching outward to the nearest finite
+ * neighbour on each side. Returns 0 only when `samples` contains no finite value
+ * at all (so the "never silently zero-fill" contract holds whenever any finite
+ * source sample exists). Out-of-range positions clamp (carry) to the nearest
+ * finite edge sample. Pure.
+ */
+function interpolateFinite(samples: Float32Array, pos: number): number {
+  const n = samples.length;
+  if (n === 0) return 0;
+
+  // Nearest finite sample at or below floor(pos).
+  let lo = Math.floor(pos);
+  if (lo < 0) lo = 0;
+  if (lo > n - 1) lo = n - 1;
+  let loIdx = lo;
+  while (loIdx >= 0 && !Number.isFinite(samples[loIdx] as number)) loIdx -= 1;
+
+  // Nearest finite sample at or above ceil(pos).
+  let hi = Math.ceil(pos);
+  if (hi < 0) hi = 0;
+  if (hi > n - 1) hi = n - 1;
+  let hiIdx = hi;
+  while (hiIdx < n && !Number.isFinite(samples[hiIdx] as number)) hiIdx += 1;
+
+  const loFinite = loIdx >= 0;
+  const hiFinite = hiIdx < n;
+  if (!loFinite && !hiFinite) return 0; // no finite sample anywhere
+  if (!loFinite) return samples[hiIdx] as number; // carry leading edge
+  if (!hiFinite) return samples[loIdx] as number; // carry trailing edge
+  if (loIdx === hiIdx) return samples[loIdx] as number; // exact / coincident
+
+  const a = samples[loIdx] as number;
+  const b = samples[hiIdx] as number;
+  const frac = (pos - loIdx) / (hiIdx - loIdx);
+  return a + (b - a) * frac;
+}
+
+/**
+ * Return a copy of `samples` with non-finite values bridged by linear
+ * interpolation across the nearest finite neighbours (leading/trailing runs are
+ * carried from the nearest finite edge). Used on the passthrough path so the
+ * envelope never contains a NaN/Inf that would poison downstream statistics.
+ * Pure; returns a new array. An all-non-finite input yields all-zeros.
+ */
+function bridgeNonFinite(samples: Float32Array): Float32Array {
+  const n = samples.length;
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const v = samples[i] as number;
+    out[i] = Number.isFinite(v) ? v : interpolateFinite(samples, i);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,8 +454,20 @@ export function buildEnvelopeFromMinuteVent(
  * The biased ACF (divide by N, not N−lag) is used so the estimator is
  * well-behaved and tapers toward 0 at long lags, avoiding spurious unit peaks
  * near the segment length. The reported `cycleLengthSec` is the lag of the
- * tallest local ACF maximum within `[minCycleSec, maxCycleSec]`; `strength` is
- * that peak's normalized height in [0, 1].
+ * tallest **interior** local ACF maximum strictly within
+ * `(minCycleSec, maxCycleSec)`; `strength` is that peak's normalized height in
+ * [0, 1].
+ *
+ * **Why interior-only.** A genuine oscillation produces an ACF *bump* — a lag
+ * with neighbours lower on *both* sides. A monotone-decaying ACF (a non-periodic
+ * segment: DC/ramp, a staircase comb from a resampling bug, or pure noise) has
+ * no such interior bump; its largest in-band value is always at the band edge
+ * `minLag`. The previous implementation tested `acfAt(minLag − 1)` — a lag
+ * *outside* the search band — which let that monotone band-edge value qualify as
+ * a "local maximum", pinning the reported cycle to the band floor. We now
+ * require both neighbours to lie inside `(minLag, maxLag)`, so a band-edge lag
+ * can never be accepted and a monotone / near-DC / staircase segment correctly
+ * returns `{ cycleLengthSec: null, strength: 0 }`.
  *
  * @param values        Envelope samples (uniformly sampled).
  * @param sampleRateHz  Envelope sample rate in Hz.
@@ -286,8 +476,10 @@ export function buildEnvelopeFromMinuteVent(
  * @returns             {@link PeriodicityResult}.
  *
  * @remarks
- * Requires at least one full cycle of data within the band; if the segment is
- * shorter than `minCycleSec`, returns `{ cycleLengthSec: null, strength: 0 }`.
+ * Requires at least one full cycle of data within the band *plus* room for an
+ * interior peak; if the band is too narrow to contain a lag with neighbours on
+ * both sides (`maxLag − minLag < 2`), returns
+ * `{ cycleLengthSec: null, strength: 0 }`.
  */
 export function estimatePeriodicity(
   values: ArrayLike<number>,
@@ -300,7 +492,10 @@ export function estimatePeriodicity(
 
   const minLag = Math.max(1, Math.round(minCycleSec * sampleRateHz));
   const maxLag = Math.min(n - 1, Math.round(maxCycleSec * sampleRateHz));
-  if (maxLag < minLag) return { cycleLengthSec: null, strength: 0 };
+  // An interior peak needs a lag with both neighbours inside the band, i.e. at
+  // least three candidate lags (minLag, minLag+1, maxLag). A band too narrow for
+  // that cannot carry a resolvable oscillation.
+  if (maxLag - minLag < 2) return { cycleLengthSec: null, strength: 0 };
 
   // Mean-center.
   const mean = meanFinite(values);
@@ -322,17 +517,22 @@ export function estimatePeriodicity(
     return s / variance;
   };
 
-  // Find the tallest local maximum in the band.
+  // Find the tallest *interior* local maximum strictly within (minLag, maxLag):
+  // a lag whose ACF is ≥ both immediate neighbours, where both neighbours lie
+  // inside the search band. Band-edge lags (minLag, maxLag) are never eligible,
+  // so a monotone-decaying ACF (non-periodic / staircase / DC) yields no peak.
   let bestLag = -1;
   let bestVal = -Infinity;
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    const r = acfAt(lag);
-    const rPrev = acfAt(lag - 1);
-    const rNext = lag + 1 <= maxLag ? acfAt(lag + 1) : -Infinity;
+  let rPrev = acfAt(minLag);
+  let r = acfAt(minLag + 1);
+  for (let lag = minLag + 1; lag <= maxLag - 1; lag++) {
+    const rNext = acfAt(lag + 1);
     if (r >= rPrev && r >= rNext && r > bestVal) {
       bestVal = r;
       bestLag = lag;
     }
+    rPrev = r;
+    r = rNext;
   }
 
   if (bestLag < 0) return { cycleLengthSec: null, strength: 0 };
