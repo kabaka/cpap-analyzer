@@ -47,6 +47,7 @@ import {
   estimatePeriodicity,
   leakCleanFraction,
   modulationIndex,
+  MIN_ENVELOPE_SOURCE_RATE_HZ,
 } from './envelope';
 import {
   DEFAULT_PERIODIC_BREATHING_PARAMS,
@@ -236,6 +237,18 @@ export function detectPeriodicBreathing(input: PeriodicBreathingInput): Periodic
   const params = resolveParams(input.params);
   const startMs = input.startMs ?? 0;
 
+  // -- 0. Bad-rate guard ---------------------------------------------------
+  // A non-finite, non-positive, or sub-floor source sample rate cannot produce a
+  // valid envelope. Rejecting a tiny-but-positive rate (< MIN_ENVELOPE_SOURCE_RATE_HZ)
+  // additionally neutralizes an unbounded-allocation DoS: a crafted rate (e.g.
+  // 1e-6 Hz) would otherwise make the envelope builders allocate gigabytes (see
+  // envelope.ts). Fail empty rather than letting a degenerate rate cascade into
+  // garbage cycle/modulation/confidence values. Guards both the MinVent and Flow
+  // paths at the entry point.
+  if (!Number.isFinite(input.sampleRateHz) || input.sampleRateHz < MIN_ENVELOPE_SOURCE_RATE_HZ) {
+    return { episodes: [], recordHours: 0, sessionCriterionMet: false };
+  }
+
   // -- 1. Envelope ---------------------------------------------------------
   let envelope: VentilationEnvelope;
   if (input.minuteVent && input.minuteVent.length > 0) {
@@ -377,14 +390,27 @@ export function detectPeriodicBreathing(input: PeriodicBreathingInput): Periodic
     // -- 6. Confidence ----------------------------------------------------
     // Down-weight by the leak-clean fraction over the run's signal span when a
     // leak channel is supplied (leak artifact guard).
+    //
+    // The run is expressed in *envelope*-sample indices at `envRate`, but the
+    // leak channel is aligned 1:1 with the *source* signal at
+    // `input.sampleRateHz` (see PeriodicBreathingInput.leak). When the envelope
+    // rate differs from the source rate (the normal case — envelope is resampled
+    // to params.envelopeRateHz, e.g. 1 Hz, from a 0.5 Hz source), we map the
+    // envelope-sample span → source-sample span via seconds: envIdx → seconds
+    // (÷ envRate) → sourceIdx (× sampleRateHz). The mapping formula is unchanged;
+    // what was hardened here is the bounds handling — a `Math.max(0, …)` lower
+    // clamp and a `srcHi > srcLo` degenerate-span guard — so an out-of-range or
+    // empty/degenerate span leaves leakClean = 1 (treated as "no leak evidence
+    // over this span") rather than slicing a bad range.
     let leakClean = 1;
     if (input.leak && input.leak.length > 0) {
-      const srcLo = Math.floor((run.startK / envRate) * input.sampleRateHz);
-      const srcHi = Math.min(
-        input.leak.length,
-        Math.ceil(((run.endK + 1) / envRate) * input.sampleRateHz),
-      );
-      leakClean = leakCleanFraction(input.leak.subarray(srcLo, srcHi), params.leakThresholdLpm);
+      const startSec = run.startK / envRate;
+      const endSec = (run.endK + 1) / envRate; // exclusive end of the run span
+      const srcLo = Math.max(0, Math.floor(startSec * input.sampleRateHz));
+      const srcHi = Math.min(input.leak.length, Math.ceil(endSec * input.sampleRateHz));
+      if (srcHi > srcLo) {
+        leakClean = leakCleanFraction(input.leak.subarray(srcLo, srcHi), params.leakThresholdLpm);
+      }
     }
 
     const baseConfidence = (run.modDepth + morphFit + run.strength + spectralFrac) / 4;
