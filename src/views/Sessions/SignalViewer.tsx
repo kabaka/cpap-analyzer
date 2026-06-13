@@ -49,6 +49,16 @@ import type { Event as TherapyEvent } from '@/types';
 
 import { evaluateDeepLink, formatOffsetLabel } from './deepLinkGuard';
 import {
+  detectionReadoutText,
+  EMPTY_HOVERED_REGION,
+  eventReadoutText,
+  findHoveredRegion as findHoveredRegionPure,
+  formatDuration,
+  formatEventType,
+  hoveredRegionKey,
+  type HoveredRegion,
+} from './hoverReadout';
+import {
   applyOrder,
   lanePrefsKey,
   moveLane,
@@ -122,6 +132,15 @@ const PADDING = { top: 20, right: 24, bottom: 28, left: 56 } as const;
 
 /** Number of viewport pixels to downsample target. */
 const DOWNSAMPLE_MULTIPLIER = 2;
+
+/**
+ * Vertical offset (px) from the top of the flow lane to the detection-chip band.
+ * Pushes the PB/CSR confidence chips DOWN below the lane-control label band
+ * (the 24px `--signal-lane-control-size` row at the lane's top-left) so the
+ * chips no longer collide with the lane label/pill, with enough headroom that a
+ * chip's `:focus-visible` outline isn't clipped against the label.
+ */
+const DETECTION_CHIP_BAND_OFFSET = 28;
 
 /** Lane drawer presets — id → set of lane ids to show (others hidden). */
 interface LanePreset {
@@ -204,12 +223,6 @@ function buildEventMarkers(
     type: evt.type,
     color: resolveColor(containerEl, EVENT_COLORS[evt.type] ?? 'var(--color-chart-7)'),
   }));
-}
-
-// ── Format event type for display ────────────────────────────────
-
-function formatEventType(type: string): string {
-  return type.replace(/([A-Z])/g, ' $1').trim();
 }
 
 // ── Breathing-detection confidence chip (overlay) ────────────────
@@ -414,6 +427,19 @@ export default function SignalViewer() {
 
   /** aria-live readout text for the keyboard data cursor. */
   const [cursorReadout, setCursorReadout] = useState('');
+
+  /**
+   * Device event + detection episode currently under the pointer (or empty).
+   * Rendered, non-interactively and `aria-hidden`, in the sticky legend bar.
+   */
+  const [hoveredRegion, setHoveredRegion] = useState<HoveredRegion>(EMPTY_HOVERED_REGION);
+
+  /**
+   * Composite identity (`${eventId}|${episodeId}`) of the hovered region, kept in
+   * a ref so the pointermove hot path can detect region enter/exit/cross without
+   * a React state read and only call `setHoveredRegion` when it actually changes.
+   */
+  const hoveredKeyRef = useRef('');
 
   /** aria-live announcement for keyboard lane grab/move/drop reordering. */
   const [laneReorderAnnouncement, setLaneReorderAnnouncement] = useState('');
@@ -1279,6 +1305,49 @@ export default function SignalViewer() {
     };
   }, [totalDurationMs, renderRangeDirect, commitLiveViewport]);
 
+  // ── Hovered-region hit-test (shared by pointer + keyboard) ───
+
+  /**
+   * Find the device event and detection episode whose [start, end] span (in
+   * session-relative ms) contains `timeMs`. Thin wrapper that binds the
+   * component's data to the pure {@link findHoveredRegionPure} hit-test so the
+   * pointer hover path and the keyboard cursor announcement report the same
+   * region.
+   */
+  const findHoveredRegion = useCallback(
+    (timeMs: number): HoveredRegion =>
+      findHoveredRegionPure(timeMs, events, detectionEpisodesRaw, sessionStartMs, showDetections),
+    [events, sessionStartMs, showDetections, detectionEpisodesRaw],
+  );
+
+  /**
+   * Convert a pointer X (canvas-relative px) to a session-relative time using
+   * the same x↔time mapping the keyboard cursor (`announceAtTime`) uses, then
+   * hit-test it and commit to state only when the hovered identity changes.
+   */
+  const updateHoveredRegion = useCallback(
+    (x: number, plotWidth: number) => {
+      const vp = lastViewportRef.current;
+      if (!vp || plotWidth <= 0) return;
+      const frac = (x - PADDING.left) / plotWidth;
+      if (frac < 0 || frac > 1) {
+        if (hoveredKeyRef.current !== '') {
+          hoveredKeyRef.current = '';
+          setHoveredRegion(EMPTY_HOVERED_REGION);
+        }
+        return;
+      }
+      const timeMs = vp.startTime + frac * (vp.endTime - vp.startTime);
+      const region = findHoveredRegion(timeMs);
+      const key = hoveredRegionKey(region);
+      if (key !== hoveredKeyRef.current) {
+        hoveredKeyRef.current = key;
+        setHoveredRegion(region);
+      }
+    },
+    [findHoveredRegion],
+  );
+
   // ── Pan + crosshair handlers ─────────────────────────────────
 
   const handlePointerDown = useCallback(
@@ -1298,6 +1367,13 @@ export default function SignalViewer() {
 
       const x = e.clientX - rect.left;
       crosshairXRef.current = x;
+
+      // Non-obstructive hovered-region readout: hit-test the cursor time against
+      // device events / detection episodes and surface the match in the sticky
+      // legend bar. State only changes on region enter/exit/cross (guarded by
+      // hoveredKeyRef), so this stays a no-op while the cursor sits in one region
+      // and never adds a per-pixel re-render to the direct crosshair path.
+      updateHoveredRegion(x, rect.width - PADDING.left - PADDING.right);
 
       if (isPanning && panStartRef.current) {
         // PAN HOT PATH: re-slice and paint the new window directly each move,
@@ -1338,7 +1414,7 @@ export default function SignalViewer() {
         });
       }
     },
-    [isPanning, totalDurationMs, renderRangeDirect],
+    [isPanning, totalDurationMs, renderRangeDirect, updateHoveredRegion],
   );
 
   const handlePointerUp = useCallback(() => {
@@ -1349,6 +1425,12 @@ export default function SignalViewer() {
 
   const handlePointerLeave = useCallback(() => {
     crosshairXRef.current = null;
+    // Clear the hovered-region readout (only if it isn't already empty) and reset
+    // the identity ref so the next hover re-enters cleanly.
+    if (hoveredKeyRef.current !== '') {
+      hoveredKeyRef.current = '';
+      setHoveredRegion(EMPTY_HOVERED_REGION);
+    }
     // If a pan was in flight (pointer left the wrapper / capture lost), commit
     // its settled viewport before clearing so the displayed window persists.
     if (isPanning) {
@@ -1389,10 +1471,29 @@ export default function SignalViewer() {
         if (v.label !== undefined) return `${v.channel} ${v.label}`;
         return `${v.channel} ${v.value.toFixed(1)} ${v.unit}`.trim();
       });
+      // Keyboard counterpart of the pointer hover readout: append a spoken-
+      // friendly clause for any device event / detection episode at the cursor
+      // time, via the SAME polite live region (no new live region added).
+      const region = findHoveredRegion(timeMs);
+      const regionParts: string[] = [];
+      if (region.event) {
+        regionParts.push(
+          `in ${formatEventType(region.event.type)} event, ${formatDuration(
+            region.event.duration,
+          )}`,
+        );
+      }
+      if (region.episode) {
+        const short = region.episode.type === 'CheyneStokes' ? 'CSR' : 'PB';
+        const pct = Math.round(region.episode.confidence * 100);
+        regionParts.push(`in ${short} candidate, ${pct}% confidence`);
+      }
+
       const elapsedSec = Math.round(timeMs / 1000);
-      setCursorReadout(`At ${elapsedSec}s: ${parts.join('; ') || 'no data'}`);
+      const lead = `At ${elapsedSec}s: ${parts.join('; ') || 'no data'}`;
+      setCursorReadout(regionParts.length > 0 ? `${lead} — ${regionParts.join('; ')}` : lead);
     },
-    [canvasSize.width],
+    [canvasSize.width, findHoveredRegion],
   );
 
   const handleCanvasKeyDown = useCallback(
@@ -1484,6 +1585,48 @@ export default function SignalViewer() {
     return Array.from(typeSet).sort();
   }, [events]);
 
+  // ── Hovered-region readout content (legend bar) ──────────────
+
+  /**
+   * Display model for the legend-bar hovered-region readout: a decorative colour
+   * swatch (event colour when present), the line text, and a longer un-truncated
+   * `title` for the hover tooltip. When nothing is hovered all are empty and the
+   * element holds its row position (reserved height) to avoid layout shift.
+   *
+   * When both an event and a detection are present, the event's optional metric
+   * and the detection's cycle/duration tail are both omitted so the combined
+   * line fits.
+   */
+  const hoverReadout = useMemo(() => {
+    const { event, episode } = hoveredRegion;
+    if (!event && !episode) {
+      return { swatch: null as string | null, text: '', title: '' };
+    }
+
+    const both = Boolean(event && episode);
+    const segments: string[] = [];
+    const fullSegments: string[] = [];
+    if (event) {
+      // In the combined case the event's optional metric is omitted so the line fits.
+      segments.push(`▮ ${eventReadoutText(event, sessionStartMs, !both)}`);
+      fullSegments.push(`▮ ${eventReadoutText(event, sessionStartMs, true)}`);
+    }
+    if (episode) {
+      // In the combined case the detection's cycle/duration tail is omitted so the line fits.
+      segments.push(`◷ ${detectionReadoutText(episode, !both)}`);
+      fullSegments.push(`◷ ${detectionReadoutText(episode, true)}`);
+    }
+
+    const swatch = event
+      ? resolveColor(containerRef.current, EVENT_COLORS[event.type] ?? 'var(--color-chart-7)')
+      : resolveColor(containerRef.current, 'var(--color-detection)');
+    return {
+      swatch,
+      text: segments.join(' · '),
+      title: fullSegments.join(' · '),
+    };
+  }, [hoveredRegion, sessionStartMs]);
+
   // ── Lane layout for HTML header overlay positioning ──────────
 
   const laneLayout = useMemo(
@@ -1507,7 +1650,8 @@ export default function SignalViewer() {
     );
     const idx = flowIdx >= 0 ? flowIdx : 0;
     const entry = laneLayout[idx];
-    return entry ? entry.top + 2 : PADDING.top + 2;
+    const base = entry ? entry.top : PADDING.top;
+    return base + DETECTION_CHIP_BAND_OFFSET;
   }, [renderLanes, laneLayout]);
 
   // ── Global keyboard shortcut: 'L' opens the lanes drawer ─────
@@ -1717,6 +1861,21 @@ export default function SignalViewer() {
             Detection unavailable
           </span>
         )}
+        {/* Non-obstructive hovered-region readout. Always rendered (reserves its
+            row height) to avoid layout shift; aria-hidden so mouse hover never
+            announces — the keyboard path speaks via the polite cursor live region
+            instead. Yields/ellipsis before forcing the legend to wrap. */}
+        <div className={styles.hoverReadout} aria-hidden="true" title={hoverReadout.title}>
+          {hoverReadout.text ? (
+            <>
+              <span
+                className={styles.hoverReadoutSwatch}
+                style={hoverReadout.swatch ? { backgroundColor: hoverReadout.swatch } : undefined}
+              />
+              <span className={styles.hoverReadoutText}>{hoverReadout.text}</span>
+            </>
+          ) : null}
+        </div>
       </div>
 
       {/* ── Canvas + lane-header overlay ──────────────────────── */}

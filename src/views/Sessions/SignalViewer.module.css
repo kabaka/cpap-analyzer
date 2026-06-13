@@ -131,6 +131,51 @@
   opacity: 0.5;
 }
 
+/* ── Hovered-region readout (non-obstructive, in the legend bar) ── */
+
+/* Surfaces what the pointer (or keyboard cursor) is over — a device event
+   and/or a detection episode — as muted text in the sticky legend bar, never
+   over the chart. Always rendered (reserves a one-line height) so entering /
+   leaving a region causes no layout shift. Pushed to the trailing edge and
+   allowed to shrink + ellipsis BEFORE it forces the legend to wrap; if it does
+   wrap to its own line that is acceptable. aria-hidden in the JSX — it is
+   decorative-for-AT (the keyboard path speaks via the cursor live region). */
+.hoverReadout {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  padding: var(--space-1) var(--space-2);
+  /* Single line: yield/shrink before forcing the legend to wrap (the inner text
+     span carries the ellipsis truncation). */
+  white-space: nowrap;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 42ch;
+  /* Reserve a one-line height so the empty state holds its row position. */
+  min-height: 1.4em;
+}
+
+.hoverReadoutSwatch {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  /* Decorative cue only — the glyph + literal type words carry the meaning, so
+     colour is never the sole signal. Empty when nothing is hovered. */
+  opacity: 0.7;
+}
+
+.hoverReadoutText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── No-data hint bar (non-error affordance) ──────────────────── */
 
 .hintBar {
