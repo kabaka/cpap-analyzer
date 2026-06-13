@@ -47,7 +47,7 @@ import { lttbImpl } from '@/services/workers/downsample.worker';
 import { useAppStore } from '@/stores/useAppStore';
 import type { Event as TherapyEvent } from '@/types';
 
-import { evaluateDeepLink } from './deepLinkGuard';
+import { evaluateDeepLink, formatOffsetLabel } from './deepLinkGuard';
 import {
   applyOrder,
   lanePrefsKey,
@@ -316,6 +316,18 @@ export default function SignalViewer() {
     return Number.isFinite(n) ? n : null;
   }, [searchParams]);
 
+  /**
+   * Optional deep-link event END: `?te=<epochMs>`. When present the viewport is
+   * framed so the whole event fills ~90 % of the view (vs. a fixed ±60 s window
+   * on the start). Parsed once; `null` when absent/invalid.
+   */
+  const deepLinkEndMs = useMemo(() => {
+    const raw = searchParams.get('te');
+    if (raw === null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, [searchParams]);
+
   // ── Session + event data from IndexedDB ──────────────────────
   const { session, loading: sessionLoading, error: sessionError } = useSessionDetail(sessionId);
   const { events, loading: eventsLoading, error: eventsError } = useEventData(sessionId);
@@ -337,6 +349,25 @@ export default function SignalViewer() {
   /** Last-rendered viewport and options — used by pointer handler for direct renders. */
   const lastViewportRef = useRef<ViewportState | null>(null);
   const lastOptionsRef = useRef<RenderOptions | null>(null);
+
+  /**
+   * Live viewport during a direct-render interaction (drag-pan / wheel-zoom).
+   * These hot paths re-slice + paint without a React state round-trip; the
+   * settled value is committed to `viewport` state once at the end (pan) or on a
+   * trailing debounce (wheel). `null` when no such interaction is in flight.
+   */
+  const liveViewportRef = useRef<ViewportRange | null>(null);
+
+  /** rAF handle coalescing wheel-zoom paints to one per frame. */
+  const wheelRafRef = useRef<number | null>(null);
+  /** Trailing-debounce handle that commits the settled wheel viewport to state. */
+  const wheelCommitTimerRef = useRef<number | null>(null);
+
+  /**
+   * Mirror of the committed `viewport` state, readable synchronously from the
+   * native wheel listener (which closes over a stale `viewport` otherwise).
+   */
+  const viewportRef = useRef<ViewportRange>({ startTime: 0, endTime: 0 });
 
   // ── State ────────────────────────────────────────────────────
   const [manifest, setManifest] = useState<SignalManifest | null>(null);
@@ -367,6 +398,16 @@ export default function SignalViewer() {
 
   /** Drawer open state. */
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  /**
+   * Live DOM refs to each lane's drag-grip, keyed by lane id. Used to redirect
+   * keyboard focus to a sibling grip after a keyboard-initiated lane hide, so
+   * focus is never lost to `document.body` when its host header unmounts.
+   */
+  const laneGripRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+
+  /** Ref to the toolbar "Lanes" button — the focus fallback when no lane remains. */
+  const lanesButtonRef = useRef<HTMLButtonElement | null>(null);
 
   /** Keyboard data-cursor time (session-relative ms), or null when inactive. */
   const cursorTimeRef = useRef<number | null>(null);
@@ -449,6 +490,7 @@ export default function SignalViewer() {
   useEffect(() => {
     const decision = evaluateDeepLink({
       deepLinkTargetMs,
+      deepLinkEndMs,
       fullDataReady,
       totalDurationMs,
       session,
@@ -457,12 +499,12 @@ export default function SignalViewer() {
     });
     if (decision.kind === 'apply') {
       setViewport({ startTime: decision.start, endTime: decision.end });
-      setDeepLinkStatus('');
+      setDeepLinkStatus(decision.announcement);
       appliedDeepLinkRef.current = deepLinkTargetMs;
     } else if (decision.kind === 'out-of-range') {
       setDeepLinkStatus(decision.message);
     }
-  }, [deepLinkTargetMs, fullDataReady, totalDurationMs, sessionStartMs, session]);
+  }, [deepLinkTargetMs, deepLinkEndMs, fullDataReady, totalDurationMs, sessionStartMs, session]);
 
   /**
    * Resolved theme name — used as a memo key so theme-resolved colours/heights
@@ -735,6 +777,7 @@ export default function SignalViewer() {
       laneName: string,
       targetPoints: number,
       container: HTMLElement | null,
+      range: ViewportRange,
     ): SignalChannel | null => {
       const fcd = fullDataRef.current.get(laneName);
       if (!fcd || fcd.data.length === 0 || !manifest) return null;
@@ -743,14 +786,14 @@ export default function SignalViewer() {
 
       const fullData = fcd.data;
       const totalSamples = fullData.length;
-      const startFrac = viewport.startTime / totalDurationMs;
-      const endFrac = viewport.endTime / totalDurationMs;
+      const startFrac = range.startTime / totalDurationMs;
+      const endFrac = range.endTime / totalDurationMs;
       const startSample = Math.floor(startFrac * totalSamples);
       const endSample = Math.min(Math.ceil(endFrac * totalSamples), totalSamples);
       const slice = fullData.subarray(startSample, endSample);
       const displayData = slice.length > targetPoints ? lttbImpl(slice, targetPoints) : slice;
 
-      const viewDurationMs = viewport.endTime - viewport.startTime;
+      const viewDurationMs = range.endTime - range.startTime;
       const effectiveSampleRate =
         viewDurationMs > 0 ? (displayData.length / viewDurationMs) * 1000 : desc.sampleRate;
 
@@ -767,7 +810,7 @@ export default function SignalViewer() {
         render: 'line',
       };
     },
-    [manifest, viewport, totalDurationMs],
+    [manifest, totalDurationMs],
   );
 
   // ── Memoized base wearable channels (viewport-independent) ───
@@ -838,47 +881,65 @@ export default function SignalViewer() {
 
   // ── Build the full ordered channel list + render ─────────────
 
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !fullDataReady || !manifest) return;
-    if (viewport.endTime <= viewport.startTime || totalDurationMs <= 0) return;
+  /**
+   * Ribbon bands (e.g. hypnogram) keyed by channel name, derived once from the
+   * viewport-independent wearable base channels. Passing the full set is safe —
+   * the renderer only consults bands for channels actually present in a frame.
+   */
+  const wearableRibbonBands = useMemo(() => {
+    const bands: Record<string, readonly RibbonBand[]> = {};
+    for (const entry of baseWearableChannels.values()) {
+      if (entry.ribbonBands) bands[entry.channel.name] = entry.ribbonBands;
+    }
+    return bands;
+  }, [baseWearableChannels]);
 
-    const container = containerRef.current;
-    const targetPoints = Math.max(100, Math.round(canvasSize.width * DOWNSAMPLE_MULTIPLIER));
+  /**
+   * Assemble the renderer's {@link ViewportState} (CPAP channels re-sliced &
+   * downsampled to `range`, plus the viewport-independent wearable/sleep lanes)
+   * for an ARBITRARY time `range`. Extracted from the render effect so the
+   * pan/zoom hot paths can re-slice and render a new viewport DIRECTLY (without a
+   * React state round-trip) while still producing identical output.
+   */
+  const buildViewportState = useCallback(
+    (range: ViewportRange): ViewportState | null => {
+      if (!manifest) return null;
+      const container = containerRef.current;
+      const targetPoints = Math.max(100, Math.round(canvasSize.width * DOWNSAMPLE_MULTIPLIER));
 
-    const channels: SignalChannel[] = [];
-    const ribbonBands: Record<string, readonly RibbonBand[]> = {};
+      const channels: SignalChannel[] = [];
+      for (const { lane, height } of renderLanes) {
+        let channel: SignalChannel | null = null;
 
-    for (const { lane, height } of renderLanes) {
-      let channel: SignalChannel | null = null;
-
-      if (lane.group === 'cpap') {
-        channel = buildCpapChannel(lane.name, targetPoints, container);
-      } else {
-        // Wearable / sleep lane — look up the memoized, viewport-independent base.
-        const base = baseWearableChannels.get(lane.id);
-        if (base) {
-          channel = { ...base.channel, height };
-          if (base.ribbonBands) {
-            ribbonBands[base.channel.name] = base.ribbonBands;
+        if (lane.group === 'cpap') {
+          channel = buildCpapChannel(lane.name, targetPoints, container, range);
+        } else {
+          // Wearable / sleep lane — look up the memoized, viewport-independent base.
+          const base = baseWearableChannels.get(lane.id);
+          if (base) {
+            channels.push({ ...base.channel, height });
+            continue;
           }
-          channels.push(channel);
-          continue;
         }
+
+        if (!channel) continue;
+        // Apply the resolved (possibly collapsed) lane height. `height` already
+        // encodes the collapsed state (resolved in `laneHeights`).
+        channels.push({ ...channel, height });
       }
 
-      if (!channel) continue;
-      // Apply the resolved (possibly collapsed) lane height. `height` already
-      // encodes the collapsed state (resolved in `laneHeights`).
-      channels.push({ ...channel, height });
-    }
+      return { startTime: range.startTime, endTime: range.endTime, channels };
+    },
+    [manifest, canvasSize.width, renderLanes, buildCpapChannel, baseWearableChannels],
+  );
 
-    const viewportState: ViewportState = {
-      startTime: viewport.startTime,
-      endTime: viewport.endTime,
-      channels,
-    };
-
+  /**
+   * Build the {@link RenderOptions} (event markers, detection overlays, grid,
+   * padding). `crosshairX` is read live from the ref so direct crosshair renders
+   * and the effect agree. Shared between the effect and the pan/zoom hot paths.
+   */
+  const buildRenderOptions = useCallback((): RenderOptions => {
+    const container = containerRef.current;
     const eventMarkers = buildEventMarkers(events, sessionStartMs, container);
     const detectionMarkers: DetectionEpisode[] | undefined =
       showDetections && detectionEpisodesRaw && detectionEpisodesRaw.length > 0
@@ -890,34 +951,76 @@ export default function SignalViewer() {
           }))
         : undefined;
     const currentCrosshairX = crosshairXRef.current;
-    const options: RenderOptions = {
+    return {
       showCrosshair: currentCrosshairX !== null,
       crosshairX: currentCrosshairX,
       showGrid: true,
       eventMarkers,
       ...(detectionMarkers ? { detectionEpisodes: detectionMarkers } : {}),
-      ribbonBands,
+      ribbonBands: wearableRibbonBands,
       channelHeight: CHANNEL_HEIGHT,
       padding: PADDING,
     };
+  }, [events, sessionStartMs, showDetections, detectionEpisodesRaw, wearableRibbonBands]);
+
+  /**
+   * Render an arbitrary viewport `range` DIRECTLY to the canvas, bypassing React
+   * state. Re-slices CPAP channels for the range and keeps `lastViewportRef` /
+   * `lastOptionsRef` coherent so an immediately-following crosshair render uses
+   * the live viewport. Used by the pan and wheel-zoom hot paths to avoid a full
+   * component re-render per event. Returns the rendered state (or `null`).
+   */
+  const renderRangeDirect = useCallback(
+    (range: ViewportRange): ViewportState | null => {
+      const renderer = rendererRef.current;
+      if (!renderer) return null;
+      const viewportState = buildViewportState(range);
+      if (!viewportState) return null;
+      const options = buildRenderOptions();
+      lastViewportRef.current = viewportState;
+      lastOptionsRef.current = options;
+      renderer.render(viewportState, options);
+      return viewportState;
+    },
+    [buildViewportState, buildRenderOptions],
+  );
+
+  /** Commit a settled live (pan/wheel) viewport to React state, then clear it. */
+  const commitLiveViewport = useCallback(() => {
+    const live = liveViewportRef.current;
+    liveViewportRef.current = null;
+    if (!live) return;
+    // Only commit when it actually differs, to avoid a redundant render.
+    setViewport((prev) =>
+      prev.startTime === live.startTime && prev.endTime === live.endTime ? prev : { ...live },
+    );
+  }, []);
+
+  // Keep the synchronous viewport mirror current. When committed state diverges
+  // from the live ref (e.g. a zoom preset or deep-link set state directly, not
+  // via a pan/wheel commit), drop the stale live ref so the next gesture seeds
+  // from the authoritative state rather than an abandoned interaction window.
+  useEffect(() => {
+    viewportRef.current = viewport;
+    const live = liveViewportRef.current;
+    if (live && (live.startTime !== viewport.startTime || live.endTime !== viewport.endTime)) {
+      liveViewportRef.current = null;
+    }
+  }, [viewport]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !fullDataReady || !manifest) return;
+    if (viewport.endTime <= viewport.startTime || totalDurationMs <= 0) return;
+
+    const viewportState = buildViewportState(viewport);
+    if (!viewportState) return;
+    const options = buildRenderOptions();
 
     lastViewportRef.current = viewportState;
     lastOptionsRef.current = options;
     renderer.render(viewportState, options);
-  }, [
-    fullDataReady,
-    manifest,
-    viewport,
-    totalDurationMs,
-    events,
-    sessionStartMs,
-    canvasSize,
-    renderLanes,
-    buildCpapChannel,
-    baseWearableChannels,
-    detectionEpisodesRaw,
-    showDetections,
-  ]);
+  }, [fullDataReady, manifest, viewport, totalDurationMs, buildViewportState, buildRenderOptions]);
 
   // ── Lane mutations ───────────────────────────────────────────
 
@@ -928,6 +1031,48 @@ export default function SignalViewer() {
   const toggleCollapse = useCallback((laneId: string) => {
     setLanePrefs((prev) => ({ ...prev, collapsed: toggleId(prev.collapsed, laneId) }));
   }, []);
+
+  /**
+   * Hide a lane from its in-header ✕ control. When the action was initiated by
+   * the keyboard (`viaKeyboard`), the just-hidden header unmounts and would drop
+   * focus to `document.body`; we redirect it to the next remaining lane's grip
+   * (or the previous one if this was the last lane, or the toolbar Lanes button
+   * if none remain) and announce the change on the existing lane live region.
+   */
+  const hideLane = useCallback(
+    (laneId: string, viaKeyboard: boolean) => {
+      const laneName = laneById.get(laneId)?.name ?? 'Lane';
+      // Snapshot the visible order BEFORE the hide so we can pick a focus target.
+      const remaining = visibleLaneIds.filter((id) => id !== laneId);
+      const hiddenIdx = visibleLaneIds.indexOf(laneId);
+
+      toggleLane(laneId);
+
+      // Announce on the shared lane live region (mirrors reorder announcements).
+      setLaneReorderAnnouncement(
+        `${laneName} hidden. ${remaining.length} lane${remaining.length === 1 ? '' : 's'} shown.`,
+      );
+
+      if (!viaKeyboard) return;
+
+      // The next lane occupies the hidden lane's old index; if it was last, fall
+      // back to the previous lane; if none remain, the toolbar Lanes button.
+      const focusTargetId =
+        remaining[hiddenIdx] ?? remaining[hiddenIdx - 1] ?? remaining[remaining.length - 1] ?? null;
+
+      // Defer until after React has unmounted the hidden header and rendered the
+      // new visible set, so the target grip exists in the DOM.
+      requestAnimationFrame(() => {
+        const grip = focusTargetId ? laneGripRefs.current.get(focusTargetId) : null;
+        if (grip) {
+          grip.focus();
+        } else {
+          lanesButtonRef.current?.focus();
+        }
+      });
+    },
+    [laneById, visibleLaneIds, toggleLane],
+  );
 
   const toggleDetections = useCallback(() => {
     setLanePrefs((prev) => ({
@@ -1034,6 +1179,9 @@ export default function SignalViewer() {
 
   // ── Zoom handler (native wheel listener for passive: false) ───
 
+  /** Trailing-debounce delay (ms) before a wheel-zoom commits to React state. */
+  const WHEEL_COMMIT_DELAY_MS = 120;
+
   useEffect(() => {
     const wrapper = canvasWrapperRef.current;
     if (!wrapper) return;
@@ -1053,31 +1201,83 @@ export default function SignalViewer() {
 
       const cursorFrac = Math.max(0, Math.min(1, (cursorX - plotLeft) / plotWidth));
 
-      setViewport((prev) => {
-        const cursorTimeMs = prev.startTime + cursorFrac * (prev.endTime - prev.startTime);
-        const zoomIn = e.deltaY < 0;
-        const factor = zoomIn ? 1 / ZOOM_FACTOR : ZOOM_FACTOR;
-        const currentDuration = prev.endTime - prev.startTime;
-        let newDuration = currentDuration * factor;
-        newDuration = Math.max(MIN_VIEWPORT_MS, Math.min(totalDurationMs, newDuration));
+      // WHEEL HOT PATH: accumulate against the live viewport (seeded from the
+      // last-rendered viewport so successive notches compound without a React
+      // round-trip), paint directly via a single coalescing rAF, and commit the
+      // settled viewport to state once on a trailing debounce. This keeps cursor-
+      // anchored zoom and all clamps identical to the previous per-event version
+      // while avoiding a full component re-render on every wheel notch.
+      const prev =
+        liveViewportRef.current ??
+        (lastViewportRef.current
+          ? {
+              startTime: lastViewportRef.current.startTime,
+              endTime: lastViewportRef.current.endTime,
+            }
+          : { startTime: viewportRef.current.startTime, endTime: viewportRef.current.endTime });
 
-        let newStart = cursorTimeMs - cursorFrac * newDuration;
-        let newEnd = newStart + newDuration;
-        if (newStart < 0) {
-          newStart = 0;
-          newEnd = newDuration;
+      const cursorTimeMs = prev.startTime + cursorFrac * (prev.endTime - prev.startTime);
+      const zoomIn = e.deltaY < 0;
+      const factor = zoomIn ? 1 / ZOOM_FACTOR : ZOOM_FACTOR;
+      const currentDuration = prev.endTime - prev.startTime;
+      let newDuration = currentDuration * factor;
+      newDuration = Math.max(MIN_VIEWPORT_MS, Math.min(totalDurationMs, newDuration));
+
+      let newStart = cursorTimeMs - cursorFrac * newDuration;
+      let newEnd = newStart + newDuration;
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = newDuration;
+      }
+      if (newEnd > totalDurationMs) {
+        newEnd = totalDurationMs;
+        newStart = Math.max(0, newEnd - newDuration);
+      }
+      const range = { startTime: newStart, endTime: newEnd };
+      liveViewportRef.current = range;
+
+      // Coalesce paints to one per frame.
+      if (wheelRafRef.current === null) {
+        wheelRafRef.current = window.requestAnimationFrame(() => {
+          wheelRafRef.current = null;
+          if (liveViewportRef.current) renderRangeDirect(liveViewportRef.current);
+        });
+      }
+
+      // (Re)arm the trailing commit so the settled viewport reaches React state
+      // exactly once after the gesture stops — matching what was last painted.
+      if (wheelCommitTimerRef.current !== null) {
+        window.clearTimeout(wheelCommitTimerRef.current);
+      }
+      wheelCommitTimerRef.current = window.setTimeout(() => {
+        wheelCommitTimerRef.current = null;
+        if (wheelRafRef.current !== null) {
+          window.cancelAnimationFrame(wheelRafRef.current);
+          wheelRafRef.current = null;
         }
-        if (newEnd > totalDurationMs) {
-          newEnd = totalDurationMs;
-          newStart = Math.max(0, newEnd - newDuration);
-        }
-        return { startTime: newStart, endTime: newEnd };
-      });
+        // Paint the final viewport once more so committed state == last frame.
+        if (liveViewportRef.current) renderRangeDirect(liveViewportRef.current);
+        commitLiveViewport();
+      }, WHEEL_COMMIT_DELAY_MS);
     };
 
     wrapper.addEventListener('wheel', onWheel, { passive: false });
-    return () => wrapper.removeEventListener('wheel', onWheel);
-  }, [totalDurationMs]);
+    return () => {
+      wrapper.removeEventListener('wheel', onWheel);
+      if (wheelRafRef.current !== null) {
+        window.cancelAnimationFrame(wheelRafRef.current);
+        wheelRafRef.current = null;
+      }
+      if (wheelCommitTimerRef.current !== null) {
+        window.clearTimeout(wheelCommitTimerRef.current);
+        wheelCommitTimerRef.current = null;
+        // A wheel gesture had settled but its trailing commit hadn't fired yet.
+        // Flush it now so a re-subscribe (deps change) doesn't drop the settled
+        // viewport and let the render effect snap back to stale state.
+        commitLiveViewport();
+      }
+    };
+  }, [totalDurationMs, renderRangeDirect, commitLiveViewport]);
 
   // ── Pan + crosshair handlers ─────────────────────────────────
 
@@ -1099,16 +1299,12 @@ export default function SignalViewer() {
       const x = e.clientX - rect.left;
       crosshairXRef.current = x;
 
-      const renderer = rendererRef.current;
-      if (renderer && lastViewportRef.current && lastOptionsRef.current) {
-        renderer.render(lastViewportRef.current, {
-          ...lastOptionsRef.current,
-          showCrosshair: true,
-          crosshairX: x,
-        });
-      }
-
       if (isPanning && panStartRef.current) {
+        // PAN HOT PATH: re-slice and paint the new window directly each move,
+        // tracking the live viewport in a ref. We deliberately do NOT call
+        // setViewport here — that would re-render this 1700-line component (and
+        // reposition every lane-header overlay) on every pointermove. The final
+        // window is committed to React state once in handlePointerUp/Leave.
         const dx = e.clientX - panStartRef.current.x;
         const plotWidth = rect.width - PADDING.left - PADDING.right;
         if (plotWidth <= 0) return;
@@ -1125,19 +1321,41 @@ export default function SignalViewer() {
           newEnd = totalDurationMs;
           newStart = Math.max(0, newEnd - vpDuration);
         }
-        setViewport({ startTime: newStart, endTime: newEnd });
+        const range = { startTime: newStart, endTime: newEnd };
+        liveViewportRef.current = range;
+        // crosshairXRef is already set above; renderRangeDirect picks it up.
+        renderRangeDirect(range);
+        return;
+      }
+
+      // Not panning: cheap crosshair-only direct render on the last viewport.
+      const renderer = rendererRef.current;
+      if (renderer && lastViewportRef.current && lastOptionsRef.current) {
+        renderer.render(lastViewportRef.current, {
+          ...lastOptionsRef.current,
+          showCrosshair: true,
+          crosshairX: x,
+        });
       }
     },
-    [isPanning, totalDurationMs],
+    [isPanning, totalDurationMs, renderRangeDirect],
   );
 
   const handlePointerUp = useCallback(() => {
     setIsPanning(false);
     panStartRef.current = null;
-  }, []);
+    commitLiveViewport();
+  }, [commitLiveViewport]);
 
   const handlePointerLeave = useCallback(() => {
     crosshairXRef.current = null;
+    // If a pan was in flight (pointer left the wrapper / capture lost), commit
+    // its settled viewport before clearing so the displayed window persists.
+    if (isPanning) {
+      commitLiveViewport();
+      setIsPanning(false);
+      panStartRef.current = null;
+    }
     const renderer = rendererRef.current;
     if (renderer && lastViewportRef.current && lastOptionsRef.current) {
       renderer.render(lastViewportRef.current, {
@@ -1146,11 +1364,7 @@ export default function SignalViewer() {
         crosshairX: null,
       });
     }
-    if (isPanning) {
-      setIsPanning(false);
-      panStartRef.current = null;
-    }
-  }, [isPanning]);
+  }, [isPanning, commitLiveViewport]);
 
   // ── Keyboard data cursor (arrow keys move crosshair) ─────────
 
@@ -1258,12 +1472,9 @@ export default function SignalViewer() {
   const viewportLabel = useMemo(() => {
     const durMs = viewport.endTime - viewport.startTime;
     if (durMs <= 0) return '';
-    const totalSec = Math.round(durMs / 1000);
-    if (totalSec < 60) return `${totalSec}s`;
-    if (totalSec < 3600) return `${Math.round(totalSec / 60)}m`;
-    const h = Math.floor(totalSec / 3600);
-    const m = Math.round((totalSec % 3600) / 60);
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    // Shared with the deep-link announcement so the on-screen "Showing …" label
+    // and the framed-event aria-live copy use identical formatting.
+    return formatOffsetLabel(durMs);
   }, [viewport]);
 
   // ── Event types present in this session (for legend) ─────────
@@ -1411,6 +1622,7 @@ export default function SignalViewer() {
 
         <div className={styles.toolbarRight}>
           <Button
+            ref={lanesButtonRef}
             variant="secondary"
             size="sm"
             onClick={() => setDrawerOpen(true)}
@@ -1465,38 +1677,8 @@ export default function SignalViewer() {
 
       {/* ── Legend bar (quick toggles, grouped) ───────────────── */}
       <div className={styles.legendBar}>
-        <span className={styles.legendGroupHeading}>SIGNALS</span>
-        <div className={styles.channelLegend}>
-          {orderedLaneIds
-            .map((id) => laneById.get(id))
-            .filter((l): l is LaneDescriptor => !!l && l.hasData)
-            .map((lane) => (
-              <button
-                key={lane.id}
-                className={`${styles.legendItem} ${hiddenSet.has(lane.id) ? styles.legendItemHidden : ''}`}
-                onClick={() => toggleLane(lane.id)}
-                aria-pressed={!hiddenSet.has(lane.id)}
-                title={`Toggle ${lane.name} visibility`}
-                type="button"
-              >
-                <span
-                  className={styles.legendSwatch}
-                  ref={(el) => {
-                    if (el)
-                      el.style.backgroundColor = resolveColor(containerRef.current, lane.colorVar);
-                  }}
-                />
-                {lane.name}
-                {lane.unit ? ` (${lane.unit})` : ''}
-                <span className={styles.lanePill} data-kind={lane.pill}>
-                  {lane.pill}
-                </span>
-              </button>
-            ))}
-        </div>
         {eventTypesInSession.length > 0 && (
           <>
-            <span className={styles.legendSeparator}>|</span>
             <span className={styles.legendGroupHeading}>DEVICE EVENTS</span>
             {eventTypesInSession.map((type) => (
               <span key={type} className={styles.eventLegendItem}>
@@ -1514,7 +1696,7 @@ export default function SignalViewer() {
             ))}
           </>
         )}
-        <span className={styles.legendSeparator}>|</span>
+        {eventTypesInSession.length > 0 && <span className={styles.legendSeparator}>|</span>}
         <span className={styles.legendGroupHeading}>DETECTIONS</span>
         <button
           type="button"
@@ -1572,6 +1754,9 @@ export default function SignalViewer() {
                 style={{ top: `${entry.top}px`, height: `${entry.height}px` }}
               >
                 <div
+                  ref={(el) => {
+                    laneGripRefs.current.set(r.lane.id, el);
+                  }}
                   className={styles.laneGrip}
                   role="button"
                   tabIndex={0}
@@ -1582,43 +1767,38 @@ export default function SignalViewer() {
                 >
                   ⋮⋮
                 </div>
-                <span
-                  className={styles.laneAccent}
-                  ref={(el) => {
-                    if (el)
-                      el.style.backgroundColor = resolveColor(
-                        containerRef.current,
-                        r.lane.colorVar,
-                      );
+                <button
+                  type="button"
+                  className={styles.laneHide}
+                  onClick={() => hideLane(r.lane.id, false)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                      e.preventDefault();
+                      hideLane(r.lane.id, true);
+                    }
                   }}
-                  aria-hidden="true"
-                />
-                <span className={styles.laneName}>
-                  {r.lane.name}
-                  {r.lane.unit ? <span className={styles.laneUnit}> {r.lane.unit}</span> : null}
-                </span>
-                <span className={styles.lanePill} data-kind={r.lane.pill}>
-                  {r.lane.pill}
-                </span>
-                <button
-                  type="button"
-                  className={styles.laneIconButton}
-                  onClick={() => toggleCollapse(r.lane.id)}
-                  aria-pressed={r.collapsed}
-                  aria-label={`${r.collapsed ? 'Expand' : 'Collapse'} ${r.lane.name}`}
-                  title={r.collapsed ? 'Expand lane' : 'Collapse lane'}
-                >
-                  {r.collapsed ? '▸' : '▾'}
-                </button>
-                <button
-                  type="button"
-                  className={styles.laneIconButton}
-                  onClick={() => toggleLane(r.lane.id)}
-                  aria-label={`Hide ${r.lane.name}`}
+                  aria-label={`Hide ${r.lane.name} lane`}
                   title="Hide lane"
                 >
                   ✕
                 </button>
+                <button
+                  type="button"
+                  className={styles.laneName}
+                  onClick={() => toggleCollapse(r.lane.id)}
+                  aria-expanded={!r.collapsed}
+                  aria-label={`${r.collapsed ? 'Expand' : 'Collapse'} ${r.lane.name} lane`}
+                  style={{ color: resolveColor(containerRef.current, r.lane.colorVar) }}
+                >
+                  <span className={styles.laneCollapseGlyph} aria-hidden="true">
+                    {r.collapsed ? '▸' : '▾'}
+                  </span>
+                  {r.lane.name}
+                  {r.lane.unit ? <span className={styles.laneUnit}>{r.lane.unit}</span> : null}
+                </button>
+                <span className={styles.lanePill} data-kind={r.lane.pill}>
+                  {r.lane.pill}
+                </span>
               </div>
             );
           })}

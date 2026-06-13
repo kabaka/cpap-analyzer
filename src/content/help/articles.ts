@@ -642,7 +642,7 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'How to read these in the app',
         paragraphs: [
           'In the per-session signal viewer, computed PB and CSR episodes are drawn as overlay bands distinct from device-asserted events: a hatched fill pattern marks computed detections, a confidence chip annotates each band, and dashed boundaries denote candidate / below-threshold episodes. Device-asserted CSR runs use the existing solid event styling. The provenance is never ambiguous — a band that originated from the device cannot be confused with one this app computed, and vice versa. (For an overlay walk-through and what the wearable-overlay context adds — including HR elevation around central events and the characteristic desaturation lag — see Intraday Health Signals & Overlays.)',
-          'A dedicated Breathing view collects the longitudinal TECSA trajectory plot (CAI per night with early/late windows shaded), the episode catalog (every detected PB/CSR run with its cycle length, modulation depth, harmonic ratio, confidence, and link back to its source session), and the threshold controls (so a parameter change can be inspected immediately). A Dashboard "Breathing Stability" insight card surfaces the headline state — quiet, isolated candidate episodes, persistent PB, or a TECSA trajectory worth discussing — without ever asserting a diagnosis. A future Trends lane will show cycle-length over time, which is the signal most directly tied to circulation time in the cardiac-output literature.',
+          'A dedicated Breathing view collects the longitudinal TECSA trajectory plot (CAI per night with early/late windows shaded), the episode catalog (every detected PB/CSR run with its cycle length, modulation depth, harmonic ratio, confidence, and a deep link that opens its source session in the Signal Viewer with the whole episode framed end to end), and the threshold controls (so a parameter change can be inspected immediately). A Dashboard "Breathing Stability" insight card surfaces the headline state — quiet, isolated candidate episodes, persistent PB, or a TECSA trajectory worth discussing — without ever asserting a diagnosis. A future Trends lane will show cycle-length over time, which is the signal most directly tied to circulation time in the cardiac-output literature.',
           'When using the Event Explorer to slice respiratory events by type, computed PB/CSR candidates carry their own filterable type tag and a hatched marker that distinguishes them from device-flagged PeriodicBreathing — so a query for "all PeriodicBreathing events" can be scoped to device-asserted, to computed candidates, or to both.',
         ],
       },
@@ -724,9 +724,22 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
       },
       {
+        heading: 'Reading a lane label',
+        paragraphs: [
+          "Each lane carries a single label that tells you, at a glance, what the lane is and where its data came from. The lane name is drawn in the lane's own line color (so the label and the trace are unmistakably the same signal), the units are shown in muted grey beside it, and a short source tag marks the provenance: CPAP for signals recorded by the CPAP machine (flow, pressure, leak), WEAR for wearable-derived signals (heart rate, wearable SpO₂, HRV, snoring), and SLEEP for the sleep-stage hypnogram. The source tag matters because a wearable lane and a CPAP lane carry different fidelity and alignment assumptions (see How alignment works, above).",
+        ],
+      },
+      {
+        heading: 'Lane controls — collapse, reorder, hide',
+        paragraphs: [
+          'Each lane has three direct controls. To collapse a lane to a compact height (or expand it again), click its name; collapsing keeps the lane in the stack but reclaims vertical space so you can keep more lanes visible at once. To reorder a lane, drag its handle (the grip to the left of the label) up or down; lanes are also reorderable from the keyboard alone. To remove a lane from the view, use the hide (✕) button that appears next to the drag handle when you hover the lane or move keyboard focus to it — hidden lanes can be brought back from the Lanes drawer.',
+          'The legend bar at the top of the viewer stays pinned in place as you scroll and shows the DEVICE EVENTS and DETECTIONS legends (the colored swatches that explain the event and candidate-pattern overlays). It does not contain a per-signal visibility toggle; signal visibility is managed entirely through the per-lane hide button and the Lanes drawer.',
+        ],
+      },
+      {
         heading: 'The Lanes drawer, presets, and keyboard cursor',
         paragraphs: [
-          'The set of visible lanes, their order, and their collapsed/expanded state are controlled from a Lanes drawer, accessible from the viewer toolbar or by pressing L. Lanes can be reordered (drag, or keyboard) and individually toggled. The state persists per session, so reopening the same night restores your last layout.',
+          'The set of visible lanes, their order, and their collapsed/expanded state are controlled from a Lanes drawer, accessible from the viewer toolbar or by pressing L. Lanes can be reordered (drag, or keyboard) and individually shown or hidden. The state persists per session, so reopening the same night restores your last layout.',
           'Presets group the lanes for common reading tasks: Respiratory focus (flow + pressure + leak + snoring), Cardio focus (flow + heart rate + HRV), Sleep architecture (flow + hypnogram + heart rate + SpO₂), and Everything (all available lanes). Picking a preset is non-destructive — you can fine-tune from there.',
           'A keyboard data cursor (arrow keys) walks through the session sample-by-sample and announces a synchronized multi-lane readout at the cursor — value, units, and time — for every visible lane. This gives screen-reader and keyboard-only users equivalent access to what the visual cursor shows on hover. Lanes are also reorderable from the keyboard alone.',
         ],
@@ -792,8 +805,8 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'The event table and Signal-Viewer deep-links',
         paragraphs: [
-          "Below the lens, a virtualized event table lists the events in the matched set (windowed for large sets, with a \"showing N of M\" note so the truncation is transparent), sortable by every column. Clicking any row deep-links into the Signal Viewer for that event's session, centered (±1 minute) on the event's timestamp. The Signal Viewer accepts a `?t=<epochMs>` parameter for this purpose; targets outside the session's recording are ignored, and the snap applies once so subsequent panning and zooming preserve your interaction.",
-          'For computed PeriodicBreathing / CSR candidates (see Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA), the deep link lands on the cyclic episode in question with the wearable overlays available alongside (see Intraday Health Signals & Overlays).',
+          'Below the lens, a virtualized event table lists the events in the matched set (windowed for large sets, with a "showing N of M" note so the truncation is transparent), sortable by every column. Clicking any row deep-links into the Signal Viewer for that event\'s session and frames the entire event: the viewer opens with the event spanning roughly 90% of the visible width and comfortable margins on either side, so a multi-minute event is shown end to end rather than running off the edge. Very short or point-in-time events are given a sensible minimum window (about 30 seconds) so there is always context around them. Targets outside the session\'s recording are ignored, and the framing is applied once — subsequent panning and zooming preserve your interaction.',
+          'This whole-event framing is the right default for sustained patterns such as periodic breathing and Cheyne-Stokes respiration, which can run for several minutes: framing the whole span keeps the crescendo–decrescendo morphology visible at once instead of pushing the back half off the right edge. For computed PeriodicBreathing / CSR candidates (see Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA), the deep link lands on the cyclic episode in question, framed in full, with the wearable overlays available alongside (see Intraday Health Signals & Overlays). For backward compatibility, an older link that encodes only a single timestamp (`?t=<epochMs>`) still opens a centered ±1-minute window on that timestamp.',
         ],
       },
       {

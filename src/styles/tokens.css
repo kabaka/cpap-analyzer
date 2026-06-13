@@ -103,7 +103,13 @@
   --signal-hero-line-width: 1.6px;
   --signal-secondary-line-width: 1px;
   --signal-sparse-dot-radius: 2.5px;
-  --signal-lane-accent-width: 3px;
+  /* Lane-label scrim: a translucent plate behind the in-canvas lane header so
+     the coloured lane name stays legible over the waveform. */
+  --signal-lane-label-bg: rgba(255, 255, 255, 0.82);
+  --signal-lane-label-bg-hover: rgba(255, 255, 255, 0.94);
+  --signal-lane-name-shadow: rgba(255, 255, 255, 0.9);
+  /* Hit-area target for the lane grip/hide controls (WCAG 2.5.8 ≥ 24×24px). */
+  --signal-lane-control-size: 24px;
 
   /* FOCUS */
   --color-focus-ring: #3b82f6;
@@ -273,6 +279,11 @@
 
   /* SIGNAL VIEWER CROSSHAIR */
   --color-crosshair: rgba(220, 220, 220, 0.5);
+
+  /* SIGNAL VIEWER LANE METRICS — dark-mode lane-label scrim */
+  --signal-lane-label-bg: rgba(10, 10, 10, 0.62);
+  --signal-lane-label-bg-hover: rgba(10, 10, 10, 0.85);
+  --signal-lane-name-shadow: rgba(0, 0, 0, 0.95);
 
   --color-focus-ring: #60a5fa;
   --color-focus-ring-offset: #0a0a0a;
