@@ -100,6 +100,11 @@
   flex-shrink: 0;
   flex-wrap: wrap;
   font-size: var(--font-size-xs);
+  /* Pinned so the legend/toggles stay reachable while the canvas scrolls. The
+     opaque elevated surface above keeps scrolled content from showing through. */
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
 }
 
 .legendSeparator {
@@ -225,20 +230,38 @@
   padding: 2px var(--space-2);
   max-width: 100%;
   pointer-events: auto;
+  border-radius: var(--radius-sm);
+  background: var(--signal-lane-label-bg);
+  backdrop-filter: blur(1px);
+  transition:
+    background-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.laneHeader:hover,
+.laneHeader:focus-within {
+  background: var(--signal-lane-label-bg-hover);
+}
+
+.laneHeader[data-collapsed='true'] {
+  background: var(--signal-lane-label-bg-hover);
 }
 
 .laneHeader[data-grabbed='true'] {
-  background: var(--color-surface-overlay);
-  border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated);
   box-shadow: var(--shadow-md);
+  outline: 1px solid var(--color-border-emphasis);
 }
 
 .laneGrip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  /* Visual box is the control size; padding extends the hit area to ≥24×24px
+     (WCAG 2.5.8) without growing the row, balanced by the negative margin. */
+  width: var(--signal-lane-control-size);
+  height: var(--signal-lane-control-size);
+  flex-shrink: 0;
   font-size: 10px;
   line-height: 1;
   color: var(--color-text-muted);
@@ -256,35 +279,16 @@
 .laneGrip[aria-pressed='true'] {
   background: var(--color-primary);
   color: var(--color-text-inverse);
+  cursor: grabbing;
 }
 
-.laneAccent {
-  display: inline-block;
-  width: var(--signal-lane-accent-width, 3px);
-  height: 14px;
-  border-radius: 2px;
-  flex-shrink: 0;
-}
-
-.laneName {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--color-text-primary);
-  white-space: nowrap;
-  text-shadow: 0 0 3px var(--color-surface-primary);
-}
-
-.laneUnit {
-  font-weight: 400;
-  color: var(--color-text-muted);
-}
-
-.laneIconButton {
+.laneHide {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: var(--signal-lane-control-size);
+  height: var(--signal-lane-control-size);
+  flex-shrink: 0;
   font-size: 11px;
   line-height: 1;
   border: none;
@@ -292,16 +296,80 @@
   color: var(--color-text-muted);
   cursor: pointer;
   border-radius: var(--radius-sm);
+  /* Gated by opacity (NOT display/conditional render) so it stays in the tab
+     order and accessibility tree even while visually hidden. */
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--transition-fast),
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
-.laneIconButton:hover {
-  background: var(--color-surface-tertiary);
-  color: var(--color-text-primary);
+.laneHeader:hover .laneHide,
+.laneHeader:focus-within .laneHide {
+  opacity: 1;
+  pointer-events: auto;
 }
 
-.laneIconButton:focus-visible {
+.laneHide:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
+}
+
+.laneHide:hover {
+  color: var(--color-status-severe);
+  background: var(--color-surface-tertiary);
+}
+
+.laneName {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  /* Colour is set inline (per-lane). Button reset below. */
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Vertical padding gives a ≥24px hit area (WCAG 2.5.8) without growing the row. */
+  padding: 4px var(--space-1);
+  margin: -4px 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  /* Dual scrim halo so the coloured name stays legible over the waveform. */
+  text-shadow:
+    0 0 2px var(--signal-lane-name-shadow),
+    0 0 4px var(--signal-lane-name-shadow);
+}
+
+.laneName:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.laneName:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.laneCollapseGlyph {
+  font-size: 9px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  text-shadow: 0 0 2px var(--signal-lane-name-shadow);
+}
+
+.laneUnit {
+  /* Re-assert muted styling so the parent button's inline lane colour and bold
+     weight do not bleed into the unit. */
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-normal);
+  font-size: var(--font-size-xs);
 }
 
 /* ── Lanes drawer ─────────────────────────────────────────────── */
@@ -405,12 +473,6 @@
 
 /* ── Channel legend ───────────────────────────────────────────── */
 
-.channelLegend {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
 .legendItem {
   display: inline-flex;
   align-items: center;
@@ -432,16 +494,14 @@
   background: var(--color-surface-tertiary);
 }
 
+.legendItem:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
 .legendItemHidden {
   opacity: 0.4;
   text-decoration: line-through;
-}
-
-.legendSwatch {
-  display: inline-block;
-  width: 10px;
-  height: 3px;
-  border-radius: 1px;
 }
 
 /* ── Loading / error / empty states ───────────────────────────── */

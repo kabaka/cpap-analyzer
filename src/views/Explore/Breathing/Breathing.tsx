@@ -415,7 +415,7 @@ function EpisodeCatalog({
                     <td>{(row.episode.durationSec / 60).toFixed(1)} min</td>
                     <td className={styles.catalogActions}>
                       <Link
-                        to={`/sessions/${row.sessionId}/signals?t=${row.episode.startMs}`}
+                        to={`/sessions/${row.sessionId}/signals?t=${row.episode.startMs}&te=${row.episode.endMs}`}
                         className={styles.openLink}
                       >
                         Open ↗
@@ -508,7 +508,7 @@ function EpisodeDetailBody({ row }: { row: CatalogEpisode }): JSX.Element {
       </dl>
       <p className={styles.detailNote}>{nadirLabel}.</p>
       <Link
-        to={`/sessions/${row.sessionId}/signals?t=${episode.startMs}`}
+        to={`/sessions/${row.sessionId}/signals?t=${episode.startMs}&te=${episode.endMs}`}
         className={styles.detailOpenLink}
       >
         Open in Signal Viewer ↗

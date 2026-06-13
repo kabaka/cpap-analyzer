@@ -126,7 +126,13 @@ export function EventTable({ events, maxRows = 5000 }: EventTableProps) {
 
   const openEvent = useCallback(
     (event: Event) => {
-      navigate(`/sessions/${event.sessionId}/signals?t=${event.timestamp}`);
+      // Device events carry `duration` in SECONDS. When it's meaningful, pass the
+      // event END (`te`) so the Signal Viewer frames the whole event rather than
+      // centering a fixed window on its start.
+      const base = `/sessions/${event.sessionId}/signals?t=${event.timestamp}`;
+      const url =
+        event.duration > 0 ? `${base}&te=${event.timestamp + event.duration * 1000}` : base;
+      navigate(url);
     },
     [navigate],
   );

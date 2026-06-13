@@ -209,8 +209,8 @@ const DETECTION_HATCH_PERIOD = 6;
 const GRID_DASH = [4, 4];
 const GRID_LINE_WIDTH = 0.5;
 
-/** Channel label styling. */
-const CHANNEL_LABEL_FONT_SIZE = 12;
+/** Axis label styling. (Channel name labels are rendered by the HTML lane
+ * header overlay, not on the canvas.) */
 const AXIS_FONT_SIZE = 10;
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -333,6 +333,16 @@ export class SignalRenderer {
   private logicalWidth = 0;
   private logicalHeight = 0;
   private cachedStyle: CSSStyleDeclaration | null = null;
+  /**
+   * Per-frame cache of resolved CSS-variable strings. The same tokens (grid,
+   * axis, surface colours) are resolved many times within a single render pass;
+   * resolving each one only once per frame removes that duplicate
+   * `getPropertyValue` work on the hot path. Cleared at the top of every
+   * `renderImmediate` so theme/size changes are always reflected on the next
+   * frame — never cached across frames. The Map instance is reused (`.clear()`
+   * does not reallocate) to avoid a per-frame allocation.
+   */
+  private readonly cssVarFrameCache = new Map<string, string>();
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -580,6 +590,11 @@ export class SignalRenderer {
 
     if (w <= 0 || h <= 0) return;
 
+    // Start a fresh per-frame CSS-var cache so resolved theme tokens are reused
+    // within this frame but never carried across frames (theme/size changes stay
+    // live on the next render). Reusing the Map avoids a per-frame allocation.
+    this.cssVarFrameCache.clear();
+
     // Clear
     ctx.fillStyle = this.resolveCSSVar('--color-surface-primary', '#ffffff');
     ctx.fillRect(0, 0, w, h);
@@ -642,8 +657,10 @@ export class SignalRenderer {
         this.drawLine(ch, viewport, plotLeft, plotWidth, stripTop, stripHeight);
       }
 
-      // Channel name label
-      this.drawChannelLabel(ch, plotLeft, stripTop);
+      // Channel name label is drawn by the HTML lane header overlay, not on the
+      // canvas. The waveform layout still reserves the top label strip (see the
+      // `innerTop` insets in the draw* methods) so the line never renders under
+      // the floating HTML label.
 
       // Y-axis labels (ribbon lanes draw their own fixed row labels).
       if (!isRibbon) {
@@ -725,22 +742,48 @@ export class SignalRenderer {
     ctx.lineJoin = 'round';
     ctx.beginPath();
 
+    // Hoist per-sample loop invariants: this is the densest loop in the renderer
+    // (one iteration per CPAP sample, 25–50 Hz), so avoiding repeated property
+    // reads and the divide-per-sample meaningfully cuts work during wheel-zoom
+    // and drag-pan. Arithmetic is identical — same x/y as before.
+    const { startTime } = viewport;
+    const xScale = plotWidth / durationMs;
+    const xMin = plotLeft - 2;
+    const xMax = plotLeft + plotWidth + 2;
+    const { physicalMin } = ch;
+
+    // For the uniform-cadence (CPAP) path, x is strictly monotonic in `s`
+    // (`x = plotLeft + s * msPerSample * xScale`), so the first on-screen sample
+    // can be solved for directly instead of iterating-and-`continue`-ing across
+    // every leading off-screen sample. When zoomed in on a long session this
+    // turns an O(total samples) skip into O(1), which is the dominant cost during
+    // wheel-zoom and drag-pan. The timestamped path keeps scanning from 0 because
+    // its samples are not guaranteed uniform. The per-sample `x < xMin` guard
+    // below is retained as a correctness safety net (a no-op for the indices we
+    // skip), so the rendered polyline is identical.
+    let startIndex = 0;
+    if (!times && msPerSample > 0) {
+      const firstVisibleMs = (xMin - plotLeft) / xScale;
+      const candidate = Math.floor(firstVisibleMs / msPerSample);
+      if (candidate > 0) startIndex = Math.min(candidate, data.length);
+    }
+
     let firstPoint = true;
-    for (let s = 0; s < data.length; s++) {
-      const tMs = times ? (times[s] ?? 0) - viewport.startTime : s * msPerSample;
-      const x = plotLeft + (tMs / durationMs) * plotWidth;
-      if (x < plotLeft - 2) {
+    for (let s = startIndex; s < data.length; s++) {
+      const tMs = times ? (times[s] ?? 0) - startTime : s * msPerSample;
+      const x = plotLeft + tMs * xScale;
+      if (x < xMin) {
         if (!times) continue;
         // For timestamped data we may still need the prior point; keep scanning.
       }
-      if (x > plotLeft + plotWidth + 2 && !times) break;
+      if (x > xMax && !times) break;
 
       const sample = data[s];
       if (sample === undefined || Number.isNaN(sample)) {
         firstPoint = true; // break the line across missing samples
         continue;
       }
-      const normY = (sample - ch.physicalMin) / physRange;
+      const normY = (sample - physicalMin) / physRange;
       const y = innerBottom - normY * innerHeight;
 
       if (firstPoint) {
@@ -1129,18 +1172,6 @@ export class SignalRenderer {
 
   // ── Axis labels ────────────────────────────────────────────────
 
-  private drawChannelLabel(ch: SignalChannel, plotLeft: number, stripTop: number): void {
-    const { ctx } = this;
-    ctx.save();
-    ctx.fillStyle = ch.color;
-    ctx.font = `bold ${CHANNEL_LABEL_FONT_SIZE}px ${this.fontFamily()}`;
-    ctx.textBaseline = 'top';
-    ctx.textAlign = 'left';
-    const label = ch.unit ? `${ch.name} (${ch.unit})` : ch.name;
-    ctx.fillText(label, plotLeft + 6, stripTop + 2);
-    ctx.restore();
-  }
-
   private drawYAxis(
     ch: SignalChannel,
     plotLeft: number,
@@ -1382,15 +1413,31 @@ export class SignalRenderer {
 
   // ── Utilities ──────────────────────────────────────────────────
 
-  /** Resolve a CSS custom property to its computed value with a fallback. */
+  /**
+   * Resolve a CSS custom property to its computed value with a fallback.
+   *
+   * The raw (trimmed) computed value is memoised in {@link cssVarFrameCache} for
+   * the duration of one render frame, so tokens resolved repeatedly within a
+   * frame (grid/axis colours) only hit `getPropertyValue` once. The fallback is
+   * applied per call from the cached raw value, so call sites that share a
+   * `varName` but pass different fallbacks never interfere. The cache is cleared
+   * at the start of each frame, so theme/size changes are reflected on the next
+   * render.
+   */
   private resolveCSSVar(varName: string, fallback: string): string {
+    const cached = this.cssVarFrameCache.get(varName);
+    if (cached !== undefined) {
+      return cached || fallback;
+    }
+    let raw = '';
     try {
       const style = this.cachedStyle ?? getComputedStyle(this.canvas);
-      const value = style.getPropertyValue(varName).trim();
-      return value || fallback;
+      raw = style.getPropertyValue(varName).trim();
     } catch {
-      return fallback;
+      raw = '';
     }
+    this.cssVarFrameCache.set(varName, raw);
+    return raw || fallback;
   }
 
   /** Resolve a CSS custom property to a number (parsing a leading `px`), with fallback. */
