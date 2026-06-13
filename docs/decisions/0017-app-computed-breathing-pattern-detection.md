@@ -19,7 +19,7 @@ detectors are conservative, fixed-threshold, and opaque: their periodic-breathin
 and CSR flags fire only above device-internal thresholds, cannot be
 re-parameterized, and surface no morphology (cycle length, modulation depth,
 crescendo-decrescendo shape). Sub-threshold periodic breathing, short CSR runs,
-and the *longitudinal* signature of **treatment-emergent central sleep apnea
+and the _longitudinal_ signature of **treatment-emergent central sleep apnea
 (TECSA / "complex sleep apnea")** are invisible. For a patient with a
 data-science, mathematics, or bioinformatics background, the raw airflow envelope
 plainly contains this structure; the app should be able to compute it.
@@ -64,7 +64,7 @@ which is exactly wrong for detectors whose thresholds we expect users to tune.
 A separate UX/visual decision has **already been made by `ui-design`** and is
 referenced (not re-derived) here: **computed detections must be rendered
 distinctly from device events, with the confidence score encoded visually.** This
-ADR's job is the *computational architecture*; the rendering contract is owned by
+ADR's job is the _computational architecture_; the rendering contract is owned by
 the design system.
 
 This decision concerns algorithm selection and the placement of clinical
@@ -82,12 +82,12 @@ UX > Features):
   is opt-in only; nothing leaves the device. This is non-negotiable and is
   satisfied trivially by keeping detectors in the existing worker pipeline.
 - **Correctness (the dominant driver here).** This feature manufactures clinical
-  signal that the device chose *not* to assert. It must be defensible: literature-backed
+  signal that the device chose _not_ to assert. It must be defensible: literature-backed
   methods, literature-backed default thresholds, an explicit confidence score, and
   framing as **candidate flags, never diagnoses**. CSR carries a heart-failure
   association and TECSA carries an ASV-contraindication caveat (SERVE-HF) and a
-  high spontaneous-resolution rate — getting the *framing* wrong is as harmful as
-  getting the *math* wrong.
+  high spontaneous-resolution rate — getting the _framing_ wrong is as harmful as
+  getting the _math_ wrong.
 - **Performance.** Detectors consume 25 Hz envelopes over potentially multi-hour
   sessions, and TECSA spans years of nights. They must run in the worker and be
   cacheable.
@@ -113,7 +113,7 @@ UX > Features):
   stored data. Con: first computation per range costs CPU (mitigated by worker +
   cache).
 - **Optional import-time pre-population, on-demand canonical.** Allow a default-parameter
-  pass at import to *pre-warm* episodes for instant first paint, while keeping
+  pass at import to _pre-warm_ episodes for instant first paint, while keeping
   on-demand as the source of truth. Accepted as a permitted optimization, not a
   requirement.
 
@@ -130,9 +130,9 @@ UX > Features):
   naturally, maps 1:1 to literature. Con: rule-only confidence is brittle and
   binary.
 - **Hybrid: morphology rules + spectral/modulation confidence (chosen).** Use
-  AASM-style morphology and the device `ClearAirway` nadirs to *find and bound*
+  AASM-style morphology and the device `ClearAirway` nadirs to _find and bound_
   episodes; use autocorrelation/spectral analysis and a Guyot-style **flow-modulation
-  index** to *score* them (continuous 0–1 confidence). Best of both: clinically
+  index** to _score_ them (continuous 0–1 confidence). Best of both: clinically
   defensible boundaries plus a graded, literature-grounded confidence.
 
 ### C. Type model: reuse `PeriodicBreathing` `EventType` vs. a distinct detection type
