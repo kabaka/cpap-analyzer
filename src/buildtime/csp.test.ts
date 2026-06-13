@@ -23,16 +23,17 @@ function getTransformHook(): IndexHtmlTransformHook {
   const plugin = cspMetaPlugin();
   const hook = plugin.transformIndexHtml;
   if (typeof hook === 'function') return hook;
-  if (hook && typeof hook === 'object') {
-    if ('handler' in hook) return hook.handler;
-    if ('transform' in hook) return hook.transform;
-  }
+  if (hook && typeof hook === 'object' && 'handler' in hook) return hook.handler;
   throw new Error('cspMetaPlugin did not expose a transformIndexHtml hook');
 }
 
 async function transform(html: string): Promise<string> {
-  const result = await getTransformHook()(html, HTML_TRANSFORM_CONTEXT);
-  // The hook returns the rewritten HTML string for this plugin.
+  const hook = getTransformHook();
+  const result = await hook.call(
+    {} as ThisParameterType<typeof hook>,
+    html,
+    HTML_TRANSFORM_CONTEXT,
+  );
   expect(typeof result).toBe('string');
   return result as string;
 }

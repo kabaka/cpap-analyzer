@@ -42,7 +42,9 @@ const mockJsPDFInstance = {
 };
 
 vi.mock('jspdf', () => ({
-  jsPDF: vi.fn(() => mockJsPDFInstance),
+  jsPDF: vi.fn(function () {
+    return mockJsPDFInstance;
+  }),
 }));
 
 // ---------------------------------------------------------------------------
