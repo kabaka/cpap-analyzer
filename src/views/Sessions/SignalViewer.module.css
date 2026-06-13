@@ -221,6 +221,10 @@
   pointer-events: none;
 }
 
+/* Anchored at the TOP-left of each lane (where the canvas label used to sit),
+   sized to its content — never the full lane height — so it never washes over
+   the waveform. Legibility comes from the per-glyph text-shadow halo behind the
+   text only (see .laneName / .laneCollapseGlyph), not a chart-covering scrim. */
 .laneHeader {
   position: absolute;
   left: 0;
@@ -231,20 +235,7 @@
   max-width: 100%;
   pointer-events: auto;
   border-radius: var(--radius-sm);
-  background: var(--signal-lane-label-bg);
-  backdrop-filter: blur(1px);
-  transition:
-    background-color var(--transition-fast),
-    box-shadow var(--transition-fast);
-}
-
-.laneHeader:hover,
-.laneHeader:focus-within {
-  background: var(--signal-lane-label-bg-hover);
-}
-
-.laneHeader[data-collapsed='true'] {
-  background: var(--signal-lane-label-bg-hover);
+  transition: box-shadow var(--transition-fast);
 }
 
 .laneHeader[data-grabbed='true'] {

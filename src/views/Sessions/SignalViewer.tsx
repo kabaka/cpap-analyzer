@@ -1751,7 +1751,7 @@ export default function SignalViewer() {
                 className={styles.laneHeader}
                 data-grabbed={grabbed}
                 data-collapsed={r.collapsed}
-                style={{ top: `${entry.top}px`, height: `${entry.height}px` }}
+                style={{ top: `${entry.top}px` }}
               >
                 <div
                   ref={(el) => {
