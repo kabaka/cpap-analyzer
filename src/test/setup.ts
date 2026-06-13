@@ -64,16 +64,18 @@ if (!navigator.storage) {
 }
 
 // Web Worker stub — jsdom doesn't support Workers
-globalThis.Worker = vi.fn().mockImplementation(() => ({
-  postMessage: vi.fn(),
-  terminate: vi.fn(),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
-  dispatchEvent: vi.fn(() => false),
-  onmessage: null,
-  onerror: null,
-  onmessageerror: null,
-})) as unknown as typeof Worker;
+globalThis.Worker = vi.fn().mockImplementation(function () {
+  return {
+    postMessage: vi.fn(),
+    terminate: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => false),
+    onmessage: null,
+    onerror: null,
+    onmessageerror: null,
+  };
+}) as unknown as typeof Worker;
 
 // Comlink stub
 vi.mock('comlink', () => ({

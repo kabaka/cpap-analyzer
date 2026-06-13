@@ -5,9 +5,9 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 const mockExecute = vi.fn();
 
 vi.mock('@/services/analysis/AnalysisEngine', () => ({
-  AnalysisEngine: vi.fn().mockImplementation(() => ({
-    execute: mockExecute,
-  })),
+  AnalysisEngine: vi.fn().mockImplementation(function () {
+    return { execute: mockExecute };
+  }),
 }));
 
 vi.mock('@/services/analysis/createDataProviderAdapter', () => ({
