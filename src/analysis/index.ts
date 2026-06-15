@@ -18,3 +18,4 @@ export * from './survival';
 export * from './pressure';
 export * from './crossSource';
 export * from './breathing';
+export * from './uncertainty';

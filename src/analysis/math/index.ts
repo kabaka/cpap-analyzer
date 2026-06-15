@@ -227,3 +227,113 @@ export function twoTailedPValue(t: number, df: number): number {
   if (!Number.isFinite(t) || !Number.isFinite(df) || df < 1) return NaN;
   return 2 * (1 - studentTCDF(Math.abs(t), df));
 }
+
+// ---------------------------------------------------------------------------
+// Incomplete gamma & chi-square quantile
+// ---------------------------------------------------------------------------
+
+/**
+ * Regularized lower incomplete gamma function P(s, x) = γ(s, x) / Γ(s).
+ *
+ * Numerical Recipes `gammp`: power-series expansion for `x < s + 1`
+ * (converges quickly there) and the continued-fraction complement `gammq`
+ * otherwise. Returns a value in `[0, 1]`.
+ *
+ * P(s, x) is the CDF of a Gamma(shape = s, scale = 1) distribution evaluated
+ * at x, and the basis for the chi-square CDF: F_{χ²,df}(y) = P(df/2, y/2).
+ *
+ * @param s shape parameter (> 0).
+ * @param x evaluation point (≥ 0).
+ * @returns P(s, x) in `[0, 1]`, or NaN for invalid input.
+ */
+export function lowerGammaRegularized(s: number, x: number): number {
+  if (!Number.isFinite(s) || !Number.isFinite(x) || s <= 0 || x < 0) return NaN;
+  if (x === 0) return 0;
+
+  if (x < s + 1) {
+    // Series representation γ*(s, x).
+    let ap = s;
+    let sum = 1 / s;
+    let del = sum;
+    const maxIter = 300;
+    const eps = 1e-15;
+    for (let n = 0; n < maxIter; n++) {
+      ap += 1;
+      del *= x / ap;
+      sum += del;
+      if (Math.abs(del) < Math.abs(sum) * eps) break;
+    }
+    const result = sum * Math.exp(-x + s * Math.log(x) - lnGamma(s));
+    return result < 0 ? 0 : result > 1 ? 1 : result;
+  }
+
+  // Continued fraction for the upper regularized gamma Q(s, x); P = 1 - Q.
+  const tiny = 1e-300;
+  let b = x + 1 - s;
+  let c = 1 / tiny;
+  let d = 1 / b;
+  let h = d;
+  const maxIter = 300;
+  const eps = 1e-15;
+  for (let i = 1; i <= maxIter; i++) {
+    const an = -i * (i - s);
+    b += 2;
+    d = an * d + b;
+    if (Math.abs(d) < tiny) d = tiny;
+    c = b + an / c;
+    if (Math.abs(c) < tiny) c = tiny;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < eps) break;
+  }
+  const q = Math.exp(-x + s * Math.log(x) - lnGamma(s)) * h;
+  const p = 1 - q;
+  return p < 0 ? 0 : p > 1 ? 1 : p;
+}
+
+/**
+ * Inverse chi-square CDF (quantile function): returns `x` such that
+ * `F_{χ²,df}(x) = p`, i.e. the `p`-quantile of a chi-square distribution
+ * with `df` degrees of freedom.
+ *
+ * Implemented by inverting {@link lowerGammaRegularized} (since
+ * `F_{χ²,df}(x) = P(df/2, x/2)`) with bracketed bisection. Bisection is used
+ * for robustness and full determinism — the function is only called a handful
+ * of times per CI, so the modest iteration count is not performance-critical.
+ *
+ * @param p  probability in the open interval `(0, 1)`.
+ * @param df degrees of freedom (≥ 1).
+ * @returns the chi-square quantile, or NaN for invalid input.
+ */
+export function inverseChiSquare(p: number, df: number): number {
+  if (!Number.isFinite(p) || !Number.isFinite(df) || df < 1) return NaN;
+  if (p <= 0) return 0;
+  if (p >= 1) return Infinity;
+
+  const target = p;
+  const cdf = (x: number): number => lowerGammaRegularized(df / 2, x / 2);
+
+  // Bracket the root. Mean = df, SD = √(2·df); expand the upper bound until
+  // the CDF exceeds the target.
+  let hi = df + 10 * Math.sqrt(2 * df) + 10;
+  let guard = 0;
+  while (cdf(hi) < target && guard < 100) {
+    hi *= 2;
+    guard++;
+  }
+  let lo = 0;
+
+  // Bisection to convergence.
+  for (let i = 0; i < 200; i++) {
+    const mid = 0.5 * (lo + hi);
+    const f = cdf(mid);
+    if (f < target) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+    if (hi - lo < 1e-12 * Math.max(1, hi)) break;
+  }
+  return 0.5 * (lo + hi);
+}
