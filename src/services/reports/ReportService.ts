@@ -137,6 +137,7 @@ function computeStatistics(
     obstructive: 0,
     central: 0,
     mixed: 0,
+    unclassified: 0,
     hypopnea: 0,
     rera: 0,
     flowLimitation: 0,
@@ -147,6 +148,7 @@ function computeStatistics(
     eventTotals.obstructive += a.eventsByType.obstructive;
     eventTotals.central += a.eventsByType.central;
     eventTotals.mixed += a.eventsByType.mixed;
+    eventTotals.unclassified += a.eventsByType.unclassified ?? 0;
     eventTotals.hypopnea += a.eventsByType.hypopnea;
     eventTotals.rera += a.eventsByType.rera;
     eventTotals.flowLimitation += a.eventsByType.flowLimitation;
@@ -258,6 +260,7 @@ function sumEventsByType(aggregates: NightlyAggregate[]): Record<string, number>
     obstructive: 0,
     central: 0,
     mixed: 0,
+    unclassified: 0,
     hypopnea: 0,
     rera: 0,
     flowLimitation: 0,
@@ -268,6 +271,7 @@ function sumEventsByType(aggregates: NightlyAggregate[]): Record<string, number>
     totals['obstructive'] = (totals['obstructive'] ?? 0) + a.eventsByType.obstructive;
     totals['central'] = (totals['central'] ?? 0) + a.eventsByType.central;
     totals['mixed'] = (totals['mixed'] ?? 0) + a.eventsByType.mixed;
+    totals['unclassified'] = (totals['unclassified'] ?? 0) + (a.eventsByType.unclassified ?? 0);
     totals['hypopnea'] = (totals['hypopnea'] ?? 0) + a.eventsByType.hypopnea;
     totals['rera'] = (totals['rera'] ?? 0) + a.eventsByType.rera;
     totals['flowLimitation'] = (totals['flowLimitation'] ?? 0) + a.eventsByType.flowLimitation;

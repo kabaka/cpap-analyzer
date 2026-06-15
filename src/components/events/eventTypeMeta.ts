@@ -62,6 +62,12 @@ export const EVENT_TYPE_META: Readonly<Record<EventType, EventTypeMeta>> = {
     marker: 'solid',
     detection: false,
   },
+  UnclassifiedApnea: {
+    label: 'Unclassified Apnea',
+    color: 'var(--color-chart-2)',
+    marker: 'solid',
+    detection: false,
+  },
   Hypopnea: {
     label: 'Hypopnea',
     color: 'var(--color-status-mild)',
@@ -118,6 +124,7 @@ export const EVENT_TYPE_ORDER: readonly EventType[] = [
   'ClearAirway',
   'CentralApnea',
   'MixedApnea',
+  'UnclassifiedApnea',
   'Hypopnea',
   'RERA',
   'FlowLimitation',

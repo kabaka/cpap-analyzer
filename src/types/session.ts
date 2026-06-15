@@ -150,6 +150,14 @@ export interface NightlyAggregate {
   readonly ahiCentral: number;
   /** Mixed apnea index. */
   readonly ahiMixed: number;
+  /**
+   * Unclassified apnea index (events/hour) — apneas the device confirmed but
+   * could not resolve as obstructive or central (most often under high leak,
+   * when the forced-oscillation measurement is unreliable). Counts toward AHI.
+   * Optional for backward compatibility with aggregates persisted before this
+   * field existed; treat a missing value as 0.
+   */
+  readonly ahiUnclassified?: number;
   /** Hypopnea index. */
   readonly ahiHypopnea: number;
   /** RERA index (events/hour). Part of RDI, NOT part of AHI. */
@@ -163,6 +171,8 @@ export interface NightlyAggregate {
     readonly obstructive: number;
     readonly central: number;
     readonly mixed: number;
+    /** Unclassified apnea count (optional; treat missing as 0). */
+    readonly unclassified?: number;
     readonly hypopnea: number;
     readonly rera: number;
     readonly flowLimitation: number;

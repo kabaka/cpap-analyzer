@@ -142,6 +142,55 @@ describe('AHI / RDI separation (AASM 2012)', () => {
     expect(agg.rdi).toBeCloseTo(agg.ahi, 5);
     expect(agg.ahiRera).toBe(0);
   });
+
+  it('counts an UnclassifiedApnea toward AHI as an apnea', () => {
+    // 1 hour of usage, 2 unclassified apneas + 1 obstructive → AHI = 3.
+    const interp = interpretation({
+      durationSeconds: 3600,
+      channels: [maskPressure(3600)],
+      events: [
+        evt('UnclassifiedApnea', 100),
+        evt('UnclassifiedApnea', 200),
+        evt('ObstructiveApnea', 300),
+      ],
+    });
+    const agg = builder.buildSessions([interp])[0]!.aggregate;
+    // AHI must include the unclassified apneas: 3 events / 1 h.
+    expect(agg.ahi).toBeCloseTo(3, 1);
+    expect(agg.ahi).toBeGreaterThan(0);
+  });
+
+  it('does NOT inflate the mixed-apnea index with unclassified apneas', () => {
+    // No qualified mixed apneas present — only unclassified ones. The mixed
+    // index MUST stay zero (this is the classification-fidelity regression we
+    // are guarding against: a bare "Apnea" used to be bucketed as mixed).
+    const interp = interpretation({
+      durationSeconds: 3600,
+      channels: [maskPressure(3600)],
+      events: [
+        evt('UnclassifiedApnea', 100),
+        evt('UnclassifiedApnea', 200),
+        evt('UnclassifiedApnea', 300),
+      ],
+    });
+    const agg = builder.buildSessions([interp])[0]!.aggregate;
+    // The mixed slice is untouched by unclassified apneas …
+    expect(agg.ahiMixed).toBe(0);
+    // … yet the apneas still count toward AHI (3 events / 1 h).
+    expect(agg.ahi).toBeCloseTo(3, 1);
+  });
+
+  it('keeps mixed and unclassified apneas in separate buckets', () => {
+    // 1 mixed + 1 unclassified. Mixed index = 1/h; AHI includes both = 2/h.
+    const interp = interpretation({
+      durationSeconds: 3600,
+      channels: [maskPressure(3600)],
+      events: [evt('MixedApnea', 100), evt('UnclassifiedApnea', 200)],
+    });
+    const agg = builder.buildSessions([interp])[0]!.aggregate;
+    expect(agg.ahiMixed).toBeCloseTo(1, 1);
+    expect(agg.ahi).toBeCloseTo(2, 1);
+  });
 });
 
 // ---------------------------------------------------------------------------

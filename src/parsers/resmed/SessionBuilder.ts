@@ -324,9 +324,18 @@ export class SessionBuilder {
     // Compute metrics
     const usageHours = usageSeconds / 3600;
     const ahiResult = this.computeAHIBreakdown(domainEvents, usageHours);
-    // AHI = (obstructive + central + mixed apneas + hypopneas) / usage hours.
-    // Per AASM 2012 / ICSD-3 RERAs are EXCLUDED from AHI — they belong to RDI.
-    const ahi = ahiResult.obstructive + ahiResult.central + ahiResult.mixed + ahiResult.hypopnea;
+    // AHI = (obstructive + central + mixed + unclassified apneas + hypopneas) /
+    // usage hours. An unclassified apnea (bare ResMed "Apnea", e.g. flagged
+    // during high leak when the device cannot resolve obstructive vs. central)
+    // is still an apnea and MUST count toward the AHI; it is simply not bucketed
+    // as mixed. Per AASM 2012 / ICSD-3 RERAs are EXCLUDED from AHI — they belong
+    // to RDI.
+    const ahi =
+      ahiResult.obstructive +
+      ahiResult.central +
+      ahiResult.mixed +
+      ahiResult.unclassified +
+      ahiResult.hypopnea;
     // RDI = AHI + RERA index. Equals AHI when no RERAs are scored.
     const rdi = ahi + ahiResult.rera;
 
@@ -355,6 +364,7 @@ export class SessionBuilder {
       ahiObstructive: ahiResult.obstructive,
       ahiCentral: ahiResult.central,
       ahiMixed: ahiResult.mixed,
+      ahiUnclassified: ahiResult.unclassified,
       ahiHypopnea: ahiResult.hypopnea,
       ahiRera: ahiResult.rera,
       eventCount: domainEvents.length,
@@ -564,14 +574,22 @@ export class SessionBuilder {
   private computeAHIBreakdown(
     events: readonly Event[],
     usageHours: number,
-  ): { obstructive: number; central: number; mixed: number; hypopnea: number; rera: number } {
+  ): {
+    obstructive: number;
+    central: number;
+    mixed: number;
+    unclassified: number;
+    hypopnea: number;
+    rera: number;
+  } {
     if (usageHours <= 0) {
-      return { obstructive: 0, central: 0, mixed: 0, hypopnea: 0, rera: 0 };
+      return { obstructive: 0, central: 0, mixed: 0, unclassified: 0, hypopnea: 0, rera: 0 };
     }
 
     let obstructiveCount = 0;
     let centralCount = 0;
     let mixedCount = 0;
+    let unclassifiedCount = 0;
     let hypopneaCount = 0;
     let reraCount = 0;
 
@@ -586,6 +604,12 @@ export class SessionBuilder {
         case 'MixedApnea':
           mixedCount++;
           break;
+        // An unclassified apnea is a true apnea the device could not resolve
+        // into obstructive/central. It counts toward AHI but is kept distinct
+        // from the mixed bucket so the event-type breakdown stays honest.
+        case 'UnclassifiedApnea':
+          unclassifiedCount++;
+          break;
         case 'Hypopnea':
           hypopneaCount++;
           break;
@@ -599,6 +623,7 @@ export class SessionBuilder {
       obstructive: obstructiveCount / usageHours,
       central: centralCount / usageHours,
       mixed: mixedCount / usageHours,
+      unclassified: unclassifiedCount / usageHours,
       hypopnea: hypopneaCount / usageHours,
       rera: reraCount / usageHours,
     };
@@ -847,6 +872,7 @@ export class SessionBuilder {
       obstructive: 0,
       central: 0,
       mixed: 0,
+      unclassified: 0,
       hypopnea: 0,
       rera: 0,
       flowLimitation: 0,
@@ -864,6 +890,9 @@ export class SessionBuilder {
           break;
         case 'MixedApnea':
           counts.mixed++;
+          break;
+        case 'UnclassifiedApnea':
+          counts.unclassified++;
           break;
         case 'Hypopnea':
           counts.hypopnea++;

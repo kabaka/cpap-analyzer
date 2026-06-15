@@ -169,7 +169,9 @@ describe('Fixture parsing', () => {
     it('should map event types correctly', () => {
       const result = parseAndInterpret('eve-airsense11.edf');
       const types = result.events.map((e) => e.type);
-      expect(types).toEqual(['ObstructiveApnea', 'CentralApnea', 'Hypopnea', 'MixedApnea']);
+      // The bare "Apnea" annotation maps to UnclassifiedApnea (an apnea the
+      // device could not resolve as obstructive or central), not MixedApnea.
+      expect(types).toEqual(['ObstructiveApnea', 'CentralApnea', 'Hypopnea', 'UnclassifiedApnea']);
     });
 
     it('should have correct event durations', () => {
@@ -329,7 +331,11 @@ describe('Fixture parsing', () => {
       expect(types).toContain('ObstructiveApnea');
       expect(types).toContain('CentralApnea');
       expect(types).toContain('Hypopnea');
-      expect(types).toContain('MixedApnea');
+      // The EVE fixture's bare "Apnea" annotation (no obstructive/central
+      // qualifier) is an unclassified apnea — not a mixed apnea, which AASM
+      // defines specifically as central onset followed by obstructive effort.
+      expect(types).toContain('UnclassifiedApnea');
+      expect(types).not.toContain('MixedApnea');
     });
 
     it('should compute AHI correctly from known events', () => {
@@ -342,12 +348,15 @@ describe('Fixture parsing', () => {
       const results = builder.buildSessions([brp, pld, eve, sad]);
       const aggregate = results[0]!.aggregate;
 
-      // AHI events: ObstructiveApnea, CentralApnea, Hypopnea, MixedApnea = 4
-      // AHI breakdown includes mixed apnea as a separate bucket
+      // AHI buckets: ObstructiveApnea, CentralApnea, MixedApnea,
+      // UnclassifiedApnea, and Hypopnea each have their own index. RERA is NOT
+      // part of AHI (it belongs to RDI); it is added here only because this
+      // fixture scores no RERAs, so it contributes 0.
       const totalAHIEvents =
         aggregate.ahiObstructive +
         aggregate.ahiCentral +
         aggregate.ahiMixed +
+        (aggregate.ahiUnclassified ?? 0) +
         aggregate.ahiHypopnea +
         aggregate.ahiRera;
       // Should be the AHI per hour; total depends on usage hours

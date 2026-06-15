@@ -521,6 +521,7 @@ export function formatEventTypeName(key: string): string {
     obstructive: 'Obstructive Apnea',
     central: 'Central Apnea',
     mixed: 'Mixed Apnea',
+    unclassified: 'Unclassified Apnea',
     hypopnea: 'Hypopnea',
     rera: 'RERA',
     flowLimitation: 'Flow Limitation',

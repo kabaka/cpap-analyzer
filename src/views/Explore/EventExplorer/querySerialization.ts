@@ -31,6 +31,7 @@ const VALID_EVENT_TYPES: ReadonlySet<string> = new Set<EventType>([
   'ObstructiveApnea',
   'CentralApnea',
   'MixedApnea',
+  'UnclassifiedApnea',
   'Hypopnea',
   'RERA',
   'FlowLimitation',

@@ -155,8 +155,12 @@ const EVENT_MAP: ReadonlyArray<readonly [RegExp, EventType]> = [
   [/clear airway/i, 'CentralApnea'],
   [/central/i, 'CentralApnea'],
   [/mixed apnea/i, 'MixedApnea'],
-  // Generic "Apnea" with no qualifier — classified as mixed per AASM guidelines
-  [/^apnea$/i, 'MixedApnea'],
+  // Bare "Apnea" with no qualifier: ResMed flags an apnea it did not resolve
+  // into obstructive/central/mixed (ASV models flag ALL apneas this way). This
+  // is an UNCLASSIFIED apnea, not a mixed apnea — a mixed apnea is specifically
+  // central onset + obstructive effort (AASM Manual, Berry et al. 2012). It
+  // still counts toward AHI as an apnea (see SessionBuilder.computeAHIBreakdown).
+  [/^apnea$/i, 'UnclassifiedApnea'],
   [/hypopnea/i, 'Hypopnea'],
   [/flow limitation/i, 'FlowLimitation'],
   [/rera/i, 'RERA'],
