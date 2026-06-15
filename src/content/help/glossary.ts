@@ -223,7 +223,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['bipap', 'central-apnea', 'cheyne-stokes'],
     references: [
       'Cowie, M. R., Woehrle, H., Wegscheider, K., et al. (2015). Adaptive servo-ventilation for central sleep apnea in systolic heart failure (SERVE-HF). New England Journal of Medicine, 373(12), 1095–1105. DOI: 10.1056/NEJMoa1506459.',
-      'Somers, V. K., et al. (2018). Sleep apnea and cardiovascular disease: a scientific statement from the American Heart Association. — Formalizes the ASV contraindication for symptomatic heart failure with reduced ejection fraction (LVEF ≤ 45%) with predominantly central sleep apnea.',
+      'Somers, V. K., White, D. P., Amin, R., et al. (2008). Sleep apnea and cardiovascular disease: an American Heart Association/American College of Cardiology Foundation Scientific Statement. Circulation, 118(10), 1080–1111. DOI: 10.1161/CIRCULATIONAHA.107.189375. — On the cardiovascular consequences of sleep-disordered breathing.',
     ],
   },
   {
@@ -422,7 +422,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'Treatment-emergent central sleep apnea (TECSA, also called complex sleep apnea or CompSA) describes the appearance of central apneas after CPAP initiation in a patient whose pre-treatment study was predominantly obstructive. The prevailing literature finds roughly 60–80% spontaneous resolution within ~3 months of continued CPAP as the respiratory control loop re-adapts (Nigam et al. 2016 systematic review; Kwok et al. 2022). The Liu et al. (2017) four-class trajectory model (obstructive / transient / persistent / emergent) distinguishes self-limiting TECSA from persistent or late-emerging central patterns.',
     detailed:
-      'Operationally, TECSA is defined when the central apnea index (CAI) exceeds a threshold (commonly 5/h) on therapy, with prior obstructive disease. CPAP Analyzer implements the Liu et al. 2017 (Chest, DOI 10.1016/j.chest.2017.06.010) trajectory classifier longitudinally over nightly CAI: early-window CAI is compared to late-window CAI, both at the 5/h threshold, to assign one of four classes (obstructive stable, transient TECSA, persistent central, emergent central). High-leak nights are excluded because FOT-derived CAI is degraded under leak. The single most important clinical caveat: TECSA does not by itself justify a switch to adaptive servo-ventilation (ASV). The SERVE-HF randomized trial (Cowie et al. 2015) found increased mortality with ASV in symptomatic chronic heart failure with reduced ejection fraction (LVEF ≤ 45%) with predominantly central sleep apnea; subsequent AHA/ACC scientific statements formalized the contraindication (Somers et al. 2018). Therapy-mode changes are clinician decisions informed by echocardiography and the full clinical picture, not by a software flag. CPAP Analyzer reports TECSA trajectory as a candidate finding for discussion; it does not diagnose.',
+      'Operationally, TECSA is defined when the central apnea index (CAI) exceeds a threshold (commonly 5/h) on therapy, with prior obstructive disease. CPAP Analyzer implements the Liu et al. 2017 (Chest, DOI 10.1016/j.chest.2017.06.010) trajectory classifier longitudinally over nightly CAI: early-window CAI is compared to late-window CAI, both at the 5/h threshold, to assign one of four classes (obstructive stable, transient TECSA, persistent central, emergent central). High-leak nights are excluded because FOT-derived CAI is degraded under leak. The single most important clinical caveat: TECSA does not by itself justify a switch to adaptive servo-ventilation (ASV). The SERVE-HF randomized trial (Cowie et al. 2015) found increased mortality with ASV in symptomatic chronic heart failure with reduced ejection fraction (LVEF ≤ 45%) with predominantly central sleep apnea; on the strength of that trial, ASV is contraindicated in this group. Therapy-mode changes are clinician decisions informed by echocardiography and the full clinical picture, not by a software flag. CPAP Analyzer reports TECSA trajectory as a candidate finding for discussion; it does not diagnose.',
     relatedTerms: ['central-apnea', 'csa', 'cai', 'asv', 'loop-gain'],
     references: [
       'Liu, D., Armitstead, J., Benjafield, A., et al. (2017). Trajectories of emergent central sleep apnea during continuous positive airway pressure therapy. Chest, 152(4), 751–760. DOI: 10.1016/j.chest.2017.06.010.',
@@ -440,7 +440,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'Periodic breathing (PB) is a repeating oscillation in tidal volume / minute ventilation during sleep — breath depth grows, then falls, then grows again, typically with a cycle length of 40–120 seconds. When the nadirs are deep enough to include central apneas and the envelope is clearly crescendo-decrescendo, the pattern qualifies as Cheyne-Stokes respiration (CSR). PB without those criteria is the broader category, common at altitude, in heart failure, on opioids, and in some neurological conditions. ResMed devices flag formal CSR but not sub-threshold PB; CPAP Analyzer surfaces both.',
     detailed:
-      'PB arises from instability of the chemoreflex-driven control of ventilation — high loop gain combined with a long circulation delay produces oscillatory feedback that overshoots in both directions, with central apneas at the troughs when PaCO₂ falls below the apneic threshold. Single-channel airflow methods (Weinreich 2009, Javed 2018, Midelet 2023, Guyot 2019) can detect PB from the flow envelope alone; CPAP Analyzer combines AASM-style morphology rules with an autocorrelation-based periodicity check, a Guyot-style modulation index (0–1) for confidence, and a harmonic-ratio crescendo-decrescendo morphology score. Sub-threshold PB and short CSR runs that fall below the ResMed 15-minute device floor are surfaced as "candidate / below device threshold" rather than silently dropped or promoted to formal CSR flags. See the help article "Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA" for the full method.',
+      'PB arises from instability of the chemoreflex-driven control of ventilation — high loop gain combined with a long circulation delay produces oscillatory feedback that overshoots in both directions, with central apneas at the troughs when PaCO₂ falls below the apneic threshold. Single-channel airflow methods (Weinreich 2009, Javed 2018, Midelet 2023, Guyot 2020) can detect PB from the flow envelope alone; CPAP Analyzer combines AASM-style morphology rules with an autocorrelation-based periodicity check, a Guyot-style modulation index (0–1) for confidence, and a harmonic-ratio crescendo-decrescendo morphology score. Sub-threshold PB and short CSR runs that fall below the ResMed 15-minute device floor are surfaced as "candidate / below device threshold" rather than silently dropped or promoted to formal CSR flags. See the help article "Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA" for the full method.',
     relatedTerms: [
       'cheyne-stokes',
       'central-apnea',
@@ -453,8 +453,8 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     ],
     references: [
       'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
-      'Midelet, A., et al. (2023). Airflow signal-based detection of periodic breathing during sleep. Biomedical Signal Processing and Control. — Airflow-based PB/CSR detection; cycle length tracks cardiac output.',
-      'Guyot, N., et al. (2019). Modulation-index–based periodic breathing detection. PLoS ONE. — Continuous flow-modulation index as a confidence measure for periodic breathing.',
+      'Midelet, A., et al. (2023). Features of Cheyne-Stokes respiration automatically extracted from CPAP airflow signal raw data: identification of discriminating features to detect heart failure. Biomedical Signal Processing and Control. — Airflow-based CSR feature extraction; longer cycle length tracks reduced cardiac output.',
+      'Guyot, P., Djermoune, E.-H., Chenuel, B., & Bastogne, T. (2020). A signal demodulation-based method for the early detection of Cheyne-Stokes respiration. PLoS ONE, 15(3), e0221191. DOI: 10.1371/journal.pone.0221191. — Continuous flow-modulation index as a confidence measure for periodic breathing.',
     ],
   },
   {
@@ -476,7 +476,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     ],
     references: [
       'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
-      'Midelet, A., et al. (2023). Airflow signal-based detection of periodic breathing during sleep. Biomedical Signal Processing and Control. — Airflow-based PB/CSR detection; cycle length tracks cardiac output.',
+      'Midelet, A., et al. (2023). Features of Cheyne-Stokes respiration automatically extracted from CPAP airflow signal raw data: identification of discriminating features to detect heart failure. Biomedical Signal Processing and Control. — Airflow-based CSR feature extraction; longer cycle length tracks reduced cardiac output.',
     ],
   },
   {
@@ -501,12 +501,12 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     quick:
       'A 0–1 score for how strongly a signal oscillates relative to its mean — used to score periodic breathing confidence from the airflow envelope.',
     standard:
-      'The modulation index quantifies the amplitude of an oscillation relative to the baseline level of the signal it modulates. Values near 0 indicate an essentially flat envelope; values near 1 indicate a deeply modulated cyclic envelope. CPAP Analyzer uses a Guyot-style modulation index on the airflow / minute-ventilation envelope as the continuous confidence basis for periodic breathing detection (Guyot et al. 2019).',
+      'The modulation index quantifies the amplitude of an oscillation relative to the baseline level of the signal it modulates. Values near 0 indicate an essentially flat envelope; values near 1 indicate a deeply modulated cyclic envelope. CPAP Analyzer uses a Guyot-style modulation index on the airflow / minute-ventilation envelope as the continuous confidence basis for periodic breathing detection (Guyot et al. 2020).',
     detailed:
       'For a periodic envelope with peaks $p_i$ and troughs $t_i$, a common form is $\\text{MI} = \\frac{p - t}{p + t}$, evaluated on the smoothed envelope of the airflow signal. Values near 0 indicate a steady envelope; values approaching 1 indicate near-complete modulation (deep troughs, often coinciding with central apneas). The modulation index is robust to slow drift in baseline ventilation and is dimensionless, which is why it is preferred over raw amplitude for cross-night and cross-subject comparison. In CPAP Analyzer, MI is one of three inputs to the periodic-breathing confidence score; the others are the autocorrelation-based periodicity peak in the 40–120 s band and the harmonic-ratio crescendo-decrescendo morphology score. Higher MI indicates a more confidently periodic envelope, not a more severe disease — interpret confidence and severity separately.',
     relatedTerms: ['periodic-breathing', 'cheyne-stokes', 'harmonic-ratio', 'correlation'],
     references: [
-      'Guyot, N., et al. (2019). Modulation-index–based periodic breathing detection. PLoS ONE. — Continuous flow-modulation index as a confidence measure for periodic breathing.',
+      'Guyot, P., Djermoune, E.-H., Chenuel, B., & Bastogne, T. (2020). A signal demodulation-based method for the early detection of Cheyne-Stokes respiration. PLoS ONE, 15(3), e0221191. DOI: 10.1371/journal.pone.0221191. — Continuous flow-modulation index as a confidence measure for periodic breathing.',
     ],
   },
   {
@@ -816,7 +816,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'r = \\frac{\\sum_{i=1}^{n}(x_i - \\bar{x})(y_i - \\bar{y})}{\\sqrt{\\sum_{i=1}^{n}(x_i - \\bar{x})^2 \\cdot \\sum_{i=1}^{n}(y_i - \\bar{y})^2}}',
     relatedTerms: ['regression', 'p-value'],
     references: [
-      'Pearson, K. (1895). Notes on regression and inheritance in the case of two parents. Proceedings of the Royal Society of London, 58, 240–242. DOI: 10.1098/rspl.1895.0041.',
+      'Pearson, K. (1895). Note on regression and inheritance in the case of two parents. Proceedings of the Royal Society of London, 58, 240–242. DOI: 10.1098/rspl.1895.0041.',
       'Spearman, C. (1904). The proof and measurement of association between two things. American Journal of Psychology, 15(1), 72–101. DOI: 10.2307/1412159.',
       'Cohen, J. (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.). Hillsdale, NJ: Lawrence Erlbaum. — Effect-size benchmarks (r: .1/.3/.5 = small/medium/large).',
       'Schober, P., Boer, C., & Schwarte, L. A. (2018). Correlation coefficients: appropriate use and interpretation. Anesthesia & Analgesia, 126(5), 1763–1768. DOI: 10.1213/ANE.0000000000002864. — Notes that correlation-strength cutoffs are inherently arbitrary.',

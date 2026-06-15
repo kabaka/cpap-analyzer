@@ -104,6 +104,7 @@ const EVENT_COLORS: Record<string, string> = {
   ObstructiveApnea: 'var(--color-status-severe)',
   CentralApnea: 'var(--color-status-moderate)',
   MixedApnea: 'var(--color-status-moderate)',
+  UnclassifiedApnea: 'var(--color-chart-2)',
   Hypopnea: 'var(--color-status-mild)',
   RERA: 'var(--color-chart-4)',
   FlowLimitation: 'var(--color-chart-5)',

@@ -125,8 +125,9 @@ export interface NightlyAggregate {
 
   // AHI metrics (events/hour)
   /**
-   * Apnea-Hypopnea Index: (obstructive + central + mixed apneas + hypopneas)
-   * per hour of usage. Per AASM 2012 / ICSD-3, AHI EXCLUDES RERAs — those
+   * Apnea-Hypopnea Index: (obstructive + central + mixed + unclassified
+   * apneas + hypopneas) per hour of usage. Per AASM 2012 / ICSD-3, AHI
+   * EXCLUDES RERAs — those
    * belong to the RDI (see {@link rdi}). Computed over usage hours (mask-on
    * time), matching the residual-AHI convention CPAP machines report.
    */
