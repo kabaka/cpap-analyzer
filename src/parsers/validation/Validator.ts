@@ -73,6 +73,7 @@ const APNEA_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'ObstructiveApnea',
   'CentralApnea',
   'MixedApnea',
+  'UnclassifiedApnea',
 ]);
 
 // ---------------------------------------------------------------------------

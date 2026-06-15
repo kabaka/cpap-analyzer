@@ -184,8 +184,17 @@ describe('ResMedInterpreter edge cases', () => {
   // -----------------------------------------------------------------------
 
   describe('event mapping edge cases', () => {
-    it('should map generic "Apnea" → MixedApnea', () => {
-      expect(interpreter.mapEventLabel('Apnea')).toBe('MixedApnea');
+    it('should map a bare/unqualified "Apnea" → UnclassifiedApnea (NOT MixedApnea)', () => {
+      // ResMed emits a bare "Apnea" for an apnea it could not resolve into
+      // obstructive/central (e.g. during high leak). It is an unclassified
+      // apnea, not a mixed apnea (which is specifically central onset +
+      // obstructive effort per the AASM Manual). Must not be bucketed as mixed.
+      expect(interpreter.mapEventLabel('Apnea')).toBe('UnclassifiedApnea');
+      expect(interpreter.mapEventLabel('Apnea')).not.toBe('MixedApnea');
+    });
+
+    it('should still map "Mixed Apnea" → MixedApnea (qualified mixed is unaffected)', () => {
+      expect(interpreter.mapEventLabel('Mixed Apnea')).toBe('MixedApnea');
     });
 
     it('should return null for unmapped "CSR Start"', () => {
@@ -219,6 +228,17 @@ describe('ResMedInterpreter edge cases', () => {
       const result = interpreter.interpret(edf);
       expect(result.unknownEvents).toHaveLength(0);
       expect(result.events).toHaveLength(0);
+    });
+
+    it('should interpret a bare "Apnea" annotation as an UnclassifiedApnea event', () => {
+      const edf = buildEDFFile({
+        annotations: [{ onset: 10, duration: 15, labels: ['Apnea'] }],
+      });
+
+      const result = interpreter.interpret(edf);
+      expect(result.unknownEvents).toHaveLength(0);
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0]!.type).toBe('UnclassifiedApnea');
     });
 
     it('should map "Obstructive" (without "Apnea") → ObstructiveApnea', () => {

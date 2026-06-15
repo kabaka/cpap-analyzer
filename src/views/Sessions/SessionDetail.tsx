@@ -43,6 +43,7 @@ const EVENT_COLORS: Record<string, string> = {
   ObstructiveApnea: 'var(--color-status-severe)',
   CentralApnea: 'var(--color-status-moderate)',
   MixedApnea: 'var(--color-status-moderate)',
+  UnclassifiedApnea: 'var(--color-chart-2)',
   Hypopnea: 'var(--color-status-mild)',
   RERA: 'var(--color-chart-4)',
   FlowLimitation: 'var(--color-chart-6)',
@@ -58,6 +59,7 @@ const EVENT_TYPE_LABELS: Record<EventType, string> = {
   ObstructiveApnea: 'Obstructive Apnea',
   CentralApnea: 'Central Apnea',
   MixedApnea: 'Mixed Apnea',
+  UnclassifiedApnea: 'Unclassified Apnea',
   Hypopnea: 'Hypopnea',
   RERA: 'RERA',
   FlowLimitation: 'Flow Limitation',
@@ -73,6 +75,7 @@ const EVENT_TYPE_ORDER: EventType[] = [
   'ObstructiveApnea',
   'CentralApnea',
   'MixedApnea',
+  'UnclassifiedApnea',
   'Hypopnea',
   'RERA',
   'FlowLimitation',
@@ -363,6 +366,12 @@ function AHICard({ aggregate }: { aggregate: NightlyAggregate }) {
           <span className={styles.breakdownLabel}>Mixed</span>
           <span className={styles.breakdownValue}>{fmt(aggregate.ahiMixed)}</span>
         </div>
+        {(aggregate.ahiUnclassified ?? 0) > 0 && (
+          <div className={styles.breakdownItem}>
+            <span className={styles.breakdownLabel}>Unclassified</span>
+            <span className={styles.breakdownValue}>{fmt(aggregate.ahiUnclassified ?? 0)}</span>
+          </div>
+        )}
         <div className={styles.breakdownItem}>
           <span className={styles.breakdownLabel}>Hypopnea</span>
           <span className={styles.breakdownValue}>{fmt(aggregate.ahiHypopnea)}</span>

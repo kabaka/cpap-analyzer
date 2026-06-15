@@ -301,6 +301,25 @@ export function GlossaryPanel({ initialTermId, standalone = false }: GlossaryPan
                             ))}
                           </div>
                         )}
+
+                        {depthLevel === 'detailed' &&
+                          entry.references &&
+                          entry.references.length > 0 && (
+                            <div
+                              className={styles.references}
+                              role="region"
+                              aria-label={`References for ${entry.term}`}
+                            >
+                              <span className={styles.referencesLabel}>References</span>
+                              <ol className={styles.referencesList}>
+                                {entry.references.map((citation, i) => (
+                                  <li key={i} className={styles.referenceItem}>
+                                    {citation}
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          )}
                       </div>
                     )}
                   </div>

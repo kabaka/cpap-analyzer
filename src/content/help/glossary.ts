@@ -18,6 +18,8 @@ export interface GlossaryEntry {
   readonly formula?: string;
   readonly aliases?: readonly string[];
   readonly relatedTerms?: readonly string[];
+  /** Optional formal references (full citations), rendered in the detailed view. */
+  readonly references?: readonly string[];
 }
 
 export type GlossaryCategory = 'cpap-therapy' | 'sleep-medicine' | 'statistics' | 'data';
@@ -46,6 +48,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     formula:
       '\\text{AHI} = \\frac{\\text{Total Apneas} + \\text{Total Hypopneas}}{\\text{Total Sleep Time (hours)}}',
     relatedTerms: ['apnea', 'hypopnea', 'residual-ahi', 'rdi', 'odi'],
+    references: [
+      'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'apnea',
@@ -57,6 +63,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'Per AASM scoring rules, an apnea requires ≥90% drop in peak signal excursion of the nasal pressure or oronasal thermal sensor for ≥10 seconds. Classification: Obstructive apnea — continued respiratory effort with absent airflow (airway collapse). Central apnea — absent airflow with absent respiratory effort (neurological origin). Mixed apnea — begins without respiratory effort, then effort resumes against an occluded airway. The type distribution matters clinically: predominantly central events may indicate complex sleep apnea or Cheyne-Stokes respiration, requiring different therapy (ASV vs. CPAP).',
     relatedTerms: ['obstructive-apnea', 'central-apnea', 'mixed-apnea', 'ahi'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'hypopnea',
@@ -69,6 +78,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'AASM recommended definition (2012): ≥30% reduction in nasal pressure signal excursion for ≥10 seconds, associated with ≥3% oxygen desaturation or arousal. An alternative "acceptable" criterion uses ≥4% desaturation without arousal (Medicare definition). CPAP machines typically cannot distinguish arousal-associated hypopneas, so they rely on flow-based algorithms. The scoring criterion used affects the AHI value — always note which definition applies when comparing measurements.',
     relatedTerms: ['ahi', 'apnea', 'desaturation', 'flow-limitation'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'rera',
@@ -82,6 +94,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'AASM definition: a sequence of breaths lasting ≥10 seconds characterized by increasing respiratory effort or flattening of the nasal pressure waveform leading to an arousal that does not meet criteria for apnea or hypopnea. When RERAs are added to AHI, the result is the Respiratory Disturbance Index (RDI) — RERAs are part of RDI, never AHI. RERA detection on CPAP machines is limited because they cannot detect EEG arousals. Flow limitation patterns may serve as a proxy. Upper airway resistance syndrome (UARS) is characterized by elevated RERAs with normal AHI.',
     relatedTerms: ['ahi', 'rdi', 'flow-limitation', 'uars'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'rdi',
@@ -97,6 +112,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     formula:
       '\\text{RDI} = \\text{AHI} + \\text{RERA Index} = \\frac{\\text{Apneas} + \\text{Hypopneas} + \\text{RERAs}}{\\text{Total Sleep Time (hours)}}',
     relatedTerms: ['ahi', 'rera', 'uars', 'flow-limitation'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+      'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
+    ],
   },
   {
     id: 'central-apnea',
@@ -110,6 +129,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'Central apneas are scored when airflow cessation (≥90% reduction for ≥10 seconds) occurs without respiratory effort. They are distinguished from obstructive events by the absence of thoracoabdominal movement. CPAP machines estimate central vs. obstructive classification using forced oscillation technique (FOT) or flow waveform analysis. Common causes include heart failure (often with Cheyne-Stokes pattern), opioid use, high-altitude, and idiopathic CSA. Treatment-emergent central apnea (CompSA) occurs in ~5–15% of patients starting CPAP. If central AI > 5/hr, adaptive servo-ventilation (ASV) should be considered.',
     relatedTerms: ['apnea', 'cheyne-stokes', 'asv'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'obstructive-apnea',
@@ -122,6 +144,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'Obstructive apneas are scored when airflow ceases (≥90% reduction for ≥10 seconds) while respiratory effort continues, as evidenced by thoracoabdominal movement. The airway collapses at the level of the soft palate, tongue base, or epiglottis. Risk factors include obesity, retrognathia, macroglossia, and age. CPAP therapy works by pneumatically splinting the airway open. Optimal CPAP pressure is the minimum pressure that eliminates obstructive events without causing discomfort or central events.',
     relatedTerms: ['apnea', 'osa', 'cpap'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'mixed-apnea',
@@ -135,6 +160,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'A mixed apnea is scored when a ≥10-second event begins without respiratory effort (central portion) and ends with resumed effort against an occluded airway (obstructive portion). AASM guidelines require the central portion to be the initial component. Mixed apneas are grouped with obstructive apneas in AHI calculations for treatment decisions. Clinically, their presence may suggest a component of ventilatory control instability alongside anatomical airway vulnerability.',
     relatedTerms: ['apnea', 'central-apnea', 'obstructive-apnea'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'cpap',
@@ -148,6 +176,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'CPAP delivers a pneumatic splint to the upper airway at a prescribed pressure, typically 4–20 cmH₂O. Pressure is determined through in-lab titration, home auto-titration, or empirical prediction formulas. The key advantage is simplicity and reliability; the disadvantage is that a single pressure must handle all body positions and sleep stages. CPAP is effective for >95% of OSA patients when used consistently. Compliance threshold per Medicare/insurance: ≥4 hours/night for ≥70% of nights (21/30 days). Modern CPAP machines include data logging, ramp functions, and expiratory pressure relief.',
     relatedTerms: ['apap', 'bipap', 'compliance', 'titration'],
+    references: [
+      'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
+    ],
   },
   {
     id: 'apap',
@@ -161,6 +192,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'APAP algorithms detect flow limitation (inspiratory flattening), snoring (vibration in the flow signal), apneas, and hypopneas. When events are detected, pressure is incrementally increased; when the airway is stable, pressure slowly decreases. Response algorithms vary by manufacturer—ResMed uses a fuzzy-logic controller that responds to flow limitation before full events occur. Key settings: minimum pressure (Pmin, typically 4–6), maximum pressure (Pmax, typically 12–20). The 90th or 95th percentile pressure from APAP data is often used to set fixed CPAP prescriptions. APAP is not recommended for central sleep apnea, Cheyne-Stokes, or hypoventilation syndromes.',
     relatedTerms: ['cpap', 'bipap', 'epr'],
+    references: [
+      'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
+    ],
   },
   {
     id: 'bipap',
@@ -187,6 +221,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       "ASV devices learn the patient's recent average ventilation over a ~3-minute window and set target ventilation at ~90% of this value. During central apneas or hypopneas, the device increases pressure support (IPAP − EPAP) to maintain ventilation. During hyperventilation, support is reduced to prevent further ventilatory overshoot. ResMed ASV (AirCurve ASV) uses an expiratory positive airway pressure of 4–15 cmH₂O and variable pressure support of 0–15 cmH₂O. CONTRAINDICATED in patients with symptomatic chronic heart failure with reduced ejection fraction (LVEF ≤ 45%) per the SERVE-HF trial, which showed increased cardiovascular mortality.",
     relatedTerms: ['bipap', 'central-apnea', 'cheyne-stokes'],
+    references: [
+      'Cowie, M. R., Woehrle, H., Wegscheider, K., et al. (2015). Adaptive servo-ventilation for central sleep apnea in systolic heart failure (SERVE-HF). New England Journal of Medicine, 373(12), 1095–1105. DOI: 10.1056/NEJMoa1506459.',
+      'Somers, V. K., White, D. P., Amin, R., et al. (2008). Sleep apnea and cardiovascular disease: an American Heart Association/American College of Cardiology Foundation Scientific Statement. Circulation, 118(10), 1080–1111. DOI: 10.1161/CIRCULATIONAHA.107.189375. — On the cardiovascular consequences of sleep-disordered breathing.',
+    ],
   },
   {
     id: 'compliance',
@@ -202,6 +240,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     formula:
       '\\text{Compliance Rate} = \\frac{\\text{Nights} \\geq 4\\text{h}}{N_{\\text{total}}} \\times 100\\%',
     relatedTerms: ['usage-hours', 'cpap'],
+    references: [
+      'Centers for Medicare & Medicaid Services. Local Coverage Determination L33718: Positive Airway Pressure (PAP) Devices for the Treatment of Obstructive Sleep Apnea. — Adherence defined as ≥4 h/night on ≥70% of nights over a consecutive 30-day period within the first 90 days.',
+      'Weaver, T. E., Maislin, G., Dinges, D. F., et al. (2007). Relationship between hours of CPAP use and achieving normal levels of sleepiness and daily functioning. Sleep, 30(6), 711–719. DOI: 10.1093/sleep/30.6.711.',
+    ],
   },
   {
     id: 'titration',
@@ -214,6 +256,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'In-lab titration follows AASM protocols: starting at 4 cmH₂O and increasing in 1 cmH₂O increments to eliminate events. The optimal pressure should control events in supine REM sleep (when the airway is most collapsible). Home auto-titration uses APAP data (typically 1–2 weeks) to determine the 90th or 95th percentile pressure as a fixed CPAP setting. Empirical formulas (e.g., Hoffstein: P = 0.16 × BMI + 0.13 × neck circumference + 0.04 × AHI − 5.12) provide initial estimates. Split-night studies combine diagnostic and titration in one night but may underestimate optimal pressure if insufficient REM sleep occurs.',
     relatedTerms: ['cpap', 'apap'],
+    references: [
+      'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
+    ],
   },
   {
     id: 'ramp-time',
@@ -273,10 +318,13 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     quick:
       'Air escaping around the mask seal, measured in liters per minute — high leak degrades therapy effectiveness.',
     standard:
-      'Mask leak is the unintentional loss of air around the mask seal, measured in L/min. All masks have some intentional leak through exhalation ports (typically 20–30 L/min), but additional leak indicates a poor seal. High leak (>24 L/min above intentional vent) can cause the machine to under-detect events, deliver inadequate pressure, cause dry mouth, and disrupt sleep.',
+      'Mask leak is the unintentional loss of air around the mask seal, measured in L/min. All masks have some intentional leak through exhalation ports (typically 20–30 L/min), which is by design and not counted as a problem; only leak beyond that intentional vent indicates a poor seal. ResMed flags sustained unintentional leak as a "large leak" at 24 L/min — a device/manufacturer red line, not an AASM clinical standard. High leak can cause the machine to under-detect events, deliver inadequate pressure, cause dry mouth, and disrupt sleep.',
     detailed:
-      'CPAP machines measure total leak and subtract estimated intentional leak (from mask vent ports) to report unintentional leak. ResMed devices report the 95th percentile leak rate as a primary quality indicator. Leak thresholds: < 24 L/min is generally acceptable; sustained leak > 24 L/min degrades device algorithms. Effects of high leak: reduced event detection accuracy (machine may miss apneas), pressure delivery instability (APAP algorithms may over-compensate), aerophagia risk, mask/eye irritation, noise. Common causes: incorrect mask size, worn cushions, mouth opening (chin strap or full-face mask may help), sleeping position.',
+      'CPAP machines measure total leak and subtract estimated intentional leak (from mask vent ports) to report unintentional leak. ResMed devices report the 95th percentile leak rate as a primary quality indicator. The 24 L/min "large leak" threshold is a ResMed device/manufacturer convention, not an AASM clinical standard, and it is mask-dependent: ResMed cites a higher figure (~36 L/min) for some full-face/oronasal masks whose intentional vent flow is larger. Within these limits, sustained unintentional leak above the device threshold degrades the scoring and pressure-control algorithms. Effects of high leak: reduced event detection accuracy (machine may miss apneas), pressure delivery instability (APAP algorithms may over-compensate), aerophagia risk, mask/eye irritation, noise. Common causes: incorrect mask size, worn cushions, mouth opening (chin strap or full-face mask may help), sleeping position.',
     relatedTerms: ['cpap', 'ahi'],
+    references: [
+      'ResMed. Unintentional leak is flagged as a large leak at 24 L/min (device/manufacturer convention; some oronasal masks use ~36 L/min). This is a device threshold, not an AASM clinical standard.',
+    ],
   },
   {
     id: 'residual-ahi',
@@ -288,10 +336,14 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'Residual AHI is the number of apneas and hypopneas per hour that persist while using CPAP. A well-treated patient typically has a residual AHI below 5. The residual AHI is the primary metric for assessing therapy effectiveness. It is lower than the diagnostic AHI because the CPAP is preventing most events.',
     detailed:
-      'Residual AHI is calculated from device data as total machine-scored events divided by mask-on time. Important caveats: (1) Machine-scored AHI uses different algorithmic criteria than PSG-scored AHI and may differ by 10–30%; (2) Residual AHI during subtherapeutic ramp periods should be excluded; (3) Leak-affected periods may have unreliable event scoring; (4) A sudden increase in residual AHI may indicate weight gain, positional changes, medication effects, or mask issues rather than failed therapy. Target: < 5.0 events/hr; optimal: < 2.0 events/hr.',
+      'Residual AHI is calculated from device data as total machine-scored events divided by mask-on time. Important caveats: (1) Device algorithms score events from flow and pressure alone and cannot detect EEG arousals, so device-reported AHI may differ from manually scored polysomnography — sometimes substantially, and in either direction — depending on the device, its scoring algorithm, and the hypopnea rule applied; treat device events as a monitoring/screening signal, not a diagnostic substitute for PSG; (2) Residual AHI during subtherapeutic ramp periods should be excluded; (3) Leak-affected periods may have unreliable event scoring; (4) A sudden increase in residual AHI may indicate weight gain, positional changes, medication effects, or mask issues rather than failed therapy. Target: < 5.0 events/hr; optimal: < 2.0 events/hr.',
     formula:
       '\\text{Residual AHI} = \\frac{\\text{Machine-Scored Events}}{\\text{Mask-On Time (hours)}}',
     relatedTerms: ['ahi', 'cpap', 'compliance'],
+    references: [
+      'Kapur, V. K., Auckley, D. H., Chowdhuri, S., et al. (2017). Clinical Practice Guideline for Diagnostic Testing for Adult Obstructive Sleep Apnea: An AASM Clinical Practice Guideline. Journal of Clinical Sleep Medicine, 13(3), 479–504. DOI: 10.5664/jcsm.6506.',
+      'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
+    ],
   },
   {
     id: 'usage-hours',
@@ -305,6 +357,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'How usage / mask-on time is determined: CPAP Analyzer uses, in order of preference, (1) the explicit mask-on and mask-off interval markers recorded by the machine in STR.edf, which most faithfully reflect what the device itself counted; and (2) when those markers are absent, an improved hysteresis detector that requires flow/pressure to cross an "on" threshold to start a usage interval and fall below a separate, lower "off" threshold to end it. Hysteresis (two thresholds rather than one) prevents a single instantaneous reading near the boundary from rapidly toggling mask-on/off and fragmenting the session — a limitation of the previous fixed 2 cmH₂O instantaneous threshold. Subtherapeutic ramp handling: time spent below therapeutic pressure during ramp is identified so it can be treated appropriately for compliance, which counts time at therapeutic pressure. Because usage time is the denominator for AHI, ODI, leak-duration, and the CMS 4-hour compliance test, these more accurate intervals can shift usage hours and dependent metrics slightly relative to older versions. Dose-response relationship: 4 hours/night provides ESS improvement; ≥6 hours provides cardiovascular benefit; ≥7 hours provides maximal neurocognitive improvement. Mean nightly usage in published studies: 4.5–5.5 hours for adherent patients.',
     relatedTerms: ['compliance', 'ramp-time'],
+    references: [
+      'Centers for Medicare & Medicaid Services. Local Coverage Determination L33718: Positive Airway Pressure (PAP) Devices for the Treatment of Obstructive Sleep Apnea. — Adherence defined as ≥4 h/night on ≥70% of nights over a consecutive 30-day period within the first 90 days.',
+      'Weaver, T. E., Maislin, G., Dinges, D. F., et al. (2007). Relationship between hours of CPAP use and achieving normal levels of sleepiness and daily functioning. Sleep, 30(6), 711–719. DOI: 10.1093/sleep/30.6.711.',
+    ],
   },
 
   {
@@ -320,6 +376,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'CAI = total central apneas / hours of analyzed sleep. Central apneas are scored when ≥10 s of airflow cessation occurs without respiratory effort; on CPAP machines the classification rests on the airway response to a brief forced-oscillation perturbation during the apnea (open airway → central, closed airway → obstructive). Caveats: CAI computed from FOT is degraded under high mask leak, because the perturbation signal dissipates through the leak path; CPAP Analyzer down-weights or excludes high-leak nights from CAI-driven longitudinal analyses (notably TECSA classification). A persistent CAI > 5/h on therapy is the operational definition of treatment-emergent central sleep apnea in Liu et al. 2017 (Chest, DOI 10.1016/j.chest.2017.06.010).',
     formula: '\\text{CAI} = \\frac{\\text{Central Apneas}}{\\text{Hours of Analyzed Sleep}}',
     relatedTerms: ['central-apnea', 'csa', 'tecsa', 'ahi', 'fot'],
+    references: [
+      'Liu, D., Armitstead, J., Benjafield, A., et al. (2017). Trajectories of emergent central sleep apnea during continuous positive airway pressure therapy. Chest, 152(4), 751–760. DOI: 10.1016/j.chest.2017.06.010.',
+    ],
   },
   {
     id: 'fot',
@@ -333,6 +392,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       "ResMed's implementation emits a 4 Hz pressure oscillation during a scored apnea and measures the resulting flow response; the impedance ratio classifies the airway state. FOT is well established in respiratory mechanics and is what gives consumer CPAP machines a way to distinguish central from obstructive events without thoracoabdominal effort belts. Important limitations: FOT classification is degraded under high mask leak (the perturbation signal dissipates through the leak path before reaching the airway), so high-leak nights produce unreliable ClearAirway counts. CPAP Analyzer down-weights or excludes high-leak nights from CAI-driven longitudinal analyses (notably TECSA) for this reason. FOT does not detect partial obstruction (hypopneas); it is used only during full apneas.",
     relatedTerms: ['central-apnea', 'obstructive-apnea', 'cai', 'mask-leak'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'hypoxic-burden',
@@ -346,6 +408,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'The sleep apnea-specific hypoxic burden is defined as the total area under the SpO₂ desaturation curve associated with respiratory events, expressed in %·min/h of sleep. Methodology: for each scored respiratory event, the event-related desaturation is identified and its area below baseline SpO₂ is integrated; the per-night sum is divided by sleep hours. Higher hypoxic burden indicates that events tend to be deeper or longer in their oxygen impact, not merely more frequent. Like other oximetry-derived metrics, hypoxic burden requires adequate SpO₂ coverage to be meaningful — interpret alongside the coverage % (see SpO₂ Coverage). CPAP Analyzer reports hypoxic burden for information; it does not diagnose.',
     relatedTerms: ['odi', 'spo2', 't90', 'desaturation', 'spo2-coverage'],
+    references: [
+      'Azarbarzin, A., Sands, S. A., Stone, K. L., et al. (2019). The hypoxic burden of sleep apnoea predicts cardiovascular disease-related mortality: the MrOS and Sleep Heart Health Study. European Heart Journal, 40(14), 1149–1157. DOI: 10.1093/eurheartj/ehy624.',
+    ],
   },
   {
     id: 'tecsa',
@@ -357,8 +422,13 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'Treatment-emergent central sleep apnea (TECSA, also called complex sleep apnea or CompSA) describes the appearance of central apneas after CPAP initiation in a patient whose pre-treatment study was predominantly obstructive. The prevailing literature finds roughly 60–80% spontaneous resolution within ~3 months of continued CPAP as the respiratory control loop re-adapts (Nigam et al. 2016 systematic review; Kwok et al. 2022). The Liu et al. (2017) four-class trajectory model (obstructive / transient / persistent / emergent) distinguishes self-limiting TECSA from persistent or late-emerging central patterns.',
     detailed:
-      'Operationally, TECSA is defined when the central apnea index (CAI) exceeds a threshold (commonly 5/h) on therapy, with prior obstructive disease. CPAP Analyzer implements the Liu et al. 2017 (Chest, DOI 10.1016/j.chest.2017.06.010) trajectory classifier longitudinally over nightly CAI: early-window CAI is compared to late-window CAI, both at the 5/h threshold, to assign one of four classes (obstructive stable, transient TECSA, persistent central, emergent central). High-leak nights are excluded because FOT-derived CAI is degraded under leak. The single most important clinical caveat: TECSA does not by itself justify a switch to adaptive servo-ventilation (ASV). The SERVE-HF randomized trial (Cowie et al. 2015) found increased mortality with ASV in symptomatic chronic heart failure with reduced ejection fraction (LVEF ≤ 45%) with predominantly central sleep apnea; subsequent AHA/ACC scientific statements formalized the contraindication (Somers et al. 2018). Therapy-mode changes are clinician decisions informed by echocardiography and the full clinical picture, not by a software flag. CPAP Analyzer reports TECSA trajectory as a candidate finding for discussion; it does not diagnose.',
+      'Operationally, TECSA is defined when the central apnea index (CAI) exceeds a threshold (commonly 5/h) on therapy, with prior obstructive disease. CPAP Analyzer implements the Liu et al. 2017 (Chest, DOI 10.1016/j.chest.2017.06.010) trajectory classifier longitudinally over nightly CAI: early-window CAI is compared to late-window CAI, both at the 5/h threshold, to assign one of four classes (obstructive stable, transient TECSA, persistent central, emergent central). High-leak nights are excluded because FOT-derived CAI is degraded under leak. The single most important clinical caveat: TECSA does not by itself justify a switch to adaptive servo-ventilation (ASV). The SERVE-HF randomized trial (Cowie et al. 2015) found increased mortality with ASV in symptomatic chronic heart failure with reduced ejection fraction (LVEF ≤ 45%) with predominantly central sleep apnea; on the strength of that trial, ASV is contraindicated in this group. Therapy-mode changes are clinician decisions informed by echocardiography and the full clinical picture, not by a software flag. CPAP Analyzer reports TECSA trajectory as a candidate finding for discussion; it does not diagnose.',
     relatedTerms: ['central-apnea', 'csa', 'cai', 'asv', 'loop-gain'],
+    references: [
+      'Liu, D., Armitstead, J., Benjafield, A., et al. (2017). Trajectories of emergent central sleep apnea during continuous positive airway pressure therapy. Chest, 152(4), 751–760. DOI: 10.1016/j.chest.2017.06.010.',
+      'Nigam, G., Pathak, C., & Riaz, M. (2016). A systematic review on prevalence and risk factors associated with treatment-emergent central sleep apnea. Annals of Thoracic Medicine, 11(3), 202–210. DOI: 10.4103/1817-1737.185761.',
+      'Cowie, M. R., Woehrle, H., Wegscheider, K., et al. (2015). Adaptive servo-ventilation for central sleep apnea in systolic heart failure (SERVE-HF). New England Journal of Medicine, 373(12), 1095–1105. DOI: 10.1056/NEJMoa1506459.',
+    ],
   },
   {
     id: 'periodic-breathing',
@@ -370,7 +440,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'Periodic breathing (PB) is a repeating oscillation in tidal volume / minute ventilation during sleep — breath depth grows, then falls, then grows again, typically with a cycle length of 40–120 seconds. When the nadirs are deep enough to include central apneas and the envelope is clearly crescendo-decrescendo, the pattern qualifies as Cheyne-Stokes respiration (CSR). PB without those criteria is the broader category, common at altitude, in heart failure, on opioids, and in some neurological conditions. ResMed devices flag formal CSR but not sub-threshold PB; CPAP Analyzer surfaces both.',
     detailed:
-      'PB arises from instability of the chemoreflex-driven control of ventilation — high loop gain combined with a long circulation delay produces oscillatory feedback that overshoots in both directions, with central apneas at the troughs when PaCO₂ falls below the apneic threshold. Single-channel airflow methods (Weinreich 2009, Javed 2018, Midelet 2023, Guyot 2019) can detect PB from the flow envelope alone; CPAP Analyzer combines AASM-style morphology rules with an autocorrelation-based periodicity check, a Guyot-style modulation index (0–1) for confidence, and a harmonic-ratio crescendo-decrescendo morphology score. Sub-threshold PB and short CSR runs that fall below the ResMed 15-minute device floor are surfaced as "candidate / below device threshold" rather than silently dropped or promoted to formal CSR flags. See the help article "Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA" for the full method.',
+      'PB arises from instability of the chemoreflex-driven control of ventilation — high loop gain combined with a long circulation delay produces oscillatory feedback that overshoots in both directions, with central apneas at the troughs when PaCO₂ falls below the apneic threshold. Single-channel airflow methods (Weinreich 2009, Javed 2018, Midelet 2023, Guyot 2020) can detect PB from the flow envelope alone; CPAP Analyzer combines AASM-style morphology rules with an autocorrelation-based periodicity check, a Guyot-style modulation index (0–1) for confidence, and a harmonic-ratio crescendo-decrescendo morphology score. Sub-threshold PB and short CSR runs that fall below the ResMed 15-minute device floor are surfaced as "candidate / below device threshold" rather than silently dropped or promoted to formal CSR flags. See the help article "Breathing Patterns: Periodic Breathing, Cheyne-Stokes & TECSA" for the full method.',
     relatedTerms: [
       'cheyne-stokes',
       'central-apnea',
@@ -380,6 +450,11 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'apneic-threshold',
       'modulation-index',
       'harmonic-ratio',
+    ],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+      'Midelet, A., et al. (2023). Features of Cheyne-Stokes respiration automatically extracted from CPAP airflow signal raw data: identification of discriminating features to detect heart failure. Biomedical Signal Processing and Control. — Airflow-based CSR feature extraction; longer cycle length tracks reduced cardiac output.',
+      'Guyot, P., Djermoune, E.-H., Chenuel, B., & Bastogne, T. (2020). A signal demodulation-based method for the early detection of Cheyne-Stokes respiration. PLoS ONE, 15(3), e0221191. DOI: 10.1371/journal.pone.0221191. — Continuous flow-modulation index as a confidence measure for periodic breathing.',
     ],
   },
   {
@@ -399,6 +474,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'apneic-threshold',
       'tecsa',
     ],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+      'Midelet, A., et al. (2023). Features of Cheyne-Stokes respiration automatically extracted from CPAP airflow signal raw data: identification of discriminating features to detect heart failure. Biomedical Signal Processing and Control. — Airflow-based CSR feature extraction; longer cycle length tracks reduced cardiac output.',
+    ],
   },
   {
     id: 'apneic-threshold',
@@ -411,6 +490,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'The CO₂ reserve = eupneic PaCO₂ − apneic threshold PaCO₂. A small reserve (a few mmHg) means a modest hyperventilation can cross the threshold and silence breathing; a large reserve is protective. The apneic threshold is lower in NREM sleep than wake and is one reason central apneas tend to appear at sleep onset and at sleep-stage transitions. It interacts with loop gain: high loop gain plus a narrow CO₂ reserve is the classic high-altitude / heart-failure / opioid pattern that generates periodic breathing. This concept underlies why hyperventilation (anxiety, sleep-onset transitions) can trigger a central apnea, and why hypercapnic drugs / supplemental CO₂ have been studied for high-loop-gain CSA.',
     relatedTerms: ['loop-gain', 'central-apnea', 'periodic-breathing', 'cheyne-stokes'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'modulation-index',
@@ -419,10 +501,13 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     quick:
       'A 0–1 score for how strongly a signal oscillates relative to its mean — used to score periodic breathing confidence from the airflow envelope.',
     standard:
-      'The modulation index quantifies the amplitude of an oscillation relative to the baseline level of the signal it modulates. Values near 0 indicate an essentially flat envelope; values near 1 indicate a deeply modulated cyclic envelope. CPAP Analyzer uses a Guyot-style modulation index on the airflow / minute-ventilation envelope as the continuous confidence basis for periodic breathing detection (Guyot et al. 2019).',
+      'The modulation index quantifies the amplitude of an oscillation relative to the baseline level of the signal it modulates. Values near 0 indicate an essentially flat envelope; values near 1 indicate a deeply modulated cyclic envelope. CPAP Analyzer uses a Guyot-style modulation index on the airflow / minute-ventilation envelope as the continuous confidence basis for periodic breathing detection (Guyot et al. 2020).',
     detailed:
       'For a periodic envelope with peaks $p_i$ and troughs $t_i$, a common form is $\\text{MI} = \\frac{p - t}{p + t}$, evaluated on the smoothed envelope of the airflow signal. Values near 0 indicate a steady envelope; values approaching 1 indicate near-complete modulation (deep troughs, often coinciding with central apneas). The modulation index is robust to slow drift in baseline ventilation and is dimensionless, which is why it is preferred over raw amplitude for cross-night and cross-subject comparison. In CPAP Analyzer, MI is one of three inputs to the periodic-breathing confidence score; the others are the autocorrelation-based periodicity peak in the 40–120 s band and the harmonic-ratio crescendo-decrescendo morphology score. Higher MI indicates a more confidently periodic envelope, not a more severe disease — interpret confidence and severity separately.',
     relatedTerms: ['periodic-breathing', 'cheyne-stokes', 'harmonic-ratio', 'correlation'],
+    references: [
+      'Guyot, P., Djermoune, E.-H., Chenuel, B., & Bastogne, T. (2020). A signal demodulation-based method for the early detection of Cheyne-Stokes respiration. PLoS ONE, 15(3), e0221191. DOI: 10.1371/journal.pone.0221191. — Continuous flow-modulation index as a confidence measure for periodic breathing.',
+    ],
   },
   {
     id: 'harmonic-ratio',
@@ -436,6 +521,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'After estimating the dominant cycle frequency $f_0$ in the 40–120 s band by autocorrelation, the harmonic ratio is computed as the ratio of spectral energy in a narrow band around $f_0$ to the total spectral energy across the in-band region. It complements the modulation index: MI measures how *deep* the modulation is; HR measures how *clean* the modulation shape is. A high MI with a low HR indicates a strongly modulated but irregular envelope (could be arousal, leak, or noise); a high MI with a high HR is consistent with crescendo-decrescendo CSR morphology. The combined score is what drives the CPAP Analyzer CSR-vs-PB distinction and the per-episode confidence.',
     formula: '\\text{HR} = \\frac{E_{\\text{fundamental}}}{E_{\\text{in-band total}}}',
     relatedTerms: ['modulation-index', 'periodic-breathing', 'cheyne-stokes'],
+    references: [
+      'Javed, F., Fox, N., & Armitstead, J. (2018). ResCSRF: algorithm to automatically extract Cheyne-Stokes respiration features from respiratory signals. IEEE Transactions on Biomedical Engineering, 65(3), 669–677. DOI: 10.1109/TBME.2017.2712102.',
+    ],
   },
 
   // ─── SLEEP MEDICINE ─────────────────────────────────────────────────
@@ -451,6 +539,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'Sleep apnea is diagnosed via polysomnography (PSG) or home sleep testing (HST). Prevalence estimates: 10–30% of adults have OSA (higher with obesity). The Wisconsin Sleep Cohort study found moderate-severe OSA in 13% of men and 6% of women (30–70 years). Untreated OSA is associated with increased risk of hypertension, atrial fibrillation, stroke, coronary artery disease, type 2 diabetes, motor vehicle accidents, and all-cause mortality. The Apnea-Hypopnea Index (AHI) is the primary diagnostic metric. Treatment modalities include CPAP, oral appliances, positional therapy, surgery (UPPP, MMA, hypoglossal nerve stimulation), and weight loss.',
     relatedTerms: ['osa', 'csa', 'ahi', 'cpap'],
+    references: [
+      'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
+    ],
   },
   {
     id: 'osa',
@@ -464,6 +555,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'OSA pathophysiology involves the balance between anatomical airway size, negative intraluminal pressure during inspiration, and neuromuscular compensation during wakefulness. During sleep, reduced muscle tone tips the balance toward collapse. Risk factors: obesity (strongest modifiable factor), male sex, age > 50, neck circumference > 17 inches (men) / > 16 inches (women), retrognathia, macroglossia, nasal obstruction, alcohol, sedatives. Diagnosis per AASM (ICSD-3): AHI ≥ 5 + symptoms OR AHI ≥ 15 regardless of symptoms. Severity: Mild (5–14), Moderate (15–29), Severe (≥ 30).',
     relatedTerms: ['sleep-apnea', 'ahi', 'cpap', 'obstructive-apnea'],
+    references: [
+      'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
+    ],
   },
   {
     id: 'csa',
@@ -477,6 +571,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'CSA types (ICSD-3): (1) CSA with Cheyne-Stokes breathing (most common, typically with heart failure); (2) CSA due to medical disorder; (3) CSA due to high-altitude periodic breathing; (4) CSA due to medication or substance (opioids); (5) Primary/idiopathic CSA; (6) Treatment-emergent CSA (CompSA — central events that appear on CPAP). Pathophysiology involves ventilatory control instability — the loop gain is high, meaning small changes in PaCO₂ cause large ventilatory responses. Diagnosis: Central apnea index > 5/hr with > 50% of events being central. Treatment: Address underlying cause; ASV for idiopathic/treatment-emergent CSA (contraindicated in HFrEF).',
     relatedTerms: ['sleep-apnea', 'central-apnea', 'cheyne-stokes', 'asv'],
+    references: [
+      'Liu, D., Armitstead, J., Benjafield, A., et al. (2017). Trajectories of emergent central sleep apnea during continuous positive airway pressure therapy. Chest, 152(4), 751–760. DOI: 10.1016/j.chest.2017.06.010.',
+    ],
   },
   {
     id: 'odi',
@@ -484,14 +581,18 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     category: 'sleep-medicine',
     aliases: ['Oxygen Desaturation Index'],
     quick:
-      'The number of times per hour that blood oxygen drops by ≥3% (or ≥4%) from baseline during sleep.',
+      'The number of times per hour that blood oxygen falls ≥3% below a rolling baseline during sleep.',
     standard:
-      'ODI measures how frequently oxygen levels dip during sleep. CPAP Analyzer scores a desaturation as a discrete event — a fall of ≥3% in SpO₂ below a rolling baseline, sustained for at least 10 seconds — and counts each event once, then divides by the hours of valid oximetry. A 3% ODI counts ≥3% drops; a 4% ODI counts ≥4% drops. ODI correlates with AHI but specifically captures the physiological impact of breathing events — events that cause significant desaturation are more clinically concerning than those without.',
+      'ODI measures how frequently oxygen levels dip during sleep. CPAP Analyzer scores a desaturation as a discrete event — a fall of ≥3% in SpO₂ below a rolling baseline, sustained for at least 10 seconds (the AASM 3% desaturation rule) — counts each event once, then divides by the hours of valid oximetry. A 4% ODI is an alternative convention used elsewhere (for example, the Medicare hypopnea/desaturation rule), but CPAP Analyzer computes the 3% ODI. ODI correlates with AHI but specifically captures the physiological impact of breathing events — events that cause significant desaturation are more clinically concerning than those without.',
     detailed:
-      'ODI is the number of discrete desaturation events per hour of valid oximetry. CPAP Analyzer detects an event when SpO₂ falls ≥3% (or ≥4%, configurable) below a rolling baseline — the recent local maximum / running reference saturation — for ≥10 seconds, and counts that excursion exactly once (a single prolonged dip is one event, not many). The denominator excludes periods with no oximetry signal, so dropouts do not deflate the rate. (Earlier versions counted per-sample drops, which inflated ODI and is not clinically valid; the event-based definition here is the correct one.) Two thresholds are common: 3% ODI (more sensitive, aligns with the AASM hypopnea definition) and 4% ODI (more specific, aligns with the Medicare hypopnea definition). ODI may diverge from AHI when: (1) many events cause arousal without desaturation (ODI < AHI); (2) oxygen stores are depleted in REM/supine position causing desaturations from minor events (ODI > AHI). ODI is a stronger predictor of cardiovascular outcomes than AHI in some studies (Wisconsin Cohort, SHHS). Requires integrated or paired pulse oximetry; without oximetry data, ODI is not reported.',
+      'ODI is the number of discrete desaturation events per hour of valid oximetry. CPAP Analyzer detects an event when SpO₂ falls ≥3% below a rolling baseline — the recent local maximum / running reference saturation — for ≥10 seconds, and counts that excursion exactly once (a single prolonged dip is one event, not many). This is the AASM 3% desaturation rule. The denominator excludes periods with no oximetry signal, so dropouts do not deflate the rate. (Earlier versions counted per-sample drops, which inflated ODI and is not clinically valid; the event-based definition here is the correct one.) Two desaturation thresholds are seen in the literature: the 3% rule (more sensitive, aligns with the AASM hypopnea definition) and a 4% rule (more specific, aligns with the Medicare hypopnea/desaturation rule). CPAP Analyzer computes only the 3% ODI; the 4% variant is noted for context and is not a selectable option. ODI may diverge from AHI when: (1) many events cause arousal without desaturation (ODI < AHI); (2) oxygen stores are depleted in REM/supine position causing desaturations from minor events (ODI > AHI). ODI is a stronger predictor of cardiovascular outcomes than AHI in some studies (Wisconsin Cohort, SHHS). Requires integrated or paired pulse oximetry; without oximetry data, ODI is not reported.',
     formula:
       '\\text{ODI} = \\frac{\\text{Desaturation Events } (\\geq 3\\%,\\, \\geq 10\\text{s})}{\\text{Hours of Valid Oximetry}}',
     relatedTerms: ['spo2', 'desaturation', 'ahi', 'spo2-coverage', 't90'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+      'Azarbarzin, A., Sands, S. A., Stone, K. L., et al. (2019). The hypoxic burden of sleep apnoea predicts cardiovascular disease-related mortality: the MrOS and Sleep Heart Health Study. European Heart Journal, 40(14), 1149–1157. DOI: 10.1093/eurheartj/ehy624.',
+    ],
   },
   {
     id: 'spo2',
@@ -505,6 +606,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'SpO₂ is measured by pulse oximetry using differential light absorption at two wavelengths (660nm red, 940nm infrared). Normal: 95–100%. Mild desaturation: 90–94%. Moderate desaturation: 80–89%. Severe desaturation: < 80%. In sleep apnea, the pattern of cyclic desaturation-reoxygenation (intermittent hypoxia) causes oxidative stress and is implicated in cardiovascular, metabolic, and neurocognitive morbidity. Key metrics: mean SpO₂, minimum SpO₂, time below 90% (T90, time-based with oximetry dropouts excluded), oxygen desaturation index (ODI), and oximetry coverage % (the fraction of analyzed time with a valid SpO₂ signal). Coverage should be reviewed first: low coverage means the other SpO₂ statistics rest on little data. Measurement artifacts: motion, poor perfusion, dark nail polish, skin pigmentation may cause inaccurate readings. Some CPAP machines include integrated oximetry; external oximeters can be paired via Bluetooth.',
     relatedTerms: ['odi', 'desaturation', 't90', 'spo2-coverage'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 't90',
@@ -520,6 +624,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     formula:
       'T90 = \\frac{t_{\\,\\text{SpO}_2 < 90\\%}}{t_{\\,\\text{valid oximetry}}} \\times 100\\%',
     relatedTerms: ['spo2', 'desaturation', 'odi', 'spo2-coverage'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+      'Azarbarzin, A., Sands, S. A., Stone, K. L., et al. (2019). The hypoxic burden of sleep apnoea predicts cardiovascular disease-related mortality: the MrOS and Sleep Heart Health Study. European Heart Journal, 40(14), 1149–1157. DOI: 10.1093/eurheartj/ehy624.',
+    ],
   },
   {
     id: 'spo2-coverage',
@@ -535,6 +643,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     formula:
       '\\text{Coverage} = \\frac{t_{\\,\\text{valid oximetry}}}{t_{\\,\\text{analyzed}}} \\times 100\\%',
     relatedTerms: ['spo2', 't90', 'odi'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'desaturation',
@@ -548,6 +659,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'Desaturation kinetics depend on: baseline SpO₂ (patients starting at 95% reach 90% faster than those at 98%), FRC (functional residual capacity — lung oxygen reservoir), metabolic rate, cardiac output, and body position. The delay between event onset and SpO₂ nadir is typically 15–30 seconds due to circulation time. Depth and duration of desaturation correlate with cardiovascular morbidity more strongly than event count alone. Nadir SpO₂ during the study is a predictor of incident atrial fibrillation and hypertension. Hypoxic burden (area under the desaturation curve) is an emerging metric that captures both frequency and depth of desaturations.',
     relatedTerms: ['spo2', 'odi', 'hypopnea'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+    ],
   },
   {
     id: 'arousal',
@@ -581,10 +695,15 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     quick:
       'A crescendo-decrescendo breathing pattern with central apneas, commonly associated with heart failure.',
     standard:
-      'Cheyne-Stokes respiration is a distinctive breathing pattern where breath depth and rate gradually increase (crescendo), then decrease (decrescendo), followed by a central apnea. This cycle repeats every 60–90 seconds. It is most commonly caused by congestive heart failure but can occur with stroke or other neurological conditions. Treatment involves addressing the underlying cardiac condition and potentially using ASV.',
+      'Cheyne-Stokes respiration is a distinctive breathing pattern where breath depth and rate gradually increase (crescendo), then decrease (decrescendo), followed by a central apnea. This cycle repeats with a period of 40–120 seconds (typically 45–90 seconds). It is most commonly caused by congestive heart failure but can occur with stroke or other neurological conditions. Treatment involves addressing the underlying cardiac condition and potentially using ASV.',
     detailed:
-      'CSR results from high loop gain in the ventilatory control system. In heart failure, prolonged circulation time delays CO₂ feedback to chemoreceptors, causing oscillatory ventilatory control. Cycle length = 2 × circulation time (typically 60–90 seconds). PaCO₂ oscillates around the apneic threshold. Diagnosis: ≥3 consecutive cycles of crescendo-decrescendo tidal volume with cycle length ≥ 40 seconds, and central AHI ≥ 5/hr. Prevalence in systolic heart failure: 30–50%. Treatment: optimize cardiac function (diuretics, ACE inhibitors, CRT); supplemental oxygen; ASV (CONTRAINDICATED if LVEF ≤ 45% per SERVE-HF trial). CPAP may partially treat CSR but is less effective than ASV.',
+      'CSR results from high loop gain in the ventilatory control system. In heart failure, prolonged circulation time delays CO₂ feedback to chemoreceptors, causing oscillatory ventilatory control. Cycle length = 2 × circulation time, typically 40–120 seconds (most often 45–90 seconds), so longer cycles track reduced cardiac output. PaCO₂ oscillates around the apneic threshold. Diagnosis: ≥3 consecutive cycles of crescendo-decrescendo tidal volume with cycle length ≥ 40 seconds, and central AHI ≥ 5/hr. Prevalence in systolic heart failure: 30–50%. Treatment: optimize cardiac function (diuretics, ACE inhibitors, CRT); supplemental oxygen; ASV (CONTRAINDICATED if LVEF ≤ 45% per SERVE-HF trial). CPAP may partially treat CSR but is less effective than ASV.',
     relatedTerms: ['central-apnea', 'csa', 'asv'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+      'Javed, F., Fox, N., & Armitstead, J. (2018). ResCSRF: algorithm to automatically extract Cheyne-Stokes respiration features from respiratory signals. IEEE Transactions on Biomedical Engineering, 65(3), 669–677. DOI: 10.1109/TBME.2017.2712102.',
+      'Cowie, M. R., Woehrle, H., Wegscheider, K., et al. (2015). Adaptive servo-ventilation for central sleep apnea in systolic heart failure (SERVE-HF). New England Journal of Medicine, 373(12), 1095–1105. DOI: 10.1056/NEJMoa1506459.',
+    ],
   },
   {
     id: 'flow-limitation',
@@ -610,6 +729,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'UARS was first described by Guilleminault et al. (1993). It exists on the spectrum between primary snoring and OSA. Patients typically are younger, leaner, and more often female than classic OSA patients. Diagnosis requires esophageal pressure monitoring or pneumotachographic flow measurement to detect increasing inspiratory effort. Standard PSG may miss UARS if only scoring AHI. Respiratory Disturbance Index (RDI = AHI + RERA index) captures UARS. Some authors consider UARS a mild variant of OSA; others view it as a distinct entity. Treatment: CPAP (low pressures usually sufficient), oral appliances, nasal surgery for anatomical obstruction.',
     relatedTerms: ['rera', 'flow-limitation', 'osa'],
+    references: [
+      'Guilleminault, C., Stoohs, R., Clerk, A., Cetel, M., & Maistros, P. (1993). A cause of excessive daytime sleepiness: the upper airway resistance syndrome. Chest, 104(3), 781–787. DOI: 10.1378/chest.104.3.781.',
+    ],
   },
 
   // ─── STATISTICS ─────────────────────────────────────────────────────
@@ -689,10 +811,16 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'Correlation quantifies the strength and direction of the linear relationship between two variables. Values range from -1 (perfect negative) to +1 (perfect positive); 0 indicates no linear relationship. In CPAP analysis, you might examine the correlation between leak rate and AHI, or between usage hours and daytime sleepiness scores.',
     detailed:
-      'Pearson correlation r = Σ(xᵢ − x̄)(yᵢ − ȳ) / √(Σ(xᵢ − x̄)² × Σ(yᵢ − ȳ)²). Assumptions: linearity, bivariate normality, no significant outliers. For non-normal data (common in CPAP data), use Spearman rank correlation ρ (monotonic relationships) or Kendall τ (ordinal). Effect size interpretation (Cohen): |r| < 0.1 negligible, 0.1–0.3 small, 0.3–0.5 medium, > 0.5 large. Correlation does NOT imply causation — a correlation between mask type and AHI may reflect selection bias (patients with severe OSA may use specific masks). Always visualize the relationship alongside the correlation coefficient.',
+      "Pearson correlation r = Σ(xᵢ − x̄)(yᵢ − ȳ) / √(Σ(xᵢ − x̄)² × Σ(yᵢ − ȳ)²). Assumptions: linearity, bivariate normality, no significant outliers. For non-normal data (common in CPAP data), use Spearman rank correlation ρ (monotonic relationships) or Kendall τ (ordinal). CPAP Analyzer labels the magnitude of |r| using five rule-of-thumb bands: |r| < 0.1 negligible, 0.1–0.3 weak, 0.3–0.5 moderate, 0.5–0.7 strong, > 0.7 very strong. These are convenience labels, not a standard: correlation-strength cutoffs are inherently arbitrary (Schober et al. 2018), and they differ from Cohen's (1988) effect-size benchmarks for r, which are .1 (small), .3 (medium), and .5 (large). Correlation does NOT imply causation — a correlation between mask type and AHI may reflect selection bias (patients with severe OSA may use specific masks). Always visualize the relationship alongside the correlation coefficient.",
     formula:
       'r = \\frac{\\sum_{i=1}^{n}(x_i - \\bar{x})(y_i - \\bar{y})}{\\sqrt{\\sum_{i=1}^{n}(x_i - \\bar{x})^2 \\cdot \\sum_{i=1}^{n}(y_i - \\bar{y})^2}}',
     relatedTerms: ['regression', 'p-value'],
+    references: [
+      'Pearson, K. (1895). Note on regression and inheritance in the case of two parents. Proceedings of the Royal Society of London, 58, 240–242. DOI: 10.1098/rspl.1895.0041.',
+      'Spearman, C. (1904). The proof and measurement of association between two things. American Journal of Psychology, 15(1), 72–101. DOI: 10.2307/1412159.',
+      'Cohen, J. (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.). Hillsdale, NJ: Lawrence Erlbaum. — Effect-size benchmarks (r: .1/.3/.5 = small/medium/large).',
+      'Schober, P., Boer, C., & Schwarte, L. A. (2018). Correlation coefficients: appropriate use and interpretation. Anesthesia & Analgesia, 126(5), 1763–1768. DOI: 10.1213/ANE.0000000000002864. — Notes that correlation-strength cutoffs are inherently arbitrary.',
+    ],
   },
   {
     id: 'confidence-interval',
@@ -707,6 +835,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'For a mean: CI = x̄ ± t₍α/2, n−1₎ × (s/√n). Width depends on: sample size (larger n → narrower CI), variability (lower s → narrower CI), and confidence level (99% CI > 95% CI). For proportions (e.g., compliance rate): CI = p̂ ± z × √(p̂(1−p̂)/n). Bootstrap confidence intervals are non-parametric alternatives that make no distributional assumptions — appropriate for the skewed distributions common in CPAP data. Report: "Mean AHI was 3.2 (95% CI: 2.8–3.6)" rather than just "Mean AHI was 3.2" to communicate precision.',
     formula: '\\text{CI} = \\bar{x} \\pm t_{\\alpha/2,\\, n-1} \\cdot \\frac{s}{\\sqrt{n}}',
     relatedTerms: ['p-value', 'standard-deviation', 'statistical-significance'],
+    references: [
+      'Fisher, R. A. (1915). Frequency distribution of the values of the correlation coefficient in samples from an indefinitely large population. Biometrika, 10(4), 507–521. DOI: 10.2307/2331838. — z-transformation for correlation confidence intervals.',
+    ],
   },
   {
     id: 'rolling-average',
@@ -731,8 +862,12 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'A trend is the overall direction of change in data over time. In CPAP analysis, identifying trends in AHI, leak rate, and usage helps detect gradual improvement or deterioration. A downward AHI trend suggests improving therapy control; an upward trend may indicate weight gain, mask degradation, or changing sleep conditions.',
     detailed:
-      'Trend detection methods: (1) Linear regression (fits a straight line; slope indicates direction and rate); (2) Mann-Kendall test (non-parametric trend test suitable for non-normal data); (3) Sen slope estimator (robust slope estimate); (4) Change point detection (identifies where trend shifts occur). LOESS smoothing can visualize non-linear trends. Statistical significance of a trend should be assessed (is the slope significantly different from zero?) while considering autocorrelation (consecutive nights are not independent). Clinically meaningful trends: AHI increasing > 2/hr over a month warrants investigation; usage declining > 30 min/night over a month suggests adherence intervention needed.',
+      "CPAP Analyzer's trend analysis fits an ordinary-least-squares (OLS) linear regression to the nightly series — the slope gives direction and rate, and a Student-t test on the slope assesses whether it differs significantly from zero — and overlays LOESS smoothing to reveal non-linear shape. Other trend methods exist and are listed here for completeness, but they are NOT what the app currently computes: the Mann–Kendall test (a non-parametric trend test suitable for non-normal data), the Sen (Theil–Sen) slope estimator (a robust median-of-pairwise-slopes estimate), and change-point detection (which locates where a trend shifts rather than fitting one). When judging significance, remember that consecutive nights are autocorrelated and not independent, which can make a naive t-test overstate confidence. Clinically meaningful trends: AHI increasing > 2/hr over a month warrants investigation; usage declining > 30 min/night over a month suggests adherence intervention needed.",
     relatedTerms: ['rolling-average', 'regression', 'change-point', 'loess'],
+    references: [
+      'Mann, H. B. (1945). Nonparametric tests against trend. Econometrica, 13(3), 245–259. DOI: 10.2307/1907187.',
+      "Sen, P. K. (1968). Estimates of the regression coefficient based on Kendall's tau. Journal of the American Statistical Association, 63(324), 1379–1389. DOI: 10.1080/01621459.1968.10480934.",
+    ],
   },
   {
     id: 'outlier',
@@ -745,6 +880,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'Common outlier detection methods: (1) IQR method: values below Q1 − 1.5×IQR or above Q3 + 1.5×IQR; (2) Z-score: |z| > 3; (3) Modified Z-score using median and MAD (more robust); (4) Grubbs test (assumes normality); (5) Isolation Forest (machine learning approach for multivariate data). In CPAP analysis, important to distinguish: clinical outliers (genuinely unusual night — illness, alcohol, positional) from data quality outliers (mask removal, battery failure, corrupt data). Clinical outliers should be analyzed, not removed. Data quality outliers should be flagged and optionally excluded from aggregate statistics.',
     relatedTerms: ['standard-deviation', 'percentile'],
+    references: [
+      'Tukey, J. W. (1977). Exploratory Data Analysis. Reading, MA: Addison-Wesley. — Interquartile-range fences for outlier detection.',
+    ],
   },
   {
     id: 'normal-distribution',
@@ -759,6 +897,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'PDF: f(x) = (1/(σ√(2π))) × e^(-(x-μ)²/(2σ²)). Characterized by mean (μ) and standard deviation (σ). Properties: symmetric about the mean; 68-95-99.7 rule; mean = median = mode. Central Limit Theorem: the mean of sufficiently large random samples will be approximately normal regardless of the underlying distribution. This is why confidence intervals and hypothesis tests often work well even for non-normal data when sample sizes are adequate (n ≥ 30 as a rough guideline). For CPAP data: test normality with the Shapiro–Francia test (the correlation-based variant of Shapiro–Wilk, which CPAP Analyzer computes); use non-parametric methods (Mann-Whitney, Kruskal-Wallis) when normality is violated.',
     formula: 'f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}}\\, e^{-\\frac{(x - \\mu)^2}{2\\sigma^2}}',
     relatedTerms: ['mean', 'standard-deviation'],
+    references: [
+      'Shapiro, S. S., & Francia, R. S. (1972). An approximate analysis of variance test for normality. Journal of the American Statistical Association, 67(337), 215–216. DOI: 10.1080/01621459.1972.10481232.',
+      'Royston, P. (1993). A toolkit for testing for non-normality in complete and censored samples. The Statistician (Journal of the Royal Statistical Society, Series D), 42(1), 37–43. DOI: 10.2307/2348109.',
+    ],
   },
   {
     id: 'effect-size',
@@ -774,6 +916,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     formula:
       'd = \\frac{M_1 - M_2}{s_{\\text{pooled}}}, \\quad s_{\\text{pooled}} = \\sqrt{\\frac{s_1^2 + s_2^2}{2}}',
     relatedTerms: ['p-value', 'statistical-significance'],
+    references: [
+      'Cohen, J. (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.). Hillsdale, NJ: Lawrence Erlbaum. — Effect-size benchmarks (r: .1/.3/.5 = small/medium/large).',
+    ],
   },
   {
     id: 'statistical-significance',
@@ -797,9 +942,13 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'The Kaplan-Meier estimator creates a "survival curve" showing the probability of remaining event-free over time. In CPAP analysis, it can be used to visualize time-to-first-event analysis: how long into the night before the first apnea occurs, or what percentage of nights remain above a compliance threshold. The step-down curve shows when events happen.',
     detailed:
-      'KM estimator: Ŝ(t) = Π_{tᵢ≤t} (nᵢ − dᵢ) / nᵢ, where nᵢ = number at risk at time tᵢ, dᵢ = number of events at tᵢ. Handles censored observations (e.g., nights where the patient removed the mask before an event would have occurred). Log-rank test compares survival curves between groups (e.g., different mask types, pressure settings). In CPAP data: time-to-first-event analysis characterizes event clustering and therapy effectiveness during different sleep periods. Hazard rates can identify when during the night events are most likely (e.g., supine REM periods).',
+      'KM estimator: Ŝ(t) = Π_{tᵢ≤t} (nᵢ − dᵢ) / nᵢ, where nᵢ = number at risk at time tᵢ, dᵢ = number of events at tᵢ. It handles censored observations (e.g., nights where the patient removed the mask before an event would have occurred). CPAP Analyzer computes the Kaplan–Meier survival estimate, Greenwood-variance confidence intervals around it, and the median survival time. Two related survival-analysis concepts appear in textbooks but are NOT computed here: the log-rank test (not currently computed by CPAP Analyzer) compares survival curves between groups, e.g., different mask types or pressure settings; and hazard-rate estimation describes the instantaneous event rate over time, e.g., to identify when during the night events are most likely (such as supine REM periods). In CPAP data, the time-to-first-event view characterizes event clustering and therapy effectiveness across the night.',
     formula: '\\hat{S}(t) = \\prod_{t_i \\leq t} \\frac{n_i - d_i}{n_i}',
     relatedTerms: ['trend', 'p-value'],
+    references: [
+      'Kaplan, E. L., & Meier, P. (1958). Nonparametric estimation from incomplete observations. Journal of the American Statistical Association, 53(282), 457–481. DOI: 10.1080/01621459.1958.10501452.',
+      'Greenwood, M. (1926). The natural duration of cancer. Reports on Public Health and Medical Subjects, 33, 1–26. London: HMSO. — Greenwood variance for survival confidence intervals.',
+    ],
   },
   {
     id: 'change-point',
@@ -813,6 +962,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'Methods: (1) CUSUM (Cumulative Sum) — detects shifts in mean by tracking cumulative deviations; (2) PELT (Pruned Exact Linear Time) — optimal segmentation with penalty for overfitting; (3) Binary segmentation — recursive splitting; (4) Bayesian change point detection — probabilistic framework with prior on number of changes. For CPAP data, change point analysis on nightly AHI can detect: pressure setting changes, mask changes, weight changes, seasonal effects, medication effects. Configuration: minimum segment length (avoid spurious detections from night-to-night variability); penalty parameter (controls number of detected changes).',
     relatedTerms: ['trend', 'regression'],
+    references: [
+      'Killick, R., Fearnhead, P., & Eckley, I. A. (2012). Optimal detection of changepoints with a linear computational cost. Journal of the American Statistical Association, 107(500), 1590–1598. DOI: 10.1080/01621459.2012.737745. — PELT change-in-mean detection.',
+    ],
   },
   {
     id: 'loess',
@@ -824,8 +976,11 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     standard:
       'LOESS (also called LOWESS) is a non-parametric regression method that fits a smooth curve through scattered data. Unlike a straight-line trend, LOESS can capture curved, non-linear patterns. It is useful in CPAP analysis for visualizing how AHI or other metrics change over time when the trend is not simply up or down.',
     detailed:
-      'LOESS fits weighted least-squares regressions to local subsets of data. Each point x₀ uses a neighborhood of the nearest fraction (span) of data points, weighted by a tricube function. Key parameter: span (bandwidth) controls smoothness — typical range 0.2–0.8; smaller span = more flexible (may overfit), larger span = smoother (may underfit). Degree: 1 (local linear) or 2 (local quadratic). LOESS does not produce a global model equation — prediction requires the original data. Computational cost: O(n²) for n points. For CPAP data, LOESS with span 0.3–0.5 effectively reveals seasonal or medium-term trends in AHI and usage hours that a linear model would miss.',
+      'LOESS fits weighted least-squares regressions to local subsets of data. Each point x₀ uses a neighborhood of the nearest fraction (span) of data points, weighted by a tricube function. Key parameter: span (bandwidth) controls smoothness — typical range 0.2–0.8; smaller span = more flexible (may overfit), larger span = smoother (may underfit). The local-polynomial degree can in principle be 0 (local mean), 1 (local linear), or 2 (local quadratic); CPAP Analyzer uses local linear (degree-1) fits with tricube weights, not local quadratic fitting. LOESS does not produce a global model equation — prediction requires the original data. Computational cost: O(n²) for n points. For CPAP data, LOESS with span 0.3–0.5 effectively reveals seasonal or medium-term trends in AHI and usage hours that a linear model would miss.',
     relatedTerms: ['regression', 'trend', 'rolling-average'],
+    references: [
+      'Cleveland, W. S. (1979). Robust locally weighted regression and smoothing scatterplots. Journal of the American Statistical Association, 74(368), 829–836. DOI: 10.1080/01621459.1979.10481038.',
+    ],
   },
   {
     id: 'regression',
@@ -854,6 +1009,11 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'For a chosen lag p, the test compares a restricted AR model y_t = Σ αᵢ y_{t−i} + ε against an unrestricted VAR model y_t = Σ αᵢ y_{t−i} + Σ βᵢ x_{t−i} + ε, and tests H₀: all βᵢ = 0 with an F-statistic on the residual sum of squares. Rejecting H₀ means X’s lagged values carry information about Y not already in Y’s past. In CPAP Analyzer the unit of observation is one value per night, so a "lag" is a number of nights. Interpretation guidance: (1) Read it as predictive precedence, never as a mechanism — confounding by a common driver (a behavior, illness, or seasonal factor affecting both metrics) yields the same signal. (2) The reported F-statistic, p-value, and lag describe the X→Y direction only; the verdict and confidence consider both directions, and X→Y ≠ Y→X in general. (3) If the lag was chosen by minimizing AIC on the same nights used for the test, the p-value is selection-affected (exploratory / anti-conservative) and understates the true false-positive rate — treat it as hypothesis-generating and confirm with a fixed lag chosen from prior knowledge or a separate time period. (4) The VAR F-test assumes (trend-)stationary inputs; a shared deterministic trend can manufacture spurious Granger causality, so a significant linear trend in either series triggers a non-stationarity caution and first-differencing is advised. Requirements: at least 2·maxLag + 2 paired nights, roughly equal time spacing, and a non-constant metric (a constant series carries no information to test). This tool reports Granger results for exploration and does not diagnose.',
     relatedTerms: ['f-test', 'aic', 'stationarity', 'correlation', 'p-value'],
+    references: [
+      'Granger, C. W. J. (1969). Investigating causal relations by econometric models and cross-spectral methods. Econometrica, 37(3), 424–438. DOI: 10.2307/1912791.',
+      'Granger, C. W. J., & Newbold, P. (1974). Spurious regressions in econometrics. Journal of Econometrics, 2(2), 111–120. DOI: 10.1016/0304-4076(74)90034-7.',
+      'Leeb, H., & Pötscher, B. M. (2005). Model selection and inference: facts and fiction. Econometric Theory, 21(1), 21–59. DOI: 10.1017/S0266466605050036.',
+    ],
   },
   {
     id: 'f-test',
@@ -884,6 +1044,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     formula:
       '\\text{AIC} = 2k - 2\\ln(\\hat{L}) = n\\ln\\!\\left(\\frac{\\text{RSS}}{n}\\right) + 2k',
     relatedTerms: ['granger-causality', 'f-test', 'regression'],
+    references: [
+      'Akaike, H. (1974). A new look at the statistical model identification. IEEE Transactions on Automatic Control, 19(6), 716–723. DOI: 10.1109/TAC.1974.1100705.',
+    ],
   },
   {
     id: 'stationarity',
@@ -897,6 +1060,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'Weak (covariance) stationarity requires a constant mean E[x_t] = μ, a constant finite variance, and an autocovariance Cov(x_t, x_{t+h}) that depends only on the lag h, not on t. CPAP nightly series frequently violate this — acclimatization, weight change, seasonal leak, or equipment changes induce trends. The classic hazard is spurious regression (Granger & Newbold 1974): regressing one trending series on another independent trending series yields significant-looking coefficients and high R² driven entirely by the shared trend, not any real relationship; the same mechanism inflates Granger causality. CPAP Analyzer runs a lightweight test for a significant deterministic linear trend in each input and raises a non-stationarity caution when one is found. Remedies: first-differencing (Δx_t = x_t − x_{t−1}) removes a linear trend and often restores stationarity; detrending by regression, or differencing again for stronger trends, are alternatives. Formal unit-root tests (ADF, KPSS) characterize stationarity more rigorously than the linear-trend screen used here.',
     relatedTerms: ['granger-causality', 'trend', 'regression'],
+    references: [
+      'Granger, C. W. J., & Newbold, P. (1974). Spurious regressions in econometrics. Journal of Econometrics, 2(2), 111–120. DOI: 10.1016/0304-4076(74)90034-7.',
+    ],
   },
 
   // ─── DATA & FORMATS ────────────────────────────────────────────────
@@ -913,6 +1079,10 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'EDF specification (Kemp et al., 1992): Fixed-size header (256 bytes + 256 bytes per signal) containing patient info, recording info, number of signals, labels, units, sample rates, and physical/digital ranges. Data records contain interleaved signal samples in 16-bit integers, scaled to physical units using: physical = (digital - digital_min) × (physical_max - physical_min) / (digital_max - digital_min) + physical_min. EDF+ (Kemp & Olivan, 2003) adds annotations, discontinuous recordings, and fractional sample rates. ResMed stores detailed flow/pressure data in DATALOG EDF files organized by date directory.',
     relatedTerms: ['session', 'signal', 'channel', 'sample-rate'],
+    references: [
+      'Kemp, B., Värri, A., Rosa, A. C., Nielsen, K. D., & Gade, J. (1992). A simple format for exchange of digitized polygraphic recordings. Electroencephalography and Clinical Neurophysiology, 82(5), 391–393. DOI: 10.1016/0013-4694(92)90009-7.',
+      'Kemp, B., & Olivan, J. (2003). European data format "plus" (EDF+). Clinical Neurophysiology, 114(9), 1755–1761. DOI: 10.1016/S1388-2457(03)00123-8.',
+    ],
   },
   {
     id: 'session',
@@ -989,6 +1159,9 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     detailed:
       'LTTB algorithm (Sveinn Steinarsson, 2013): (1) First and last points are always kept. (2) Remaining data is split into n−2 equal buckets. (3) For each bucket, select the point that maximizes the triangle area formed with the previously selected point and the average of the next bucket. Time complexity: O(n) — single pass. Space complexity: O(1) additional beyond input/output. LTTB outperforms other methods (min-max, mode-median, random) in preserving visual similarity as measured by SSE (Sum of Squared Errors). For 8-hour CPAP recordings at 25 Hz (720K points), LTTB to 2000 points provides excellent visual fidelity for screen display.',
     relatedTerms: ['downsampling', 'sample-rate'],
+    references: [
+      'Steinarsson, S. (2013). Downsampling time series for visual representation (MSc thesis). University of Iceland.',
+    ],
   },
 ] as const;
 

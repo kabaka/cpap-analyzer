@@ -49,7 +49,7 @@ export const metricDefinitions: readonly MetricDefinition[] = [
     tooltip:
       "Mask-on time during the session, from the machine's recorded mask-on/off intervals (STR.edf) when available, otherwise a hysteresis detector; subtherapeutic ramp excluded for compliance.",
     interpretation:
-      'Compliance target: ≥ 4 hours/night. Optimal for cardiovascular benefit: ≥ 6 hours. More usage = greater clinical benefit. This is the denominator for AHI, ODI, and leak-duration metrics.',
+      'Compliance target: ≥ 4 hours/night. Benefit increases with use: in the Weaver et al. (2007) dose-response study, subjective sleepiness normalized near 4 h, objective sleepiness near 6 h, and daily functioning near 7.5 h of nightly use. This is the denominator for AHI, ODI, and leak-duration metrics.',
     glossaryId: 'usage-hours',
   },
   {
@@ -153,7 +153,7 @@ export const metricDefinitions: readonly MetricDefinition[] = [
     unit: 'events/hr',
     tooltip: 'Central Apnea Index — the number of central apneas per hour of sleep.',
     interpretation:
-      'Normal: < 5. Elevated central AI may indicate complex sleep apnea. Central AI > 5 with symptoms warrants evaluation for ASV therapy.',
+      'Normal: < 5. Elevated central AI may indicate complex or central sleep apnea and warrants clinical evaluation. Note: adaptive servo-ventilation (ASV) is contraindicated in symptomatic heart failure with reduced ejection fraction (LVEF ≤ 45%) per the SERVE-HF trial — any therapy-mode change is a clinician decision, not a software recommendation.',
     glossaryId: 'central-apnea',
   },
   {

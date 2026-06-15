@@ -5,11 +5,22 @@
  * during a therapy session (apneas, hypopneas, leaks, etc.).
  */
 
-/** Classification of respiratory and therapy events. */
+/**
+ * Classification of respiratory and therapy events.
+ *
+ * `UnclassifiedApnea` represents an apnea the device detected but did not
+ * resolve into obstructive, central/clear-airway, or mixed. ResMed devices
+ * emit a bare "Apnea" annotation for this case (notably ASV models, which flag
+ * all apneas as unclassified). It is NOT a mixed apnea: per the AASM Manual
+ * (Berry et al. 2012) a mixed apnea is specifically a central onset followed by
+ * obstructive effort. An unclassified apnea still counts toward the AHI as an
+ * apnea, but must not be bucketed as mixed.
+ */
 export type EventType =
   | 'ObstructiveApnea'
   | 'CentralApnea'
   | 'MixedApnea'
+  | 'UnclassifiedApnea'
   | 'Hypopnea'
   | 'RERA'
   | 'FlowLimitation'
