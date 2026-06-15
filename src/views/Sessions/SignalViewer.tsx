@@ -35,6 +35,11 @@ import {
   type SignalChannel,
   type ViewportState,
 } from '@/components/charts/canvas/SignalRenderer';
+import {
+  buildDecimationPyramid,
+  selectPyramidLevel,
+  type DecimationPyramid,
+} from '@/components/charts/canvas/decimationPyramid';
 import { Button, Dialog, Popover, Skeleton, Switch } from '@/components/ui';
 import { ConfidenceBar, DetectionDisclaimer } from '@/components/domain/Breathing';
 import { confidenceTier, confidenceTierLabel, type BreathingEpisode } from '@/analysis/breathing';
@@ -356,12 +361,30 @@ export default function SignalViewer() {
   /** Full CPAP session signal data preloaded into memory. */
   const fullDataRef = useRef<Map<string, FullChannelData>>(new Map());
 
+  /**
+   * Per-channel multi-resolution decimation pyramids, keyed by channel name.
+   * Built lazily after the first CPAP paint (see the pyramid-build effect) so it
+   * never blocks first frame. Empty until built; the render hot path falls back
+   * to slicing the raw data directly when a channel has no pyramid yet — so
+   * behaviour and output are unchanged before the pyramid lands.
+   */
+  const pyramidsRef = useRef<Map<string, DecimationPyramid>>(new Map());
+
   /** Crosshair X position — bypasses React state for zero-latency rendering. */
   const crosshairXRef = useRef<number | null>(null);
 
   /** Last-rendered viewport and options — used by pointer handler for direct renders. */
   const lastViewportRef = useRef<ViewportState | null>(null);
   const lastOptionsRef = useRef<RenderOptions | null>(null);
+
+  /**
+   * Stable handle to the latest `renderRangeDirect` callback, so effects that run
+   * before it is defined (e.g. the pyramid-build effect) can trigger a direct
+   * repaint without taking it as a dependency.
+   */
+  const renderRangeDirectRef = useRef<((range: ViewportRange) => ViewportState | null) | null>(
+    null,
+  );
 
   /**
    * Live viewport during a direct-render interaction (drag-pan / wheel-zoom).
@@ -465,6 +488,45 @@ export default function SignalViewer() {
     const handle = window.requestAnimationFrame(() => setDetectionEnabled(true));
     return () => window.cancelAnimationFrame(handle);
   }, [fullDataReady]);
+
+  /**
+   * Build the per-channel decimation pyramids ONCE after the first CPAP paint.
+   *
+   * Deferred a frame (like the detection effect above) so it never blocks first
+   * frame — the viewer paints CPAP at full resolution first, then the pyramids
+   * land and subsequent zoomed-out frames become cheap. The build is bounded to
+   * ≤ ~1× the base array per channel in extra memory (geometric series). The
+   * pyramid is keyed on the channel data identity (replaced wholesale on session
+   * change), so this also clears stale pyramids when navigating between sessions.
+   */
+  useEffect(() => {
+    if (!fullDataReady || !manifest) return;
+    let cancelled = false;
+    const handle = window.requestAnimationFrame(() => {
+      if (cancelled) return;
+      const next = new Map<string, DecimationPyramid>();
+      for (const [name, fcd] of fullDataRef.current) {
+        if (fcd.data.length === 0) continue;
+        next.set(name, buildDecimationPyramid(fcd.data));
+      }
+      pyramidsRef.current = next;
+      // Repaint the current viewport so the (visually identical) pyramid-backed
+      // path takes over immediately rather than on the next interaction.
+      if (rendererRef.current && lastViewportRef.current && lastOptionsRef.current) {
+        const range = {
+          startTime: lastViewportRef.current.startTime,
+          endTime: lastViewportRef.current.endTime,
+        };
+        renderRangeDirectRef.current?.(range);
+      }
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(handle);
+      pyramidsRef.current = new Map();
+    };
+    // fullDataRef is a ref (stable); manifest identity tracks session changes.
+  }, [fullDataReady, manifest]);
 
   // ── Derived values ───────────────────────────────────────────────
 
@@ -796,19 +858,47 @@ export default function SignalViewer() {
     setCanvasSize({ width: wrapperWidth, height: finalHeight });
   }, [wrapperWidth, stackHeight]);
 
+  // ── Memoized per-CPAP-lane descriptor + resolved colour ──────
+  //
+  // `buildCpapChannel` previously ran `manifest.channels.find(...)` plus a
+  // `resolveColor` (a forced getComputedStyle read) for EVERY cpap lane EVERY
+  // frame on the pan/wheel hot path. Both inputs are viewport-independent, so we
+  // resolve them once per (manifest, resolvedTheme, wrapperWidth) — mirroring
+  // baseWearableChannels — and look them up in the render loop. The colour reads
+  // only resolve against real styles once wrapperWidth > 0, and re-resolve on
+  // theme change; wrapperWidth + resolvedTheme are therefore the deps that gate
+  // getComputedStyle, identical to baseWearableChannels.
+  interface CpapChannelMeta {
+    readonly descriptor: ChannelDescriptor;
+    readonly resolvedColor: string;
+  }
+
+  const cpapChannelMeta = useMemo(() => {
+    const map = new Map<string, CpapChannelMeta>();
+    if (!manifest) return map;
+    const container = containerRef.current;
+    for (const descriptor of manifest.channels) {
+      const colorVar = CHANNEL_COLORS[descriptor.name] ?? DEFAULT_CHANNEL_COLOR;
+      map.set(descriptor.name, {
+        descriptor,
+        resolvedColor: resolveColor(container, colorVar),
+      });
+    }
+    return map;
+    // wrapperWidth + resolvedTheme drive re-resolution of the getComputedStyle
+    // read in resolveColor (mirrors baseWearableChannels).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manifest, resolvedTheme, wrapperWidth]);
+
   // ── Build CPAP channel for the current viewport ──────────────
 
   const buildCpapChannel = useCallback(
-    (
-      laneName: string,
-      targetPoints: number,
-      container: HTMLElement | null,
-      range: ViewportRange,
-    ): SignalChannel | null => {
+    (laneName: string, targetPoints: number, range: ViewportRange): SignalChannel | null => {
       const fcd = fullDataRef.current.get(laneName);
-      if (!fcd || fcd.data.length === 0 || !manifest) return null;
-      const desc = manifest.channels.find((c) => c.name === laneName);
-      if (!desc) return null;
+      if (!fcd || fcd.data.length === 0) return null;
+      const meta = cpapChannelMeta.get(laneName);
+      if (!meta) return null;
+      const desc = meta.descriptor;
 
       const fullData = fcd.data;
       const totalSamples = fullData.length;
@@ -816,27 +906,45 @@ export default function SignalViewer() {
       const endFrac = range.endTime / totalDurationMs;
       const startSample = Math.floor(startFrac * totalSamples);
       const endSample = Math.min(Math.ceil(endFrac * totalSamples), totalSamples);
-      const slice = fullData.subarray(startSample, endSample);
-      const displayData = slice.length > targetPoints ? lttbImpl(slice, targetPoints) : slice;
+
+      // Pick the source samples for this viewport. When a decimation pyramid has
+      // been built for this channel, select an appropriate level (level 0 / raw
+      // for already-small windows, so zoomed-in output is byte-identical to
+      // slicing raw); otherwise fall back to the exact pre-pyramid behaviour
+      // (raw subarray) so pre-build frames are unchanged.
+      const pyramid = pyramidsRef.current.get(laneName);
+      let levelSlice: Float32Array;
+      if (pyramid) {
+        const pslice = selectPyramidLevel(pyramid, startSample, endSample, targetPoints);
+        levelSlice = pslice.data.subarray(pslice.startIndex, pslice.endIndex);
+      } else {
+        levelSlice = fullData.subarray(startSample, endSample);
+      }
+
+      // SAME LTTB as before, only when the source is denser than the target.
+      const displayData =
+        levelSlice.length > targetPoints ? lttbImpl(levelSlice, targetPoints) : levelSlice;
 
       const viewDurationMs = range.endTime - range.startTime;
+      // Output-point density over the viewport duration — independent of which
+      // pyramid level fed LTTB (LTTB always emits ≤ targetPoints spanning the
+      // same viewport), so the semantics are unchanged from the raw path.
       const effectiveSampleRate =
         viewDurationMs > 0 ? (displayData.length / viewDurationMs) * 1000 : desc.sampleRate;
 
-      const colorVar = CHANNEL_COLORS[laneName] ?? DEFAULT_CHANNEL_COLOR;
       return {
         name: laneName,
         data: displayData,
         sampleRate: effectiveSampleRate,
         unit: desc.unit,
-        color: resolveColor(container, colorVar),
+        color: meta.resolvedColor,
         physicalMin: desc.physicalMin,
         physicalMax: desc.physicalMax,
         kind: 'cpap',
         render: 'line',
       };
     },
-    [manifest, totalDurationMs],
+    [cpapChannelMeta, totalDurationMs],
   );
 
   // ── Memoized base wearable channels (viewport-independent) ───
@@ -930,7 +1038,6 @@ export default function SignalViewer() {
   const buildViewportState = useCallback(
     (range: ViewportRange): ViewportState | null => {
       if (!manifest) return null;
-      const container = containerRef.current;
       const targetPoints = Math.max(100, Math.round(canvasSize.width * DOWNSAMPLE_MULTIPLIER));
 
       const channels: SignalChannel[] = [];
@@ -938,7 +1045,7 @@ export default function SignalViewer() {
         let channel: SignalChannel | null = null;
 
         if (lane.group === 'cpap') {
-          channel = buildCpapChannel(lane.name, targetPoints, container, range);
+          channel = buildCpapChannel(lane.name, targetPoints, range);
         } else {
           // Wearable / sleep lane — look up the memoized, viewport-independent base.
           const base = baseWearableChannels.get(lane.id);
@@ -959,15 +1066,27 @@ export default function SignalViewer() {
     [manifest, canvasSize.width, renderLanes, buildCpapChannel, baseWearableChannels],
   );
 
-  /**
-   * Build the {@link RenderOptions} (event markers, detection overlays, grid,
-   * padding). `crosshairX` is read live from the ref so direct crosshair renders
-   * and the effect agree. Shared between the effect and the pan/zoom hot paths.
-   */
-  const buildRenderOptions = useCallback((): RenderOptions => {
-    const container = containerRef.current;
-    const eventMarkers = buildEventMarkers(events, sessionStartMs, container);
-    const detectionMarkers: DetectionEpisode[] | undefined =
+  // ── Memoized viewport-independent render overlays ────────────
+  //
+  // Event + detection markers do NOT depend on the viewport, yet
+  // `buildRenderOptions` rebuilt them every frame on the pan/zoom hot path —
+  // `buildEventMarkers` maps over ALL events calling `resolveColor`
+  // (getComputedStyle) PER EVENT. We hoist both into memos so the hot path only
+  // references stable arrays.
+
+  // Event markers. resolvedTheme + wrapperWidth gate the getComputedStyle reads
+  // inside buildEventMarkers (resolve once mounted, re-resolve on theme change),
+  // mirroring baseWearableChannels.
+  const eventMarkers = useMemo(
+    () => buildEventMarkers(events, sessionStartMs, containerRef.current),
+    // wrapperWidth + resolvedTheme drive re-resolution of getComputedStyle reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [events, sessionStartMs, resolvedTheme, wrapperWidth],
+  );
+
+  // Detection overlay markers (no getComputedStyle — purely a data transform).
+  const detectionMarkers = useMemo<DetectionEpisode[] | undefined>(
+    () =>
       showDetections && detectionEpisodesRaw && detectionEpisodesRaw.length > 0
         ? detectionEpisodesRaw.map((ep) => ({
             startTime: ep.startMs - sessionStartMs,
@@ -975,7 +1094,18 @@ export default function SignalViewer() {
             type: ep.type === 'CheyneStokes' ? 'CSR' : 'PB',
             confidence: ep.confidence,
           }))
-        : undefined;
+        : undefined,
+    [detectionEpisodesRaw, showDetections, sessionStartMs],
+  );
+
+  /**
+   * Build the {@link RenderOptions} (event markers, detection overlays, grid,
+   * padding). `crosshairX` is read live from the ref so direct crosshair renders
+   * and the effect agree. Shared between the effect and the pan/zoom hot paths.
+   * Event + detection markers are viewport-independent and supplied pre-memoized,
+   * so this is now allocation-light per frame.
+   */
+  const buildRenderOptions = useCallback((): RenderOptions => {
     const currentCrosshairX = crosshairXRef.current;
     return {
       showCrosshair: currentCrosshairX !== null,
@@ -987,7 +1117,7 @@ export default function SignalViewer() {
       channelHeight: CHANNEL_HEIGHT,
       padding: PADDING,
     };
-  }, [events, sessionStartMs, showDetections, detectionEpisodesRaw, wearableRibbonBands]);
+  }, [eventMarkers, detectionMarkers, wearableRibbonBands]);
 
   /**
    * Render an arbitrary viewport `range` DIRECTLY to the canvas, bypassing React
@@ -1010,6 +1140,7 @@ export default function SignalViewer() {
     },
     [buildViewportState, buildRenderOptions],
   );
+  renderRangeDirectRef.current = renderRangeDirect;
 
   /** Commit a settled live (pan/wheel) viewport to React state, then clear it. */
   const commitLiveViewport = useCallback(() => {
