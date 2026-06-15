@@ -99,6 +99,78 @@ describe('Glossary content', () => {
         }
       }
     });
+
+    it('should have references as arrays of non-empty citation strings when present', () => {
+      for (const entry of glossaryEntries) {
+        if (entry.references) {
+          expect(Array.isArray(entry.references)).toBe(true);
+          expect(entry.references.length).toBeGreaterThan(0);
+          for (const reference of entry.references) {
+            expect(typeof reference).toBe('string');
+            // Full citations carry an author/year and substantive text.
+            expect(reference.length).toBeGreaterThan(30);
+          }
+        }
+      }
+    });
+
+    it('should not contain duplicate citation strings within a single entry', () => {
+      for (const entry of glossaryEntries) {
+        if (entry.references) {
+          expect(
+            new Set(entry.references).size,
+            `Entry "${entry.id}" has duplicate references`,
+          ).toBe(entry.references.length);
+        }
+      }
+    });
+
+    it('should attach references to the core clinical and statistical entries', () => {
+      const mustHaveReferences = [
+        'ahi',
+        'mask-leak',
+        'residual-ahi',
+        'odi',
+        'cheyne-stokes',
+        'kaplan-meier',
+        'correlation',
+        'trend',
+        'loess',
+      ];
+      for (const id of mustHaveReferences) {
+        const entry = glossaryMap.get(id);
+        expect(entry, `Missing glossary entry "${id}"`).toBeDefined();
+        expect(entry?.references?.length, `Entry "${id}" should have references`).toBeGreaterThan(
+          0,
+        );
+      }
+    });
+
+    it('should not present the 4% ODI variant as selectable in the ODI entry', () => {
+      const odi = glossaryMap.get('odi');
+      expect(odi).toBeDefined();
+      // The app computes only the 3% ODI; the 4% variant must not be described as configurable.
+      expect(odi?.detailed).not.toMatch(/configurable/i);
+      expect(odi?.detailed).toContain('computes only the 3% ODI');
+    });
+
+    it('should describe the 24 L/min leak threshold as a device convention, not an AASM standard', () => {
+      const leak = glossaryMap.get('mask-leak');
+      expect(leak).toBeDefined();
+      expect(leak?.detailed).toMatch(/not an AASM clinical standard/i);
+    });
+
+    it('should not claim a fixed 10–30% device-vs-PSG AHI difference', () => {
+      const residual = glossaryMap.get('residual-ahi');
+      expect(residual).toBeDefined();
+      expect(residual?.detailed).not.toContain('10–30%');
+    });
+
+    it('should not present the log-rank test as an app feature in the Kaplan–Meier entry', () => {
+      const km = glossaryMap.get('kaplan-meier');
+      expect(km).toBeDefined();
+      expect(km?.detailed).toMatch(/not currently computed by CPAP Analyzer/i);
+    });
   });
 
   describe('glossaryMap', () => {

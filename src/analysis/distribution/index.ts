@@ -175,7 +175,8 @@ const SHAPIRO_FRANCIA_TEST_NAME = 'Shapiro-Francia';
  * transform.
  *
  * **P-value (Royston 1993, "A Toolkit for Testing for Non-Normality in
- * Complete and Censored Samples", Applied Statistics 42(1), eq. for SF):**
+ * Complete and Censored Samples", The Statistician (JRSS Series D) 42(1),
+ * eq. for SF):**
  * for 5 ≤ n ≤ 5000, with w = ln(1 − W'), u = ln(n), v = ln(u),
  *   μ = −1.2725 + 1.0521·(v − u),
  *   σ =  1.0308 − 0.26758·(v + 2/u),
@@ -267,7 +268,8 @@ export function shapiroWilk(values: number[]): NormalityTestResult {
  * used (below Royston's validated range); such results are indicative only.
  *
  * @see Royston, P. (1993). A Toolkit for Testing for Non-Normality in Complete
- *      and Censored Samples. *Applied Statistics* 42(1), 37–43.
+ *      and Censored Samples. *The Statistician* (Journal of the Royal
+ *      Statistical Society, Series D) 42(1), 37–43.
  */
 function shapiroFranciaPValue(W: number, n: number): number {
   if (n < 5) {

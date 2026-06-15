@@ -185,7 +185,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Compliance tracking',
         paragraphs: [
-          'The compliance card tracks your adherence against the standard threshold: ≥ 4 hours per night for ≥ 70% of nights in a rolling 30-day window. A calendar heatmap shows which nights met the target (green) and which did not (red). The compliance trend helps predict future compliance risk.',
+          'The compliance card shows the percentage of nights in the selected date range that met the ≥ 4-hour usage target, and a calendar heatmap marks which nights met the target (green) and which did not (red). For reference, the Medicare/insurance adherence standard is ≥ 4 hours/night on ≥ 70% of nights (21 of 30) over a consecutive 30-day period within the first 90 days of therapy (CMS LCD L33718). The card reports the simple proportion of compliant nights over whatever range you have selected — it is not the windowed 30-day test, so compare it against that standard rather than reading it as the standard itself.',
         ],
       },
       {
@@ -259,15 +259,15 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Trend analysis',
         paragraphs: [
-          'Trend analysis determines whether your metrics are improving, worsening, or stable over time. The analysis uses linear regression ($y = \\beta_0 + \\beta_1 x$, for overall direction), Mann-Kendall test (a non-parametric trend test that handles non-normal data), and LOESS smoothing (to reveal non-linear trends).',
-          'Results include: slope $\\hat{\\beta}_1$ (rate of change per day/week), $p$-value (statistical significance of the trend), and confidence interval for the slope. A statistically significant downward AHI trend is good news — it suggests therapy is progressively improving.',
+          'Trend analysis determines whether your metrics are improving, worsening, or stable over time. CPAP Analyzer fits an ordinary-least-squares linear regression ($y = \\beta_0 + \\beta_1 x$) for the overall direction, tests the slope with a Student-$t$ test, and overlays a LOESS curve (Cleveland 1979) to reveal non-linear structure a straight line would miss.',
+          'Results include the slope $\\hat{\\beta}_1$ (rate of change per day or week), the coefficient of determination $R^2$ (how much of the variation the linear fit explains), and the $p$-value for the slope (the statistical significance of the trend). A statistically significant downward AHI trend is good news — it suggests therapy is progressively improving. Because nightly metrics such as AHI are often right-skewed, weigh the LOESS curve alongside the straight-line slope rather than relying on the line alone.',
         ],
       },
       {
         heading: 'Distribution analysis',
         paragraphs: [
           'Histograms and box plots show the shape of your data distribution. Is AHI consistently low, or does it vary widely? Are there distinct "good night" and "bad night" clusters? The distribution view helps answer these questions visually.',
-          "The Shapiro–Francia test checks whether your data follows a normal distribution, $f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}} e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}$. Shapiro–Francia is the correlation-based variant of the Shapiro–Wilk family — it is the statistic CPAP Analyzer actually computes (a squared correlation between the ordered data and the expected normal order statistics), and it is well suited to that correlation form. This matters because some statistical methods assume normality — CPAP Analyzer automatically selects appropriate methods based on your data's actual distribution.",
+          "The Shapiro–Francia test checks whether your data follows a normal distribution, $f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}} e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}$. Shapiro–Francia is the correlation-based variant of the Shapiro–Wilk family — it is the statistic CPAP Analyzer actually computes (a squared correlation between the ordered data and the expected normal order statistics), and it is well suited to that correlation form. This matters because some statistical methods assume normality: CPAP Analyzer reports the Shapiro–Francia result alongside the histogram and Q–Q plot and offers rank-based (non-parametric) alternatives — for example Spearman's $\\rho$ for correlation — so you can choose a method appropriate to your data's actual distribution.",
         ],
       },
       {
@@ -281,8 +281,18 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Change point detection',
         paragraphs: [
-          'Change point detection identifies dates when your data underwent a significant shift — perhaps a pressure adjustment, mask change, or clinical event. The algorithm scans your time series for statistically significant breaks in the mean, variance, or trend.',
-          'Each detected change point includes the date, the metric affected, the magnitude of change, and a confidence level. You can annotate change points with notes about what happened on that date.',
+          'Change point detection identifies dates when your data underwent a significant shift — perhaps a pressure adjustment, mask change, or clinical event. CPAP Analyzer uses the PELT algorithm (Killick et al. 2012) to find breaks in the mean level of a series; it does not currently test for changes in variance or slope on their own.',
+          "Each detected change point reports the date, the metric affected, and the magnitude of the mean shift (the size of the level change, in the metric's own units — not a calibrated probability). You can annotate change points with notes about what happened on that date.",
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Tukey, J. W. (1977). Exploratory Data Analysis. Reading, MA: Addison-Wesley. — Interquartile-range fences for outlier detection and box plots.',
+          'Shapiro, S. S., & Francia, R. S. (1972). An approximate analysis of variance test for normality. Journal of the American Statistical Association, 67(337), 215–216. DOI: 10.1080/01621459.1972.10481232. — The normality statistic CPAP Analyzer computes.',
+          'Royston, P. (1993). A toolkit for testing for non-normality in complete and censored samples. The Statistician (Journal of the Royal Statistical Society, Series D), 42(1), 37–43. DOI: 10.2307/2348109. — Shapiro–Francia p-value transform.',
+          'Cleveland, W. S. (1979). Robust locally weighted regression and smoothing scatterplots. Journal of the American Statistical Association, 74(368), 829–836. DOI: 10.1080/01621459.1979.10481038. — LOESS smoothing.',
+          'Killick, R., Fearnhead, P., & Eckley, I. A. (2012). Optimal detection of changepoints with a linear computational cost. Journal of the American Statistical Association, 107(500), 1590–1598. DOI: 10.1080/01621459.2012.737745. — PELT change-in-mean detection.',
         ],
       },
     ],
@@ -351,6 +361,7 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           'Granger, C. W. J. (1969). Investigating causal relations by econometric models and cross-spectral methods. Econometrica, 37(3), 424–438.',
           'Granger, C. W. J., & Newbold, P. (1974). Spurious regressions in econometrics. Journal of Econometrics, 2(2), 111–120.',
+          'Akaike, H. (1974). A new look at the statistical model identification. IEEE Transactions on Automatic Control, 19(6), 716–723. DOI: 10.1109/TAC.1974.1100705. — The Akaike Information Criterion used for lag selection.',
           'Leeb, H., & Pötscher, B. M. (2005). Model selection and inference: facts and fiction. Econometric Theory, 21(1), 21–59.',
         ],
       },
@@ -381,20 +392,30 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Event clustering',
         paragraphs: [
           'Events that cluster together in time are more disruptive than evenly spaced events. A burst of 10 events in one hour followed by 7 quiet hours is clinically different from 10 events evenly spread over 8 hours — even though the AHI is the same.',
-          'The clustering analysis identifies event bursts (clusters of ≥ 3 events within 5 minutes) and visualizes their timing. Clusters during specific time windows may suggest positional or sleep stage effects.',
+          "The Event Explorer's clustering lens groups events that occur close together in time, with selectable sensitivity: strict (≥ 3 events separated by gaps under 1 minute), balanced (≥ 2 events within 2 minutes), and lenient (≥ 2 events within 5 minutes). Clusters concentrated in specific time windows may suggest positional or sleep-stage effects.",
         ],
       },
       {
-        heading: 'Time-to-event analysis',
+        heading: 'Temporal patterns and time-to-event',
         paragraphs: [
-          'A Kaplan-Meier survival curve shows the probability of remaining event-free as time passes during the night. The estimator is computed as $$\\hat{S}(t) = \\prod_{t_i \\leq t} \\frac{n_i - d_i}{n_i}$$ where $n_i$ is the number at risk and $d_i$ is the number of events at time $t_i$. This reveals patterns like: events concentrated in the first 2 hours (ramp/acclimation), events concentrated in early morning (REM-dominant), or events evenly distributed.',
-          'The hazard rate plot complements this by showing the instantaneous risk of an event at each time point during the night.',
+          'Where events fall in the night matters as much as how many there are. Events concentrated in the first couple of hours can reflect ramp or acclimatization; events concentrated toward morning often track REM-dominant disease (REM periods lengthen in the second half of the night); events spread evenly suggest a pressure or positional cause present all night.',
+          "The Event Explorer's inter-event-interval lens shows the distribution of time gaps between consecutive events: a peak at short intervals indicates clustering, while a long-tailed distribution indicates isolated events. Combined with the time-of-night filter, it answers questions such as “do my apneas cluster in the first two hours?”",
+          'A related classical tool is the Kaplan–Meier estimator (Kaplan & Meier 1958), $\\hat{S}(t) = \\prod_{t_i \\leq t} \\frac{n_i - d_i}{n_i}$, where $n_i$ is the number still event-free (“at risk”) just before time $t_i$ and $d_i$ is the number of events at $t_i$ — it expresses the probability of remaining event-free as the night progresses. CPAP Analyzer retains the Kaplan–Meier primitive (with Greenwood-variance confidence intervals) for analyses that need it; the dedicated survival-curve view was retired when Event Analysis was reorganized into the Event Explorer, whose interval and clustering lenses answer the same temporal questions.',
         ],
       },
       {
         heading: 'Limitations',
         paragraphs: [
-          'CPAP machines use proprietary algorithms to detect and classify events. Their scoring may differ from gold-standard polysomnography (PSG) by 10–30%. Machines cannot detect arousals (requires EEG) or distinguish all event subtypes with PSG accuracy. Use device-reported events as clinical screening tools, not definitive diagnoses.',
+          'CPAP machines score events from airflow and pressure alone, using proprietary algorithms, and cannot detect EEG arousals. Device-reported AHI may therefore differ from manually scored polysomnography (PSG) — sometimes substantially, and in either direction — depending on the device, its scoring algorithm, and which hypopnea rule is applied. Polysomnography remains the diagnostic standard (Kapur et al. 2017); treat device-reported events as a monitoring and screening signal, not a diagnostic substitute.',
+          'One specific consequence of flow-only scoring: an apnea the device cannot confidently classify as obstructive or central is reported as an unclassified apnea. It still counts toward AHI, but it is not folded into the obstructive, central, or mixed totals — most often this happens when high mask leak degrades the forced-oscillation measurement the device uses to tell central from obstructive.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172. — Definitions of obstructive, central, and mixed apnea, hypopnea, and RERA.',
+          'Kapur, V. K., Auckley, D. H., Chowdhuri, S., et al. (2017). Clinical Practice Guideline for Diagnostic Testing for Adult Obstructive Sleep Apnea: An AASM Clinical Practice Guideline. Journal of Clinical Sleep Medicine, 13(3), 479–504. DOI: 10.5664/jcsm.6506. — Polysomnography is the diagnostic standard; device-derived event counts are a screening signal, not a diagnostic substitute.',
+          'Kaplan, E. L., & Meier, P. (1958). Nonparametric estimation from incomplete observations. Journal of the American Statistical Association, 53(282), 457–481. DOI: 10.1080/01621459.1958.10501452. — The Kaplan–Meier estimator.',
         ],
       },
     ],
@@ -437,8 +458,16 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'BiPAP/ASV analysis',
         paragraphs: [
-          "For bilevel users, the analysis separately tracks IPAP and EPAP trends, pressure support (IPAP − EPAP), and the relationship between pressure support and event control. ASV-specific metrics include the machine's learned target ventilation and actual versus target minute ventilation.",
+          "For bilevel users, the analysis separately tracks IPAP and EPAP trends, pressure support (IPAP − EPAP), and the relationship between pressure support and event control. ASV-specific metrics include the machine's learned target ventilation and actual versus target minute ventilation. These metrics are descriptive: ASV is contraindicated in symptomatic heart failure with reduced ejection fraction (LVEF ≤ 45%) following the SERVE-HF trial (Cowie et al. 2015), and any change of therapy mode is a clinician decision, not one to make from these charts.",
           'The summary cards labelled "Mean EPAP" and "Mean IPAP" report the mean across nights of each night\'s median pressure (a mean of nightly medians) — not a grand median. They were previously labelled "Median EPAP/IPAP"; the relabel makes the statistic match what is computed. For a robust single-night central value, read the per-session pressure profile, which reports the within-night median and percentiles directly.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — In-lab and auto-titration, including use of the 90th/95th-percentile auto-adjusting pressure to derive a fixed CPAP prescription.',
+          'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172. — Event definitions underlying the pressure–AHI response analysis.',
+          'Cowie, M. R., Woehrle, H., Wegscheider, K., et al. (2015). Adaptive servo-ventilation for central sleep apnea in systolic heart failure (SERVE-HF). New England Journal of Medicine, 373(12), 1095–1105. DOI: 10.1056/NEJMoa1506459. — Safety caveat for ASV in heart failure with reduced ejection fraction (relevant to the BiPAP/ASV section).',
         ],
       },
     ],
@@ -543,7 +572,7 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Treatment goals',
         paragraphs: [
           'The primary treatment goal is to reduce the residual AHI to below 5 events/hr — functionally normalizing breathing during sleep. Additional goals include: maintaining SpO₂ > 90% throughout the night, eliminating snoring, achieving usage of ≥ 4 hours/night (ideally ≥ 6 hours), and reducing daytime symptoms (sleepiness, fatigue, cognitive impairment).',
-          'Therapy success is dose-dependent: more hours of use per night and more nights per week yield greater clinical benefit. Benefits include reduced blood pressure, decreased cardiovascular risk, improved cognitive function, reduced accident risk, and improved quality of life.',
+          'Therapy success is dose-dependent: more hours of use per night and more nights per week yield greater clinical benefit. In the Weaver et al. (2007) dose-response study, subjective sleepiness normalized near 4 hours of nightly use, objective alertness near 6 hours, and daily functioning near 7.5 hours — there is no single threshold above which benefit abruptly stops. Reported benefits of consistent therapy include reduced blood pressure, improved daytime alertness and cognition, reduced accident risk, and improved quality of life.',
         ],
       },
       {
@@ -556,8 +585,8 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Leak management guidelines',
         paragraphs: [
-          'Acceptable unintentional mask leak is generally < 24 L/min. Leak above this threshold can cause: inaccurate event scoring by the machine, inadequate pressure delivery, dry mouth and eyes, aerophagia (air swallowing), and sleep disruption.',
-          'Common causes of excessive leak: incorrect mask size, worn mask cushion (replace every 3–6 months), mouth opening during sleep (consider chin strap or full-face mask), and sleeping positions that displace the mask.',
+          'A common acceptability threshold for unintentional mask leak is < 24 L/min — but note this is a ResMed device/manufacturer convention (the "large leak" red line), not an AASM clinical standard, and it is mask-dependent (ResMed cites roughly 36 L/min for some full-face/oronasal masks). Leak above the flagged threshold can cause inaccurate event scoring by the machine, inadequate pressure delivery, dry mouth and eyes, aerophagia (air swallowing), and sleep disruption.',
+          'Common causes of excessive leak: incorrect mask size, a worn mask cushion (manufacturers typically recommend replacing cushions on a regular schedule — often every 1–6 months depending on the cushion type), mouth opening during sleep (consider a chin strap or full-face mask), and sleeping positions that displace the mask.',
         ],
       },
       {
@@ -571,6 +600,17 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Disclaimer',
         paragraphs: [
           'CPAP Analyzer is intended for informational and educational purposes only. It is not a medical device and is not FDA-cleared for diagnostic or therapeutic use. The analysis provided should not be used as a substitute for professional medical advice, diagnosis, or treatment. Always consult a qualified healthcare provider with questions about your sleep apnea therapy.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification (Normal/Mild/Moderate/Severe) and treatment goals.',
+          'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172. — Apnea, hypopnea (recommended ≥3% desaturation or arousal; acceptable ≥4%), and RERA scoring definitions.',
+          'Weaver, T. E., Maislin, G., Dinges, D. F., et al. (2007). Relationship between hours of CPAP use and achieving normal levels of sleepiness and daily functioning. Sleep, 30(6), 711–719. DOI: 10.1093/sleep/30.6.711. — Dose-response: sleepiness normalizes near 4 h, objective alertness near 6 h, daily functioning near 7.5 h.',
+          'Centers for Medicare & Medicaid Services. Local Coverage Determination L33718: Positive Airway Pressure (PAP) Devices for the Treatment of Obstructive Sleep Apnea. — Adherence defined as ≥4 h/night on ≥70% of nights over a consecutive 30-day period within the first 90 days.',
+          'Cowie, M. R., Woehrle, H., Wegscheider, K., et al. (2015). Adaptive servo-ventilation for central sleep apnea in systolic heart failure (SERVE-HF). New England Journal of Medicine, 373(12), 1095–1105. DOI: 10.1056/NEJMoa1506459. — Increased cardiovascular mortality with ASV in heart failure with reduced ejection fraction (LVEF ≤ 45%).',
+          'ResMed. Unintentional leak is flagged as a large leak at 24 L/min (device/manufacturer convention; some oronasal masks use ~36 L/min). This is a device threshold, not an AASM clinical standard.',
         ],
       },
     ],
@@ -848,7 +888,7 @@ export const helpArticles: readonly HelpArticle[] = [
           'Correlation coefficient ($r$ or $\\rho$): A value between $-1$ and $+1$ measuring the strength and direction of the linear (Pearson $r$) or monotonic (Spearman $\\rho$) relationship. Values near $\\pm 1$ indicate a strong relationship; values near $0$ indicate little or no relationship.',
           'P-value: The probability of observing a correlation this extreme if the two metrics were actually unrelated ($H_0\\colon r = 0$). A small $p$-value (conventionally $< 0.05$) suggests the observed correlation is unlikely to be due to chance alone — but see the caveats below.',
           '95% confidence interval: The range within which the true population correlation likely falls, given your sample size. Narrow intervals indicate a more precise estimate; wide intervals mean less certainty.',
-          'Strength classification: A plain-language label (negligible, weak, moderate, strong, very strong) based on the absolute value of the coefficient. This follows standard thresholds: $|r| < 0.1$ negligible, $0.1$–$0.3$ weak, $0.3$–$0.5$ moderate, $0.5$–$0.7$ strong, $> 0.7$ very strong.',
+          "Strength classification: A plain-language label (negligible, weak, moderate, strong, very strong) based on the absolute value of the coefficient, using CPAP Analyzer's convenience bands: $|r| < 0.1$ negligible, $0.1$–$0.3$ weak, $0.3$–$0.5$ moderate, $0.5$–$0.7$ strong, $> 0.7$ very strong. These bands are a rule of thumb, not a standard — the cutoffs are inherently arbitrary (Schober et al. 2018), and other conventions differ (Cohen's 1988 benchmarks for $r$ are $0.1$/$0.3$/$0.5$ for small/medium/large). Read the coefficient and its confidence interval, not just the label.",
         ],
       },
       {
@@ -871,7 +911,7 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Statistical methods',
         paragraphs: [
           'Pearson correlation ($r$) measures the linear relationship between two continuous variables. It assumes both variables are approximately normally distributed and that the relationship is linear. It is sensitive to outliers — a single extreme night can inflate or deflate $r$.',
-          'Spearman rank correlation ($\\rho$) measures the monotonic relationship between two variables (whether one tends to increase as the other increases, not necessarily linearly). It operates on ranks rather than raw values, making it robust to outliers and applicable to non-normal data. CPAP Analyzer defaults to Spearman when either variable fails a normality check.',
+          'Spearman rank correlation ($\\rho$) measures the monotonic relationship between two variables (whether one tends to increase as the other increases, not necessarily linearly). It operates on ranks rather than raw values, making it robust to outliers and applicable to non-normal data. The Correlation Explorer lets you toggle between Pearson and Spearman, so when a normality check is borderline or either variable is visibly skewed you can switch to Spearman directly.',
           'Partial correlation measures the association between two variables after removing the influence of one or more confounding variables. For example, the partial correlation between AHI and HRV controlling for usage hours tells you whether the AHI–HRV relationship persists after accounting for the fact that both may be influenced by how long you wore the CPAP mask.',
           'P-values: In this context, a $p$-value answers: "If these two metrics had zero true correlation in the population, how likely is it that I would observe a sample correlation at least this large?" A small $p$ (typically $< 0.05$) is conventionally called "statistically significant," meaning the result is unlikely under the null hypothesis. However, statistical significance does not guarantee clinical importance — a weak correlation can be significant with enough data points, and a strong correlation can fail to reach significance with too few. Always consider effect size (the coefficient itself) alongside $p$.',
         ],
@@ -894,6 +934,19 @@ export const helpArticles: readonly HelpArticle[] = [
           'Small sample sizes: If you have only a few weeks of overlapping data, correlation estimates are imprecise (wide confidence intervals) and significance tests have low statistical power — you may miss real relationships or find spurious ones. As a rough guideline, at least 30 overlapping nights are needed for reasonably stable correlation estimates, and 60+ are preferable for lagged analyses.',
           'Measurement differences: The wearable and CPAP machine may define "sleep" differently (wearable uses actigraphy and heart rate; CPAP uses mask-on time). Timestamps may differ by minutes. These discrepancies are generally small but can introduce noise into the correlations.',
           'Ecological inference: Nightly aggregates obscure within-night dynamics. A night with 4 hours of excellent therapy followed by 4 hours of poor therapy looks the same in the summary as a uniformly mediocre night.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Pearson, K. (1895). Notes on regression and inheritance in the case of two parents. Proceedings of the Royal Society of London, 58, 240–242. DOI: 10.1098/rspl.1895.0041. — Pearson product-moment correlation.',
+          'Spearman, C. (1904). The proof and measurement of association between two things. American Journal of Psychology, 15(1), 72–101. DOI: 10.2307/1412159. — Spearman rank correlation.',
+          'Fisher, R. A. (1915). Frequency distribution of the values of the correlation coefficient in samples from an indefinitely large population. Biometrika, 10(4), 507–521. DOI: 10.2307/2331838. — The z-transformation used for correlation confidence intervals.',
+          'Bland, J. M., & Altman, D. G. (1986). Statistical methods for assessing agreement between two methods of clinical measurement. The Lancet, 327(8476), 307–310. DOI: 10.1016/S0140-6736(86)90837-8. — Limits of agreement (mean ± 1.96 SD of the differences).',
+          'Bland, J. M., & Altman, D. G. (1999). Measuring agreement in method comparison studies. Statistical Methods in Medical Research, 8(2), 135–160. DOI: 10.1177/096228029900800204. — Proportional-bias assessment.',
+          'Schober, P., Boer, C., & Schwarte, L. A. (2018). Correlation coefficients: appropriate use and interpretation. Anesthesia & Analgesia, 126(5), 1763–1768. DOI: 10.1213/ANE.0000000000002864. — Notes that correlation-strength cutoffs are inherently arbitrary.',
+          'Cohen, J. (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.). Hillsdale, NJ: Lawrence Erlbaum. — Effect-size benchmarks (r: 0.1/0.3/0.5 for small/medium/large).',
+          'Benjamini, Y., & Hochberg, Y. (1995). Controlling the false discovery rate: a practical and powerful approach to multiple testing. Journal of the Royal Statistical Society, Series B, 57(1), 289–300. — Context for the multiple-comparisons caveat.',
         ],
       },
     ],

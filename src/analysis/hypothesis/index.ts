@@ -273,8 +273,9 @@ function wilcoxonExactP(w: number, n: number): number {
  * Mann-Whitney U test (two-sample rank-sum test).
  *
  * Non-parametric test for whether two independent samples come from the
- * same distribution. Uses exact permutation distribution for small samples
- * ($n_1 \times n_2 \leq 784$) and normal approximation with tie correction otherwise.
+ * same distribution. Uses the exact permutation distribution when both samples
+ * are small ($n_1 \leq 28$ and $n_2 \leq 28$) and the normal approximation with
+ * tie correction otherwise.
  *
  * Test statistic: $U = R_1 - \frac{n_1(n_1 + 1)}{2}$ where $R_1$ is the rank sum
  * of the first sample.
@@ -487,7 +488,8 @@ export function wilcoxonSignedRank(before: number[], after: number[]): WilcoxonR
  *
  * Cohen's d measures the standardized difference between group means.
  * Hedges' g applies a bias correction for small samples. The 95%
- * confidence interval is computed using the non-central t approximation.
+ * confidence interval is computed using the large-sample normal
+ * approximation for the variance of d (Hedges & Olkin, 1985).
  *
  * Reference: Cohen, J. (1988). Statistical Power Analysis for the
  * Behavioral Sciences (2nd ed.). Hedges, L.V. (1981). Distribution
