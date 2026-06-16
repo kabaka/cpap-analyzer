@@ -8,6 +8,8 @@
  */
 
 import { Card, Badge } from '@/components/ui';
+import { ReliabilityChip } from '@/components/domain/ReliabilityChip';
+import type { DataQualityFlag, ReliabilityTier } from '@/analysis/uncertainty';
 import styles from './KPICard.module.css';
 
 type TrendDirection = 'up' | 'down' | 'stable';
@@ -26,6 +28,16 @@ interface KPICardProps {
   severity?: Severity;
   /** Whether the card is in a loading state. */
   loading?: boolean;
+  /**
+   * Optional measurement-reliability annotation for soft metrics (consensus
+   * D2/D6). A `high` tier with no active flags renders nothing; otherwise a
+   * quiet chip is shown below the value.
+   */
+  reliability?: {
+    readonly tier: ReliabilityTier;
+    readonly flags?: readonly DataQualityFlag[];
+    readonly reason?: string;
+  };
 }
 
 const TREND_ICONS: Record<TrendDirection, string> = {
@@ -41,7 +53,20 @@ const SEVERITY_BADGE_VARIANT: Record<Severity, 'success' | 'warning' | 'danger' 
   severe: 'danger',
 };
 
-export function KPICard({ title, value, unit, trend, severity, loading }: KPICardProps) {
+export function KPICard({
+  title,
+  value,
+  unit,
+  trend,
+  severity,
+  loading,
+  reliability,
+}: KPICardProps) {
+  const showReliability =
+    !loading &&
+    reliability !== undefined &&
+    (reliability.tier !== 'high' || (reliability.flags?.length ?? 0) > 0);
+
   return (
     <Card className={styles.card}>
       <div className={styles.header}>
@@ -70,6 +95,15 @@ export function KPICard({ title, value, unit, trend, severity, loading }: KPICar
           >
             {TREND_ICONS[trend]}
           </span>
+        </div>
+      )}
+      {showReliability && reliability && (
+        <div className={styles.reliabilityFooter}>
+          <ReliabilityChip
+            tier={reliability.tier}
+            flags={reliability.flags}
+            reason={reliability.reason}
+          />
         </div>
       )}
     </Card>

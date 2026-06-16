@@ -83,6 +83,9 @@ describe('paletteColor', () => {
     tecsaTransient: '#2563eb',
     tecsaPersistent: '#4f46e5',
     tecsaEmergent: '#6d28d9',
+    uncertaintyBand: '#64748b',
+    uncertaintyBandBg: 'rgba(100,116,139,0.16)',
+    uncertaintyBandEdge: '#94a3b8',
   };
 
   it('should return the correct colour for index 0', () => {

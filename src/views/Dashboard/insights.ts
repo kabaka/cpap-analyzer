@@ -10,6 +10,11 @@
 import type { NightlyAggregate } from '@/types';
 import type { SummaryStats } from '@/hooks/useSummaryStats';
 import { findFirstSettingsChangeDate } from '@/views/Trends/utils/detectSettingsChanges';
+import {
+  detectRisingCentralTrend,
+  MIN_CENTRAL_USAGE_HOURS,
+} from '@/views/Trends/utils/centralTrend';
+import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
 
 export type InsightSeverity = 'positive' | 'neutral' | 'warning';
 export type InsightIcon = 'trending-down' | 'trending-up' | 'check' | 'alert' | 'info';
@@ -88,7 +93,7 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
   }
 
   // 4. Leak assessment
-  if (stats.leakP95 > 24) {
+  if (stats.leakP95 > LEAK_NOTICE_LPM) {
     insights.push({
       id: 'leak-high',
       icon: 'alert',
@@ -114,11 +119,11 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
   // provider-referral message even when every well-used night is benign.
   //
   // We additionally require ≥ 1 hour of usage for a night to count toward this
-  // insight. Nights below an hour carry too few breaths for a stable per-hour
-  // rate, and the >5/h threshold here drives a clinical referral, so excluding
-  // them avoids misleading the user. (Distinct from the CMS 4h compliance floor,
-  // which is about adherence accounting, not rate stability.)
-  const MIN_CENTRAL_USAGE_HOURS = 1;
+  // insight (shared MIN_CENTRAL_USAGE_HOURS). Nights below an hour carry too few
+  // breaths for a stable per-hour rate, and the >5/h threshold here drives a
+  // clinical referral, so excluding them avoids misleading the user. (Distinct
+  // from the CMS 4h compliance floor, which is about adherence accounting, not
+  // rate stability.)
   let centralEventHours = 0;
   let centralUsageHours = 0;
   for (const a of aggregates) {
@@ -138,6 +143,27 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
         message: `Central apnea index is ${weightedCentralIndex.toFixed(1)} — discuss with your provider`,
       });
     }
+  }
+
+  // 5b. Rising central (Clear-Airway) trend — SAFETY-CRITICAL (consensus D6).
+  //
+  // The central/obstructive split is a LOW-reliability modeled inference, so its
+  // precision is qualified elsewhere. But a low-reliability label must NEVER
+  // silence a *rising* central trend: under-reaction to treatment-emergent
+  // central apnea is the dangerous failure mode. This insight is emitted on a
+  // rising trend regardless of whether the absolute index has crossed 5/h, with
+  // a 'warning' severity so it sorts to the top and is never dropped by the
+  // 5-insight cap below. Copy is informational and non-diagnostic — it prompts a
+  // conversation; it names no condition and no therapy.
+  const centralTrend = detectRisingCentralTrend(aggregates);
+  if (centralTrend.rising) {
+    insights.push({
+      id: 'central-apnea-rising',
+      icon: 'alert',
+      severity: 'warning',
+      message:
+        'Your central (clear-airway) events appear to be rising — worth discussing with your clinician. The split is an estimate, so review your data together rather than acting on it alone.',
+    });
   }
 
   // 6. Settings change detection
@@ -174,5 +200,12 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
   };
   insights.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
-  return insights.slice(0, 5);
+  // Defense-in-depth (consensus D6): the safety-critical rising-central insight
+  // must never be dropped by the display cap, even if many warnings precede it.
+  // The EventBreakdownChart prompt remains the guaranteed surface; this keeps
+  // the dashboard surface consistent with it.
+  const safetyInsightIds = new Set(['central-apnea-rising']);
+  const safety = insights.filter((i) => safetyInsightIds.has(i.id));
+  const rest = insights.filter((i) => !safetyInsightIds.has(i.id));
+  return [...safety, ...rest].slice(0, 5);
 }

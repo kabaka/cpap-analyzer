@@ -9,6 +9,7 @@
 
 import { jsPDF } from 'jspdf';
 import { getDB } from '@/services/storage/getDB';
+import { formatMetric } from '@/analysis/uncertainty';
 import type { NightlyAggregate } from '@/types';
 import type {
   EncryptionParams,
@@ -1069,7 +1070,8 @@ function buildCSV(aggregates: NightlyAggregate[], stats: ReportStatistics): stri
   lines.push(`# Date Range: ${stats.dateRange.start} to ${stats.dateRange.end}`);
   lines.push(`# Generated: ${formatDate(new Date())}`);
   lines.push(`# Total Sessions: ${stats.totalSessions}`);
-  lines.push(`# Mean AHI: ${stats.meanAHI.toFixed(2)}`);
+  // AHI is rendered at 1 dp (consensus D9 — no false precision).
+  lines.push(`# Mean AHI: ${formatMetric('ahi', stats.meanAHI)}`);
   lines.push(`# Compliance Rate: ${(stats.complianceRate * 100).toFixed(1)}%`);
   lines.push('');
 

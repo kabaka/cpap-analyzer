@@ -250,8 +250,9 @@ test.describe('Dashboard — KPI Values After Import', () => {
     await expect(kpiSection.getByText('5.2')).toBeVisible();
     await expect(kpiSection.getByText('events/hr')).toBeVisible();
 
-    // Leak Rate card — value should be 8.1
-    await expect(kpiSection.getByText('8.1')).toBeVisible();
+    // Leak Rate card — leak displays as a whole number (L/min) per the
+    // measurement-uncertainty precision rules, so 8.1 renders as "8".
+    await expect(kpiSection.getByText('8', { exact: true })).toBeVisible();
     await expect(kpiSection.getByText('L/min')).toBeVisible();
 
     // Usage card — value should be 7.0

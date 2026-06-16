@@ -17,6 +17,7 @@
  * biased toward zero by padding or dropout. See {@link collectValidSamples}.
  */
 
+import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
 import type { Event } from '@/types/events';
 import type { Session, NightlyAggregate, ChannelMetadata, MachineSettings } from '@/types/session';
 import type { ResMedInterpretation, StandardChannel } from './ResMedInterpreter';
@@ -46,8 +47,8 @@ const SESSION_GAP_MS = 30 * 60 * 1000;
 /** CMS compliance threshold: 4 hours. */
 const CMS_COMPLIANCE_HOURS = 4;
 
-/** Large leak threshold in L/min. */
-const LARGE_LEAK_THRESHOLD = 24;
+/** Large leak threshold in L/min (ResMed device convention; see uncertainty constants). */
+const LARGE_LEAK_THRESHOLD = LEAK_NOTICE_LPM;
 
 // --- Usage hysteresis detector thresholds (mask-pressure fallback) ----------
 //

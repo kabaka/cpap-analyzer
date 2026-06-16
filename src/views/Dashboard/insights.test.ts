@@ -84,6 +84,9 @@ function makeStats(overrides: Partial<SummaryStats> = {}): SummaryStats {
     meanPressureP95: 12.0,
     complianceRate: 0.9,
     totalSessions: 30,
+    totalEventCount: 90,
+    totalHypopneaCount: 30,
+    meanMaskOnHours: 7.0,
     trendAHIPercent: 0,
     trendLeakPercent: 0,
     trendUsagePercent: 0,
@@ -313,6 +316,37 @@ describe('generateInsights', () => {
       expect(insight).toBeDefined();
       expect(insight!.severity).toBe('neutral');
       expect(insight!.message).toContain('8.0');
+    });
+
+    it('emits the SAFETY rising-central insight when the trend is rising, even below 5/h', () => {
+      // earlier half ~0.5/h, later half ~3/h: the absolute index never reaches
+      // the 5/h "high" threshold, but the rising trend must STILL surface a
+      // clinician-conversation prompt (consensus D6). It is never silenced by
+      // the low-reliability split.
+      const aggregates = [
+        makeAggregate({ date: '2025-06-01', ahiCentral: 0.5 }),
+        makeAggregate({ date: '2025-06-02', ahiCentral: 0.5 }),
+        makeAggregate({ date: '2025-06-03', ahiCentral: 0.5 }),
+        makeAggregate({ date: '2025-06-04', ahiCentral: 3 }),
+        makeAggregate({ date: '2025-06-05', ahiCentral: 3 }),
+        makeAggregate({ date: '2025-06-06', ahiCentral: 3 }),
+      ];
+      const result = generateInsights(aggregates, makeStats());
+      const insight = byId(result, 'central-apnea-rising');
+      expect(insight).toBeDefined();
+      expect(insight!.message).toMatch(/discussing|discuss/i);
+      // Non-diagnostic, non-therapy-specific framing.
+      expect(insight!.message).not.toMatch(/\bASV\b/i);
+      expect(insight!.message).not.toMatch(/diagnos/i);
+    });
+
+    it('does not emit the rising-central insight for a stable central trend', () => {
+      const aggregates = Array.from({ length: 6 }, (_, i) =>
+        makeAggregate({ date: `2025-06-0${i + 1}`, ahiCentral: 1 }),
+      );
+      expect(
+        byId(generateInsights(aggregates, makeStats()), 'central-apnea-rising'),
+      ).toBeUndefined();
     });
 
     it('weights the central index by usage hours rather than treating nights equally', () => {

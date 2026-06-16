@@ -35,6 +35,9 @@ function makeMockStats(overrides: Partial<ReturnType<typeof useSummaryStats>['st
     meanPressureP95: 12.3,
     complianceRate: 0.85,
     totalSessions: 1,
+    totalEventCount: 30,
+    totalHypopneaCount: 12,
+    meanMaskOnHours: 7.0,
     trendAHIPercent: -10,
     trendLeakPercent: 2,
     trendUsagePercent: 5,
@@ -129,9 +132,10 @@ describe('Dashboard', () => {
     expect(screen.getByText('Compliance')).toBeInTheDocument();
     expect(screen.getByText('Pressure P95')).toBeInTheDocument();
 
-    // KPI values should be displayed
+    // KPI values should be displayed at the consensus D9 display precision:
+    // AHI at 1 dp, leak median as an integer L/min (8.1 → "8"), compliance %.
     expect(screen.getByText('5.2')).toBeInTheDocument();
-    expect(screen.getByText('8.1')).toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
     expect(screen.getByText('85')).toBeInTheDocument();
   });
 

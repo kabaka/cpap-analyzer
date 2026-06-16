@@ -8,6 +8,7 @@
  */
 
 import * as Comlink from 'comlink';
+import { formatMetric } from '@/analysis/uncertainty';
 import type { NightlyAggregate } from '@/types';
 import type { EncryptionParams } from '@/services/reports/types';
 
@@ -121,8 +122,9 @@ function generateCSV(
   lines.push(`# Date Range: ${dateRange.start} to ${dateRange.end}`);
   lines.push(`# Generated: ${new Date().toISOString()}`);
   lines.push(`# Total Sessions: ${total}`);
-  lines.push(`# Mean AHI: ${meanAHI.toFixed(2)}`);
-  lines.push(`# Median AHI: ${median(ahiValues).toFixed(2)}`);
+  // AHI is rendered at 1 dp (consensus D9 — no false precision).
+  lines.push(`# Mean AHI: ${formatMetric('ahi', meanAHI)}`);
+  lines.push(`# Median AHI: ${formatMetric('ahi', median(ahiValues))}`);
   lines.push(`# Compliance Rate: ${(complianceRate * 100).toFixed(1)}%`);
   lines.push('');
 

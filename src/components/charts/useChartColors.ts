@@ -48,6 +48,10 @@ export interface ChartColors {
   tecsaTransient: string;
   tecsaPersistent: string;
   tecsaEmergent: string;
+  // Uncertainty band ("typical nightly range" — neutral slate, consensus D3)
+  uncertaintyBand: string;
+  uncertaintyBandBg: string;
+  uncertaintyBandEdge: string;
 }
 
 const PALETTE_KEYS: readonly (keyof ChartColors)[] = [
@@ -101,6 +105,9 @@ function resolveColors(): ChartColors {
     tecsaTransient: readCSSVar('--color-tecsa-transient'),
     tecsaPersistent: readCSSVar('--color-tecsa-persistent'),
     tecsaEmergent: readCSSVar('--color-tecsa-emergent'),
+    uncertaintyBand: readCSSVar('--color-uncertainty-band'),
+    uncertaintyBandBg: readCSSVar('--color-uncertainty-band-bg'),
+    uncertaintyBandEdge: readCSSVar('--color-uncertainty-band-edge'),
   };
 }
 

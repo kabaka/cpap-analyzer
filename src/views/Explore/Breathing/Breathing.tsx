@@ -38,6 +38,7 @@ import {
   type CatalogEpisode,
 } from '@/hooks/useBreathingEpisodeCatalog';
 import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
+import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
 import { useAppStore } from '@/stores/useAppStore';
 
 import styles from './Breathing.module.css';
@@ -541,7 +542,7 @@ export function Breathing(): JSX.Element {
       .slice()
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((a) => {
-        const highLeak = a.leakMedian > 24 || a.usageHours < 2;
+        const highLeak = a.leakMedian > LEAK_NOTICE_LPM || a.usageHours < 2;
         const candidate =
           !highLeak && a.ahiCentral >= threshold && a.ahiObstructive < obstructiveControlled;
         return {

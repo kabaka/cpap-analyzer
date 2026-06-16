@@ -51,3 +51,19 @@
   line-height: var(--line-height-normal);
   font-style: italic;
 }
+
+/* Reliability note — neutral violet "detection" axis (consensus D2),
+   never the red/orange clinical-severity axis. */
+.reliability {
+  margin: var(--space-1) 0 0 0;
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--color-border-default);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-normal);
+}
+
+.reliabilityLabel {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-detection);
+}

@@ -19,6 +19,7 @@ import {
   titrationHelper,
   bipapEffectiveness,
 } from '@/analysis/pressure';
+import { formatMetric } from '@/analysis/uncertainty';
 import type {
   PressureResponseResult,
   PressureVariabilityResult,
@@ -301,7 +302,7 @@ const TitrationSection = React.memo(function TitrationSection({
         <div className={styles.recommendationRow}>
           <span className={styles.recommendationLabel}>AHI at Optimal Pressure</span>
           <span className={styles.recommendationValue}>
-            {result.ahiAtOptimal.toFixed(2)} events/hr
+            {formatMetric('ahi', result.ahiAtOptimal)} events/hr
           </span>
         </div>
         <div className={styles.recommendationRow}>

@@ -1,4 +1,5 @@
 import { metricMap } from '@/content/help';
+import { reliabilityTierLabel } from '@/analysis/uncertainty';
 import { Tooltip } from '@/components/ui';
 import type { ReactNode } from 'react';
 import styles from './MetricTooltip.module.css';
@@ -31,6 +32,14 @@ export function MetricTooltip({ metricId, children, side = 'top' }: MetricToolti
       </div>
       <p className={styles.description}>{metric.tooltip}</p>
       <p className={styles.interpretation}>{metric.interpretation}</p>
+      {metric.reliability && (
+        <p className={styles.reliability}>
+          <span className={styles.reliabilityLabel}>
+            {reliabilityTierLabel(metric.reliability.tier)}
+          </span>{' '}
+          {metric.reliability.note}
+        </p>
+      )}
     </div>
   );
 

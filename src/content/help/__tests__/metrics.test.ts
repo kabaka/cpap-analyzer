@@ -90,4 +90,50 @@ describe('Metric definitions', () => {
       expect(ahi!.unit).toBe('events/hr');
     });
   });
+
+  describe('reliability annotations (consensus D5)', () => {
+    const validTiers = ['high', 'moderate', 'low'];
+
+    it('should use a valid tier and a non-empty note whenever reliability is present', () => {
+      for (const metric of metricDefinitions) {
+        if (metric.reliability) {
+          expect(validTiers).toContain(metric.reliability.tier);
+          expect(typeof metric.reliability.note).toBe('string');
+          expect(metric.reliability.note.length).toBeGreaterThan(10);
+        }
+      }
+    });
+
+    it('should tier AHI and leak as moderate (algorithmically detected / leak-sensitive)', () => {
+      expect(metricMap.get('ahi')?.reliability?.tier).toBe('moderate');
+      expect(metricMap.get('leak-median')?.reliability?.tier).toBe('moderate');
+    });
+
+    it('should tier directly-measured metrics as high', () => {
+      expect(metricMap.get('usage-hours')?.reliability?.tier).toBe('high');
+      expect(metricMap.get('pressure-mean')?.reliability?.tier).toBe('high');
+    });
+
+    it('should tier the central split and RERA-derived RDI as low (modeled)', () => {
+      expect(metricMap.get('central-ai')?.reliability?.tier).toBe('low');
+      expect(metricMap.get('rdi')?.reliability?.tier).toBe('low');
+    });
+
+    it('should keep the central-split note safety-aware (trend still matters)', () => {
+      const note = metricMap.get('central-ai')?.reliability?.note ?? '';
+      expect(note.toLowerCase()).toContain('trend');
+      expect(note.toLowerCase()).toContain('clinician');
+    });
+
+    it('should carry no diagnostic or therapy-prescriptive language in reliability notes', () => {
+      // Surface, don't diagnose: notes must not assert a diagnosis or prescribe a mode change.
+      for (const metric of metricDefinitions) {
+        const note = metric.reliability?.note.toLowerCase();
+        if (note) {
+          expect(note).not.toMatch(/you (have|need)\b/);
+          expect(note).not.toMatch(/switch to (asv|bipap)/);
+        }
+      }
+    });
+  });
 });

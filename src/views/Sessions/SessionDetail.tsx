@@ -24,6 +24,7 @@ import {
   Tooltip,
 } from '@/components/ui';
 import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
+import { formatMetric } from '@/analysis/uncertainty';
 import type { Event, EventType, MachineType, NightlyAggregate } from '@/types';
 import styles from './SessionDetail.module.css';
 
@@ -491,7 +492,7 @@ function SpO2Card({ aggregate }: { aggregate: NightlyAggregate }) {
           <span className={styles.breakdownLabel}>Time &lt;90%</span>
           <span className={styles.breakdownValue}>
             {aggregate.spo2Below90Percent != null
-              ? `${aggregate.spo2Below90Percent.toFixed(1)}%`
+              ? `${formatMetric('spo2', aggregate.spo2Below90Percent)}%`
               : '—'}
           </span>
         </div>

@@ -22,3 +22,26 @@
 .chartArea {
   width: 100%;
 }
+
+/* Visible, low-emphasis caption under a chart — used to qualify what a series
+   means (e.g. "shaded band = typical nightly range, not a 95% CI"). */
+.footnote {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-muted);
+}
+
+/* Screen-reader-only content (off-screen but in the a11y tree). */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

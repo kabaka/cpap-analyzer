@@ -40,6 +40,35 @@
   --color-info: #2563eb;
   --color-info-bg: rgba(37, 99, 235, 0.1);
 
+  /* RELIABILITY / MEASUREMENT-UNCERTAINTY SCALE (consensus D2)
+     Metadata ABOUT a metric's trustworthiness, never clinical severity.
+     Deliberately on the desaturated VIOLET/NEUTRAL axis so it can never be
+     confused with the red/orange clinical-severity scale (--color-status-*,
+     --color-error/-warning). Tier is ALWAYS paired with a unique icon shape +
+     text label (WCAG 1.4.1); colour is reinforcement only.
+     - moderate ("Estimate")  → muted violet-grey (detected, leak-sensitive)
+     - low      ("Modeled")   → violet, reusing the --color-detection /
+                                --color-tecsa-* "inferred/derived" semantics
+     - caveat                 → neutral slate for data-quality flags (NOT a
+                                severity escalation) */
+  --color-reliability-moderate: #5b5277;
+  --color-reliability-moderate-bg: rgba(91, 82, 119, 0.1);
+  --color-reliability-low: #6d28d9;
+  --color-reliability-low-bg: rgba(109, 40, 217, 0.1);
+  --color-caveat: #475569;
+  --color-caveat-bg: rgba(71, 85, 105, 0.1);
+
+  /* CHART UNCERTAINTY BAND (consensus D3 — "typical nightly range")
+     The shaded P25–P75 inter-quartile band behind a rolling-median trend
+     line. Deliberately NEUTRAL/desaturated (slate) so it reads as "spread of
+     the data", never as a clinical-severity zone (red/orange) and never as a
+     reliability tier (violet). Color is reinforcement only: the band is ALSO
+     given a dashed edge (`-edge`) as a non-colour cue so it survives
+     grayscale / print / colour-blind viewing (WCAG 1.4.1). */
+  --color-uncertainty-band: #64748b;
+  --color-uncertainty-band-bg: rgba(100, 116, 139, 0.16);
+  --color-uncertainty-band-edge: #94a3b8;
+
   /* INTERACTIVE COLORS */
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
@@ -274,6 +303,21 @@
   --color-tecsa-persistent-bg: rgba(129, 140, 248, 0.15);
   --color-tecsa-emergent: #a78bfa;
   --color-tecsa-emergent-bg: rgba(167, 139, 250, 0.15);
+
+  /* RELIABILITY / MEASUREMENT-UNCERTAINTY SCALE (consensus D2) — brightened
+     for dark surfaces, same hue intent (see :root for rationale). */
+  --color-reliability-moderate: #b7aedb;
+  --color-reliability-moderate-bg: rgba(183, 174, 219, 0.16);
+  --color-reliability-low: #c4b5fd;
+  --color-reliability-low-bg: rgba(196, 181, 253, 0.16);
+  --color-caveat: #cbd5e1;
+  --color-caveat-bg: rgba(203, 213, 225, 0.16);
+
+  /* CHART UNCERTAINTY BAND (consensus D3) — brightened for dark surfaces,
+     same neutral-slate intent (see :root for rationale). */
+  --color-uncertainty-band: #94a3b8;
+  --color-uncertainty-band-bg: rgba(148, 163, 184, 0.2);
+  --color-uncertainty-band-edge: #cbd5e1;
 
   /* SIGNAL VIEWER CROSSHAIR */
   --color-crosshair: rgba(220, 220, 220, 0.5);
