@@ -24,6 +24,7 @@ import { BoxPlot, type BoxPlotGroup } from '@/components/charts/d3';
 import { paletteColor, useChartColors } from '@/components/charts/useChartColors';
 import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 import { useAppStore } from '@/stores/useAppStore';
+import { classifyAhiSeverity, type AhiSeverity } from '@/analysis/clinical';
 import type { NightlyAggregate } from '@/types';
 
 import {
@@ -51,15 +52,7 @@ const MIN_NIGHTS_RELIABLE = 7;
  *  the "show short periods" switch is on). */
 const SHORT_PERIOD_THRESHOLD = 3;
 
-/** AHI severity thresholds (events/hour) — used for the row's status dot. */
-function ahiSeverity(ahi: number): 'normal' | 'mild' | 'moderate' | 'severe' {
-  if (ahi < 5) return 'normal';
-  if (ahi < 15) return 'mild';
-  if (ahi < 30) return 'moderate';
-  return 'severe';
-}
-
-const SEVERITY_LABEL: Record<ReturnType<typeof ahiSeverity>, string> = {
+const SEVERITY_LABEL: Record<AhiSeverity, string> = {
   normal: 'Normal',
   mild: 'Mild',
   moderate: 'Moderate',
@@ -383,7 +376,7 @@ function PeriodRow({
   const tooFew = period.kind === 'config' && period.nights < MIN_NIGHTS_RELIABLE;
   const settingsLabel = formatConfigKey(period.settings);
   const ahiSummary = period.outcomes.ahi;
-  const severity = ahiSummary !== null ? ahiSeverity(ahiSummary.mean) : null;
+  const severity = ahiSummary !== null ? classifyAhiSeverity(ahiSummary.mean) : null;
   const rowLabel = `${period.startDate} to ${period.endDate}, ${settingsLabel}, ${period.nights} nights`;
 
   const rowClass = [

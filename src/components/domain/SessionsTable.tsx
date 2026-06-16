@@ -10,6 +10,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui';
+import { classifyAhiSeverity } from '@/analysis/clinical';
 import type { Session, NightlyAggregate } from '@/types';
 import styles from './SessionsTable.module.css';
 
@@ -213,11 +214,7 @@ function AHIBadge({ ahi }: { ahi?: number }) {
     return <span className={styles.mono}>—</span>;
   }
 
-  let severity: string;
-  if (ahi < 5) severity = 'normal';
-  else if (ahi < 15) severity = 'mild';
-  else if (ahi < 30) severity = 'moderate';
-  else severity = 'severe';
+  const severity = classifyAhiSeverity(ahi);
 
   return (
     <span

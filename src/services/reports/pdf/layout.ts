@@ -9,6 +9,7 @@
  */
 
 import type { jsPDF } from 'jspdf';
+import { classifyAhiSeverity, type AhiSeverity } from '@/analysis/clinical';
 
 // ── Color constants ──────────────────────────────────────────────
 
@@ -129,18 +130,26 @@ export function setDrawColor(doc: jsPDF, hex: string): void {
 
 // ── AHI severity ─────────────────────────────────────────────────
 
+const AHI_SEVERITY_COLORS: Record<AhiSeverity, string> = {
+  normal: PDF_COLORS.SEVERITY_NORMAL,
+  mild: PDF_COLORS.SEVERITY_MILD,
+  moderate: PDF_COLORS.SEVERITY_MODERATE,
+  severe: PDF_COLORS.SEVERITY_SEVERE,
+};
+
+const AHI_SEVERITY_LABELS: Record<AhiSeverity, string> = {
+  normal: 'Normal',
+  mild: 'Mild',
+  moderate: 'Moderate',
+  severe: 'Severe',
+};
+
 export function getAHISeverityColor(ahi: number): string {
-  if (ahi < 5) return PDF_COLORS.SEVERITY_NORMAL;
-  if (ahi < 15) return PDF_COLORS.SEVERITY_MILD;
-  if (ahi < 30) return PDF_COLORS.SEVERITY_MODERATE;
-  return PDF_COLORS.SEVERITY_SEVERE;
+  return AHI_SEVERITY_COLORS[classifyAhiSeverity(ahi)];
 }
 
 export function getAHISeverityLabel(ahi: number): string {
-  if (ahi < 5) return 'Normal';
-  if (ahi < 15) return 'Mild';
-  if (ahi < 30) return 'Moderate';
-  return 'Severe';
+  return AHI_SEVERITY_LABELS[classifyAhiSeverity(ahi)];
 }
 
 // ── Page header ──────────────────────────────────────────────────

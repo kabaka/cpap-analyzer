@@ -15,6 +15,7 @@ import {
   MIN_CENTRAL_USAGE_HOURS,
 } from '@/views/Trends/utils/centralTrend';
 import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
+import { CMS_COMPLIANCE_HOURS, RECOMMENDED_USAGE_HOURS } from '@/analysis/clinical';
 
 export type InsightSeverity = 'positive' | 'neutral' | 'warning';
 export type InsightIcon = 'trending-down' | 'trending-up' | 'check' | 'alert' | 'info';
@@ -76,14 +77,14 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
   }
 
   // 3. Usage assessment
-  if (stats.meanUsageHours >= 6) {
+  if (stats.meanUsageHours >= RECOMMENDED_USAGE_HOURS) {
     insights.push({
       id: 'usage-excellent',
       icon: 'check',
       severity: 'positive',
       message: `Average usage is ${stats.meanUsageHours.toFixed(1)} hours — excellent adherence`,
     });
-  } else if (stats.meanUsageHours < 4) {
+  } else if (stats.meanUsageHours < CMS_COMPLIANCE_HOURS) {
     insights.push({
       id: 'usage-low',
       icon: 'alert',
@@ -182,7 +183,7 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
     insights.length < 2 &&
     stats.meanAHI < 5 &&
     stats.complianceRate >= 0.7 &&
-    stats.meanUsageHours >= 4
+    stats.meanUsageHours >= CMS_COMPLIANCE_HOURS
   ) {
     insights.push({
       id: 'all-good',

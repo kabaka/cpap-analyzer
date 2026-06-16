@@ -8,6 +8,7 @@ import React from 'react';
 import { EnhancedKPICard } from '@/components/domain/EnhancedKPICard';
 import type { SummaryStats } from '@/hooks/useSummaryStats';
 import { useChartColors } from '@/components/charts/useChartColors';
+import { classifyAhiSeverity } from '@/analysis/clinical';
 import {
   formatMetric,
   reliabilityTier,
@@ -17,14 +18,6 @@ import {
   type ReliabilityTier,
 } from '@/analysis/uncertainty';
 import styles from './KPIRow.module.css';
-
-/** Map AHI value to clinical severity. */
-function ahiSeverity(ahi: number): 'normal' | 'mild' | 'moderate' | 'severe' {
-  if (ahi < 5) return 'normal';
-  if (ahi < 15) return 'mild';
-  if (ahi < 30) return 'moderate';
-  return 'severe';
-}
 
 function trendDirection(percent: number): 'up' | 'down' | 'stable' {
   if (percent > 2) return 'up';
@@ -98,11 +91,11 @@ const KPIRow = React.memo(function KPIRow({ stats, loading }: KPIRowProps) {
         trend={trendDirection(stats?.trendAHIPercent ?? 0)}
         trendPercent={stats?.trendAHIPercent ?? 0}
         trendFavorable={(stats?.trendAHIPercent ?? 0) <= 0}
-        severity={stats ? ahiSeverity(stats.meanAHI) : undefined}
+        severity={stats ? classifyAhiSeverity(stats.meanAHI) : undefined}
         sparklineData={ahiSparkline}
         sparklineColor={
           stats
-            ? ahiSeverity(stats.meanAHI) === 'normal'
+            ? classifyAhiSeverity(stats.meanAHI) === 'normal'
               ? colors.chart3
               : colors.chart2
             : undefined

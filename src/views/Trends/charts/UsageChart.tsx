@@ -20,6 +20,8 @@ import {
   YAxis,
 } from 'recharts';
 import { useChartColors } from '@/components/charts/useChartColors';
+import { CMS_COMPLIANCE_HOURS, RECOMMENDED_USAGE_HOURS } from '@/analysis/clinical';
+import { USAGE_AXIS_FLOOR, computeAxisMax } from './chartScale';
 import { useSyncedChart } from '../context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
@@ -35,8 +37,8 @@ interface UsageChartProps {
 }
 
 function getBarColor(hours: number, colors: { chart3: string; chart5: string; chart2: string }) {
-  if (hours >= 6) return colors.chart3; // green
-  if (hours >= 4) return colors.chart5; // orange/yellow
+  if (hours >= RECOMMENDED_USAGE_HOURS) return colors.chart3; // green
+  if (hours >= CMS_COMPLIANCE_HOURS) return colors.chart5; // orange/yellow
   return colors.chart2; // red
 }
 
@@ -52,7 +54,7 @@ const UsageChart = React.memo(function UsageChart({
 
   const maxUsage = useMemo(() => {
     const m = Math.max(...data.map((d) => d.usageHours), 0);
-    return Math.max(m * 1.1, 8);
+    return computeAxisMax(m, USAGE_AXIS_FLOOR);
   }, [data]);
 
   const handleMouseMove = useCallback(
@@ -111,16 +113,26 @@ const UsageChart = React.memo(function UsageChart({
 
           {/* Reference lines */}
           <ReferenceLine
-            y={4}
+            y={CMS_COMPLIANCE_HOURS}
             stroke={colors.chart5}
             strokeDasharray="6 3"
-            label={{ value: '4h', position: 'right', fill: colors.axis, fontSize: 10 }}
+            label={{
+              value: `${CMS_COMPLIANCE_HOURS}h`,
+              position: 'right',
+              fill: colors.axis,
+              fontSize: 10,
+            }}
           />
           <ReferenceLine
-            y={6}
+            y={RECOMMENDED_USAGE_HOURS}
             stroke={colors.chart3}
             strokeDasharray="6 3"
-            label={{ value: '6h', position: 'right', fill: colors.axis, fontSize: 10 }}
+            label={{
+              value: `${RECOMMENDED_USAGE_HOURS}h`,
+              position: 'right',
+              fill: colors.axis,
+              fontSize: 10,
+            }}
           />
 
           {/* Settings change markers — shared helper with <title> hover. */}
