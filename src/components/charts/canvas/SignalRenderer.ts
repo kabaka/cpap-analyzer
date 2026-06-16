@@ -72,6 +72,33 @@ export interface SignalChannel {
    * hypnogram/collapsed lanes within one stack.
    */
   readonly height?: number;
+  /**
+   * Optional per-x-pixel-column MIN/MAX envelope for dense CPAP waveform lanes
+   * (`kind: 'cpap'`, `render: 'line'`). When present, the line path draws this
+   * envelope — a vertical span from each column's max down to its min, connected
+   * column-to-column into a continuous filled-and-stroked waveform — INSTEAD of
+   * the LTTB polyline in {@link data}. This is the zoomed-OUT fidelity path: a
+   * true envelope cannot hide a 1-sample spike or notch the way LTTB's
+   * vertex-picking can. It is only attached when the viewport holds > ~1 source
+   * sample per pixel; zoomed-in frames omit it so the polyline is drawn exactly
+   * as before (byte-identical). The envelope must be computed from a source dense
+   * enough to have several samples per column (a pyramid level), NOT from the
+   * already-reduced {@link data}.
+   *
+   * `min[c]`/`max[c]` are physical values for column `c` (0 ≤ c < `columns`),
+   * mapped left→right across the lane's plot width. A column with
+   * `min[c] === max[c] === NaN` is a gap and BREAKS the envelope (no bridge),
+   * mirroring the polyline's NaN break. {@link data} is still populated (the LTTB
+   * output) so the crosshair readout keeps reading a correct value at the cursor.
+   */
+  readonly envelope?: {
+    /** Per-column physical minima (length ≥ `columns`). NaN marks a gap. */
+    readonly min: Float32Array;
+    /** Per-column physical maxima (length ≥ `columns`). NaN marks a gap. */
+    readonly max: Float32Array;
+    /** Number of populated columns. */
+    readonly columns: number;
+  };
 }
 
 /**
@@ -881,6 +908,16 @@ export class SignalRenderer {
     const physRange = ch.physicalMax - ch.physicalMin;
     if (physRange <= 0) return;
 
+    // Zoomed-OUT fidelity path: when a per-column MIN/MAX envelope is attached,
+    // draw it instead of the LTTB polyline (a true envelope cannot hide a spike
+    // the polyline's vertex-picking can skip). Only dense CPAP line lanes carry
+    // an envelope; everything else (and zoomed-in CPAP) draws the polyline below,
+    // byte-identical to before.
+    if (ch.envelope && ch.envelope.columns > 0) {
+      this.drawEnvelope(ch, plotLeft, plotWidth, stripTop, stripHeight, innerTop, innerBottom);
+      return;
+    }
+
     const times = ch.sampleTimes && ch.sampleTimes.length === data.length ? ch.sampleTimes : null;
     const msPerSample = durationMs / data.length;
 
@@ -952,6 +989,117 @@ export class SignalRenderer {
     }
 
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Zoomed-OUT MIN/MAX envelope for dense CPAP waveform lanes — the fidelity
+   * replacement for the LTTB polyline when more than ~1 source sample maps to
+   * each output pixel column.
+   *
+   * For each column `c` the channel carries the physical `min[c]`/`max[c]` of all
+   * source samples in that column (computed upstream from a pyramid level dense
+   * enough to have several samples per column — never from the already-reduced
+   * `data`). We build ONE continuous closed path: the upper boundary (`max`)
+   * left→right, then the lower boundary (`min`) right→left. Stroking AND filling
+   * that path in the lane colour renders a solid waveform band whose vertical
+   * extent at every x is the true range of the signal there — so a 1-sample spike
+   * or notch ALWAYS reaches a pixel (it is, by definition, that column's min or
+   * max). At the zoomed-in boundary each column holds ≈1 sample, so min≈max, the
+   * band collapses to a ~1px ribbon, and the look matches the polyline it replaces
+   * — the transition is seamless.
+   *
+   * RENDERING CHOICE (weight/colour to match today's 1.2px line): we FILL the band
+   * in the lane colour and STROKE its outline at the same {@link DENSE_LINE_WIDTH}.
+   * Where the band is thin (≈1px) the fill+stroke reads as a 1.2px line; where it
+   * is tall it reads as a solid envelope — matching the perceived weight/colour of
+   * the existing waveform across the threshold.
+   *
+   * NaN / GAPS: a column with `min === max === NaN` is a gap; it BREAKS the path
+   * into a separate sub-band (no bridge across missing data), exactly as
+   * {@link drawLine} breaks the polyline on NaN. Each contiguous run of real
+   * columns is emitted as its own closed band.
+   *
+   * The load-bearing per-lane clip (see {@link drawLine}) is preserved so a
+   * clamped out-of-domain extreme can never paint into a neighbouring lane.
+   */
+  private drawEnvelope(
+    ch: SignalChannel,
+    plotLeft: number,
+    plotWidth: number,
+    stripTop: number,
+    stripHeight: number,
+    innerTop: number,
+    innerBottom: number,
+  ): void {
+    const env = ch.envelope;
+    if (!env) return;
+    const ctx = this.activeCtx;
+
+    const innerHeight = innerBottom - innerTop;
+    const physRange = ch.physicalMax - ch.physicalMin;
+    const { physicalMin } = ch;
+    const cols = env.columns;
+    const { min, max } = env;
+
+    // Column → x: columns map left→right across the plot width. Use the column
+    // CENTRE so the first and last columns sit just inside the plot edges,
+    // matching the polyline's first/last sample placement closely.
+    const xScale = cols > 0 ? plotWidth / cols : 0;
+    const yOf = (v: number): number => innerBottom - ((v - physicalMin) / physRange) * innerHeight;
+
+    // LOAD-BEARING CLIP (defense in depth): identical guarantee to drawLine — an
+    // out-of-domain (clamped) extreme must never paint into a neighbour lane. Do
+    // not remove.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(plotLeft, stripTop, plotWidth, stripHeight);
+    ctx.clip();
+
+    ctx.strokeStyle = ch.color;
+    ctx.fillStyle = ch.color;
+    ctx.lineWidth = ch.lineWidth ?? DENSE_LINE_WIDTH;
+    ctx.lineJoin = 'round';
+
+    // Walk the columns, emitting one closed band per contiguous run of non-gap
+    // columns. A run boundary is a NaN column (gap) — the band breaks there.
+    let runStart = -1;
+    const flushRun = (start: number, endExcl: number): void => {
+      // endExcl is exclusive; a run needs at least one column.
+      if (start < 0 || endExcl <= start) return;
+      ctx.beginPath();
+      // Upper boundary (max) left→right.
+      for (let c = start; c < endExcl; c++) {
+        const x = plotLeft + (c + 0.5) * xScale;
+        const y = yOf(max[c] as number);
+        if (c === start) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      // Lower boundary (min) right→left, closing the band.
+      for (let c = endExcl - 1; c >= start; c--) {
+        const x = plotLeft + (c + 0.5) * xScale;
+        ctx.lineTo(x, yOf(min[c] as number));
+      }
+      ctx.closePath();
+      // Fill the band, then stroke its outline so a thin (≈1px) band reads as a
+      // ~1.2px line and a tall band reads as a solid envelope — matching weight.
+      ctx.fill();
+      ctx.stroke();
+    };
+
+    for (let c = 0; c < cols; c++) {
+      const isGap = Number.isNaN(min[c] as number) || Number.isNaN(max[c] as number);
+      if (isGap) {
+        if (runStart >= 0) {
+          flushRun(runStart, c);
+          runStart = -1;
+        }
+      } else if (runStart < 0) {
+        runStart = c;
+      }
+    }
+    if (runStart >= 0) flushRun(runStart, cols);
+
     ctx.restore();
   }
 

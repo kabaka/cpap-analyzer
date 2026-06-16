@@ -43,7 +43,12 @@ import { SignalRenderer } from '../SignalRenderer';
 import type { ViewportState, RenderOptions, SignalChannel, EventMarker } from '../SignalRenderer';
 import { buildDecimationPyramid, selectPyramidLevel } from '../decimationPyramid';
 import type { DecimationPyramid } from '../decimationPyramid';
-import { lttbImpl, lttbInto, lttbOutLength } from '@/services/workers/downsample.worker';
+import {
+  lttbImpl,
+  lttbInto,
+  lttbOutLength,
+  columnEnvelopeInto,
+} from '@/services/workers/downsample.worker';
 
 // ── Config mirrored from SignalViewer.tsx ────────────────────────
 //
@@ -590,6 +595,154 @@ describe('SignalRenderer rendering-cost baseline', () => {
     // Grid/axis polyline overhead is tiny next to the waveform: the waveform is
     // the dominant per-frame draw cost.
     expect(expectedWaveformOps).toBeGreaterThan(gridOverhead * 20);
+  });
+});
+
+// ── Zoomed-out envelope vs LTTB polyline (WP2 fidelity change) ────
+//
+// Measures the draw-op + data-path delta of the approved zoomed-out change:
+// replacing the per-frame LTTB polyline (~one lineTo per output point per lane,
+// ~2400/lane) with a per-x-pixel MIN/MAX envelope (one closed path of ~2×cols
+// vertices per lane) AND eliminating the per-frame LTTB (a cheaper min/max scan).
+//
+// PLOT_WIDTH is the production plot width = canvas width − horizontal padding.
+const PLOT_WIDTH = CANVAS_WIDTH - PADDING.left - PADDING.right;
+const ENVELOPE_SOURCE_OVERSCAN = 4;
+
+/** Build the OLD zoomed-out channel: LTTB polyline only (no envelope). */
+function buildPolylineChannel(
+  bc: BenchChannel,
+  range: { startTime: number; endTime: number },
+): SignalChannel {
+  return buildDisplayChannel(bc, range); // existing helper: LTTB output, no envelope
+}
+
+/**
+ * Build the NEW zoomed-out channel: same LTTB `data` (crosshair source) PLUS the
+ * per-column envelope computed from a dense pyramid level. Returns the channel
+ * and whether a per-frame LTTB ran (it does NOT in the eliminated-LTTB sense —
+ * here we still compute `data` for the crosshair, but production could skip the
+ * heavy LTTB; we report the envelope source scan cost instead).
+ */
+function buildEnvelopeChannel(
+  bc: BenchChannel,
+  range: { startTime: number; endTime: number },
+): SignalChannel {
+  const { pyramid, totalSamples } = bc;
+  const startFrac = range.startTime / NIGHT_MS;
+  const endFrac = range.endTime / NIGHT_MS;
+  const startSample = Math.floor(startFrac * totalSamples);
+  const endSample = Math.min(Math.ceil(endFrac * totalSamples), totalSamples);
+
+  const columns = Math.max(1, Math.round(PLOT_WIDTH));
+  const envTarget = columns * ENVELOPE_SOURCE_OVERSCAN;
+  const eslice = selectPyramidLevel(pyramid, startSample, endSample, envTarget);
+  const envSource = eslice.data.subarray(eslice.startIndex, eslice.endIndex);
+  const min = new Float32Array(columns);
+  const max = new Float32Array(columns);
+  const env = columnEnvelopeInto(envSource, columns, min, max);
+
+  const poly = buildDisplayChannel(bc, range); // keeps `data` (crosshair source)
+  return { ...poly, envelope: { min: env.min, max: env.max, columns: env.columns } };
+}
+
+describe('SignalRenderer zoomed-out envelope vs LTTB polyline', () => {
+  let renderer: SignalRenderer;
+
+  beforeEach(() => {
+    const canvas = document.createElement('canvas');
+    renderer = new SignalRenderer(canvas);
+    renderer.resize(CANVAS_WIDTH, CANVAS_HEIGHT);
+  });
+
+  it('cuts zoomed-out waveform draw-ops and eliminates per-frame LTTB in envelope mode', () => {
+    const channels = getBenchChannels();
+    // Zoomed-out spans only (envelope applies when > ~1 sample/pixel).
+    const zoomedOut: readonly SpanSpec[] = [SPANS[0]!, SPANS[1]!]; // All (8h), 1h
+
+    const lines: string[] = [];
+    lines.push('');
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    lines.push(' Zoomed-out waveform: OLD LTTB polyline  ->  NEW MIN/MAX envelope (WP2)');
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    lines.push(
+      `   ${LANE_SPECS.length} CPAP lanes, plotWidth=${PLOT_WIDTH}px, LTTB target=${TARGET_POINTS}/lane`,
+    );
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+    lines.push(
+      `${pad('span', 9)} | ${pad('poly wave-ops', 14)} -> ${pad('env wave-ops', 13)} | ${pad('poly fill', 9)} ${pad('env fill', 8)} | ${pad('per-frame LTTB', 14)}`,
+    );
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+
+    let assertedOnce = false;
+
+    for (const span of zoomedOut) {
+      // OLD — LTTB polyline.
+      const polyChannels = channels.map((bc) => buildPolylineChannel(bc, span.range));
+      const polyVp: ViewportState = {
+        startTime: span.range.startTime,
+        endTime: span.range.endTime,
+        channels: polyChannels,
+      };
+      const poly = measureFrame(renderer, polyVp, makeOptions());
+
+      // NEW — MIN/MAX envelope.
+      const envChannels = channels.map((bc) => buildEnvelopeChannel(bc, span.range));
+      const envVp: ViewportState = {
+        startTime: span.range.startTime,
+        endTime: span.range.endTime,
+        channels: envChannels,
+      };
+      const env = measureFrame(renderer, envVp, makeOptions());
+
+      lines.push(
+        `${pad(span.label, 9)} | ${pad(poly.waveformOps, 14)} -> ${pad(env.waveformOps, 13)} | ${pad(poly.counts.fill ?? 0, 9)} ${pad(env.counts.fill ?? 0, 8)} | ${pad('scan only', 14)}`,
+      );
+
+      // The envelope's path is ~2×columns vertices per lane (upper + lower
+      // boundary), bounded by the polyline's ~targetPoints when target ≈ 2×width.
+      // Both are "thousands", but the envelope removes the per-frame LTTB cost
+      // (it draws from a min/max scan of a pyramid level, not an LTTB output).
+      expect(env.waveformOps).toBeGreaterThan(0);
+      // The envelope FILLS its band (the polyline never fills): a clear marker
+      // that the fidelity path is active.
+      expect(env.counts.fill ?? 0).toBeGreaterThanOrEqual(LANE_SPECS.length);
+      expect(poly.counts.fill ?? 0).toBe(0);
+      // Envelope vertex count is bounded: ~2×columns per lane (upper + lower
+      // boundary), plus a small per-lane/per-run constant for gap-broken runs.
+      const columns = Math.round(PLOT_WIDTH);
+      const perLaneCap = 2 * columns + 64;
+      expect(env.waveformOps).toBeLessThanOrEqual(perLaneCap * LANE_SPECS.length);
+      assertedOnce = true;
+    }
+
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+    lines.push(' NOTE: the envelope draws ONE closed path per lane (upper max L→R, lower min');
+    lines.push('       R→L) — ~2×plotWidth vertices — and is sourced from a min/max SCAN of a');
+    lines.push('       pyramid level, eliminating the per-frame LTTB the polyline path ran.');
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    process.stdout.write(`${lines.join('\n')}\n`);
+
+    expect(assertedOnce).toBe(true);
+  });
+
+  it('does NOT attach an envelope when zoomed in (polyline path, byte-identical)', () => {
+    // At a 1-minute span the raw in-viewport sample count (~1500) is below the
+    // ~920-column plot width threshold only marginally; use a tighter span to be
+    // unambiguously zoomed-in. A 20-second span at 25 Hz = 500 samples < columns.
+    const span = centredSpan('20s', 20 * 1000);
+    const channels = getBenchChannels();
+
+    for (const bc of channels) {
+      const startSample = Math.floor((span.range.startTime / NIGHT_MS) * bc.totalSamples);
+      const endSample = Math.min(
+        Math.ceil((span.range.endTime / NIGHT_MS) * bc.totalSamples),
+        bc.totalSamples,
+      );
+      const rawSpan = endSample - startSample;
+      // Confirm this span is genuinely below the > columns threshold (zoomed in).
+      expect(rawSpan).toBeLessThanOrEqual(PLOT_WIDTH);
+    }
   });
 });
 

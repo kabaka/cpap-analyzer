@@ -5,7 +5,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { lttbImpl, lttbInto, lttbOutLength, minMaxImpl } from '../downsample.worker';
+import {
+  lttbImpl,
+  lttbInto,
+  lttbOutLength,
+  minMaxImpl,
+  columnEnvelopeInto,
+} from '../downsample.worker';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -311,5 +317,110 @@ describe('minMaxImpl', () => {
     const result = minMaxImpl(input, 1);
     // Target clamped to 2, output = 2 * 2 = 4
     expect(result.length).toBe(4);
+  });
+});
+
+// ── columnEnvelopeInto (per-x-pixel MIN/MAX envelope) ─────────────
+//
+// This is the pure core of the zoomed-out fidelity envelope: for each output
+// column it must report the TRUE min/max of the source samples mapping there, so
+// a 1-sample spike or notch can never be hidden. NaN columns must break (gap).
+
+describe('columnEnvelopeInto', () => {
+  /** Fresh column buffers of a given size. */
+  function buffers(cols: number): { min: Float32Array; max: Float32Array } {
+    return { min: new Float32Array(cols), max: new Float32Array(cols) };
+  }
+
+  it('returns one column with the slice min/max when columns === 1', () => {
+    const data = f32([3, 1, 9, 4, 2]);
+    const { min, max } = buffers(1);
+    const env = columnEnvelopeInto(data, 1, min, max);
+    expect(env.columns).toBe(1);
+    expect(min[0]).toBe(1);
+    expect(max[0]).toBe(9);
+  });
+
+  it('partitions samples into the correct columns and reports per-column extrema', () => {
+    // 8 samples, 4 columns → 2 samples per column.
+    const data = f32([0, 5, 10, 2, -3, 7, 4, 4]);
+    const { min, max } = buffers(4);
+    const env = columnEnvelopeInto(data, 4, min, max);
+    expect(env.columns).toBe(4);
+    // col0: [0,5] col1: [10,2] col2: [-3,7] col3: [4,4]
+    expect([min[0], max[0]]).toEqual([0, 5]);
+    expect([min[1], max[1]]).toEqual([2, 10]);
+    expect([min[2], max[2]]).toEqual([-3, 7]);
+    expect([min[3], max[3]]).toEqual([4, 4]);
+  });
+
+  it('NEVER hides a 1-sample spike: the spike reaches its column max', () => {
+    // 100 samples of a calm baseline with a single extreme spike at index 37.
+    const n = 100;
+    const data = new Float32Array(n).fill(1);
+    data[37] = 999; // spike
+    data[60] = -999; // notch
+    const cols = 10; // 10 samples/column
+    const { min, max } = buffers(cols);
+    columnEnvelopeInto(data, cols, min, max);
+    // index 37 → column floor(37/100*10)=3; index 60 → column 6.
+    expect(max[3]).toBe(999);
+    expect(min[6]).toBe(-999);
+    // Other columns keep the baseline (no fabricated extremes).
+    expect(max[0]).toBe(1);
+    expect(min[0]).toBe(1);
+  });
+
+  it('marks a wholly-NaN column as a gap (min===max===NaN) and breaks there', () => {
+    // 6 samples, 3 columns (2/col). Middle column is all NaN.
+    const data = f32([1, 2, NaN, NaN, 3, 4]);
+    const { min, max } = buffers(3);
+    const env = columnEnvelopeInto(data, 3, min, max);
+    expect(env.columns).toBe(3);
+    expect([min[0], max[0]]).toEqual([1, 2]);
+    expect(Number.isNaN(min[1] as number)).toBe(true);
+    expect(Number.isNaN(max[1] as number)).toBe(true);
+    expect([min[2], max[2]]).toEqual([3, 4]);
+  });
+
+  it('uses only the non-NaN extrema for a partially-NaN column', () => {
+    const data = f32([NaN, 5, NaN, -2]); // 4 samples, 2 cols
+    const { min, max } = buffers(2);
+    columnEnvelopeInto(data, 2, min, max);
+    // col0: [NaN,5] → [5,5]; col1: [NaN,-2] → [-2,-2]
+    expect([min[0], max[0]]).toEqual([5, 5]);
+    expect([min[1], max[1]]).toEqual([-2, -2]);
+  });
+
+  it('marks empty columns as NaN when the source is sparser than the column count', () => {
+    // 2 samples, 5 columns → samples land in cols 0 and 2 (floor(1/2*5)=2);
+    // columns 1, 3, 4 are empty → NaN breaks.
+    const data = f32([10, 20]);
+    const { min, max } = buffers(5);
+    const env = columnEnvelopeInto(data, 5, min, max);
+    expect(env.columns).toBe(5);
+    expect([min[0], max[0]]).toEqual([10, 10]);
+    expect(Number.isNaN(min[1] as number)).toBe(true);
+    expect([min[2], max[2]]).toEqual([20, 20]);
+    expect(Number.isNaN(min[3] as number)).toBe(true);
+    expect(Number.isNaN(min[4] as number)).toBe(true);
+  });
+
+  it('fills all columns with NaN for an empty source', () => {
+    const { min, max } = buffers(3);
+    const env = columnEnvelopeInto(f32([]), 3, min, max);
+    expect(env.columns).toBe(3);
+    for (let c = 0; c < 3; c++) {
+      expect(Number.isNaN(min[c] as number)).toBe(true);
+      expect(Number.isNaN(max[c] as number)).toBe(true);
+    }
+  });
+
+  it('clamps the requested columns to the smaller buffer length', () => {
+    const data = f32([1, 2, 3, 4]);
+    const min = new Float32Array(2);
+    const max = new Float32Array(2);
+    const env = columnEnvelopeInto(data, 4, min, max);
+    expect(env.columns).toBe(2);
   });
 });
