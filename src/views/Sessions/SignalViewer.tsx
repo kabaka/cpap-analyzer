@@ -906,9 +906,15 @@ export default function SignalViewer() {
   const tryInitRenderer = useCallback(() => {
     const base = canvasRef.current;
     const waveform = waveformCanvasRef.current;
-    // Need the base canvas at minimum; the waveform canvas may be null (then the
-    // hybrid runs Canvas2D-only, which is the same automatic fallback path).
-    if (!base) return;
+    // Construct only once BOTH canvases are mounted. The base chrome canvas and
+    // the waveform canvas mount in the same commit but their ref callbacks fire
+    // in DOM order (base first), so requiring both here prevents constructing the
+    // hybrid with a null waveform canvas — which would pin it to the Canvas2D
+    // fallback for the lifetime of the view (the `rendererRef.current` guard
+    // below blocks reconstruction). The waveform canvas is rendered
+    // unconditionally, so this never deadlocks. If WebGL2 is genuinely
+    // unavailable at runtime, HybridSignalRenderer still falls back internally.
+    if (!base || !waveform) return;
     if (rendererRef.current) return; // already constructed
 
     const renderer = new HybridSignalRenderer(base, waveform, colorResolver);
