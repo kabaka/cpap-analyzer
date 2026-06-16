@@ -1,5 +1,19 @@
 /**
- * Event Breakdown Chart — stacked area chart of event types per night.
+ * Event Breakdown Chart — stacked area of event types per night.
+ *
+ * Two uncertainty treatments, deliberately INDEPENDENT (consensus D5/D6):
+ *
+ * 1. The central-vs-obstructive split and RERA are LOW-reliability modelled
+ *    inferences. They are drawn with a diagonal **hatch pattern** (a non-colour
+ *    cue that survives grayscale/print) and a "modeled inference" caveat note.
+ *    This lowers the *precision* claim only.
+ *
+ * 2. A rising central (Clear-Airway) trend STILL surfaces a persistent, visible
+ *    **"discuss with your clinician" prompt**. The low-reliability caveat must
+ *    never silence, hide, or dim this prompt — under-reaction to
+ *    treatment-emergent central apnea is the dangerous failure mode (D6). The
+ *    prompt is rendered outside the plot, full-opacity, with informational
+ *    (non-diagnostic, non-therapy-specific) copy.
  *
  * @module views/Trends/charts/EventBreakdownChart
  */
@@ -18,10 +32,12 @@ import {
 } from 'recharts';
 import { useChartColors } from '@/components/charts/useChartColors';
 import { useSyncedChart } from '../context/SyncedChartContext';
+import { detectRisingCentralTrend } from '../utils/centralTrend';
 import type { NightlyAggregate } from '@/types';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
 import { renderSettingsChangeMarkers } from './SettingsChangeMarkers';
 import ChartPanel from './ChartPanel';
+import styles from './EventBreakdownChart.module.css';
 
 interface EventBreakdownChartProps {
   data: NightlyAggregate[];
@@ -39,6 +55,9 @@ interface EventDataPoint {
   mixed: number;
   rera: number;
 }
+
+const CENTRAL_HATCH_ID = 'event-breakdown-central-hatch';
+const RERA_HATCH_ID = 'event-breakdown-rera-hatch';
 
 const EventBreakdownChart = React.memo(function EventBreakdownChart({
   data,
@@ -63,6 +82,10 @@ const EventBreakdownChart = React.memo(function EventBreakdownChart({
     [data],
   );
 
+  // Safety-critical: detect a rising central trend independently of the
+  // low-reliability caveat styling (consensus D6).
+  const centralTrend = useMemo(() => detectRisingCentralTrend(data), [data]);
+
   const handleMouseMove = useCallback(
     (state: { activeLabel?: string; activeTooltipIndex?: number }) => {
       if (state.activeLabel) {
@@ -83,12 +106,41 @@ const EventBreakdownChart = React.memo(function EventBreakdownChart({
 
   if (data.length === 0) return null;
 
+  const caveat =
+    'Central vs. obstructive split and RERA are modeled inferences (shown with a hatched fill), not direct measurements — read them as directional, not exact.';
+
   return (
     <ChartPanel
       title="Event Breakdown"
       chartHeight={height + 30}
-      accessibleSummary="Stacked area chart showing event types per night"
+      accessibleSummary="Stacked area chart showing event types per night; central and RERA series are modeled inferences shown with a hatched fill"
+      footnote={caveat}
     >
+      {/* SAFETY-CRITICAL clinician prompt (consensus D6). Rendered ABOVE/outside
+          the plot at full opacity so the low-reliability caveat never buries it.
+          role="status" so assistive tech announces it; copy is informational
+          and non-diagnostic — it prompts a conversation, names no condition or
+          therapy. */}
+      {centralTrend.rising && (
+        <div
+          className={styles.clinicianPrompt}
+          role="status"
+          data-testid="central-clinician-prompt"
+        >
+          <span className={styles.clinicianPromptIcon} aria-hidden="true">
+            ⚑
+          </span>
+          <p className={styles.clinicianPromptText}>
+            <span className={styles.clinicianPromptTitle}>
+              Your central (clear-airway) events appear to be rising.
+            </span>{' '}
+            This pattern is worth discussing with your clinician. The central/obstructive split is
+            an estimate, so bring your data along for review rather than drawing conclusions from it
+            alone.
+          </p>
+        </div>
+      )}
+
       <ResponsiveContainer width="100%" height={height}>
         <AreaChart
           data={eventData}
@@ -97,6 +149,31 @@ const EventBreakdownChart = React.memo(function EventBreakdownChart({
           onMouseLeave={clear}
           onClick={handleClick}
         >
+          {/* Diagonal hatch patterns — non-colour cue marking the low-reliability
+              (modeled) series, robust to grayscale/print/colour-blindness. */}
+          <defs>
+            <pattern
+              id={CENTRAL_HATCH_ID}
+              patternUnits="userSpaceOnUse"
+              width={6}
+              height={6}
+              patternTransform="rotate(45)"
+            >
+              <rect width={6} height={6} fill={colors.chart4} fillOpacity={0.25} />
+              <line x1={0} y1={0} x2={0} y2={6} stroke={colors.chart4} strokeWidth={1.5} />
+            </pattern>
+            <pattern
+              id={RERA_HATCH_ID}
+              patternUnits="userSpaceOnUse"
+              width={6}
+              height={6}
+              patternTransform="rotate(45)"
+            >
+              <rect width={6} height={6} fill={colors.chart6} fillOpacity={0.25} />
+              <line x1={0} y1={0} x2={0} y2={6} stroke={colors.chart6} strokeWidth={1.5} />
+            </pattern>
+          </defs>
+
           <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
           <XAxis dataKey="date" hide={hideXAxis} />
           <YAxis
@@ -140,11 +217,11 @@ const EventBreakdownChart = React.memo(function EventBreakdownChart({
           <Area
             type="monotone"
             dataKey="central"
-            name="Central"
+            name="Central (modeled)"
             stackId="events"
             stroke={colors.chart4}
-            fill={colors.chart4}
-            fillOpacity={0.6}
+            fill={`url(#${CENTRAL_HATCH_ID})`}
+            fillOpacity={1}
             isAnimationActive={false}
           />
           <Area
@@ -170,11 +247,11 @@ const EventBreakdownChart = React.memo(function EventBreakdownChart({
           <Area
             type="monotone"
             dataKey="rera"
-            name="RERA"
+            name="RERA (modeled)"
             stackId="events"
             stroke={colors.chart6}
-            fill={colors.chart6}
-            fillOpacity={0.6}
+            fill={`url(#${RERA_HATCH_ID})`}
+            fillOpacity={1}
             isAnimationActive={false}
           />
         </AreaChart>

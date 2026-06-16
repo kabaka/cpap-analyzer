@@ -58,6 +58,17 @@
   --color-caveat: #475569;
   --color-caveat-bg: rgba(71, 85, 105, 0.1);
 
+  /* CHART UNCERTAINTY BAND (consensus D3 — "typical nightly range")
+     The shaded P25–P75 inter-quartile band behind a rolling-median trend
+     line. Deliberately NEUTRAL/desaturated (slate) so it reads as "spread of
+     the data", never as a clinical-severity zone (red/orange) and never as a
+     reliability tier (violet). Color is reinforcement only: the band is ALSO
+     given a dashed edge (`-edge`) as a non-colour cue so it survives
+     grayscale / print / colour-blind viewing (WCAG 1.4.1). */
+  --color-uncertainty-band: #64748b;
+  --color-uncertainty-band-bg: rgba(100, 116, 139, 0.16);
+  --color-uncertainty-band-edge: #94a3b8;
+
   /* INTERACTIVE COLORS */
   --color-primary: #2563eb;
   --color-primary-hover: #1d4ed8;
@@ -301,6 +312,12 @@
   --color-reliability-low-bg: rgba(196, 181, 253, 0.16);
   --color-caveat: #cbd5e1;
   --color-caveat-bg: rgba(203, 213, 225, 0.16);
+
+  /* CHART UNCERTAINTY BAND (consensus D3) — brightened for dark surfaces,
+     same neutral-slate intent (see :root for rationale). */
+  --color-uncertainty-band: #94a3b8;
+  --color-uncertainty-band-bg: rgba(148, 163, 184, 0.2);
+  --color-uncertainty-band-edge: #cbd5e1;
 
   /* SIGNAL VIEWER CROSSHAIR */
   --color-crosshair: rgba(220, 220, 220, 0.5);

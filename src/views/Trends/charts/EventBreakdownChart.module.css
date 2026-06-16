@@ -1,0 +1,50 @@
+/**
+ * EventBreakdownChart — caveat note + safety-critical clinician prompt.
+ *
+ * The "modeled inference" caveat lowers the PRECISION claim of the
+ * central/obstructive split + RERA. The clinician prompt is a SEPARATE,
+ * always-visible affordance for a rising central trend (consensus D6) — it must
+ * never be dimmed, hidden, or styled like the low-reliability caveat.
+ */
+
+/* Low-emphasis "modeled inference" caveat — uses the neutral reliability axis,
+   never the red/orange clinical-severity axis. */
+.caveat {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-muted);
+}
+
+/* Safety-critical "discuss with your clinician" prompt. Deliberately
+   full-opacity, bordered, and informational (not dimmed, not diagnostic). Uses
+   the neutral info axis — it raises a CONVERSATION, it does not assert a
+   clinical severity. */
+.clinicianPrompt {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0 var(--space-3) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info);
+  border-radius: var(--radius-md);
+}
+
+.clinicianPromptIcon {
+  flex: 0 0 auto;
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-tight);
+}
+
+.clinicianPromptText {
+  margin: 0;
+}
+
+.clinicianPromptTitle {
+  font-weight: var(--font-weight-semibold);
+}
