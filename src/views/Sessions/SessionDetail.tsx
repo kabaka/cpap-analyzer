@@ -25,6 +25,7 @@ import {
 } from '@/components/ui';
 import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
 import { formatMetric } from '@/analysis/uncertainty';
+import { classifyAhiSeverity } from '@/analysis/clinical';
 import type { Event, EventType, MachineType, NightlyAggregate } from '@/types';
 import styles from './SessionDetail.module.css';
 
@@ -85,14 +86,6 @@ const EVENT_TYPE_ORDER: EventType[] = [
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────
-
-/** Map AHI value to clinical severity label. */
-function ahiSeverity(ahi: number): 'normal' | 'mild' | 'moderate' | 'severe' {
-  if (ahi < 5) return 'normal';
-  if (ahi < 15) return 'mild';
-  if (ahi < 30) return 'moderate';
-  return 'severe';
-}
 
 /** Map AHI severity to Badge variant. */
 function ahiBadgeVariant(severity: string): 'success' | 'warning' | 'danger' {
@@ -329,7 +322,7 @@ function resolveRdi(aggregate: NightlyAggregate): number {
 }
 
 function AHICard({ aggregate }: { aggregate: NightlyAggregate }) {
-  const severity = ahiSeverity(aggregate.ahi);
+  const severity = classifyAhiSeverity(aggregate.ahi);
   const badgeVariant = ahiBadgeVariant(severity);
   const rdi = resolveRdi(aggregate);
 

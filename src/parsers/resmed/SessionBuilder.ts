@@ -18,6 +18,7 @@
  */
 
 import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
+import { CMS_COMPLIANCE_HOURS } from '@/analysis/clinical';
 import type { Event } from '@/types/events';
 import type { Session, NightlyAggregate, ChannelMetadata, MachineSettings } from '@/types/session';
 import type { ResMedInterpretation, StandardChannel } from './ResMedInterpreter';
@@ -43,9 +44,6 @@ export interface BuildResult {
 
 /** Gap threshold in milliseconds: >30 minutes means a new session. */
 const SESSION_GAP_MS = 30 * 60 * 1000;
-
-/** CMS compliance threshold: 4 hours. */
-const CMS_COMPLIANCE_HOURS = 4;
 
 /** Large leak threshold in L/min (ResMed device convention; see uncertainty constants). */
 const LARGE_LEAK_THRESHOLD = LEAK_NOTICE_LPM;

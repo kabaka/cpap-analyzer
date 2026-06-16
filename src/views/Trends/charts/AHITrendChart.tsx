@@ -30,6 +30,8 @@ import {
 } from 'recharts';
 import { useChartColors } from '@/components/charts/useChartColors';
 import { AHI_BAND_WINDOW_NIGHTS, buildRollingBandSeries } from '@/components/charts/uncertainty';
+import { AHI_SEVERITY_THRESHOLDS } from '@/analysis/clinical';
+import { AHI_AXIS_FLOOR, computeAxisMax } from './chartScale';
 import { useSyncedChart } from '../context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
@@ -99,7 +101,7 @@ const AHITrendChart = React.memo(function AHITrendChart({
     for (const d of chartData) {
       m = Math.max(m, d.ahi, d.ahiBand?.[1] ?? 0);
     }
-    return Math.max(m * 1.1, 10);
+    return computeAxisMax(m, AHI_AXIS_FLOOR);
   }, [chartData]);
 
   const handleMouseMove = useCallback(
@@ -205,10 +207,30 @@ const AHITrendChart = React.memo(function AHITrendChart({
           <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
 
           {/* Severity zones — kept, slightly lighter so the band reads on top. */}
-          <ReferenceArea y1={0} y2={5} fill={colors.chart3} fillOpacity={0.06} />
-          <ReferenceArea y1={5} y2={15} fill={colors.chart5} fillOpacity={0.06} />
-          <ReferenceArea y1={15} y2={30} fill={colors.chart5} fillOpacity={0.12} />
-          <ReferenceArea y1={30} y2={maxAHI} fill={colors.chart2} fillOpacity={0.08} />
+          <ReferenceArea
+            y1={0}
+            y2={AHI_SEVERITY_THRESHOLDS.mild}
+            fill={colors.chart3}
+            fillOpacity={0.06}
+          />
+          <ReferenceArea
+            y1={AHI_SEVERITY_THRESHOLDS.mild}
+            y2={AHI_SEVERITY_THRESHOLDS.moderate}
+            fill={colors.chart5}
+            fillOpacity={0.06}
+          />
+          <ReferenceArea
+            y1={AHI_SEVERITY_THRESHOLDS.moderate}
+            y2={AHI_SEVERITY_THRESHOLDS.severe}
+            fill={colors.chart5}
+            fillOpacity={0.12}
+          />
+          <ReferenceArea
+            y1={AHI_SEVERITY_THRESHOLDS.severe}
+            y2={maxAHI}
+            fill={colors.chart2}
+            fillOpacity={0.08}
+          />
 
           <XAxis dataKey="date" hide={hideXAxis} />
           <YAxis

@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import { useChartColors } from '@/components/charts/useChartColors';
 import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
+import { LEAK_AXIS_FLOOR, computeAxisMax } from './chartScale';
 import { useSyncedChart } from '../context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
@@ -44,7 +45,7 @@ const LeakRateChart = React.memo(function LeakRateChart({
 
   const maxLeak = useMemo(() => {
     const m = Math.max(...data.map((d) => d.leakP95), 0);
-    return Math.max(m * 1.1, 30);
+    return computeAxisMax(m, LEAK_AXIS_FLOOR);
   }, [data]);
 
   const handleMouseMove = useCallback(

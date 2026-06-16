@@ -10,6 +10,11 @@
 import { jsPDF } from 'jspdf';
 import { getDB } from '@/services/storage/getDB';
 import { formatMetric } from '@/analysis/uncertainty';
+import {
+  AHI_SEVERITY_THRESHOLDS,
+  CMS_COMPLIANCE_HOURS,
+  RECOMMENDED_USAGE_HOURS,
+} from '@/analysis/clinical';
 import type { NightlyAggregate } from '@/types';
 import type {
   EncryptionParams,
@@ -158,8 +163,10 @@ function computeStatistics(
   }
 
   // Usage tiers
-  const nightsAbove4Hours = aggregates.filter((a) => a.usageHours >= 4).length;
-  const nightsAbove6Hours = aggregates.filter((a) => a.usageHours >= 6).length;
+  const nightsAbove4Hours = aggregates.filter((a) => a.usageHours >= CMS_COMPLIANCE_HOURS).length;
+  const nightsAbove6Hours = aggregates.filter(
+    (a) => a.usageHours >= RECOMMENDED_USAGE_HOURS,
+  ).length;
   const nightsAbove8Hours = aggregates.filter((a) => a.usageHours >= 8).length;
 
   return {
@@ -404,9 +411,14 @@ function renderUsageBarSection(
     yAxis: { min: 0, max: usageMax, tickCount: 5, label: 'Usage', unit: 'hours' },
     data: aggregates.map((a) => a.usageHours),
     barColor: (value: number) =>
-      value >= 4 ? PDF_COLORS.SEVERITY_NORMAL : PDF_COLORS.SEVERITY_MILD,
+      value >= CMS_COMPLIANCE_HOURS ? PDF_COLORS.SEVERITY_NORMAL : PDF_COLORS.SEVERITY_MILD,
     referenceLines: [
-      { value: 4, color: PDF_COLORS.COMPLIANCE_LINE, label: '4hr CMS Threshold', dashed: true },
+      {
+        value: CMS_COMPLIANCE_HOURS,
+        color: PDF_COLORS.COMPLIANCE_LINE,
+        label: '4hr CMS Threshold',
+        dashed: true,
+      },
     ],
   };
 
@@ -922,9 +934,9 @@ function renderSessionTableSection(
       highlightFn: (row: string[]) => {
         // Non-compliant: faint red
         if (row[10] === '✗') return PDF_COLORS.KPI_RED_BG;
-        // High AHI (≥ 15): faint yellow
+        // High AHI (≥ moderate threshold, 15): faint yellow
         const ahi = parseFloat(row[1] ?? '0');
-        if (ahi >= 15) return PDF_COLORS.KPI_YELLOW_BG;
+        if (ahi >= AHI_SEVERITY_THRESHOLDS.moderate) return PDF_COLORS.KPI_YELLOW_BG;
         return null;
       },
     },

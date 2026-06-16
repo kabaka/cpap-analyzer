@@ -9,6 +9,7 @@
 
 import React, { useMemo } from 'react';
 import type { NightlyAggregate } from '@/types';
+import { CMS_COMPLIANCE_HOURS } from '@/analysis/clinical';
 import { computeMetricStats } from '../utils/computeSidebarStats';
 import MetricStatsSection from './MetricStatsSection';
 import styles from './StatsSidebar.module.css';
@@ -66,7 +67,7 @@ const StatsSidebar = React.memo(function StatsSidebar({
 
   const compliance = useMemo(() => {
     if (aggregates.length === 0) return null;
-    const compliant = aggregates.filter((a) => a.usageHours >= 4).length;
+    const compliant = aggregates.filter((a) => a.usageHours >= CMS_COMPLIANCE_HOURS).length;
     return {
       rate: Math.round((compliant / aggregates.length) * 100),
       nights: compliant,

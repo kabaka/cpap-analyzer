@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
+import { AHI_SEVERITY_THRESHOLDS } from '@/analysis/clinical';
 
 interface AHIThresholds {
   mildThreshold: number;
@@ -80,9 +81,9 @@ interface SettingsState {
 const defaultSettings: Pick<SettingsState, 'analysisParams' | 'display' | 'integrations'> = {
   analysisParams: {
     ahi: {
-      mildThreshold: 5,
-      moderateThreshold: 15,
-      severeThreshold: 30,
+      mildThreshold: AHI_SEVERITY_THRESHOLDS.mild,
+      moderateThreshold: AHI_SEVERITY_THRESHOLDS.moderate,
+      severeThreshold: AHI_SEVERITY_THRESHOLDS.severe,
     },
     clustering: {
       method: 'flg',

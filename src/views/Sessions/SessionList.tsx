@@ -23,6 +23,7 @@ import {
 import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
 import { useAppStore } from '@/stores/useAppStore';
 import { useDataStore } from '@/stores/useDataStore';
+import { classifyAhiSeverity, type AhiSeverity } from '@/analysis/clinical';
 import styles from './SessionList.module.css';
 
 // ---------------------------------------------------------------------------
@@ -94,21 +95,14 @@ function formatHours(minutes: number): string {
   return `${hours.toFixed(1)}h`;
 }
 
-function getAHISeverity(ahi: number): 'normal' | 'mild' | 'moderate' | 'severe' {
-  if (ahi < 5) return 'normal';
-  if (ahi < 15) return 'mild';
-  if (ahi < 30) return 'moderate';
-  return 'severe';
-}
-
-const AHI_SEVERITY_LABELS: Record<ReturnType<typeof getAHISeverity>, string> = {
+const AHI_SEVERITY_LABELS: Record<AhiSeverity, string> = {
   normal: 'Normal',
   mild: 'Mild',
   moderate: 'Moderate',
   severe: 'Severe',
 };
 
-const AHI_SEVERITY_STYLES: Record<ReturnType<typeof getAHISeverity>, string> = {
+const AHI_SEVERITY_STYLES: Record<AhiSeverity, string> = {
   normal: styles.ahiNormal ?? '',
   mild: styles.ahiMild ?? '',
   moderate: styles.ahiModerate ?? '',
@@ -139,7 +133,7 @@ function compareRows(a: SessionRow, b: SessionRow, field: SortField): number {
 // ---------------------------------------------------------------------------
 
 function AHIBadge({ ahi }: { ahi: number }) {
-  const severity = getAHISeverity(ahi);
+  const severity = classifyAhiSeverity(ahi);
   return (
     <span
       className={`${styles.ahiBadge} ${AHI_SEVERITY_STYLES[severity]}`}

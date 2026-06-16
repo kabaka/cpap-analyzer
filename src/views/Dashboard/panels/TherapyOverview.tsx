@@ -21,6 +21,12 @@ import {
 } from 'recharts';
 import { Card } from '@/components/ui';
 import { useChartColors } from '@/components/charts/useChartColors';
+import {
+  AHI_SEVERITY_THRESHOLDS,
+  CMS_COMPLIANCE_HOURS,
+  RECOMMENDED_USAGE_HOURS,
+} from '@/analysis/clinical';
+import { AHI_AXIS_FLOOR, USAGE_AXIS_FLOOR, computeAxisMax } from '@/views/Trends/charts/chartScale';
 import type { TrendDataPoint } from '@/hooks/useSummaryStats';
 import styles from './TherapyOverview.module.css';
 
@@ -57,12 +63,12 @@ const TherapyOverview = React.memo(function TherapyOverview({
 
   const maxAHI = useMemo(() => {
     const max = Math.max(...trendData.map((d) => d.ahi), 0);
-    return Math.max(max * 1.1, 10);
+    return computeAxisMax(max, AHI_AXIS_FLOOR);
   }, [trendData]);
 
   const maxUsage = useMemo(() => {
     const max = Math.max(...trendData.map((d) => d.usageHours), 0);
-    return Math.max(max * 1.1, 8);
+    return computeAxisMax(max, USAGE_AXIS_FLOOR);
   }, [trendData]);
 
   // Resolve status colors for severity zones
@@ -110,7 +116,7 @@ const TherapyOverview = React.memo(function TherapyOverview({
                 {/* Severity zone bands */}
                 <ReferenceArea
                   y1={0}
-                  y2={5}
+                  y2={AHI_SEVERITY_THRESHOLDS.mild}
                   fill={statusNormalBg}
                   fillOpacity={1}
                   label={{
@@ -121,8 +127,8 @@ const TherapyOverview = React.memo(function TherapyOverview({
                   }}
                 />
                 <ReferenceArea
-                  y1={5}
-                  y2={15}
+                  y1={AHI_SEVERITY_THRESHOLDS.mild}
+                  y2={AHI_SEVERITY_THRESHOLDS.moderate}
                   fill={statusMildBg}
                   fillOpacity={1}
                   label={{
@@ -133,8 +139,8 @@ const TherapyOverview = React.memo(function TherapyOverview({
                   }}
                 />
                 <ReferenceArea
-                  y1={15}
-                  y2={30}
+                  y1={AHI_SEVERITY_THRESHOLDS.moderate}
+                  y2={AHI_SEVERITY_THRESHOLDS.severe}
                   fill={statusModerateBg}
                   fillOpacity={1}
                   label={{
@@ -145,7 +151,7 @@ const TherapyOverview = React.memo(function TherapyOverview({
                   }}
                 />
                 <ReferenceArea
-                  y1={30}
+                  y1={AHI_SEVERITY_THRESHOLDS.severe}
                   y2={maxAHI}
                   fill={statusSevereBg}
                   fillOpacity={1}
@@ -240,24 +246,24 @@ const TherapyOverview = React.memo(function TherapyOverview({
                   formatter={(value: number) => [`${value.toFixed(1)} hrs`, 'Usage']}
                 />
                 <ReferenceLine
-                  y={4}
+                  y={CMS_COMPLIANCE_HOURS}
                   stroke={colorWarning}
                   strokeDasharray="5 3"
                   strokeWidth={1}
                   label={{
-                    value: '4h (CMS)',
+                    value: `${CMS_COMPLIANCE_HOURS}h (CMS)`,
                     position: 'insideTopRight',
                     fill: colorWarning,
                     fontSize: 10,
                   }}
                 />
                 <ReferenceLine
-                  y={6}
+                  y={RECOMMENDED_USAGE_HOURS}
                   stroke={statusNormal}
                   strokeDasharray="5 3"
                   strokeWidth={1}
                   label={{
-                    value: '6h target',
+                    value: `${RECOMMENDED_USAGE_HOURS}h target`,
                     position: 'insideTopRight',
                     fill: statusNormal,
                     fontSize: 10,
@@ -271,8 +277,8 @@ const TherapyOverview = React.memo(function TherapyOverview({
                 >
                   {chartData.map((entry, index) => {
                     let fill = colors.chart1;
-                    if (entry.usageHours >= 6) fill = statusNormal;
-                    else if (entry.usageHours < 4) fill = statusSevere;
+                    if (entry.usageHours >= RECOMMENDED_USAGE_HOURS) fill = statusNormal;
+                    else if (entry.usageHours < CMS_COMPLIANCE_HOURS) fill = statusSevere;
                     return <Cell key={`cell-${index}`} fill={fill} />;
                   })}
                 </Bar>
