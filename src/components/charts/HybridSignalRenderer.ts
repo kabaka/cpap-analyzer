@@ -77,6 +77,19 @@ import {
 /** A resolved RGBA colour resolver: lane id/colour string → RGBA in 0..1. */
 export type ColorResolver = (channel: SignalChannel) => RGBA;
 
+/**
+ * Optional construction-time options for {@link HybridSignalRenderer}.
+ *
+ * `preserveDrawingBuffer` is a DEV/TEST-ONLY escape hatch (default `false`,
+ * matching production): it makes the WebGL2 drawing buffer survive compositing so
+ * the fidelity-gate harness can read its pixels back deterministically under
+ * headless SwiftShader. The shipped Signal Viewer NEVER sets it — a preserved
+ * buffer costs per-frame performance, which ADR 0019 forbids.
+ */
+export interface HybridRendererOptions {
+  preserveDrawingBuffer?: boolean;
+}
+
 /** How many CSS px the chrome canvas may be CSS-translated before it looks wrong. */
 const MAX_TRANSLATE_PAN_PX = 100000;
 
@@ -110,6 +123,7 @@ export class HybridSignalRenderer {
     chromeCanvas: HTMLCanvasElement,
     waveformCanvas: HTMLCanvasElement | null,
     resolveColor: ColorResolver,
+    options?: HybridRendererOptions,
   ) {
     this.chrome = new SignalRenderer(chromeCanvas);
     this.resolveColor = resolveColor;
@@ -117,7 +131,12 @@ export class HybridSignalRenderer {
 
     if (waveformCanvas) {
       try {
-        const renderer = new WebGLWaveformRenderer(waveformCanvas);
+        const renderer = new WebGLWaveformRenderer(
+          waveformCanvas,
+          options?.preserveDrawingBuffer === undefined
+            ? undefined
+            : { preserveDrawingBuffer: options.preserveDrawingBuffer },
+        );
         renderer.onContextLost = () => this.handleContextLost();
         renderer.onContextRestored = () => this.handleContextRestored();
         this.webgl = renderer;

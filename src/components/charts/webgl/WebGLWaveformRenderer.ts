@@ -164,13 +164,26 @@ export class WebGLWaveformRenderer {
    *   if a WebGL2 context cannot be created (caller falls back to Canvas2D).
    * @param options.premultipliedAlpha Whether the context composites with
    *   premultiplied alpha (default true, matching browser canvas compositing).
+   * @param options.preserveDrawingBuffer Whether the drawing buffer is preserved
+   *   after compositing. **Production MUST leave this `false`** (the default): a
+   *   preserved buffer disables the browser's swap-instead-of-copy fast path and
+   *   costs per-frame performance, which ADR 0019 forbids. It exists ONLY so the
+   *   dev/test fidelity harness can opt in (`true`) to make off-screen pixel
+   *   read-back (`gl.readPixels` / `drawImage` onto a 2D canvas) deterministic in
+   *   headless Chromium/SwiftShader, where reading a non-preserved buffer after
+   *   the frame may return blank. Never set it `true` on the shipped render path.
    */
-  constructor(canvas: HTMLCanvasElement, options?: { premultipliedAlpha?: boolean }) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    options?: { premultipliedAlpha?: boolean; preserveDrawingBuffer?: boolean },
+  ) {
     this.canvas = canvas;
     const gl = canvas.getContext('webgl2', {
       antialias: true,
       premultipliedAlpha: options?.premultipliedAlpha ?? true,
-      preserveDrawingBuffer: false,
+      // Default false (production/perf). The fidelity harness opts in to true so
+      // its off-screen read-back is reliable under headless SwiftShader.
+      preserveDrawingBuffer: options?.preserveDrawingBuffer ?? false,
       // The waveform composites over the Canvas2D chrome beneath it.
       alpha: true,
       depth: false,
