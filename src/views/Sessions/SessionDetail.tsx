@@ -393,17 +393,23 @@ function LeakCard({ aggregate }: { aggregate: NightlyAggregate }) {
         <h3 className={styles.metricCardTitle}>Leak Rate</h3>
       </div>
       <div className={styles.metricPrimary}>
-        <span className={styles.metricValue}>{fmt(aggregate.leakMedian)}</span>
+        <span className={styles.metricValue}>
+          {formatMetric('leakMedian', aggregate.leakMedian)}
+        </span>
         <span className={styles.metricUnit}>L/min median</span>
       </div>
       <div className={styles.metricBreakdown}>
         <div className={styles.breakdownItem}>
           <span className={styles.breakdownLabel}>95th %ile</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.leakP95)}</span>
+          <span className={styles.breakdownValue}>
+            {formatMetric('leakP95', aggregate.leakP95)}
+          </span>
         </div>
         <div className={styles.breakdownItem}>
           <span className={styles.breakdownLabel}>Max</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.leakMax)}</span>
+          <span className={styles.breakdownValue}>
+            {formatMetric('leakMax', aggregate.leakMax)}
+          </span>
         </div>
         <div className={styles.breakdownItem}>
           <span className={styles.breakdownLabel}>Large Leak</span>
