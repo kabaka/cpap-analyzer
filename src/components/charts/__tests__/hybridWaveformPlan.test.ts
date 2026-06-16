@@ -156,27 +156,49 @@ describe('laneUploadSignature / needsReupload (LOD-change detection)', () => {
   });
 });
 
-describe('levelToColumnEnvelope (whole-level → band)', () => {
-  it('pairs consecutive level elements into per-column min/max', () => {
-    // Interleaved extrema sequence: [min0,max0, min1,max1, ...]
+describe('levelToColumnEnvelope (whole-level → per-pixel-column band)', () => {
+  it('reduces a level to exactly the target column count via per-column min/max', () => {
+    // 6 elements → 3 columns: each column folds 2 consecutive elements.
     const level = new Float32Array([-2, 5, 1, 3, -7, -1]);
-    const env = levelToColumnEnvelope(level);
+    const env = levelToColumnEnvelope(level, 3);
     expect(env.columns).toBe(3);
     expect(Array.from(env.min)).toEqual([-2, 1, -7]);
     expect(Array.from(env.max)).toEqual([5, 3, -1]);
   });
 
-  it('orders each pair so min ≤ max regardless of temporal order', () => {
+  it('honours the requested column count regardless of level length', () => {
+    // 8 elements → 4 columns: each column folds 2 elements (min/max of the pair).
+    const level = new Float32Array([0, 10, -3, 4, 6, 6, -9, -1]);
+    const env = levelToColumnEnvelope(level, 4);
+    expect(env.columns).toBe(4);
+    expect(Array.from(env.max)).toEqual([10, 4, 6, -1]);
+    expect(Array.from(env.min)).toEqual([0, -3, 6, -9]);
+  });
+
+  it('folds MANY level elements into FEWER columns, keeping each column extreme', () => {
+    // 12 elements → 3 columns: each column folds 4 consecutive elements. The
+    // per-pixel-column reduction (not 1:2 pairing) is what preserves a spike that
+    // would otherwise become a sub-pixel triangle peak at "all" zoom.
+    const level = new Float32Array([0, 1, 2, 99, -1, 0, 1, 2, 3, 4, 5, -50]);
+    const env = levelToColumnEnvelope(level, 3);
+    expect(env.columns).toBe(3);
+    // Column 0 = elements 0..3 → max 99 (the spike survives the reduction).
+    expect(env.max[0]).toBe(99);
+    // Column 2 = elements 8..11 → min -50 (the notch survives too).
+    expect(env.min[2]).toBe(-50);
+  });
+
+  it('orders each column so min ≤ max regardless of temporal order', () => {
     // decimateMinMax emits in temporal order, which can be [max, min].
-    const level = new Float32Array([9, -9]);
-    const env = levelToColumnEnvelope(level);
+    const env = levelToColumnEnvelope(new Float32Array([9, -9]), 1);
     expect(env.min[0]).toBe(-9);
     expect(env.max[0]).toBe(9);
   });
 
-  it('a NaN in a pair yields a gap column (breaks the band)', () => {
-    const level = new Float32Array([1, 2, NaN, 4, 5, 6]);
-    const env = levelToColumnEnvelope(level);
+  it('a wholly-NaN column yields a gap column (breaks the band)', () => {
+    // 6 elements → 3 columns; column 1 = elements [NaN, NaN] → gap.
+    const level = new Float32Array([1, 2, NaN, NaN, 5, 6]);
+    const env = levelToColumnEnvelope(level, 3);
     expect(env.columns).toBe(3);
     expect(Number.isNaN(env.min[1] as number)).toBe(true);
     expect(Number.isNaN(env.max[1] as number)).toBe(true);
@@ -185,9 +207,18 @@ describe('levelToColumnEnvelope (whole-level → band)', () => {
     expect(env.min[2]).toBe(5);
   });
 
-  it('drops a lone trailing element (only whole pairs become columns)', () => {
-    const env = levelToColumnEnvelope(new Float32Array([1, 2, 3]));
-    expect(env.columns).toBe(1);
+  it('a column straddling a gap edge keeps its real extrema', () => {
+    // 4 elements → 2 columns; column 0 = [10, NaN] keeps the real 10.
+    const env = levelToColumnEnvelope(new Float32Array([10, NaN, 3, 4]), 2);
+    expect(env.min[0]).toBe(10);
+    expect(env.max[0]).toBe(10);
+  });
+
+  it('returns no columns for a zero target and a NaN-filled band for an empty level', () => {
+    expect(levelToColumnEnvelope(new Float32Array([1, 2]), 0).columns).toBe(0);
+    const empty = levelToColumnEnvelope(new Float32Array([]), 3);
+    expect(empty.columns).toBe(3);
+    expect(empty.min.every((v) => Number.isNaN(v))).toBe(true);
   });
 });
 
@@ -197,8 +228,14 @@ describe('absolute-ms X-step helpers', () => {
     expect(levelDataXPerElementMs(1, 40)).toBe(40);
   });
 
-  it('an envelope column spans two elements (2× per-element ms)', () => {
-    expect(envelopeDataXPerColumnMs(4, 40)).toBe(2 * 4 * 40);
+  it('an envelope column spans the whole level evenly (wholeLevelSpanMs / columns)', () => {
+    // factor 4, msPerSampleBase 40, level of 100 elements → span 16000 ms.
+    // Reduced to 50 columns → 320 ms per column.
+    expect(envelopeDataXPerColumnMs(4, 40, 100, 50)).toBe((100 * 4 * 40) / 50);
+  });
+
+  it('is 0 for a degenerate (zero-column) reduction', () => {
+    expect(envelopeDataXPerColumnMs(4, 40, 100, 0)).toBe(0);
   });
 });
 

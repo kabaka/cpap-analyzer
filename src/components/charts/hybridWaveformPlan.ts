@@ -187,46 +187,114 @@ export function needsReupload(
 }
 
 /**
- * Reinterpret a whole pyramid LEVEL array as a per-column MIN/MAX envelope in the
- * STABLE absolute domain.
+ * Reduce a whole pyramid LEVEL array to a per-PIXEL-COLUMN MIN/MAX envelope in the
+ * STABLE absolute domain, at a target column COUNT — mirroring the Canvas2D
+ * reference's `columnEnvelopeInto` exactly.
  *
- * The pyramid's coarser levels are produced by {@link
- * module:components/charts/canvas/decimationPyramid.decimateMinMax}, which emits,
- * per group of four base samples, exactly TWO values — that group's min and max
- * in temporal order. So a level is already an interleaved extrema sequence. We map
- * each consecutive PAIR `(levelData[2k], levelData[2k+1])` to one band column with
- * that column's `min`/`max`, giving `columns = floor(levelLen / 2)` columns that
- * span the whole session. A pair containing a NaN (gap) yields a NaN column,
- * preserving the polyline break exactly as the Canvas2D envelope does.
+ * WHY A TARGET COLUMN COUNT (the fidelity fix)
+ * --------------------------------------------
+ * The earlier implementation paired consecutive level elements 1:2 into
+ * `floor(levelLen / 2)` columns. At the most-decimated ("all"/whole-night) zoom a
+ * level still holds ~`4 × plotWidthColumns` elements, so pairing produced
+ * ~`2 × plotWidthColumns` columns — each FAR narrower than one device pixel
+ * (~0.16 px). A 1-sample spike then survived in the DATA (its column carried the
+ * true max) but rendered as a sub-pixel-wide triangle peak that the GPU
+ * rasterizer's pixel-centre sampling stepped OVER: the topmost lit pixel only
+ * reached the envelope of the spike's neighbours (~38% of the spike's height),
+ * not the spike itself. The Canvas2D reference never had this problem because it
+ * reduces to exactly `plotWidthColumns` (~one column per device pixel), so the
+ * spike lands in a ~1-px-wide column that always rasterizes to its full extreme.
  *
- * Level 0 (raw, factor 1) is NOT an interleaved extrema sequence — but envelope
- * mode is only ever selected when the viewport holds > 1 sample/pixel, i.e. a
- * coarser level is chosen (levelIndex ≥ 1). The host never attaches envelope
- * geometry at level 0, so this pairing is always applied to a real extrema level.
+ * The fix is to make the WebGL envelope resolution MATCH the reference: reduce the
+ * level to exactly `columns` per-pixel-columns via the SAME forward per-column
+ * min/max fold `columnEnvelopeInto` uses (source index `i` → column
+ * `floor(i / levelLen * columns)`). The most extreme sample in a column is, by
+ * definition, its min or max, so the spike's extreme reaches a column max → a
+ * vertex → its full pixel height. Extrema preservation is now a rasterized
+ * guarantee, not just a data-level one.
+ *
+ * Level 0 (raw, factor 1) is never reached here: envelope mode is only selected
+ * when the viewport holds > 1 sample/pixel (levelIndex ≥ 1), so the source is
+ * always a real min/max-preserving extrema level.
+ *
+ * NaN / gap handling matches `columnEnvelopeInto`: a column with only NaN (or no)
+ * source samples becomes a NaN gap column (breaking the band exactly as the
+ * polyline breaks), while a column straddling a gap edge keeps its real extrema.
  *
  * Pure and unit-tested. Returns arrays sized exactly `columns`.
+ *
+ * @param levelData - The whole chosen pyramid level (extrema-preserving).
+ * @param columns   - Target output column count (≈ the plot width in device-aware
+ *                    CSS-px columns at upload time, i.e. `plotWidthColumns`).
  */
-export function levelToColumnEnvelope(levelData: Float32Array): {
+export function levelToColumnEnvelope(
+  levelData: Float32Array,
+  columns: number,
+): {
   min: Float32Array;
   max: Float32Array;
   columns: number;
 } {
-  const columns = Math.floor(levelData.length / 2);
-  const min = new Float32Array(columns);
-  const max = new Float32Array(columns);
-  for (let c = 0; c < columns; c++) {
-    const a = levelData[2 * c] as number;
-    const b = levelData[2 * c + 1] as number;
-    if (Number.isNaN(a) || Number.isNaN(b)) {
-      // Gap column — breaks the band (mirrors the polyline NaN break).
+  const len = levelData.length;
+  const cols = Math.max(0, Math.floor(columns));
+  const min = new Float32Array(cols);
+  const max = new Float32Array(cols);
+  if (cols === 0) return { min, max, columns: 0 };
+  if (len === 0) {
+    min.fill(NaN);
+    max.fill(NaN);
+    return { min, max, columns: cols };
+  }
+
+  // Forward per-column fold, identical in spirit to `columnEnvelopeInto`: each
+  // source element folds into column floor(i / len * cols); a column with no real
+  // sample (wholly NaN, or empty when len < cols) is a NaN gap break.
+  let col = 0;
+  let curMin = Infinity;
+  let curMax = -Infinity;
+  let sawReal = false;
+
+  const flush = (c: number): void => {
+    if (sawReal) {
+      min[c] = curMin;
+      max[c] = curMax;
+    } else {
       min[c] = NaN;
       max[c] = NaN;
-      continue;
     }
-    min[c] = Math.min(a, b);
-    max[c] = Math.max(a, b);
+  };
+
+  const scale = cols / len;
+  for (let i = 0; i < len; i++) {
+    let c = (i * scale) | 0;
+    if (c >= cols) c = cols - 1;
+
+    if (c !== col) {
+      flush(col);
+      // Empty interior columns (only possible when len < cols) → NaN breaks.
+      for (let g = col + 1; g < c; g++) {
+        min[g] = NaN;
+        max[g] = NaN;
+      }
+      col = c;
+      curMin = Infinity;
+      curMax = -Infinity;
+      sawReal = false;
+    }
+
+    const v = levelData[i] as number;
+    if (Number.isNaN(v)) continue;
+    sawReal = true;
+    if (v < curMin) curMin = v;
+    if (v > curMax) curMax = v;
   }
-  return { min, max, columns };
+  flush(col);
+  for (let g = col + 1; g < cols; g++) {
+    min[g] = NaN;
+    max[g] = NaN;
+  }
+
+  return { min, max, columns: cols };
 }
 
 /**
@@ -237,17 +305,35 @@ export function levelToColumnEnvelope(levelData: Float32Array): {
  *
  * - Line mode: each level element is one polyline sample at `dataX = element *
  *   factor * msPerSampleBase`, so `dataXPerElementMs = factor * msPerSampleBase`.
- * - Envelope mode: each COLUMN is a PAIR of level elements (4 base samples ×
- *   `factor`/... ), spanning `2 * factor * msPerSampleBase` ms; its centre sits at
- *   `(c + 0.5) * dataXPerColumnMs`.
+ * - Envelope mode: the whole level (spanning `levelLen * factor * msPerSampleBase`
+ *   ms) is reduced to `columns` per-pixel-columns, so each column spans
+ *   `wholeLevelSpanMs / columns` ms (see {@link envelopeDataXPerColumnMs}); its
+ *   centre sits at `(c + 0.5) * dataXPerColumnMs`.
  */
 export function levelDataXPerElementMs(factor: number, msPerSampleBase: number): number {
   return factor * msPerSampleBase;
 }
 
-/** Envelope column width in ms (a column = a pair of level elements). */
-export function envelopeDataXPerColumnMs(factor: number, msPerSampleBase: number): number {
-  return 2 * factor * msPerSampleBase;
+/**
+ * Envelope column width in ms when a whole level of `levelLength` elements (each
+ * `factor * msPerSampleBase` ms apart, so the level spans
+ * `levelLength * factor * msPerSampleBase` ms) is reduced to `columns`
+ * per-pixel-columns: `wholeLevelSpanMs / columns`.
+ *
+ * This MUST match the spacing `levelToColumnEnvelope` implies (the whole session
+ * divided evenly into `columns`), so a column's clip-X lands exactly where the
+ * Canvas2D reference's `plotLeft + (c + 0.5) * (plotWidth / columns)` would for the
+ * whole-session viewport. Returns 0 for a degenerate (empty / zero-column) input.
+ */
+export function envelopeDataXPerColumnMs(
+  factor: number,
+  msPerSampleBase: number,
+  levelLength: number,
+  columns: number,
+): number {
+  if (columns <= 0) return 0;
+  const wholeLevelSpanMs = levelLength * factor * msPerSampleBase;
+  return wholeLevelSpanMs / columns;
 }
 
 /**

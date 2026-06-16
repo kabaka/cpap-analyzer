@@ -406,12 +406,18 @@ export class HybridSignalRenderer {
     phys: { physicalMin: number; physicalMax: number },
   ): WaveformLaneInput {
     if (mode === 'envelope') {
-      // Reinterpret the whole level as a per-column min/max band in the stable
-      // absolute ms domain. Each column = a pair of level elements, spanning
-      // `2 * dataXPerElementMs` ms; centred at (c + 0.5) * that width.
-      const { min, max, columns } = levelToColumnEnvelope(g.levelData);
-      // A column pairs two level elements, so it spans 2× one element's ms width.
-      const dataXPerColumn = 2 * g.dataXPerElementMs;
+      // Reduce the whole level to a PER-PIXEL-COLUMN min/max band in the stable
+      // absolute ms domain, at the SAME column resolution the Canvas2D reference
+      // uses (`plotWidthColumns` ≈ one column per device pixel). This is the
+      // fidelity-critical step: pairing level elements 1:2 produced far-sub-pixel
+      // columns, so a 1-sample spike rendered as a sub-pixel triangle peak the
+      // rasterizer stepped over (reaching only ~38% of its true height). Matching
+      // the reference's column count makes the spike a ~1-px column that always
+      // rasterizes to its full extreme. See `levelToColumnEnvelope`.
+      const { min, max, columns } = levelToColumnEnvelope(g.levelData, g.plotWidthColumns);
+      // Each column spans the whole level evenly: wholeLevelSpanMs / columns,
+      // matching the reference's `plotWidth / columns` for the whole-session view.
+      const dataXPerColumn = columns > 0 ? (g.levelData.length * g.dataXPerElementMs) / columns : 0;
       const valuePerPx = laneValuePerPx({
         physicalMin: ch.physicalMin,
         physicalMax: ch.physicalMax,
