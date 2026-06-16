@@ -17,6 +17,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useChartColors } from '@/components/charts/useChartColors';
+import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
 import { useSyncedChart } from '../context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
@@ -121,10 +122,15 @@ const LeakRateChart = React.memo(function LeakRateChart({
 
           {/* Warning threshold */}
           <ReferenceLine
-            y={24}
+            y={LEAK_NOTICE_LPM}
             stroke={colors.chart5}
             strokeDasharray="6 3"
-            label={{ value: '24 L/min', position: 'right', fill: colors.axis, fontSize: 10 }}
+            label={{
+              value: `${LEAK_NOTICE_LPM} L/min`,
+              position: 'right',
+              fill: colors.axis,
+              fontSize: 10,
+            }}
           />
 
           {/* Settings change markers — shared helper with <title> hover. */}

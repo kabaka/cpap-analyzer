@@ -14,6 +14,7 @@ import {
   detectRisingCentralTrend,
   MIN_CENTRAL_USAGE_HOURS,
 } from '@/views/Trends/utils/centralTrend';
+import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
 
 export type InsightSeverity = 'positive' | 'neutral' | 'warning';
 export type InsightIcon = 'trending-down' | 'trending-up' | 'check' | 'alert' | 'info';
@@ -92,7 +93,7 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
   }
 
   // 4. Leak assessment
-  if (stats.leakP95 > 24) {
+  if (stats.leakP95 > LEAK_NOTICE_LPM) {
     insights.push({
       id: 'leak-high',
       icon: 'alert',
@@ -199,5 +200,12 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
   };
   insights.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
 
-  return insights.slice(0, 5);
+  // Defense-in-depth (consensus D6): the safety-critical rising-central insight
+  // must never be dropped by the display cap, even if many warnings precede it.
+  // The EventBreakdownChart prompt remains the guaranteed surface; this keeps
+  // the dashboard surface consistent with it.
+  const safetyInsightIds = new Set(['central-apnea-rising']);
+  const safety = insights.filter((i) => safetyInsightIds.has(i.id));
+  const rest = insights.filter((i) => !safetyInsightIds.has(i.id));
+  return [...safety, ...rest].slice(0, 5);
 }
