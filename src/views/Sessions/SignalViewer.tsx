@@ -48,11 +48,12 @@ import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
 import { useWearableLanes, type WearableSeries } from '@/hooks/useWearableLanes';
 import type { SignalManifest, ChannelDescriptor } from '@/services/storage/OPFSService';
 import { OPFSService } from '@/services/storage/OPFSService';
-import { lttbImpl } from '@/services/workers/downsample.worker';
+import { lttbInto, lttbOutLength } from '@/services/workers/downsample.worker';
 import { useAppStore } from '@/stores/useAppStore';
 import type { Event as TherapyEvent } from '@/types';
 
 import { evaluateDeepLink, formatOffsetLabel } from './deepLinkGuard';
+import { createFramePaintScheduler, type FramePaintScheduler } from './framePaintScheduler';
 import {
   detectionReadoutText,
   EMPTY_HOVERED_REGION,
@@ -407,10 +408,32 @@ export default function SignalViewer() {
    */
   const liveViewportRef = useRef<ViewportRange | null>(null);
 
-  /** rAF handle coalescing wheel-zoom paints to one per frame. */
-  const wheelRafRef = useRef<number | null>(null);
   /** Trailing-debounce handle that commits the settled wheel viewport to state. */
   const wheelCommitTimerRef = useRef<number | null>(null);
+
+  /**
+   * Shared rAF-coalescing paint scheduler for BOTH the wheel-zoom and drag-pan
+   * hot paths. Each input event records the latest viewport and the scheduler
+   * paints it at most once per animation frame (see {@link framePaintScheduler}).
+   * Created lazily on first use against the live `renderRangeDirect` (read via
+   * `renderRangeDirectRef` so the scheduler never goes stale across renders).
+   */
+  const paintSchedulerRef = useRef<FramePaintScheduler | null>(null);
+
+  /**
+   * Per-lane reusable LTTB scratch buffers (keyed by lane name). DOUBLE-BUFFERED:
+   * each lane keeps two `Float32Array`s and alternates between them every frame
+   * (`flip` toggles 0/1). Because the renderer retains the just-built channel
+   * `data` in `lastViewportRef` and the crosshair overlay later re-samples it,
+   * we must NOT overwrite the buffer the previous frame handed out until that
+   * frame's render + overlay-resync has completed. Alternating two buffers
+   * guarantees the previous frame's view survives through the next frame's full
+   * render+resync. `targetPoints` is tracked so the buffers are reallocated only
+   * when the budget changes (e.g. on resize), not per frame.
+   */
+  const lttbScratchRef = useRef<
+    Map<string, { a: Float32Array; b: Float32Array; flip: 0 | 1; capacity: number }>
+  >(new Map());
 
   /**
    * Mirror of the committed `viewport` state, readable synchronously from the
@@ -999,8 +1022,39 @@ export default function SignalViewer() {
       }
 
       // SAME LTTB as before, only when the source is denser than the target.
-      const displayData =
-        levelSlice.length > targetPoints ? lttbImpl(levelSlice, targetPoints) : levelSlice;
+      // Hot-path allocation elision: instead of allocating a fresh Float32Array
+      // every lane every frame (≈38 KB/frame × 4 lanes → GC jank during a drag),
+      // run the out-param LTTB into a per-lane, double-buffered scratch. The two
+      // buffers alternate each frame so the buffer the renderer retained LAST
+      // frame (read by the crosshair overlay's getValuesAtTime via
+      // lastViewportRef) is never overwritten until that frame's render +
+      // overlay-resync has completed — see `lttbScratchRef`. Output is
+      // byte-identical to `lttbImpl(levelSlice, targetPoints)` (proven in the
+      // downsample worker tests). The ≤ target fast path still returns the
+      // pyramid/raw subarray VIEW (no copy), exactly as before.
+      let displayData: Float32Array;
+      if (levelSlice.length > targetPoints) {
+        const needed = lttbOutLength(levelSlice.length, targetPoints);
+        let scratch = lttbScratchRef.current.get(laneName);
+        if (!scratch || scratch.capacity < needed) {
+          // Allocate (or grow) both buffers only when the budget changes — not
+          // per frame. Sized to the target point budget so steady-state drags
+          // never reallocate.
+          const capacity = Math.max(needed, targetPoints);
+          scratch = {
+            a: new Float32Array(capacity),
+            b: new Float32Array(capacity),
+            flip: 0,
+            capacity,
+          };
+          lttbScratchRef.current.set(laneName, scratch);
+        }
+        const out = scratch.flip === 0 ? scratch.a : scratch.b;
+        scratch.flip = scratch.flip === 0 ? 1 : 0;
+        displayData = lttbInto(levelSlice, targetPoints, out);
+      } else {
+        displayData = levelSlice;
+      }
 
       const viewDurationMs = range.endTime - range.startTime;
       // Output-point density over the viewport duration — independent of which
@@ -1237,6 +1291,23 @@ export default function SignalViewer() {
     [buildViewportState, buildRenderOptions],
   );
   renderRangeDirectRef.current = renderRangeDirect;
+
+  /**
+   * Lazily create (once) the shared rAF-coalescing paint scheduler used by BOTH
+   * the wheel-zoom and drag-pan hot paths. The paint callback routes through
+   * `renderRangeDirectRef` so it always invokes the latest `renderRangeDirect`
+   * (which keeps `lastViewportRef`/overlay coherent), never a stale closure.
+   */
+  const getPaintScheduler = useCallback((): FramePaintScheduler => {
+    let scheduler = paintSchedulerRef.current;
+    if (!scheduler) {
+      scheduler = createFramePaintScheduler((range) => {
+        renderRangeDirectRef.current?.(range);
+      });
+      paintSchedulerRef.current = scheduler;
+    }
+    return scheduler;
+  }, []);
 
   /** Commit a settled live (pan/wheel) viewport to React state, then clear it. */
   const commitLiveViewport = useCallback(() => {
@@ -1498,13 +1569,9 @@ export default function SignalViewer() {
       const range = { startTime: newStart, endTime: newEnd };
       liveViewportRef.current = range;
 
-      // Coalesce paints to one per frame.
-      if (wheelRafRef.current === null) {
-        wheelRafRef.current = window.requestAnimationFrame(() => {
-          wheelRafRef.current = null;
-          if (liveViewportRef.current) renderRangeDirect(liveViewportRef.current);
-        });
-      }
+      // Coalesce paints to one per frame via the shared scheduler (same handle
+      // the pan path uses).
+      getPaintScheduler().schedule(range);
 
       // (Re)arm the trailing commit so the settled viewport reaches React state
       // exactly once after the gesture stops — matching what was last painted.
@@ -1513,11 +1580,9 @@ export default function SignalViewer() {
       }
       wheelCommitTimerRef.current = window.setTimeout(() => {
         wheelCommitTimerRef.current = null;
-        if (wheelRafRef.current !== null) {
-          window.cancelAnimationFrame(wheelRafRef.current);
-          wheelRafRef.current = null;
-        }
-        // Paint the final viewport once more so committed state == last frame.
+        // Cancel any frame still pending and paint the final viewport once more
+        // so committed state == last painted frame.
+        getPaintScheduler().cancel();
         if (liveViewportRef.current) renderRangeDirect(liveViewportRef.current);
         commitLiveViewport();
       }, WHEEL_COMMIT_DELAY_MS);
@@ -1526,10 +1591,7 @@ export default function SignalViewer() {
     wrapper.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       wrapper.removeEventListener('wheel', onWheel);
-      if (wheelRafRef.current !== null) {
-        window.cancelAnimationFrame(wheelRafRef.current);
-        wheelRafRef.current = null;
-      }
+      paintSchedulerRef.current?.cancel();
       if (wheelCommitTimerRef.current !== null) {
         window.clearTimeout(wheelCommitTimerRef.current);
         wheelCommitTimerRef.current = null;
@@ -1539,7 +1601,7 @@ export default function SignalViewer() {
         commitLiveViewport();
       }
     };
-  }, [totalDurationMs, renderRangeDirect, commitLiveViewport]);
+  }, [totalDurationMs, renderRangeDirect, commitLiveViewport, getPaintScheduler]);
 
   // ── Hovered-region hit-test (shared by pointer + keyboard) ───
 
@@ -1635,8 +1697,13 @@ export default function SignalViewer() {
         }
         const range = { startTime: newStart, endTime: newEnd };
         liveViewportRef.current = range;
-        // crosshairXRef is already set above; renderRangeDirect picks it up.
-        renderRangeDirect(range);
+        // crosshairXRef is already set above; the scheduled renderRangeDirect
+        // picks it up. PAN HOT PATH now mirrors the wheel path: high-rate
+        // pointers (120–1000 Hz) fire many moves per displayed frame, so we
+        // coalesce to AT MOST ONE renderRangeDirect per animation frame via the
+        // shared scheduler instead of painting synchronously on every move. The
+        // final frame is painted + committed once on pointerup/leave.
+        getPaintScheduler().schedule(range);
         return;
       }
 
@@ -1652,7 +1719,7 @@ export default function SignalViewer() {
         });
       }
     },
-    [isPanning, totalDurationMs, renderRangeDirect, updateHoveredRegion],
+    [isPanning, totalDurationMs, updateHoveredRegion, getPaintScheduler],
   );
 
   const handlePointerUp = useCallback(() => {
