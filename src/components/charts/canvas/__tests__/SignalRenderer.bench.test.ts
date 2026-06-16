@@ -467,8 +467,10 @@ describe('SignalRenderer rendering-cost baseline', () => {
     lines.push('             xhair ms column. Both should drop to ~0 after the fix.');
     lines.push('═══════════════════════════════════════════════════════════════════════════════');
 
-    // eslint-disable-next-line no-console
-    console.log(lines.join('\n'));
+    // process.stdout.write (not console.log) so Vitest's reporter does not buffer
+    // away the table — the headline before/after numbers must be observable when
+    // the benchmark is run.
+    process.stdout.write(`${lines.join('\n')}\n`);
 
     expect(confirmedAtLeastOne).toBe(true);
   });
@@ -549,8 +551,10 @@ describe('SignalRenderer rendering-cost baseline', () => {
     lines.push('               the crosshair line). Intersection dots are counted under `arc`.');
     lines.push('═══════════════════════════════════════════════════════════════════════════════');
 
-    // eslint-disable-next-line no-console
-    console.log(lines.join('\n'));
+    // process.stdout.write (not console.log) so Vitest's reporter does not buffer
+    // away the table — the headline before/after numbers must be observable when
+    // the benchmark is run.
+    process.stdout.write(`${lines.join('\n')}\n`);
 
     expect(assertedOnce).toBe(true);
   });
