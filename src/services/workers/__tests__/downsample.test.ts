@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { lttbImpl, minMaxImpl } from '../downsample.worker';
+import { lttbImpl, lttbInto, lttbOutLength, minMaxImpl } from '../downsample.worker';
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -114,6 +114,116 @@ describe('lttbImpl', () => {
     expect(result.length).toBe(2);
     expect(result[0]).toBe(1);
     expect(result[1]).toBe(10);
+  });
+});
+
+// ── LTTB out-parameter variant (allocation-free hot path) ────────
+//
+// `lttbInto` is the render-hot-path twin of `lttbImpl`: it writes into a
+// caller-owned scratch buffer instead of allocating a fresh Float32Array per
+// call. Two invariants must hold for the SignalViewer optimisation to be both
+// correct and worthwhile:
+//   1. CORRECTNESS — its output is element-for-element identical to
+//      `lttbImpl(data, target)` for the same inputs (byte-identical bits, since
+//      both write Float32 values produced by identical arithmetic).
+//   2. ALLOCATION — in steady state (buffer already sized) it allocates ~zero:
+//      it returns a `subarray` VIEW over the SAME backing buffer it was handed,
+//      so no new ArrayBuffer is created per frame.
+//
+// `lttbOutLength` reports the exact write length so callers can size the buffer
+// once and never hit the correctness-preserving fallback allocation.
+
+describe('lttbInto', () => {
+  /** Largest-triangle sized buffer for `(dataLen, target)`. */
+  function scratchFor(dataLength: number, target: number): Float32Array {
+    return new Float32Array(lttbOutLength(dataLength, target));
+  }
+
+  it('lttbOutLength matches the actual lttbImpl output length across regimes', () => {
+    // Denser-than-target: writes exactly `target`.
+    expect(lttbOutLength(1000, 50)).toBe(50);
+    expect(lttbImpl(sineWave(1000), 50).length).toBe(50);
+    // Already-small (len <= target): writes `len`.
+    expect(lttbOutLength(3, 10)).toBe(3);
+    expect(lttbImpl(f32([1, 2, 3]), 10).length).toBe(3);
+    // Empty.
+    expect(lttbOutLength(0, 10)).toBe(0);
+    // Target clamped to >= 2.
+    expect(lttbOutLength(1000, 1)).toBe(2);
+  });
+
+  it('produces output element-for-element identical to lttbImpl (downsampling regime)', () => {
+    // Multiple shapes/sizes so the byte-identity claim is not a single-case fluke.
+    const cases: { data: Float32Array; target: number }[] = [
+      { data: sineWave(1000, 10, 1), target: 50 },
+      { data: sineWave(1000, 10, 5), target: 20 },
+      { data: sineWave(720_000, 30, 240), target: 2400 }, // full-night × prod budget
+      { data: f32(Array.from({ length: 333 }, (_, i) => Math.sin(i) * 7 + (i % 11))), target: 64 },
+      { data: f32(new Array(100).fill(5)), target: 10 }, // constant signal
+    ];
+    for (const { data, target } of cases) {
+      const expected = lttbImpl(data, target);
+      const out = scratchFor(data.length, target);
+      const got = lttbInto(data, target, out);
+      expect(got.length).toBe(expected.length);
+      // Element-for-element equality (raw float bits): no tolerance — the two
+      // code paths run identical arithmetic in identical order.
+      expect(Array.from(got)).toEqual(Array.from(expected));
+      // The returned view aliases the caller's buffer (no fresh allocation).
+      expect(got.buffer).toBe(out.buffer);
+    }
+  });
+
+  it('matches lttbImpl in the already-small (len <= target) copy-through regime', () => {
+    const data = f32([5, 10, 15, 20, 25]);
+    const out = scratchFor(data.length, 10);
+    const got = lttbInto(data, 10, out);
+    expect(Array.from(got)).toEqual(Array.from(lttbImpl(data, 10)));
+    expect(got.length).toBe(5);
+    expect(got.buffer).toBe(out.buffer); // view over caller buffer
+  });
+
+  it('returns a zero-length view (no allocation) for empty input', () => {
+    const out = new Float32Array(8);
+    const got = lttbInto(f32([]), 10, out);
+    expect(got.length).toBe(0);
+    expect(got.buffer).toBe(out.buffer);
+  });
+
+  it('allocates ~ZERO in steady state: repeated frames reuse one backing buffer', () => {
+    // Simulate a sustained drag: same viewport-sized slice re-downsampled every
+    // frame into a pre-sized, REUSED scratch buffer (the double-buffer pattern in
+    // SignalViewer alternates two of these; here we prove a single reused buffer
+    // never allocates a new ArrayBuffer).
+    const data = sineWave(120_000, 25, 60);
+    const target = 2400;
+    const scratch = scratchFor(data.length, target);
+    const baselineBuffer = scratch.buffer;
+
+    const FRAMES = 300; // a few seconds of dragging at 60 fps
+    const seenBuffers = new Set<ArrayBufferLike>();
+    for (let frame = 0; frame < FRAMES; frame++) {
+      const view = lttbInto(data, target, scratch);
+      seenBuffers.add(view.buffer);
+      expect(view.length).toBe(target);
+    }
+    // Across 300 frames, exactly ONE backing buffer was ever used — the one the
+    // caller supplied. The previous (allocating) path created 300 fresh
+    // Float32Arrays (~2400 × 4 B = 9.6 KB each ⇒ ~2.8 MB of garbage here).
+    expect(seenBuffers.size).toBe(1);
+    expect([...seenBuffers][0]).toBe(baselineBuffer);
+  });
+
+  it('falls back to a fresh allocation (still correct) when out is too small', () => {
+    const data = sineWave(1000, 10, 1);
+    const target = 50;
+    const tooSmall = new Float32Array(10); // < target
+    const got = lttbInto(data, target, tooSmall);
+    // Correctness preserved via lttbImpl fallback...
+    expect(Array.from(got)).toEqual(Array.from(lttbImpl(data, target)));
+    // ...at the cost of a fresh buffer (not the caller's) — the documented escape
+    // hatch. SignalViewer sizes via lttbOutLength so it never hits this path.
+    expect(got.buffer).not.toBe(tooSmall.buffer);
   });
 });
 

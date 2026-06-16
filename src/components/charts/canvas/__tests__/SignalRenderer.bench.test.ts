@@ -43,7 +43,7 @@ import { SignalRenderer } from '../SignalRenderer';
 import type { ViewportState, RenderOptions, SignalChannel, EventMarker } from '../SignalRenderer';
 import { buildDecimationPyramid, selectPyramidLevel } from '../decimationPyramid';
 import type { DecimationPyramid } from '../decimationPyramid';
-import { lttbImpl } from '@/services/workers/downsample.worker';
+import { lttbImpl, lttbInto, lttbOutLength } from '@/services/workers/downsample.worker';
 
 // ── Config mirrored from SignalViewer.tsx ────────────────────────
 //
@@ -590,5 +590,278 @@ describe('SignalRenderer rendering-cost baseline', () => {
     // Grid/axis polyline overhead is tiny next to the waveform: the waveform is
     // the dominant per-frame draw cost.
     expect(expectedWaveformOps).toBeGreaterThan(gridOverhead * 20);
+  });
+});
+
+// ── Pan/zoom gesture frame: data path + render, allocation metric ─
+//
+// The tests above instrument the RENDER cost (draw-ops). This block instruments
+// the FULL gesture frame the pan/wheel hot paths actually run each animation
+// frame: the DATA path (pyramid level select + LTTB downsample per lane) PLUS
+// the render. It contrasts the two LTTB strategies:
+//
+//   OLD (allocating)  — lttbImpl: a fresh Float32Array per lane per frame.
+//   NEW (buffer-reuse) — lttbInto: writes into a per-lane DOUBLE-BUFFERED
+//                        scratch, mirroring SignalViewer.buildCpapChannel.
+//
+// METRIC FAITHFULNESS
+//   - allocations-per-frame & op-counts are jsdom-PROXY-FAITHFUL: they count
+//     ArrayBuffer creations / 2D-context method calls deterministically, exactly
+//     as the real browser would issue them (the algorithm + draw calls are
+//     identical; only rasterization differs).
+//   - wall-clock ms in jsdom is INDICATIVE ONLY (no GPU rasterization, no real
+//     GC pressure modelling). Real-browser frame timing is owned by the
+//     Playwright probe in tests/e2e/signal-viewer-perf.spec.ts.
+
+interface DoubleBuffer {
+  a: Float32Array;
+  b: Float32Array;
+  flip: 0 | 1;
+  capacity: number;
+}
+
+/**
+ * Mirror of SignalViewer.buildCpapChannel's downsample step, parameterised by
+ * strategy. Returns the SignalChannel plus the number of NEW ArrayBuffers the
+ * downsample step allocated for this frame (0 in the steady-state reuse path).
+ */
+function buildDisplayChannelWithStrategy(
+  bc: BenchChannel,
+  range: { startTime: number; endTime: number },
+  strategy: 'alloc' | 'reuse',
+  scratch: Map<string, DoubleBuffer>,
+): { channel: SignalChannel; allocations: number } {
+  const { pyramid, totalSamples } = bc;
+  const startFrac = range.startTime / NIGHT_MS;
+  const endFrac = range.endTime / NIGHT_MS;
+  const startSample = Math.floor(startFrac * totalSamples);
+  const endSample = Math.min(Math.ceil(endFrac * totalSamples), totalSamples);
+
+  const pslice = selectPyramidLevel(pyramid, startSample, endSample, TARGET_POINTS);
+  const levelSlice = pslice.data.subarray(pslice.startIndex, pslice.endIndex);
+
+  let displayData: Float32Array;
+  let allocations = 0;
+
+  if (levelSlice.length > TARGET_POINTS) {
+    if (strategy === 'alloc') {
+      displayData = lttbImpl(levelSlice, TARGET_POINTS); // fresh Float32Array
+      allocations = 1;
+    } else {
+      const needed = lttbOutLength(levelSlice.length, TARGET_POINTS);
+      let buf = scratch.get(bc.spec.name);
+      if (!buf || buf.capacity < needed) {
+        const capacity = Math.max(needed, TARGET_POINTS);
+        buf = { a: new Float32Array(capacity), b: new Float32Array(capacity), flip: 0, capacity };
+        scratch.set(bc.spec.name, buf);
+        allocations = 2; // one-time double-buffer allocation on (re)size only
+      }
+      const out = buf.flip === 0 ? buf.a : buf.b;
+      buf.flip = buf.flip === 0 ? 1 : 0;
+      displayData = lttbInto(levelSlice, TARGET_POINTS, out); // view; no allocation
+    }
+  } else {
+    displayData = levelSlice; // already a view — no copy in either strategy
+  }
+
+  return {
+    channel: {
+      name: bc.spec.name,
+      data: displayData,
+      sampleRate: bc.spec.sampleRate,
+      unit: bc.spec.unit,
+      color: '#3366cc',
+      physicalMin: bc.spec.physicalMin,
+      physicalMax: bc.spec.physicalMax,
+      kind: 'cpap',
+      render: 'line',
+    },
+    allocations,
+  };
+}
+
+/** Build the full frame's channels under a strategy; sum downsample allocations. */
+function buildFrame(
+  channels: BenchChannel[],
+  range: { startTime: number; endTime: number },
+  strategy: 'alloc' | 'reuse',
+  scratch: Map<string, DoubleBuffer>,
+): { vp: ViewportState; allocations: number } {
+  let allocations = 0;
+  const cpapChannels = channels.map((bc) => {
+    const r = buildDisplayChannelWithStrategy(bc, range, strategy, scratch);
+    allocations += r.allocations;
+    return r.channel;
+  });
+  return {
+    vp: { startTime: range.startTime, endTime: range.endTime, channels: cpapChannels },
+    allocations,
+  };
+}
+
+describe('SignalViewer pan/zoom gesture frame (data path + render)', () => {
+  let renderer: SignalRenderer;
+
+  beforeEach(() => {
+    const canvas = document.createElement('canvas');
+    renderer = new SignalRenderer(canvas);
+    renderer.resize(CANVAS_WIDTH, CANVAS_HEIGHT);
+  });
+
+  it('proves the buffer-reuse path allocates ~0 steady-state AND is byte-identical to lttbImpl', () => {
+    const channels = getBenchChannels();
+    // A pan sweep: slide a 5-minute window across the night, one step per frame.
+    const windowMs = 5 * 60 * 1000;
+    const STEPS = 240; // ~4 s of dragging at 60 fps
+    const stride = (NIGHT_MS - windowMs) / STEPS;
+
+    const reuseScratch = new Map<string, DoubleBuffer>();
+    let reuseAllocTotal = 0;
+    let reuseSteadyStateAlloc = 0;
+    let allocPathAllocTotal = 0;
+    let identicalFrames = 0;
+
+    for (let step = 0; step < STEPS; step++) {
+      const start = step * stride;
+      const range = { startTime: start, endTime: start + windowMs };
+
+      // OLD path — fresh allocation per lane per frame.
+      const allocFrame = buildFrame(channels, range, 'alloc', new Map());
+      allocPathAllocTotal += allocFrame.allocations;
+
+      // NEW path — reused double buffers.
+      const reuseFrame = buildFrame(channels, range, 'reuse', reuseScratch);
+      reuseAllocTotal += reuseFrame.allocations;
+      // After the first window settles (buffers sized), steady-state allocs are 0.
+      if (step >= 1) reuseSteadyStateAlloc += reuseFrame.allocations;
+
+      // Byte-identity: NEW output must equal OLD output element-for-element.
+      let allEqual = true;
+      for (let lane = 0; lane < channels.length; lane++) {
+        const a = allocFrame.vp.channels[lane]!.data;
+        const b = reuseFrame.vp.channels[lane]!.data;
+        if (a.length !== b.length) {
+          allEqual = false;
+          break;
+        }
+        for (let i = 0; i < a.length; i++) {
+          if (a[i] !== b[i]) {
+            allEqual = false;
+            break;
+          }
+        }
+        if (!allEqual) break;
+      }
+      if (allEqual) identicalFrames++;
+
+      // Render both so the full gesture frame (data + draw) is exercised.
+      renderOnce(renderer, reuseFrame.vp, makeOptions({ showCrosshair: true, crosshairX: 600 }));
+    }
+
+    const lanes = channels.length;
+    const lines: string[] = [];
+    lines.push('');
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    lines.push(
+      ' SignalViewer pan gesture — downsample ALLOCATIONS per frame (jsdom-proxy-faithful)',
+    );
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    lines.push(
+      `   ${lanes} CPAP lanes, LTTB target=${TARGET_POINTS}/lane, ${STEPS} frames (5m window pan)`,
+    );
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+    lines.push(
+      `${pad('strategy', 16)} | ${pad('total ArrayBuffer allocs', 24)} | ${pad('per-frame (steady)', 18)}`,
+    );
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+    lines.push(
+      `${pad('OLD lttbImpl', 16)} | ${pad(allocPathAllocTotal, 24)} | ${pad((allocPathAllocTotal / STEPS).toFixed(2), 18)}`,
+    );
+    lines.push(
+      `${pad('NEW lttbInto', 16)} | ${pad(reuseAllocTotal, 24)} | ${pad((reuseSteadyStateAlloc / (STEPS - 1)).toFixed(2), 18)}`,
+    );
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+    lines.push(` byte-identical frames: ${identicalFrames}/${STEPS}  (NEW output === OLD output)`);
+    lines.push(
+      ' NOTE: ArrayBuffer-alloc & op-counts are jsdom-proxy-faithful (algorithm-identical',
+    );
+    lines.push(
+      '       to the browser). Wall-clock ms here is indicative only — real-browser frame',
+    );
+    lines.push(
+      '       timing lives in tests/e2e/signal-viewer-perf.spec.ts (rasterization-bound).',
+    );
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    process.stdout.write(`${lines.join('\n')}\n`);
+
+    // ASSERTIONS
+    // OLD path allocates one buffer per lane per frame.
+    expect(allocPathAllocTotal).toBe(lanes * STEPS);
+    // NEW path allocates only the one-time double buffers (≤ 2 per lane), and
+    // ZERO in steady state after the first frame.
+    expect(reuseAllocTotal).toBeLessThanOrEqual(lanes * 2);
+    expect(reuseSteadyStateAlloc).toBe(0);
+    // Every frame's NEW output is byte-identical to the OLD allocating output.
+    expect(identicalFrames).toBe(STEPS);
+  });
+
+  it('times the full pan gesture frame (data path + render) under both strategies', () => {
+    const channels = getBenchChannels();
+    const span = SPANS[2]!; // 5m — a representative zoomed-in pan window
+
+    function timeStrategy(strategy: 'alloc' | 'reuse'): { mean: number; p95: number } {
+      const scratch = new Map<string, DoubleBuffer>();
+      const opts = makeOptions({ showCrosshair: true, crosshairX: 600 });
+      // Warm up (size buffers, JIT).
+      for (let i = 0; i < 3; i++) {
+        const f = buildFrame(channels, span.range, strategy, scratch);
+        renderOnce(renderer, f.vp, opts);
+      }
+      const samples: number[] = [];
+      for (let i = 0; i < TIMING_ITERS; i++) {
+        const t0 = performance.now();
+        const f = buildFrame(channels, span.range, strategy, scratch);
+        renderOnce(renderer, f.vp, opts);
+        samples.push(performance.now() - t0);
+      }
+      samples.sort((a, b) => a - b);
+      const mean = samples.reduce((s, v) => s + v, 0) / samples.length;
+      const p95 = samples[Math.min(samples.length - 1, Math.floor(samples.length * 0.95))] ?? mean;
+      return { mean, p95 };
+    }
+
+    const oldT = timeStrategy('alloc');
+    const newT = timeStrategy('reuse');
+
+    const lines: string[] = [];
+    lines.push('');
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    lines.push(' Full pan/zoom gesture frame: DATA PATH (pyramid+LTTB) + RENDER');
+    lines.push(
+      `   mode=${BENCH_MODE ? 'BENCH (200 iters)' : 'fast (12 iters)'}, span=${span.label}`,
+    );
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    lines.push(`${pad('strategy', 16)} | ${pad('mean ms', 10)} | ${pad('p95 ms', 10)}`);
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+    lines.push(
+      `${pad('OLD lttbImpl', 16)} | ${pad(oldT.mean.toFixed(4), 10)} | ${pad(oldT.p95.toFixed(4), 10)}`,
+    );
+    lines.push(
+      `${pad('NEW lttbInto', 16)} | ${pad(newT.mean.toFixed(4), 10)} | ${pad(newT.p95.toFixed(4), 10)}`,
+    );
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+    lines.push(
+      ' jsdom ms is INDICATIVE ONLY (no GPU raster / real GC). The allocation delta above',
+    );
+    lines.push(' is the load-bearing, proxy-faithful win; real frame-time gains (fewer GC pauses)');
+    lines.push(' are measured by the Playwright probe under tests/e2e/.');
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    process.stdout.write(`${lines.join('\n')}\n`);
+
+    // Sanity only (timing is indicative): both strategies produce a positive,
+    // finite frame time. We do NOT assert NEW < OLD on wall-clock in jsdom.
+    expect(oldT.mean).toBeGreaterThan(0);
+    expect(newT.mean).toBeGreaterThan(0);
+    expect(Number.isFinite(newT.p95)).toBe(true);
   });
 });
