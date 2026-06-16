@@ -131,8 +131,48 @@ const SSIM_THRESHOLD = 0.98;
 /** WebGL pixel is "lit" (waveform painted) when its alpha exceeds this (0..255). */
 const WEBGL_LIT_ALPHA = 24;
 
+/**
+ * Reference (Canvas2D) "lit" detector. The reference layer is OPAQUE — it paints
+ * the waveform in the saturated lane colour over a near-neutral surface
+ * background — so alpha cannot signal "lit" as it does on the transparent WebGL
+ * layer. Instead we use CHROMA: a pixel is a waveform pixel when its colourfulness
+ * `max(|R-G|, |G-B|, |R-B|)` exceeds this threshold. The lane colours are
+ * saturated (Flow `#3b82f6` → |R-B| ≈ 187) while every background the harness can
+ * resolve (white `#ffffff`, light grey `#f5f5f5`, and their dark-theme analogues)
+ * is neutral grey with chroma ≈ 0. 40/255 sits far above AA-blended-grey noise
+ * yet far below the saturated lane colour, so it is background-/theme-agnostic and
+ * does not depend on knowing the exact surface shade.
+ */
+const REF_LIT_CHROMA = 40;
+
 /** Spike/notch must reach within this many px of the lane extreme edge. */
 const EXTREME_TOLERANCE_PX = 1;
+
+/**
+ * WebGL-vs-REFERENCE reached-extreme agreement, in CSS px (scaled by DPR at use).
+ * This is the gate's TRUE invariant — "WebGL matches the Canvas2D reference" —
+ * and is immune to the AA-vs-analytic mismatch that an absolute analytic bar
+ * suffers under software SwiftShader. 3 CSS px (= 6 device px at DPR 2) comfortably
+ * absorbs the sub-pixel AA-fade + litAlpha/litChroma threshold asymmetry between
+ * the two rasterizers at a band edge (the observed CI miss was ~2.35 CSS px on the
+ * notch's bottom edge) while remaining an order of magnitude below the ~24.5 CSS px
+ * (49 device px) gross attenuation the just-fixed spike bug produced. See
+ * `assertExtremeSurvives` for the regression-still-caught argument.
+ */
+const EXTREME_REF_MATCH_PX = 3;
+
+/**
+ * LOOSE analytic sanity margin, in CSS px (scaled by DPR at use). After the
+ * reference-relative check (above) proves WebGL tracks the reference, this only
+ * guards against "the extreme is in totally the wrong place" — e.g. a squashed or
+ * vertically-shifted waveform whose reference ALSO moved would pass the relative
+ * check, so we still bound the WebGL extreme to a generous neighbourhood of the
+ * analytic lane edge. 12 CSS px (= 24 device px at DPR 2) is ~13% of the lane's
+ * inner band; a correct extreme is within ~2–3 CSS px of analytic, so this never
+ * trips on AA, but a waveform compressed to half-amplitude (extreme pulled tens of
+ * px toward lane centre) blows past it.
+ */
+const EXTREME_ANALYTIC_MARGIN_PX = 12;
 
 // ── In-page extraction (runs in the browser) ───────────────────────────────
 //
@@ -274,6 +314,62 @@ async function probeWebglLit(
   );
 }
 
+/**
+ * Probe the REFERENCE (Canvas2D) canvas for "lit" waveform pixels within a column
+ * window and y-band (all in DEVICE px, canvas-absolute). The reference is opaque,
+ * so "lit" is detected by CHROMA (colourfulness) rather than alpha: a saturated
+ * lane-colour pixel is the waveform; a near-neutral grey pixel is background/grid.
+ * Mirrors {@link probeWebglLit}'s geometry exactly so the two reached-extremes are
+ * directly comparable. No `renderWebglNow()` call — the reference is drawn once at
+ * harness mount and never swapped.
+ */
+async function probeRefLit(
+  page: Page,
+  xStart: number,
+  xEnd: number,
+  yTop: number,
+  yBottom: number,
+): Promise<LitProbe> {
+  return page.evaluate(
+    ({ xStart, xEnd, yTop, yBottom, litChroma }) => {
+      const ref = document.querySelector<HTMLCanvasElement>('[data-testid="ref-canvas"]');
+      if (!ref) throw new Error('ref-canvas not found');
+      const rctx = ref.getContext('2d');
+      if (!rctx) throw new Error('ref 2d context unavailable');
+
+      const x0 = Math.max(0, Math.floor(xStart));
+      const x1 = Math.min(ref.width, Math.ceil(xEnd));
+      const y0 = Math.max(0, Math.floor(yTop));
+      const y1 = Math.min(ref.height, Math.ceil(yBottom));
+      if (x1 <= x0 || y1 <= y0) return { minLitY: -1, maxLitY: -1, litCount: 0 };
+
+      const img = rctx.getImageData(x0, y0, x1 - x0, y1 - y0).data;
+      const w = x1 - x0;
+      const h = y1 - y0;
+      let minLitY = -1;
+      let maxLitY = -1;
+      let litCount = 0;
+      for (let yy = 0; yy < h; yy++) {
+        for (let xx = 0; xx < w; xx++) {
+          const i = (yy * w + xx) * 4;
+          const r = img[i] ?? 0;
+          const g = img[i + 1] ?? 0;
+          const b = img[i + 2] ?? 0;
+          const chroma = Math.max(Math.abs(r - g), Math.abs(g - b), Math.abs(r - b));
+          if (chroma > litChroma) {
+            litCount++;
+            const absY = y0 + yy;
+            if (minLitY < 0 || absY < minLitY) minLitY = absY;
+            if (absY > maxLitY) maxLitY = absY;
+          }
+        }
+      }
+      return { minLitY, maxLitY, litCount };
+    },
+    { xStart, xEnd, yTop, yBottom, litChroma: REF_LIT_CHROMA },
+  );
+}
+
 // ── Node-side pixel math ────────────────────────────────────────────────────
 
 /** A pixel is a mismatch only if it differs beyond tolerance AND none of its 8
@@ -379,7 +475,16 @@ function physToDeviceY(lane: ReturnType<typeof flowLaneDevice>, value: number): 
 
 test.describe('WebGL fidelity gate (ADR 0019, Stage 3)', () => {
   test.skip(!RUN, 'Set RUN_FIDELITY=1 to run the WebGL fidelity gate (CI fidelity job only).');
-  test.describe.configure({ mode: 'serial' });
+  // NOT `serial`. Each view test is fully independent — it does its own
+  // `page.goto('/__fidelity__?view=…')`, which mounts a fresh harness that
+  // republishes `window.__fidelity` and tears it down on unmount, so there is no
+  // cross-test harness/page state to protect with serial ordering. We deliberately
+  // drop `mode: 'serial'` (which STOPS at the first failing view) so a single CI run
+  // surfaces EVERY remaining divergence across all 6 views at once, rather than one
+  // borderline tolerance per CI cycle. The CI fidelity job pins `workers: 1`
+  // (playwright.config.ts), so the views still execute one-at-a-time on a single
+  // SwiftShader context — no parallel software-GL contention that could induce the
+  // blank-read-backs the harness mitigates.
 
   for (const view of VIEWS) {
     test(`view=${view}: WebGL waveform matches the Canvas2D reference`, async ({ page }) => {
@@ -499,9 +604,26 @@ function compositeWebglOverRef(region: RegionPixels): Uint8ClampedArray {
 }
 
 /**
- * Assert the 1-sample spike/notch reaches the lane extreme in BOTH the WebGL
- * output and the reference, for any viewport that contains it. Skips when the
- * landmark is outside the viewport.
+ * Assert the 1-sample spike/notch reaches the lane extreme in the WebGL output —
+ * REFERENCE-RELATIVE. The gate's true invariant is "WebGL matches the Canvas2D
+ * reference", so we probe the SAME extreme column on BOTH canvases and assert the
+ * WebGL reached-extreme tracks the REFERENCE's reached-extreme, not an analytic
+ * ideal. This is immune to the AA-vs-analytic mismatch that an absolute
+ * `physToDeviceY(... ± 0.5)` bar suffers under software SwiftShader (where the
+ * notch's bottom-edge lit pixel falls ~2.35 CSS px shy of analytic from AA fade +
+ * the lit threshold, not from lost data).
+ *
+ * Three layered checks, each failing loudly and distinguishably:
+ *   (a) WebGL has lit pixels at the column at all (extreme not totally lost).
+ *   (b) PRIMARY: WebGL reached-extreme is within `EXTREME_REF_MATCH_PX` of the
+ *       REFERENCE reached-extreme. Catches gross attenuation (the just-fixed spike
+ *       bug left WebGL ~49 device px short of the reference — fails by ~8×).
+ *   (c) LOOSE analytic sanity: the WebGL extreme is within
+ *       `EXTREME_ANALYTIC_MARGIN_PX` of the analytic lane edge AND in the correct
+ *       half of the lane. Catches a squashed/shifted waveform whose reference moved
+ *       in lock-step (so (b) would pass) but whose extreme is nowhere near the edge.
+ *
+ * Skips when the landmark is outside the viewport.
  */
 async function assertExtremeSurvives(
   page: Page,
@@ -515,33 +637,78 @@ async function assertExtremeSurvives(
   if (deviceX === null) return; // landmark not in this viewport → skip per spec.
 
   const xPad = EXTREME_TOLERANCE_PX * fid.dpr;
-  const probe = await probeWebglLit(
-    page,
-    deviceX - xPad,
-    deviceX + xPad + 1,
-    lane.top,
-    lane.bottom,
-  );
+  const x0 = deviceX - xPad;
+  const x1 = deviceX + xPad + 1;
+  const [webglProbe, refProbe] = await Promise.all([
+    probeWebglLit(page, x0, x1, lane.top, lane.bottom),
+    probeRefLit(page, x0, x1, lane.top, lane.bottom),
+  ]);
+
+  const kind = positive ? 'spike' : 'notch';
+
+  // (a) The extreme must exist at all in WebGL (not totally lost).
   expect(
-    probe.litCount,
-    `[FIDELITY MISMATCH] view=${view}: no lit WebGL pixels at the ` +
-      `${positive ? 'spike' : 'notch'} column (x≈${deviceX.toFixed(1)} device px) — the ` +
-      `extreme was lost. (The whole-region ACTIVE-but-BLANK guard already passed, so ` +
-      `the buffer is populated; this is a genuine spike-survival failure, not a ` +
-      `read-back race.)`,
+    webglProbe.litCount,
+    `[FIDELITY MISMATCH] view=${view}: no lit WebGL pixels at the ${kind} column ` +
+      `(x≈${deviceX.toFixed(1)} device px) — the extreme was lost. (The whole-region ` +
+      `ACTIVE-but-BLANK guard already passed, so the buffer is populated; this is a ` +
+      `genuine spike-survival failure, not a read-back race.)`,
+  ).toBeGreaterThan(0);
+  // The reference MUST have lit the extreme — if it did not, the harness/landmarks
+  // are wrong (a fixture bug), surfaced distinctly from a WebGL regression.
+  expect(
+    refProbe.litCount,
+    `view=${view}: no lit REFERENCE pixels at the ${kind} column (x≈${deviceX.toFixed(1)} ` +
+      `device px). The Canvas2D reference itself did not paint the extreme — this is a ` +
+      `harness/landmark fixture bug, not a WebGL fidelity mismatch.`,
   ).toBeGreaterThan(0);
 
-  // Expected extreme y: positive spike → near lane top (physicalMax side);
-  // notch → near lane bottom (physicalMin side).
-  const extremeValue = positive ? lane.physicalMax - 0.5 : lane.physicalMin + 0.5;
-  const expectedY = physToDeviceY(lane, extremeValue);
-  const reached = positive ? probe.minLitY : probe.maxLitY;
-  const tolerance = (EXTREME_TOLERANCE_PX + 1) * fid.dpr; // ±1px band + AA slack.
+  // For the positive spike the extreme is the TOPMOST lit pixel (minLitY); for the
+  // notch it is the BOTTOMMOST (maxLitY). Compare WebGL vs reference on the SAME edge.
+  const webglReached = positive ? webglProbe.minLitY : webglProbe.maxLitY;
+  const refReached = positive ? refProbe.minLitY : refProbe.maxLitY;
+
+  // (b) PRIMARY — reference-relative agreement. Immune to AA-vs-analytic mismatch.
+  const refMatchTol = EXTREME_REF_MATCH_PX * fid.dpr;
   expect(
-    Math.abs(reached - expectedY),
-    `view=${view}: ${positive ? 'spike' : 'notch'} lit extreme y=${reached} did not ` +
-      `reach expected y=${expectedY.toFixed(1)} (±${tolerance.toFixed(1)} device px).`,
-  ).toBeLessThanOrEqual(tolerance);
+    Math.abs(webglReached - refReached),
+    `[FIDELITY MISMATCH] view=${view}: WebGL ${kind} reached-extreme y=${webglReached} ` +
+      `diverges from the Canvas2D reference's reached-extreme y=${refReached} by ` +
+      `${Math.abs(webglReached - refReached).toFixed(1)} device px (tol ` +
+      `±${refMatchTol.toFixed(1)}). WebGL is not tracking the reference at the extreme — ` +
+      `a min/max-preserving pyramid MUST keep the 1-sample ${kind}; gross attenuation ` +
+      `(the WebGL spike bug left WebGL tens of px short of the reference) fails here.`,
+  ).toBeLessThanOrEqual(refMatchTol);
+
+  // (c) LOOSE analytic sanity — catches a squashed/shifted waveform whose reference
+  // moved with it (so (b) passes). The analytic extreme y is the band edge; require
+  // the WebGL extreme to be near it AND on the correct side of lane centre.
+  const extremeValue = positive ? lane.physicalMax - 0.5 : lane.physicalMin + 0.5;
+  const analyticY = physToDeviceY(lane, extremeValue);
+  const analyticMargin = EXTREME_ANALYTIC_MARGIN_PX * fid.dpr;
+  expect(
+    Math.abs(webglReached - analyticY),
+    `[FIDELITY MISMATCH] view=${view}: WebGL ${kind} reached-extreme y=${webglReached} is ` +
+      `${Math.abs(webglReached - analyticY).toFixed(1)} device px from the analytic lane ` +
+      `edge y=${analyticY.toFixed(1)} (loose margin ±${analyticMargin.toFixed(1)}). Even ` +
+      `tracking the reference, the extreme is nowhere near the band edge — the waveform ` +
+      `looks squashed or vertically shifted.`,
+  ).toBeLessThanOrEqual(analyticMargin);
+
+  const laneMidY = (lane.innerTop + lane.innerBottom) / 2;
+  if (positive) {
+    expect(
+      webglReached,
+      `[FIDELITY MISMATCH] view=${view}: WebGL spike extreme y=${webglReached} is below ` +
+        `lane centre y=${laneMidY.toFixed(1)} — a positive spike must reach the TOP half.`,
+    ).toBeLessThan(laneMidY);
+  } else {
+    expect(
+      webglReached,
+      `[FIDELITY MISMATCH] view=${view}: WebGL notch extreme y=${webglReached} is above ` +
+        `lane centre y=${laneMidY.toFixed(1)} — a negative notch must reach the BOTTOM half.`,
+    ).toBeGreaterThan(laneMidY);
+  }
 }
 
 /** Assert no WebGL pixels bridge the interior columns of the NaN gap at mid-lane. */
@@ -569,12 +736,23 @@ async function assertGapBreaks(
   // would paint. (At the gap, the waveform should be absent entirely.)
   const midY = (lane.innerTop + lane.innerBottom) / 2;
   const band = 4 * fid.dpr;
-  const probe = await probeWebglLit(page, interiorStart, interiorEnd, midY - band, midY + band);
+  const [probe, refProbe] = await Promise.all([
+    probeWebglLit(page, interiorStart, interiorEnd, midY - band, midY + band),
+    probeRefLit(page, interiorStart, interiorEnd, midY - band, midY + band),
+  ]);
+  // Reference-relative: the WebGL gap interior must be at least as empty as the
+  // reference's. The reference breaks the waveform at the NaN run, so refProbe
+  // should be 0; allowing `refProbe.litCount` as the bar means that if the
+  // reference rasterizer ever leaves a stray mid-band AA pixel we do not punish
+  // WebGL for matching it. In practice both are 0 — a real bridging line (WebGL
+  // interpolating across the NaN run) lights the whole interior strip, far above
+  // any reference AA speck.
   expect(
     probe.litCount,
-    `gap-break: ${probe.litCount} lit WebGL pixels bridge the gap interior — the ` +
-      `NaN run must break the waveform, matching the reference.`,
-  ).toBe(0);
+    `gap-break: ${probe.litCount} lit WebGL pixels bridge the gap interior ` +
+      `(reference has ${refProbe.litCount} there) — the NaN run must break the waveform, ` +
+      `matching the reference.`,
+  ).toBeLessThanOrEqual(refProbe.litCount);
 }
 
 /**
