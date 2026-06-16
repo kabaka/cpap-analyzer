@@ -25,7 +25,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
-import { SignalRenderer } from '@/components/charts/canvas/SignalRenderer';
+import { HybridSignalRenderer } from '@/components/charts/HybridSignalRenderer';
+import { parseCssColorToRgba } from '@/components/charts/cssColor';
 import {
   computeLaneLayout,
   type DetectionEpisode,
@@ -35,6 +36,7 @@ import {
   type SignalChannel,
   type ViewportState,
 } from '@/components/charts/canvas/SignalRenderer';
+import type { RGBA } from '@/components/charts/webgl';
 import {
   buildDecimationPyramid,
   selectPyramidLevel,
@@ -385,8 +387,13 @@ export default function SignalViewer() {
   // Transparent overlay canvas stacked over the base; holds only the crosshair so
   // pointer moves repaint it alone (never the waveform stack).
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Transparent WebGL2 waveform layer stacked between the base chrome canvas and
+  // the crosshair overlay (ADR 0019). Only the dense-CPAP waveforms paint here;
+  // when WebGL2 is unavailable / its context is lost the hybrid renderer paints
+  // the waveforms on the base canvas instead (automatic fallback).
+  const waveformCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<SignalRenderer | null>(null);
+  const rendererRef = useRef<HybridSignalRenderer | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
   const opfsRef = useRef<OPFSService | null>(null);
 
@@ -880,9 +887,56 @@ export default function SignalViewer() {
     };
   }, [sessionId, opfsSupported]);
 
-  // ── Initialize renderer + ResizeObserver via callback ref ────
+  // ── Initialize hybrid renderer + ResizeObserver via callback refs ────
+  //
+  // The hybrid renderer (ADR 0019) composes a base Canvas2D chrome canvas and a
+  // transparent WebGL2 waveform canvas, so it must be constructed once BOTH are
+  // mounted (WebGL needs its canvas at init). Each canvas callback ref records
+  // its element and calls `tryInitRenderer`, which constructs the renderer the
+  // first time both are present. Mount order between the refs is not guaranteed.
 
-  const canvasCallbackRef = useCallback((canvas: HTMLCanvasElement | null) => {
+  /**
+   * Stable per-channel colour resolver for the WebGL waveform layer. The channel
+   * already carries a resolved colour STRING (via `cpapChannelMeta`); we parse it
+   * to RGBA here — no getComputedStyle inside the renderer, re-resolved on theme
+   * change because the channel's resolved colour re-resolves there.
+   */
+  const colorResolver = useCallback((ch: SignalChannel): RGBA => parseCssColorToRgba(ch.color), []);
+
+  const tryInitRenderer = useCallback(() => {
+    const base = canvasRef.current;
+    const waveform = waveformCanvasRef.current;
+    // Need the base canvas at minimum; the waveform canvas may be null (then the
+    // hybrid runs Canvas2D-only, which is the same automatic fallback path).
+    if (!base) return;
+    if (rendererRef.current) return; // already constructed
+
+    const renderer = new HybridSignalRenderer(base, waveform, colorResolver);
+    rendererRef.current = renderer;
+
+    if (overlayCanvasRef.current) {
+      renderer.setOverlayCanvas(overlayCanvasRef.current);
+    }
+
+    const wrapper = base.parentElement;
+    if (!wrapper) return;
+
+    if (!observerRef.current) {
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const { width } = entry.contentRect;
+          if (width > 0) setWrapperWidth(width);
+        }
+      });
+      observerRef.current = observer;
+      observer.observe(wrapper);
+
+      const rect = wrapper.getBoundingClientRect();
+      if (rect.width > 0) setWrapperWidth(rect.width);
+    }
+  }, [colorResolver]);
+
+  const teardownRenderer = useCallback(() => {
     if (observerRef.current) {
       observerRef.current.disconnect();
       observerRef.current = null;
@@ -891,38 +945,30 @@ export default function SignalViewer() {
       rendererRef.current.dispose();
       rendererRef.current = null;
     }
-
-    canvasRef.current = canvas;
-    if (!canvas) return;
-
-    const renderer = new SignalRenderer(canvas);
-    rendererRef.current = renderer;
-
-    // Wire any already-mounted overlay (mount order between the two canvas
-    // callback refs is not guaranteed; the overlay ref also wires up if it
-    // mounts after the renderer is created).
-    if (overlayCanvasRef.current) {
-      renderer.setOverlayCanvas(overlayCanvasRef.current);
-    }
-
-    const wrapper = canvas.parentElement;
-    if (!wrapper) return;
-
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width } = entry.contentRect;
-        if (width > 0) setWrapperWidth(width);
-      }
-    });
-    observerRef.current = observer;
-    observer.observe(wrapper);
-
-    const rect = wrapper.getBoundingClientRect();
-    if (rect.width > 0) setWrapperWidth(rect.width);
   }, []);
 
+  const canvasCallbackRef = useCallback(
+    (canvas: HTMLCanvasElement | null) => {
+      canvasRef.current = canvas;
+      if (!canvas) {
+        teardownRenderer();
+        return;
+      }
+      tryInitRenderer();
+    },
+    [tryInitRenderer, teardownRenderer],
+  );
+
+  const waveformCanvasCallbackRef = useCallback(
+    (canvas: HTMLCanvasElement | null) => {
+      waveformCanvasRef.current = canvas;
+      if (canvas) tryInitRenderer();
+    },
+    [tryInitRenderer],
+  );
+
   // Overlay canvas callback ref. Stores the element and (when the renderer
-  // already exists) attaches it immediately; otherwise canvasCallbackRef wires it
+  // already exists) attaches it immediately; otherwise tryInitRenderer wires it
   // when the renderer is created. On unmount (null) it detaches from the renderer.
   const overlayCanvasCallbackRef = useCallback((canvas: HTMLCanvasElement | null) => {
     overlayCanvasRef.current = canvas;
@@ -1161,6 +1207,59 @@ export default function SignalViewer() {
       // consistent, since they derive from the same fields. Fall back to the EDF
       // declared range when no hybrid domain is available (e.g. pre-extent).
       const domain = cpapDisplayDomains.get(laneName);
+      const physicalMin = domain?.min ?? desc.physicalMin;
+      const physicalMax = domain?.max ?? desc.physicalMax;
+
+      // ── WebGL whole-level geometry (ADR 0019, Stage 2) ──────────────────
+      //
+      // For the WebGL2 waveform layer we attach the WHOLE chosen pyramid level (not
+      // the per-viewport slice) in a STABLE, absolute session-relative ms domain,
+      // so pan/zoom are uniform-only (no per-frame re-upload). The Canvas2D path
+      // ignores `webglLane` and keeps drawing the pre-sliced `data`/`envelope`
+      // above, so the fallback is byte-identical. We only attach it once a pyramid
+      // exists for this lane (before then the hybrid renderer runs Canvas2D-only
+      // for this lane, drawing the polyline/envelope above). The chosen level
+      // matches the SAME selection the Canvas2D path uses (same targets), so the
+      // envelope-vs-line boundary and LOD are consistent across both layers.
+      let webglLane: SignalChannel['webglLane'] | undefined;
+      if (pyramid && totalSamples > 0 && totalDurationMs > 0) {
+        const msPerSampleBase = totalDurationMs / totalSamples;
+        if (useEnvelope) {
+          const envTarget = columns * ENVELOPE_SOURCE_OVERSCAN;
+          const esel = selectPyramidLevel(pyramid, startSample, endSample, envTarget);
+          const level = pyramid.levels[esel.levelIndex];
+          // Envelope mode requires an interleaved-extrema level (levelIndex ≥ 1);
+          // selectPyramidLevel only returns level 0 when zoomed in, where
+          // useEnvelope is false — so this is always a real extrema level here.
+          if (level && esel.levelIndex >= 1) {
+            webglLane = {
+              mode: 'envelope',
+              levelData: level.data,
+              levelIndex: esel.levelIndex,
+              dataXPerElementMs: level.factor * msPerSampleBase,
+              dataXStartMs: 0,
+              plotWidthColumns: columns,
+              physRange: physicalMax - physicalMin,
+            };
+          }
+        }
+        if (!webglLane) {
+          // Line mode: upload the whole level chosen for `targetPoints`.
+          const lsel = selectPyramidLevel(pyramid, startSample, endSample, targetPoints);
+          const level = pyramid.levels[lsel.levelIndex];
+          if (level) {
+            webglLane = {
+              mode: 'line',
+              levelData: level.data,
+              levelIndex: lsel.levelIndex,
+              dataXPerElementMs: level.factor * msPerSampleBase,
+              dataXStartMs: 0,
+              plotWidthColumns: columns,
+              physRange: physicalMax - physicalMin,
+            };
+          }
+        }
+      }
 
       return {
         name: laneName,
@@ -1168,11 +1267,12 @@ export default function SignalViewer() {
         sampleRate: effectiveSampleRate,
         unit: desc.unit,
         color: meta.resolvedColor,
-        physicalMin: domain?.min ?? desc.physicalMin,
-        physicalMax: domain?.max ?? desc.physicalMax,
+        physicalMin,
+        physicalMax,
         kind: 'cpap',
         render: 'line',
         ...(envelope ? { envelope } : {}),
+        ...(webglLane ? { webglLane } : {}),
       };
     },
     [cpapChannelMeta, cpapDisplayDomains, totalDurationMs],
@@ -1388,16 +1488,64 @@ export default function SignalViewer() {
   renderRangeDirectRef.current = renderRangeDirect;
 
   /**
+   * Latest CSS-px pan delta (`clientX - panStart.x`) for the active drag, read by
+   * the pan paint path so the chrome layer is CSS-translated to follow the drag
+   * instead of being re-rendered (ADR 0019 trap fix). Reset to 0 between gestures.
+   */
+  const panDxRef = useRef(0);
+
+  /**
+   * Render a pan FRAME via the hybrid renderer's CSS-translate-chrome + WebGL-
+   * uniform path (ADR 0019). The chrome canvas is translated by `dxPx` (no
+   * re-render → no per-frame texture re-upload) and the WebGL waveform pans via
+   * uniforms. Keeps `lastViewportRef`/`lastOptionsRef` coherent and re-syncs the
+   * crosshair overlay, exactly like {@link renderRangeDirect}. On the Canvas2D
+   * fallback the renderer re-renders the chrome at the live viewport instead.
+   */
+  const renderRangeDuringPan = useCallback(
+    (range: ViewportRange, dxPx: number): ViewportState | null => {
+      const renderer = rendererRef.current;
+      if (!renderer) return null;
+      const viewportState = buildViewportState(range);
+      if (!viewportState) return null;
+      const options = buildRenderOptions();
+      lastViewportRef.current = viewportState;
+      lastOptionsRef.current = options;
+      renderer.renderDuringPan(viewportState, options, dxPx);
+      if (crosshairXRef.current !== null) {
+        renderer.renderOverlay(viewportState, {
+          ...options,
+          showCrosshair: true,
+          crosshairX: crosshairXRef.current,
+        });
+      }
+      return viewportState;
+    },
+    [buildViewportState, buildRenderOptions],
+  );
+  const renderRangeDuringPanRef = useRef(renderRangeDuringPan);
+  renderRangeDuringPanRef.current = renderRangeDuringPan;
+
+  /**
    * Lazily create (once) the shared rAF-coalescing paint scheduler used by BOTH
    * the wheel-zoom and drag-pan hot paths. The paint callback routes through
    * `renderRangeDirectRef` so it always invokes the latest `renderRangeDirect`
    * (which keeps `lastViewportRef`/overlay coherent), never a stale closure.
+   *
+   * During an ACTIVE pan it routes to the pan path instead (CSS-translate chrome +
+   * WebGL uniform), reading the latest `panDxRef` so the chrome tracks the drag
+   * without a per-frame re-render. `panStartRef !== null` distinguishes a pan from
+   * a wheel-zoom (which never sets it).
    */
   const getPaintScheduler = useCallback((): FramePaintScheduler => {
     let scheduler = paintSchedulerRef.current;
     if (!scheduler) {
       scheduler = createFramePaintScheduler((range) => {
-        renderRangeDirectRef.current?.(range);
+        if (panStartRef.current) {
+          renderRangeDuringPanRef.current(range, panDxRef.current);
+        } else {
+          renderRangeDirectRef.current?.(range);
+        }
       });
       paintSchedulerRef.current = scheduler;
     }
@@ -1748,6 +1896,10 @@ export default function SignalViewer() {
       if (e.button !== 0) return;
       setIsPanning(true);
       panStartRef.current = { x: e.clientX, viewport: { ...viewport } };
+      panDxRef.current = 0;
+      // Enter CSS-translate-chrome pan mode (ADR 0019): while the drag is active
+      // the chrome layer is translated, not re-rendered, so it never re-uploads.
+      rendererRef.current?.beginPan();
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
     [viewport],
@@ -1792,12 +1944,19 @@ export default function SignalViewer() {
         }
         const range = { startTime: newStart, endTime: newEnd };
         liveViewportRef.current = range;
-        // crosshairXRef is already set above; the scheduled renderRangeDirect
-        // picks it up. PAN HOT PATH now mirrors the wheel path: high-rate
-        // pointers (120–1000 Hz) fire many moves per displayed frame, so we
-        // coalesce to AT MOST ONE renderRangeDirect per animation frame via the
-        // shared scheduler instead of painting synchronously on every move. The
-        // final frame is painted + committed once on pointerup/leave.
+        // EFFECTIVE chrome translate (ADR 0019 trap fix): the chrome canvas is
+        // CSS-translated to follow the pan WITHOUT a re-render. It must track the
+        // ACTUAL viewport delta (which clamps at the session edges), not the raw
+        // pointer dx — otherwise the chrome would keep sliding past the edge while
+        // the (clamped) waveform stops. Derive it from the committed viewport
+        // delta so chrome and waveform stay locked together.
+        panDxRef.current =
+          vpDuration > 0 ? -((newStart - startVP.startTime) / vpDuration) * plotWidth : 0;
+        // crosshairXRef is already set above; the scheduled pan paint picks it up.
+        // PAN HOT PATH: high-rate pointers (120–1000 Hz) fire many moves per
+        // displayed frame, so we coalesce to AT MOST ONE pan frame per animation
+        // frame via the shared scheduler. While a pan is active the scheduler
+        // routes to renderRangeDuringPan (CSS-translate chrome + WebGL uniform).
         getPaintScheduler().schedule(range);
         return;
       }
@@ -1820,6 +1979,12 @@ export default function SignalViewer() {
   const handlePointerUp = useCallback(() => {
     setIsPanning(false);
     panStartRef.current = null;
+    panDxRef.current = 0;
+    // Settle the pan: flush any pending coalesced pan frame, then exit pan mode
+    // (repaints chrome at the settled viewport + clears the CSS translate, flash-
+    // free), then commit the viewport to React state.
+    paintSchedulerRef.current?.cancel();
+    rendererRef.current?.endPan();
     commitLiveViewport();
   }, [commitLiveViewport]);
 
@@ -1831,9 +1996,13 @@ export default function SignalViewer() {
       hoveredKeyRef.current = '';
       setHoveredRegion(EMPTY_HOVERED_REGION);
     }
-    // If a pan was in flight (pointer left the wrapper / capture lost), commit
-    // its settled viewport before clearing so the displayed window persists.
+    // If a pan was in flight (pointer left the wrapper / capture lost), settle it
+    // (exit pan mode → repaint chrome at the settled viewport + clear translate)
+    // and commit before clearing so the displayed window persists.
     if (isPanning) {
+      panDxRef.current = 0;
+      paintSchedulerRef.current?.cancel();
+      rendererRef.current?.endPan();
       commitLiveViewport();
       setIsPanning(false);
       panStartRef.current = null;
@@ -2301,6 +2470,20 @@ export default function SignalViewer() {
           aria-label={canvasDescription}
           onKeyDown={handleCanvasKeyDown}
           onBlur={handleCanvasBlur}
+        />
+
+        {/* Transparent WebGL2 waveform layer (ADR 0019), stacked over the base
+            chrome canvas and beneath the crosshair overlay. Only the dense-CPAP
+            waveforms paint here; everything else (grid, axes, markers, ribbon,
+            step/wearable) stays on the base canvas. pointer-events:none so events
+            reach the wrapper; aria-hidden because the base canvas carries the
+            accessible description. When WebGL2 is unavailable or its context is
+            lost the hybrid renderer paints the waveforms on the base canvas
+            instead, so this layer simply stays transparent. */}
+        <canvas
+          ref={waveformCanvasCallbackRef}
+          className={styles.waveformCanvas}
+          aria-hidden="true"
         />
 
         {/* Transparent crosshair overlay, stacked pixel-perfectly over the base
