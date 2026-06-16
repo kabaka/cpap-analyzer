@@ -15,12 +15,12 @@ The remaining items are minor/nit and may be deferred to a fast-follow.
 
 ## Gate results (run locally)
 
-| Gate | Result |
-|---|---|
-| `npx tsc --noEmit` | **PASS** (exit 0, no errors) |
-| `npx eslint .` | **PASS** (0 errors, 34 warnings) |
-| `npx vitest run` | **PASS** (118 files, 2321 tests, all green) |
-| `npm run build` | **PASS** (built in ~1.6 s) |
+| Gate               | Result                                      |
+| ------------------ | ------------------------------------------- |
+| `npx tsc --noEmit` | **PASS** (exit 0, no errors)                |
+| `npx eslint .`     | **PASS** (0 errors, 34 warnings)            |
+| `npx vitest run`   | **PASS** (118 files, 2321 tests, all green) |
+| `npm run build`    | **PASS** (built in ~1.6 s)                  |
 
 The 34 ESLint warnings are pre-existing-style: `no-console` in `googlehealth/parsers.ts` (sibling import
 feature, intentional malformed-data logging), one `react-hooks/exhaustive-deps` in `useWearableLanes.ts`,
@@ -122,4 +122,5 @@ and `react-refresh` in test-utils. **None are in the uncertainty feature.**
 - No variance double-counting (median+IQR replaced the incoherent median+SEM combination).
 
 ## Escalations
+
 None required. No security, performance, or UX regression observed in the feature surface.

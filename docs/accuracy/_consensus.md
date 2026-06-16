@@ -25,12 +25,12 @@ consumers (`ConfidenceBar`, `SignalViewer`, breathing analysis).
 
 ## D2 — Canonical tier → label → icon map (resolves UX vs UI conflict)
 
-| Tier | Chip shown? | Label | Non-color cue (icon shape) |
-|------|-------------|-------|----------------------------|
-| `high` | **No chip** — absence is the trust signal | — | — |
-| `moderate` | Only when decision-relevant (see D6) | "Estimate" | outline triangle |
-| `low` | Yes, on soft metrics | "Modeled" | hexagon (reuses the existing "inferred/detection" semantics) |
-| data-quality flag | Yes, when the flag is active | e.g. "Leak-affected" | filled warning `!` |
+| Tier              | Chip shown?                               | Label                | Non-color cue (icon shape)                                   |
+| ----------------- | ----------------------------------------- | -------------------- | ------------------------------------------------------------ |
+| `high`            | **No chip** — absence is the trust signal | —                    | —                                                            |
+| `moderate`        | Only when decision-relevant (see D6)      | "Estimate"           | outline triangle                                             |
+| `low`             | Yes, on soft metrics                      | "Modeled"            | hexagon (reuses the existing "inferred/detection" semantics) |
+| data-quality flag | Yes, when the flag is active              | e.g. "Leak-affected" | filled warning `!`                                           |
 
 Reliability/data-quality colours use the **violet/neutral** axis
 (`--color-detection` / `-tecsa-*` family), never the red/orange severity
@@ -80,7 +80,7 @@ sleep.
 - A chip appears **only** when it changes a decision: low-tier soft metrics,
   or an active data-quality flag, or a single night near a category boundary.
   Never on high-tier metrics. No chip on a stable, well-sampled value.
-- **A `low` tier lowers the *precision* claim; it must NEVER silence or
+- **A `low` tier lowers the _precision_ claim; it must NEVER silence or
   visually bury a rising trend.** Specifically: a rising central
   (Clear-Airway) index must still surface a visible
   "discuss with your clinician" prompt even though the split is `low`
@@ -112,17 +112,17 @@ Thresholds (conventions, documented): rare-class split needs **≥20 total and
 
 Presentation-layer only (`formatMetric`); never round stored values.
 
-| Metric | Resolution |
-|--------|-----------|
-| AHI / sub-indices / RDI / ODI | 1 decimal /h |
-| Pressure (all stats) | 1 decimal cmH₂O (rationale: ISO 80601-2-70, **not** the unverified 0.2 resolution figure) |
-| Leak median/P95/max | integer L/min |
-| Tidal volume | integer mL |
-| Minute ventilation | 1 decimal L/min |
-| Respiratory rate, SpO₂ mean/min | integer |
-| **T90** | **integer minutes** (stats correction; was 1 dp) |
-| Usage | 1 decimal h · Compliance | integer % |
-| Event counts | exact integer |
+| Metric                          | Resolution                                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------------------- | --------- |
+| AHI / sub-indices / RDI / ODI   | 1 decimal /h                                                                              |
+| Pressure (all stats)            | 1 decimal cmH₂O (rationale: ISO 80601-2-70, **not** the unverified 0.2 resolution figure) |
+| Leak median/P95/max             | integer L/min                                                                             |
+| Tidal volume                    | integer mL                                                                                |
+| Minute ventilation              | 1 decimal L/min                                                                           |
+| Respiratory rate, SpO₂ mean/min | integer                                                                                   |
+| **T90**                         | **integer minutes** (stats correction; was 1 dp)                                          |
+| Usage                           | 1 decimal h · Compliance                                                                  | integer % |
+| Event counts                    | exact integer                                                                             |
 
 Fix the real offenders: `ReportService.ts:1072`, `export.worker.ts:124-125`,
 `PressureOptimization.tsx:304` (AHI at 2–3 dp). Correlation coefficients (r)
@@ -139,6 +139,7 @@ constant flagged for `resmed-specialist` verification.
 ## D11 — First-PR scope (single PR on `claude/peaceful-mccarthy-takofw`)
 
 **Must-have:**
+
 1. `formatMetric` precision helper + fix the three real offenders + T90.
 2. Shared `reliability` module: `ReliabilityTier`, `reliabilityTier(metricId, ctx)`, leak-gate constants, data-quality flags.
 3. Stats utils: `poissonRateCI`, `inverseChiSquare`/`lowerGammaRegularized`, rolling **median + IQR** band util — with the D4 verified test vectors.

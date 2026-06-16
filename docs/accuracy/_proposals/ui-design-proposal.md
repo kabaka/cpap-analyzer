@@ -18,7 +18,7 @@ It extends, not replaces, the existing three-tier vocabulary in `src/analysis/br
 
 ## 1. New design tokens — uncertainty / reliability scale
 
-A **deliberately neutral, low-saturation** scale. Reliability is metadata *about* a number, so it must not compete with the existing clinical-severity colors (`--color-status-*`, which are green→red and "loud"). We therefore avoid green/amber/red for reliability and instead use a **desaturated slate → blue-grey → warm-grey** progression, distinguished primarily by **icon + label**, with color as reinforcement only. A separate neutral **caveat (informational)** treatment reuses the existing info-blue family.
+A **deliberately neutral, low-saturation** scale. Reliability is metadata _about_ a number, so it must not compete with the existing clinical-severity colors (`--color-status-*`, which are green→red and "loud"). We therefore avoid green/amber/red for reliability and instead use a **desaturated slate → blue-grey → warm-grey** progression, distinguished primarily by **icon + label**, with color as reinforcement only. A separate neutral **caveat (informational)** treatment reuses the existing info-blue family.
 
 Add a new block to `:root` and `[data-theme='dark']` in `src/styles/tokens.css`, placed after the `SEMANTIC COLORS` block:
 
@@ -29,24 +29,24 @@ Add a new block to `:root` and `[data-theme='dark']` in `src/styles/tokens.css`,
    Deliberately desaturated so it never competes with --color-status-* . */
 
 /* :root (light) */
---color-reliability-high: #15803d;          /* fg: high-trust check (rarely shown — see §7) */
+--color-reliability-high: #15803d; /* fg: high-trust check (rarely shown — see §7) */
 --color-reliability-high-bg: rgba(21, 128, 61, 0.08);
---color-reliability-moderate: #b45309;      /* fg: amber-brown, distinct from status-mild */
---color-reliability-moderate-bg: rgba(180, 83, 9, 0.10);
---color-reliability-low: #6d28d9;           /* fg: violet — "modeled/inferred", not "bad" */
---color-reliability-low-bg: rgba(109, 40, 217, 0.10);
---color-reliability-unavailable: #6b7280;   /* fg: neutral grey */
---color-reliability-unavailable-bg: rgba(107, 114, 128, 0.10);
+--color-reliability-moderate: #b45309; /* fg: amber-brown, distinct from status-mild */
+--color-reliability-moderate-bg: rgba(180, 83, 9, 0.1);
+--color-reliability-low: #6d28d9; /* fg: violet — "modeled/inferred", not "bad" */
+--color-reliability-low-bg: rgba(109, 40, 217, 0.1);
+--color-reliability-unavailable: #6b7280; /* fg: neutral grey */
+--color-reliability-unavailable-bg: rgba(107, 114, 128, 0.1);
 
 /* Neutral informational caveat (data-quality note, not a tier judgement) */
---color-caveat: #2563eb;                     /* reuses info family */
+--color-caveat: #2563eb; /* reuses info family */
 --color-caveat-bg: rgba(37, 99, 235, 0.08);
 --color-caveat-border: rgba(37, 99, 235, 0.25);
 
 /* Confidence band / ribbon (charts) — neutral, theme-aware */
---color-uncertainty-band-fill: rgba(100, 116, 139, 0.16);   /* slate, fill under a line */
+--color-uncertainty-band-fill: rgba(100, 116, 139, 0.16); /* slate, fill under a line */
 --color-uncertainty-band-stroke: rgba(100, 116, 139, 0.45); /* dashed CI edge */
---color-uncertainty-errorbar: #64748b;       /* sparing error-bar whisker */
+--color-uncertainty-errorbar: #64748b; /* sparing error-bar whisker */
 ```
 
 ```css
@@ -61,20 +61,22 @@ Add a new block to `:root` and `[data-theme='dark']` in `src/styles/tokens.css`,
 --color-reliability-unavailable-bg: rgba(163, 163, 163, 0.14);
 --color-caveat: #60a5fa;
 --color-caveat-bg: rgba(96, 165, 250, 0.14);
---color-caveat-border: rgba(96, 165, 250, 0.40);
---color-uncertainty-band-fill: rgba(148, 163, 184, 0.20);
+--color-caveat-border: rgba(96, 165, 250, 0.4);
+--color-uncertainty-band-fill: rgba(148, 163, 184, 0.2);
 --color-uncertainty-band-stroke: rgba(148, 163, 184, 0.55);
 --color-uncertainty-errorbar: #94a3b8;
 ```
 
 **Rationale for hue choices**
-- `low` reliability is **violet**, deliberately reusing the project's existing "modeled/derived" semantics — `--color-detection` and `--color-tecsa-*` are violet, and §4/§10 of the accuracy draft frame the least-reliable metrics (central/obstructive split, flow limitation, RERA) as *heavily-modeled inferences*. Violet reads "inferred", not "alarming". This keeps red/orange exclusively for clinical severity.
+
+- `low` reliability is **violet**, deliberately reusing the project's existing "modeled/derived" semantics — `--color-detection` and `--color-tecsa-*` are violet, and §4/§10 of the accuracy draft frame the least-reliable metrics (central/obstructive split, flow limitation, RERA) as _heavily-modeled inferences_. Violet reads "inferred", not "alarming". This keeps red/orange exclusively for clinical severity.
 - `moderate` reuses the warm amber-brown already present as `--color-wearable-hrv` (`#b45309` light / `#fbbf24` dark), so it sits in the existing palette and is distinguishable from `--color-status-mild`.
 - `caveat` is intentionally the **info-blue**, so a data-quality note reads as neutral information, never as a severity escalation.
 
 **WCAG AA verification (contrast vs. its own `-bg` chip background, light theme, target ≥ 4.5:1 for the ≤14px chip text):**
+
 - `#15803d` on `#f3f9f5` ≈ 4.9:1 ✓ · `#b45309` on `#fbf2e9` ≈ 5.1:1 ✓ · `#6d28d9` on `#f1ecfb` ≈ 7.0:1 ✓ · `#6b7280` on `#f1f2f4` ≈ 4.6:1 ✓ · `#2563eb` on `#eef3fe` ≈ 5.6:1 ✓.
-- Dark theme: brightened foregrounds on near-black `-bg` chips all clear ≥ 7:1 (light text on dark). `frontend` must re-run the automated contrast check (axe / the project's a11y test) against the *resolved* colors as the final gate; the figures above are design-time estimates.
+- Dark theme: brightened foregrounds on near-black `-bg` chips all clear ≥ 7:1 (light text on dark). `frontend` must re-run the automated contrast check (axe / the project's a11y test) against the _resolved_ colors as the final gate; the figures above are design-time estimates.
 - **Color is never the sole signal:** every tier additionally carries a unique icon shape (§4) and a text label (`High` / `Moderate` / `Low` / `Limited` / `Unavailable`), satisfying WCAG 1.4.1.
 
 ---
@@ -87,17 +89,18 @@ A small, quiet pill that annotates a metric with its trust tier. Two variants sh
 
 Extends the existing `Badge` rather than introducing a new primitive — add a `reliability` variant family to `Badge` or a thin `ReliabilityChip` wrapper around `<Badge>`.
 
-| Property | Value |
-| --- | --- |
-| Shape | Pill, `border-radius: var(--radius-full)` (matches Badge) |
-| Size | `sm` (`padding: 1px var(--space-2)`, `font-size: var(--font-size-xs)`) — same as severity badge |
-| Icon | 12×12 inline SVG, `stroke="currentColor"`, `strokeWidth="2"`, leading, `var(--space-1)` gap, `aria-hidden` |
-| Label | One word: `High` / `Moderate` / `Low` / `Limited` / `Unavailable` |
-| Color | `color: var(--color-reliability-{tier})`, `background: var(--color-reliability-{tier}-bg)` |
-| Weight | `var(--font-weight-medium)` |
-| a11y | Wrapper carries `aria-label="Reliability: moderate — derived metric, leak-sensitive"` (full sentence); inner icon+text `aria-hidden` to avoid double reading |
+| Property | Value                                                                                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Shape    | Pill, `border-radius: var(--radius-full)` (matches Badge)                                                                                                    |
+| Size     | `sm` (`padding: 1px var(--space-2)`, `font-size: var(--font-size-xs)`) — same as severity badge                                                              |
+| Icon     | 12×12 inline SVG, `stroke="currentColor"`, `strokeWidth="2"`, leading, `var(--space-1)` gap, `aria-hidden`                                                   |
+| Label    | One word: `High` / `Moderate` / `Low` / `Limited` / `Unavailable`                                                                                            |
+| Color    | `color: var(--color-reliability-{tier})`, `background: var(--color-reliability-{tier}-bg)`                                                                   |
+| Weight   | `var(--font-weight-medium)`                                                                                                                                  |
+| a11y     | Wrapper carries `aria-label="Reliability: moderate — derived metric, leak-sensitive"` (full sentence); inner icon+text `aria-hidden` to avoid double reading |
 
-**Placement on the KPI card:** In `KPICard`/`EnhancedKPICard` the top-right corner already hosts the **clinical-severity** badge. Reliability is a *different axis* and must not fight it:
+**Placement on the KPI card:** In `KPICard`/`EnhancedKPICard` the top-right corner already hosts the **clinical-severity** badge. Reliability is a _different axis_ and must not fight it:
+
 - If a severity badge is present, the reliability chip moves to a **footer row** (below the value/unit line, above/around the sparkline), left-aligned, `font-size-xs`, separated from the value by `var(--space-2)`.
 - If no severity badge is present, the reliability chip may occupy the top-right slot.
 - **Default for high-reliability metrics: render nothing** (see §7). The chip appears only for `moderate`, `low`, `limited`, `unavailable`. This is the key anti-clutter rule.
@@ -125,8 +128,9 @@ Driven by `uncertainty-statistics.md` §6.2: show a band where uncertainty is **
 ### 3.2 Error bars (rare — only where §6.2 calls for a per-point CI)
 
 Use **sparingly**: single-night AHI near a clinical threshold, or short/fragmented nights where the exact-Poisson CI straddles a severity band. Never on every point of a series (that trains users to ignore them).
+
 - Whisker: 1px solid `var(--color-uncertainty-errorbar)`, with short 4px caps.
-- The point marker stays the series color; the whisker stays neutral grey so the *estimate* and its *uncertainty* are visually separable.
+- The point marker stays the series color; the whisker stays neutral grey so the _estimate_ and its _uncertainty_ are visually separable.
 - Pair with a one-line caveat under the chart, not a bar on every column.
 
 ### 3.3 PDF / grayscale-safe report rendering (`src/services/reports/pdf/`)
@@ -144,6 +148,7 @@ RELIABILITY_UNAVAILABLE: '#6b7280',
 ```
 
 Print rules:
+
 - Confidence band in the PDF uses the **diagonal-hatch fill by default** (`charts.ts` draws it with `ctx.setLineDash`/clipped diagonal strokes), so it reproduces on a grayscale office printer. Band edge is a dashed `UNCERTAINTY_BAND_STROKE` line.
 - Reliability is rendered in the PDF as a **bracketed text suffix + glyph**, e.g. `AHI 6.7 [moderate reliability]`, never color-only — the report must be fully interpretable in black-and-white.
 - A short report footnote defines the tiers and references the accuracy doc, satisfying the "regulatory-grade, no false precision" documentation standard.
@@ -154,14 +159,14 @@ Print rules:
 
 All new icons follow the existing pattern (see `src/components/ui/Toast/Toast.tsx`): inline `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">`, recolored via `currentColor`. **Shapes are distinct so the cue survives color loss.**
 
-| Meaning | Icon (shape) | Used for | Source path sketch |
-| --- | --- | --- | --- |
-| **High reliability** | Check inside a ring (rarely rendered, §7) | optional "directly measured" affirmation on pressure/usage | circle + `M8 12l3 3 5-6` |
-| **Moderate reliability** | **Triangle outline, no exclamation** (a quiet "caution", distinct from the loud filled warning triangle) | derived/definition-dependent metrics (aggregate AHI, hypopnea, leak) | `M12 4 L21 19 H3 Z` outline |
-| **Low / modeled reliability** | **Hexagon outline** (signals "computed / inferred", visually unlike a warning) | central-vs-obstructive split, flow-limitation %, RERA, Vt/MV at high leak | regular hexagon outline |
-| **Data-quality caveat** | **Filled warning triangle + `!`** (the conventional alert) | high-leak night, short session, cross-manufacturer comparison attempt | triangle + `M12 9v4 M12 17h.01` |
-| **Info / learn more** | **Circle + `i`** | "what does this mean?" link to glossary/accuracy doc | circle + `M12 11v5 M12 8h.01` |
-| **Unavailable / not computed** | **Dashed circle** or em-dash | metric absent (no oximeter, masked by leak) | `stroke-dasharray="3 3"` circle |
+| Meaning                        | Icon (shape)                                                                                             | Used for                                                                  | Source path sketch              |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------- |
+| **High reliability**           | Check inside a ring (rarely rendered, §7)                                                                | optional "directly measured" affirmation on pressure/usage                | circle + `M8 12l3 3 5-6`        |
+| **Moderate reliability**       | **Triangle outline, no exclamation** (a quiet "caution", distinct from the loud filled warning triangle) | derived/definition-dependent metrics (aggregate AHI, hypopnea, leak)      | `M12 4 L21 19 H3 Z` outline     |
+| **Low / modeled reliability**  | **Hexagon outline** (signals "computed / inferred", visually unlike a warning)                           | central-vs-obstructive split, flow-limitation %, RERA, Vt/MV at high leak | regular hexagon outline         |
+| **Data-quality caveat**        | **Filled warning triangle + `!`** (the conventional alert)                                               | high-leak night, short session, cross-manufacturer comparison attempt     | triangle + `M12 9v4 M12 17h.01` |
+| **Info / learn more**          | **Circle + `i`**                                                                                         | "what does this mean?" link to glossary/accuracy doc                      | circle + `M12 11v5 M12 8h.01`   |
+| **Unavailable / not computed** | **Dashed circle** or em-dash                                                                             | metric absent (no oximeter, masked by leak)                               | `stroke-dasharray="3 3"` circle |
 
 Reuse `--color-detection`/violet semantics already in tokens for the "modeled" family so the visual language is internally consistent. Do **not** add an icon dependency; privacy and bundle constraints require hand-rolled SVG. The "info" and "filled warning" glyphs likely already exist in help/toast components — reuse them rather than duplicating.
 
@@ -179,7 +184,7 @@ Per `uncertainty-statistics.md` §6.1 and `cpap-device-accuracy.md` §10, the **
 - **Aleatoric vs. epistemic copy** (§6.2): two different micro-copy templates, surfaced in the chip tooltip / caveat note — never mixed:
   - Aleatoric (expected): "Your AHI naturally varies night to night — trends over weeks are more reliable than any single night."
   - Epistemic (fixable): "Limited data so far — this estimate will tighten as more nights are recorded."
-  `documentation` owns final wording; `ui-design` only reserves the two visual slots (a `tone="natural-variation" | "needs-more-data"` on the caveat note).
+    `documentation` owns final wording; `ui-design` only reserves the two visual slots (a `tone="natural-variation" | "needs-more-data"` on the caveat note).
 
 ---
 
@@ -187,15 +192,15 @@ Per `uncertainty-statistics.md` §6.1 and `cpap-device-accuracy.md` §10, the **
 
 Canonical states a reliability-aware metric can take. `frontend` should model these as a discriminated union (`tier: 'high' | 'moderate' | 'low' | 'limited' | 'unavailable'`, extending `ConfidenceTier`).
 
-| State | When (per accuracy §10 / stats §6.2) | Chip | Icon | Number treatment | Chart treatment | Tokens |
-| --- | --- | --- | --- | --- | --- | --- |
-| **Default (high)** | Directly measured: pressure, usage; clean low-leak apnea count | **None** (silent) | none | Full precision allowed; plain | Plain line, no band | — (uses normal text tokens) |
-| **Reduced — moderate** | Aggregate AHI, hypopnea count, leak: real but definition/leak-sensitive | `Moderate` pill / inline triangle glyph | triangle outline | 1-dp, de-emphasized fraction; CI on demand | Confidence band shown | `--color-reliability-moderate(-bg)` |
-| **Reduced — low/modeled** | Central/obstructive split, flow-limitation %, RERA, Vt/MV (esp. high leak) | `Low` pill / inline hexagon | hexagon outline | Trend/relative framing; avoid bold absolute; "discuss with clinician" copy where apt | Band + heavier de-emphasis; relative axis | `--color-reliability-low(-bg)` |
-| **Caveat (data-quality)** | High-leak night, short session, cross-manufacturer compare | Caveat note (info-blue) inline + filled-warning glyph | filled warning `!` | Value shown but with note; may be struck/suppressed for flow-derived metrics at high leak | Affected segment shaded/annotated; metric down-weighted | `--color-caveat(-bg/-border)` |
-| **Unavailable** | Not computed: no oximeter desat, leak-masked, missing channel | `Unavailable` pill / em-dash | dashed circle | Render `—`, never `0`; `--color-text-muted` | No series; placeholder note | `--color-reliability-unavailable(-bg)` |
+| State                     | When (per accuracy §10 / stats §6.2)                                       | Chip                                                  | Icon               | Number treatment                                                                          | Chart treatment                                         | Tokens                                 |
+| ------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------- |
+| **Default (high)**        | Directly measured: pressure, usage; clean low-leak apnea count             | **None** (silent)                                     | none               | Full precision allowed; plain                                                             | Plain line, no band                                     | — (uses normal text tokens)            |
+| **Reduced — moderate**    | Aggregate AHI, hypopnea count, leak: real but definition/leak-sensitive    | `Moderate` pill / inline triangle glyph               | triangle outline   | 1-dp, de-emphasized fraction; CI on demand                                                | Confidence band shown                                   | `--color-reliability-moderate(-bg)`    |
+| **Reduced — low/modeled** | Central/obstructive split, flow-limitation %, RERA, Vt/MV (esp. high leak) | `Low` pill / inline hexagon                           | hexagon outline    | Trend/relative framing; avoid bold absolute; "discuss with clinician" copy where apt      | Band + heavier de-emphasis; relative axis               | `--color-reliability-low(-bg)`         |
+| **Caveat (data-quality)** | High-leak night, short session, cross-manufacturer compare                 | Caveat note (info-blue) inline + filled-warning glyph | filled warning `!` | Value shown but with note; may be struck/suppressed for flow-derived metrics at high leak | Affected segment shaded/annotated; metric down-weighted | `--color-caveat(-bg/-border)`          |
+| **Unavailable**           | Not computed: no oximeter desat, leak-masked, missing channel              | `Unavailable` pill / em-dash                          | dashed circle      | Render `—`, never `0`; `--color-text-muted`                                               | No series; placeholder note                             | `--color-reliability-unavailable(-bg)` |
 
-States are mutually exclusive for the *tier* axis; a **caveat may co-occur** with any tier (e.g. a moderate AHI on a high-leak night shows both the moderate chip and the leak caveat note).
+States are mutually exclusive for the _tier_ axis; a **caveat may co-occur** with any tier (e.g. a moderate AHI on a high-leak night shows both the moderate chip and the leak caveat note).
 
 ---
 
@@ -203,7 +208,7 @@ States are mutually exclusive for the *tier* axis; a **caveat may co-occur** wit
 
 To keep a high-density, information-rich UI from drowning in qualifiers:
 
-1. **High-reliability metrics show no reliability chip, no icon, no band.** Absence of a marker *is* the "trustworthy" signal. Pressure, usage, and clean apnea counts look exactly as today. (Optional `High` affirmation only in a focused "data quality" panel, never on the dashboard grid.)
+1. **High-reliability metrics show no reliability chip, no icon, no band.** Absence of a marker _is_ the "trustworthy" signal. Pressure, usage, and clean apnea counts look exactly as today. (Optional `High` affirmation only in a focused "data quality" panel, never on the dashboard grid.)
 2. **The clinical-severity badge keeps its top-right slot, color, and shape.** Reliability never recolors, replaces, or overlaps it — reliability lives in the footer row or as a sibling, on a separate, desaturated color axis.
 3. **No error bars by default.** Bands are the trend default; per-point error bars appear only in the rare threshold/short-night cases (§3.2).
 4. **No new chart series colors.** Bands/whiskers use the neutral `--color-uncertainty-*` tokens, never a `--color-chart-*`, so the data palette is untouched.

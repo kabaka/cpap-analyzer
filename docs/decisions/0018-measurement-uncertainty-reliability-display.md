@@ -27,7 +27,7 @@ error actually is. The headline figures:
   events (REM-locked, supine-locked, arousal-cascaded clustering).
 - **The central-vs-obstructive event split is barely reproducible.** Event-level
   type classification sits around **ICC ≈ 0.16**; the machine also tends to
-  *under*-classify closed-airway centrals as obstructive, so the true central
+  _under_-classify closed-airway centrals as obstructive, so the true central
   burden may be higher than shown — the type split is unreliable, but a sustained
   rise in the central index is not.
 - **Consumer-wearable SpO₂ is uncalibrated** and multi-stage sleep from
@@ -36,7 +36,7 @@ error actually is. The headline figures:
 This is the same honesty problem [0017](0017-app-computed-breathing-pattern-detection.md)
 faced for app-computed detections (it answered it with an explicit 0–1
 confidence and "candidate, never diagnosis" framing). The present decision
-extends that posture from *one feature* to *the whole presentation layer*.
+extends that posture from _one feature_ to _the whole presentation layer_.
 
 The tension is real and was raised directly by the product owner: **data-science
 honesty pulls toward showing error on everything; usability pulls hard the other
@@ -71,20 +71,20 @@ UX > Features):
 
 - **Privacy.** No new data egress. Everything here is client-side rendering and
   in-browser statistics over already-imported data; trivially satisfied.
-- **Correctness (the dominant driver).** This feature exists *because* the
+- **Correctness (the dominant driver).** This feature exists _because_ the
   current display is misleadingly confident. Every statistic shown must be
   defensible: verified constants, statistically coherent center-and-band pairing,
-  intervals labelled as what they actually are (a Poisson interval is a *lower
-  bound* on uncertainty, not "the 95% CI"), and **no unverified figures encoded
-  as fact**. A reliability label must lower a *precision claim* without ever
+  intervals labelled as what they actually are (a Poisson interval is a _lower
+  bound_ on uncertainty, not "the 95% CI"), and **no unverified figures encoded
+  as fact**. A reliability label must lower a _precision claim_ without ever
   silencing a clinically actionable trend.
 - **Performance.** Stats utilities (Poisson/Garwood CI, rolling median + IQR)
   run over years of nightly aggregates; they belong in the worker pipeline and
   must be cheap. Display-precision formatting is presentation-only and must never
   touch stored values.
-- **UX — the *quiet-by-default* principle.** A reliability or data-quality cue
+- **UX — the _quiet-by-default_ principle.** A reliability or data-quality cue
   appears **only when it changes a decision**. The absence of a chip on a clean,
-  well-sampled metric *is* the trust signal. WCAG AA throughout: every cue is
+  well-sampled metric _is_ the trust signal. WCAG AA throughout: every cue is
   keyboard-focusable, ARIA-labelled, and carries a non-color shape — color is
   never the sole signal, and the reliability axis (violet/neutral) never collides
   with the clinical-severity axis (red/orange).
@@ -108,7 +108,7 @@ UX > Features):
   uncertainty.
 - **Con.** Buries signal under chrome; trains users to ignore caveats; makes a
   clean value indistinguishable from a junk one; and — per the stats review — a
-  naively-computed per-night CI or rolling-mean SEM band is *itself* wrong under
+  naively-computed per-night CI or rolling-mean SEM band is _itself_ wrong under
   the data's real structure (over-dispersion, autocorrelation, non-stationarity),
   so it would be confidently-wrong honesty. Explicitly ruled out by the product
   owner. **Rejected.**
@@ -133,10 +133,10 @@ changes a decision:
   (`confidenceTier`, the recharts band, `MetricDefinition`); extensible.
 - **Con.** "Only when it changes a decision" is a judgement call that must be
   encoded as explicit rules and tested; introduces a new shared module and new
-  copy tone to maintain; the quiet default risks *under*-warning if the
+  copy tone to maintain; the quiet default risks _under_-warning if the
   decision-relevance rules are mis-tuned (mitigated by the central-apnea safety
   rule and its e2e test, below).
-- **Chosen.** It is the only option that honors Correctness *and* the
+- **Chosen.** It is the only option that honors Correctness _and_ the
   quiet-by-default UX constraint simultaneously.
 
 ## Decision Outcome
@@ -150,7 +150,7 @@ decisions D1–D11 are binding; the load-bearing ones:
   `src/analysis/breathing/confidenceTier.ts` vocabulary. The proposed 5-tier
   enum is rejected (QA block upheld). `ReliabilityTier` (intrinsic reliability)
   and `DataQualityFlag` (`'high-leak' | 'short-session' | 'low-coverage' |
-  'low-count'`, a per-session degrading condition) are **orthogonal** and may
+'low-count'`, a per-session degrading condition) are **orthogonal** and may
   co-occur; "unavailable" is a render state, not a tier. Add `ReliabilityTier`
   as a sibling type in a new shared `reliability` module; **do not widen
   `ConfidenceTier`** — `confidenceTier.ts` keeps working for its existing
@@ -167,7 +167,7 @@ decisions D1–D11 are binding; the load-bearing ones:
 - **D3 — AHI trend headline statistic: median + IQR band.** Center line is the
   rolling **median** over the window (robust to outlier nights and regime
   changes); the band is the empirical **inter-quartile band (P25–P75)** labelled
-  **"typical nightly range"** — *not* a "95% CI of the mean." This sidesteps the
+  **"typical nightly range"** — _not_ a "95% CI of the mean." This sidesteps the
   autocorrelation/non-stationarity problems the stats review raised with
   `x̄ ± z·s/√n`. A median center is **never** combined with a mean SEM band
   (QA + stats both flagged that as incoherent). The optional outer P10–P90 band
@@ -188,7 +188,7 @@ decisions D1–D11 are binding; the load-bearing ones:
   `high` (no chip, shown with precision): delivered/measured pressure; usage /
   mask-on time; unintentional leak below threshold.
   `moderate` (algorithmically detected, leak-gated): apnea **count** (corrected
-  *down* from the proposals' `high` — it is detected, undercounts vs PSG, and
+  _down_ from the proposals' `high` — it is detected, undercounts vs PSG, and
   uses a mask-on denominator), aggregate AHI, hypopnea count, tidal volume /
   minute ventilation / respiratory rate.
   `low` ("surface, don't diagnose"): central-vs-obstructive split,
@@ -198,7 +198,7 @@ decisions D1–D11 are binding; the load-bearing ones:
 - **D6 — Quiet-by-default + central-apnea safety.** A chip appears **only** when
   it changes a decision (low-tier soft metric, active data-quality flag, or a
   single night near a category boundary) — never on a stable, well-sampled
-  `high`-tier value. Critically: **a `low` tier lowers the *precision* claim; it
+  `high`-tier value. Critically: **a `low` tier lowers the _precision_ claim; it
   must NEVER silence or visually bury a rising trend.** A rising central
   (Clear-Airway) index must still surface a visible "discuss with your clinician"
   prompt despite the split being `low` reliability — under-reaction to
@@ -256,11 +256,11 @@ decisions D1–D11 are binding; the load-bearing ones:
   Correctness win without the error-bars-everywhere cost the product owner ruled out.
 - **Statistically coherent.** Median center with an IQR "typical nightly range"
   band, exact Garwood for small N, a Poisson interval honestly labelled as a
-  *lower bound*, and Wolfram-verified test vectors — no double-counting, no
+  _lower bound_, and Wolfram-verified test vectors — no double-counting, no
   incoherent median+SEM pairing, no fabricated over-dispersion multiplier.
 - **Clinically safe by construction.** A `low` tier never silences a rising
   central-apnea trend; the dangerous failure mode (under-reaction to TECSA) is
-  guarded by a dedicated clinical-flag tone *and* an e2e test.
+  guarded by a dedicated clinical-flag tone _and_ an e2e test.
 - **No false precision.** AHI stops rendering at 2–3 decimals; T90 stops
   rendering sub-minute; precision is fixed at the presentation layer without
   touching stored values.
