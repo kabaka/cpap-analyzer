@@ -320,19 +320,28 @@ const SPANS: readonly SpanSpec[] = [
 
 // ── Measurement helpers ──────────────────────────────────────────
 
-/** Invoke the private renderImmediate synchronously via the rAF-backed render(). */
-function renderOnce(renderer: SignalRenderer, vp: ViewportState, opts: RenderOptions): void {
-  // SignalRenderer.render schedules via rAF; in jsdom we stub rAF to run now.
+/** Run `fn` with rAF stubbed to fire synchronously (jsdom has no real rAF). */
+function withSyncRaf(fn: () => void): void {
   const realRaf = globalThis.requestAnimationFrame;
   globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
     cb(0);
     return 0;
   }) as typeof globalThis.requestAnimationFrame;
   try {
-    renderer.render(vp, opts);
+    fn();
   } finally {
     globalThis.requestAnimationFrame = realRaf;
   }
+}
+
+/** Invoke the private renderImmediate synchronously via the rAF-backed render(). */
+function renderOnce(renderer: SignalRenderer, vp: ViewportState, opts: RenderOptions): void {
+  withSyncRaf(() => renderer.render(vp, opts));
+}
+
+/** Invoke renderOverlayImmediate synchronously via the rAF-backed renderOverlay(). */
+function renderOverlayOnce(renderer: SignalRenderer, vp: ViewportState, opts: RenderOptions): void {
+  withSyncRaf(() => renderer.renderOverlay(vp, opts));
 }
 
 interface FrameResult {
@@ -462,6 +471,88 @@ describe('SignalRenderer rendering-cost baseline', () => {
     console.log(lines.join('\n'));
 
     expect(confirmedAtLeastOne).toBe(true);
+  });
+
+  it('confirms the overlay crosshair path emits ~zero waveform ops (the fix)', () => {
+    const channels = getBenchChannels();
+
+    const lines: string[] = [];
+    lines.push('');
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    lines.push(' SignalRenderer overlay-crosshair path  (BASE waveforms NOT repainted on hover)');
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+    lines.push(
+      `${pad('span', 9)} | ${pad('xhair wave (old)', 16)} -> ${pad('overlay wave (new)', 18)} | ${pad('arc', 4)} ${pad('stroke', 6)} | ${pad('overlay ms', 10)}`,
+    );
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+
+    let assertedOnce = false;
+
+    for (const span of SPANS) {
+      const cpapChannels = channels.map((bc) => buildDisplayChannel(bc, span.range));
+      const vp: ViewportState = {
+        startTime: span.range.startTime,
+        endTime: span.range.endTime,
+        channels: cpapChannels,
+      };
+      const crossX = PADDING.left + (CANVAS_WIDTH - PADDING.left - PADDING.right) * 0.5;
+      const crossOpts = makeOptions({ showCrosshair: true, crosshairX: crossX });
+
+      // BEFORE — the legacy hover path: a full renderImmediate that repaints the
+      // whole waveform stack just to move the crosshair. Measured on a renderer
+      // with NO overlay attached (its base getContext sets activeRecorder).
+      const legacyCanvas = document.createElement('canvas');
+      const legacyRenderer = new SignalRenderer(legacyCanvas);
+      legacyRenderer.resize(CANVAS_WIDTH, CANVAS_HEIGHT);
+      const legacy = measureFrame(legacyRenderer, vp, crossOpts);
+      legacyRenderer.dispose();
+
+      // AFTER — the overlay-only path. Attach a fresh overlay; its getContext sets
+      // activeRecorder to the overlay recorder, which we then measure.
+      const overlayCanvas = document.createElement('canvas');
+      const overlayRenderer = new SignalRenderer(document.createElement('canvas'));
+      overlayRenderer.resize(CANVAS_WIDTH, CANVAS_HEIGHT);
+      overlayRenderer.setOverlayCanvas(overlayCanvas);
+      const overlayRec = activeRecorder;
+      if (!overlayRec) throw new Error('no overlay recording context');
+      overlayRenderer.resize(CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      overlayRec.reset();
+      renderOverlayOnce(overlayRenderer, vp, crossOpts);
+      const overlayCounts = { ...overlayRec.counts };
+      const overlayWaveformOps = (overlayCounts.lineTo ?? 0) + (overlayCounts.moveTo ?? 0);
+
+      // Time the overlay path (after a warm pass).
+      for (let i = 0; i < 3; i++) renderOverlayOnce(overlayRenderer, vp, crossOpts);
+      const t0 = performance.now();
+      for (let i = 0; i < TIMING_ITERS; i++) renderOverlayOnce(overlayRenderer, vp, crossOpts);
+      const overlayMs = (performance.now() - t0) / TIMING_ITERS;
+      overlayRenderer.dispose();
+
+      lines.push(
+        `${pad(span.label, 9)} | ${pad(legacy.waveformOps, 16)} -> ${pad(overlayWaveformOps, 18)} | ${pad(overlayCounts.arc ?? 0, 4)} ${pad(overlayCounts.stroke ?? 0, 6)} | ${pad(overlayMs.toFixed(4), 10)}`,
+      );
+
+      // THE FIX: the overlay crosshair frame emits essentially no waveform ops —
+      // just the single crosshair line (1 moveTo + 1 lineTo). Intersection dots
+      // use arc, not lineTo/moveTo. Generous headroom (<50) vs the ~6,000–9,600
+      // baseline this replaces.
+      expect(overlayWaveformOps).toBeLessThan(50);
+      // And it is dramatically cheaper than the legacy full repaint it replaces.
+      expect(overlayWaveformOps).toBeLessThan(legacy.waveformOps / 50);
+      assertedOnce = true;
+    }
+
+    lines.push('───────────────────────────────────────────────────────────────────────────────');
+    lines.push(' BEFORE/AFTER  "waveform draw-ops per crosshair update": the xhair-wave (old)');
+    lines.push('               column (a full repaint) collapses to overlay-wave (new) ≈ 2 (just');
+    lines.push('               the crosshair line). Intersection dots are counted under `arc`.');
+    lines.push('═══════════════════════════════════════════════════════════════════════════════');
+
+    // eslint-disable-next-line no-console
+    console.log(lines.join('\n'));
+
+    expect(assertedOnce).toBe(true);
   });
 
   it('breaks the per-lane waveform cost down by output points (proxy validation)', () => {

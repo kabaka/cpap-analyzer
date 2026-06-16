@@ -334,6 +334,28 @@ export class SignalRenderer {
   private logicalHeight = 0;
   private cachedStyle: CSSStyleDeclaration | null = null;
   /**
+   * Optional transparent overlay canvas stacked directly over the base canvas.
+   * When set, the crosshair (line + time badge + per-lane intersection dots and
+   * value/stage readout badges) is drawn here instead of on the base, so a
+   * pointer move repaints ONLY this overlay — never the waveform stack. The base
+   * layer (waveforms, grid, axes, markers, ribbons) repaints only when the
+   * viewport/data/size/theme actually change. The overlay is OPTIONAL: with no
+   * overlay set the renderer behaves exactly as before (crosshair on the base),
+   * which keeps the existing back-compat tests valid.
+   */
+  private overlayCanvas: HTMLCanvasElement | null = null;
+  private overlayCtx: CanvasRenderingContext2D | null = null;
+  /** Coalescing rAF handle for overlay-only paints, separate from {@link pendingFrame}. */
+  private pendingOverlayFrame: number | null = null;
+  /**
+   * The context currently being drawn into. Defaults to the base context; the
+   * overlay pass temporarily points this at {@link overlayCtx} so the shared
+   * `drawCrosshair`/badge/dot helpers (which read `this.activeCtx`) target the
+   * overlay without duplicating their logic. The base render path leaves this at
+   * the base context, so base output is byte-identical to before.
+   */
+  private activeCtx: CanvasRenderingContext2D;
+  /**
    * Per-frame cache of resolved CSS-variable strings. The same tokens (grid,
    * axis, surface colours) are resolved many times within a single render pass;
    * resolving each one only once per frame removes that duplicate
@@ -351,6 +373,7 @@ export class SignalRenderer {
       throw new Error('Failed to obtain Canvas 2D context');
     }
     this.ctx = ctx;
+    this.activeCtx = ctx;
     this.dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
   }
 
@@ -373,8 +396,64 @@ export class SignalRenderer {
 
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
+    // Size the overlay identically so it aligns pixel-perfectly over the base.
+    if (this.overlayCanvas && this.overlayCtx) {
+      this.overlayCanvas.width = Math.round(width * this.dpr);
+      this.overlayCanvas.height = Math.round(height * this.dpr);
+      this.overlayCanvas.style.width = `${width}px`;
+      this.overlayCanvas.style.height = `${height}px`;
+      this.overlayCtx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    }
+
     // Cache computed style so resolveCSSVar avoids repeated getComputedStyle calls.
+    // CSS custom-property tokens are inherited from the shared container, so the
+    // base canvas's computed style resolves the same values the overlay would —
+    // we keep using it for both passes.
     this.cachedStyle = getComputedStyle(this.canvas);
+  }
+
+  /**
+   * Attach (or detach with `null`) a transparent overlay canvas for cheap
+   * crosshair-only repaints. When set, {@link renderImmediate} stops drawing the
+   * crosshair on the base canvas and {@link renderOverlay} draws it here instead,
+   * so pointer moves never repaint the waveform stack. Sizing is applied on the
+   * next {@link resize}; callers that attach an overlay after the initial resize
+   * should resize again so the overlay matches the base dimensions.
+   */
+  setOverlayCanvas(canvas: HTMLCanvasElement | null): void {
+    // Cancel any overlay frame queued against a previous overlay element.
+    if (this.pendingOverlayFrame !== null) {
+      cancelAnimationFrame(this.pendingOverlayFrame);
+      this.pendingOverlayFrame = null;
+    }
+
+    if (!canvas) {
+      this.overlayCanvas = null;
+      this.overlayCtx = null;
+      return;
+    }
+
+    const octx = canvas.getContext('2d', { alpha: true });
+    if (!octx) {
+      // Fail soft: without an overlay context we simply keep the legacy
+      // crosshair-on-base behaviour rather than throwing on the hot mount path.
+      this.overlayCanvas = null;
+      this.overlayCtx = null;
+      return;
+    }
+
+    this.overlayCanvas = canvas;
+    this.overlayCtx = octx;
+
+    // Match the current base dimensions immediately so a crosshair drawn before
+    // the next resize lands correctly (resize re-applies this for size changes).
+    if (this.logicalWidth > 0 && this.logicalHeight > 0) {
+      canvas.width = Math.round(this.logicalWidth * this.dpr);
+      canvas.height = Math.round(this.logicalHeight * this.dpr);
+      canvas.style.width = `${this.logicalWidth}px`;
+      canvas.style.height = `${this.logicalHeight}px`;
+      octx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    }
   }
 
   /**
@@ -391,6 +470,69 @@ export class SignalRenderer {
       this.pendingFrame = null;
       this.renderImmediate(viewport, options);
     });
+  }
+
+  /**
+   * Render ONLY the crosshair overlay (line + time badge + per-lane intersection
+   * dots + per-lane value/stage readout badges) onto the overlay canvas, clearing
+   * the previous frame first. This is the cheap pointer-move path: it issues no
+   * waveform/grid/axis work, so a hover repaints essentially nothing but the
+   * crosshair. Coalesced via its own rAF handle, independent of the base
+   * {@link render} frame, so a base repaint and an overlay repaint can be queued
+   * for the same frame without cancelling each other.
+   *
+   * No-op when no overlay canvas is attached (the base path keeps drawing the
+   * crosshair itself in that case, preserving legacy behaviour).
+   */
+  renderOverlay(viewport: ViewportState, options: RenderOptions): void {
+    if (!this.overlayCtx) return;
+    if (this.pendingOverlayFrame !== null) {
+      cancelAnimationFrame(this.pendingOverlayFrame);
+    }
+    this.pendingOverlayFrame = requestAnimationFrame(() => {
+      this.pendingOverlayFrame = null;
+      this.renderOverlayImmediate(viewport, options);
+    });
+  }
+
+  /**
+   * Synchronous overlay paint. Clears the overlay, then draws the crosshair iff
+   * requested. Pixel output is identical to the crosshair the base path used to
+   * draw — it reuses {@link drawCrosshair} verbatim, just targeting the overlay
+   * context via {@link activeCtx}.
+   */
+  private renderOverlayImmediate(viewport: ViewportState, options: RenderOptions): void {
+    const octx = this.overlayCtx;
+    if (!octx) return;
+
+    const w = this.logicalWidth;
+    const h = this.logicalHeight;
+    if (w <= 0 || h <= 0) return;
+
+    // Reset the per-frame CSS-var cache so the badge/dot colours reflect the
+    // current theme (mirrors renderImmediate; never carried across frames).
+    this.cssVarFrameCache.clear();
+
+    // Clear the whole overlay (transparent) before redrawing.
+    octx.clearRect(0, 0, w, h);
+
+    if (!options.showCrosshair || options.crosshairX === null) return;
+
+    const { padding, channelHeight } = options;
+    const plotRight = w - padding.right;
+    const plotWidth = plotRight - padding.left;
+    if (plotWidth <= 0 || viewport.channels.length === 0) return;
+    if (viewport.endTime - viewport.startTime <= 0) return;
+
+    const totalH = totalLaneHeight(viewport.channels, channelHeight);
+
+    // Point the shared draw helpers at the overlay for this pass, then restore.
+    this.activeCtx = octx;
+    try {
+      this.drawCrosshair(viewport, options, padding.left, plotWidth, totalH);
+    } finally {
+      this.activeCtx = this.ctx;
+    }
   }
 
   /**
@@ -573,18 +715,25 @@ export class SignalRenderer {
     return innerTop + idx * rowH + rowH / 2;
   }
 
-  /** Cancel any pending frame and release references. */
+  /** Cancel any pending frame(s) and release references. */
   dispose(): void {
     if (this.pendingFrame !== null) {
       cancelAnimationFrame(this.pendingFrame);
       this.pendingFrame = null;
     }
+    if (this.pendingOverlayFrame !== null) {
+      cancelAnimationFrame(this.pendingOverlayFrame);
+      this.pendingOverlayFrame = null;
+    }
+    this.overlayCanvas = null;
+    this.overlayCtx = null;
+    this.activeCtx = this.ctx;
   }
 
   // ── Internal render pipeline ───────────────────────────────────
 
   private renderImmediate(viewport: ViewportState, options: RenderOptions): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const w = this.logicalWidth;
     const h = this.logicalHeight;
 
@@ -676,8 +825,11 @@ export class SignalRenderer {
     }
     this.drawXAxis(viewport, plotLeft, plotWidth, padding.top, totalH);
 
-    // Crosshair overlay
-    if (options.showCrosshair && options.crosshairX !== null) {
+    // Crosshair overlay. When a dedicated overlay canvas is attached the
+    // crosshair is drawn there instead (see renderOverlay), so the base never
+    // repaints it on hover. With NO overlay (legacy/back-compat path) the
+    // crosshair is still drawn on the base exactly as before.
+    if (!this.overlayCtx && options.showCrosshair && options.crosshairX !== null) {
       this.drawCrosshair(viewport, options, plotLeft, plotWidth, totalH);
     }
   }
@@ -691,7 +843,7 @@ export class SignalRenderer {
     height: number,
     index: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     // Alternate subtle background for channel separation
     if (index % 2 === 1) {
       ctx.fillStyle = this.resolveCSSVar('--color-surface-secondary', '#f5f5f5');
@@ -714,7 +866,7 @@ export class SignalRenderer {
     stripTop: number,
     stripHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const { data } = ch;
     if (data.length === 0) return;
 
@@ -817,7 +969,7 @@ export class SignalRenderer {
     stripTop: number,
     stripHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const { data } = ch;
     if (data.length === 0) return;
 
@@ -935,7 +1087,7 @@ export class SignalRenderer {
     stripTop: number,
     stripHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const { data } = ch;
     const bands = options.ribbonBands?.[ch.name];
     if (!bands || bands.length === 0 || data.length === 0) return;
@@ -1038,7 +1190,7 @@ export class SignalRenderer {
     stripTop: number,
     stripHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const durationMs = viewport.endTime - viewport.startTime;
     if (durationMs <= 0) return;
 
@@ -1090,7 +1242,7 @@ export class SignalRenderer {
     period: number,
     alpha: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, y, w, h);
@@ -1117,7 +1269,7 @@ export class SignalRenderer {
     stripTop: number,
     channelHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const innerTop = stripTop + 16;
     const innerBottom = stripTop + channelHeight - 8;
     const innerHeight = innerBottom - innerTop;
@@ -1154,7 +1306,7 @@ export class SignalRenderer {
     plotTop: number,
     laneStackHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const durationMs = viewport.endTime - viewport.startTime;
     if (durationMs <= 0) return;
 
@@ -1187,7 +1339,7 @@ export class SignalRenderer {
     stripTop: number,
     channelHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const innerTop = stripTop + 16;
     const innerBottom = stripTop + channelHeight - 8;
     const innerHeight = innerBottom - innerTop;
@@ -1222,7 +1374,7 @@ export class SignalRenderer {
     plotTop: number,
     laneStackHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const durationMs = viewport.endTime - viewport.startTime;
     if (durationMs <= 0) return;
 
@@ -1255,7 +1407,7 @@ export class SignalRenderer {
     stripTop: number,
     channelHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const durationMs = viewport.endTime - viewport.startTime;
     if (durationMs <= 0) return;
 
@@ -1290,7 +1442,7 @@ export class SignalRenderer {
     plotWidth: number,
     laneStackHeight: number,
   ): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     const { crosshairX, padding } = options;
 
     if (crosshairX === null) return;
@@ -1339,7 +1491,7 @@ export class SignalRenderer {
    * while keeping the lane colour as a redundant (non-sole) cue.
    */
   private drawLaneReadoutBadge(x: number, y: number, text: string, laneColor: string): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     ctx.save();
 
     ctx.font = `${READOUT_FONT_SIZE}px ${this.fontFamily()}`;
@@ -1379,7 +1531,7 @@ export class SignalRenderer {
 
   /** Draw a small text badge with background at the given position. */
   private drawReadoutBadge(x: number, y: number, text: string, anchor: 'bottom' | 'left'): void {
-    const { ctx } = this;
+    const ctx = this.activeCtx;
     ctx.save();
 
     ctx.font = `${READOUT_FONT_SIZE}px ${this.fontFamily()}`;

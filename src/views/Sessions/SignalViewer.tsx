@@ -355,6 +355,9 @@ export default function SignalViewer() {
   // ── Refs ─────────────────────────────────────────────────────
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Transparent overlay canvas stacked over the base; holds only the crosshair so
+  // pointer moves repaint it alone (never the waveform stack).
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SignalRenderer | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -822,6 +825,13 @@ export default function SignalViewer() {
     const renderer = new SignalRenderer(canvas);
     rendererRef.current = renderer;
 
+    // Wire any already-mounted overlay (mount order between the two canvas
+    // callback refs is not guaranteed; the overlay ref also wires up if it
+    // mounts after the renderer is created).
+    if (overlayCanvasRef.current) {
+      renderer.setOverlayCanvas(overlayCanvasRef.current);
+    }
+
     const wrapper = canvas.parentElement;
     if (!wrapper) return;
 
@@ -836,6 +846,15 @@ export default function SignalViewer() {
 
     const rect = wrapper.getBoundingClientRect();
     if (rect.width > 0) setWrapperWidth(rect.width);
+  }, []);
+
+  // Overlay canvas callback ref. Stores the element and (when the renderer
+  // already exists) attaches it immediately; otherwise canvasCallbackRef wires it
+  // when the renderer is created. On unmount (null) it detaches from the renderer.
+  const overlayCanvasCallbackRef = useCallback((canvas: HTMLCanvasElement | null) => {
+    overlayCanvasRef.current = canvas;
+    const renderer = rendererRef.current;
+    if (renderer) renderer.setOverlayCanvas(canvas);
   }, []);
 
   // ── Resolve per-lane heights (for layout + canvas sizing) ────
@@ -1202,6 +1221,17 @@ export default function SignalViewer() {
       lastViewportRef.current = viewportState;
       lastOptionsRef.current = options;
       renderer.render(viewportState, options);
+      // The base content just changed under a (possibly) active crosshair, so the
+      // overlay's intersection dots and value readouts are now stale. Re-sample
+      // and repaint the overlay at the same cursor X. Cheap (overlay-only) and a
+      // no-op when no crosshair is showing.
+      if (crosshairXRef.current !== null) {
+        renderer.renderOverlay(viewportState, {
+          ...options,
+          showCrosshair: true,
+          crosshairX: crosshairXRef.current,
+        });
+      }
       return viewportState;
     },
     [buildViewportState, buildRenderOptions],
@@ -1243,6 +1273,15 @@ export default function SignalViewer() {
     lastViewportRef.current = viewportState;
     lastOptionsRef.current = options;
     renderer.render(viewportState, options);
+    // Keep the overlay crosshair coherent after a base repaint (zoom preset,
+    // deep-link, lane toggle, etc.) while the cursor is parked on the chart.
+    if (crosshairXRef.current !== null) {
+      renderer.renderOverlay(viewportState, {
+        ...options,
+        showCrosshair: true,
+        crosshairX: crosshairXRef.current,
+      });
+    }
   }, [fullDataReady, manifest, viewport, totalDurationMs, buildViewportState, buildRenderOptions]);
 
   // ── Lane mutations ───────────────────────────────────────────
@@ -1601,10 +1640,12 @@ export default function SignalViewer() {
         return;
       }
 
-      // Not panning: cheap crosshair-only direct render on the last viewport.
+      // Not panning: paint the crosshair on the dedicated overlay canvas ONLY.
+      // The base waveform layer is untouched, so a hover no longer repaints any
+      // waveform/grid/axis work — just the 1px crosshair, a few dots, and badges.
       const renderer = rendererRef.current;
       if (renderer && lastViewportRef.current && lastOptionsRef.current) {
-        renderer.render(lastViewportRef.current, {
+        renderer.renderOverlay(lastViewportRef.current, {
           ...lastOptionsRef.current,
           showCrosshair: true,
           crosshairX: x,
@@ -1635,9 +1676,11 @@ export default function SignalViewer() {
       setIsPanning(false);
       panStartRef.current = null;
     }
+    // Hiding the crosshair only needs the overlay cleared — the base waveform
+    // layer is unchanged, so it must not repaint.
     const renderer = rendererRef.current;
     if (renderer && lastViewportRef.current && lastOptionsRef.current) {
-      renderer.render(lastViewportRef.current, {
+      renderer.renderOverlay(lastViewportRef.current, {
         ...lastOptionsRef.current,
         showCrosshair: false,
         crosshairX: null,
@@ -1661,7 +1704,9 @@ export default function SignalViewer() {
       const frac = (timeMs - vp.startTime) / (vp.endTime - vp.startTime);
       const x = plotLeft + frac * plotWidth;
       crosshairXRef.current = x;
-      renderer.render(vp, { ...opts, showCrosshair: true, crosshairX: x });
+      // Keyboard cursor only moves the crosshair within the current viewport, so
+      // paint the overlay alone — no base repaint needed.
+      renderer.renderOverlay(vp, { ...opts, showCrosshair: true, crosshairX: x });
 
       const values = renderer.getValuesAtTime(x, vp, opts);
       const parts = values.map((v) => {
@@ -1719,9 +1764,10 @@ export default function SignalViewer() {
   const handleCanvasBlur = useCallback(() => {
     cursorTimeRef.current = null;
     crosshairXRef.current = null;
+    // Clear the crosshair on the overlay only; the base layer is unchanged.
     const renderer = rendererRef.current;
     if (renderer && lastViewportRef.current && lastOptionsRef.current) {
-      renderer.render(lastViewportRef.current, {
+      renderer.renderOverlay(lastViewportRef.current, {
         ...lastOptionsRef.current,
         showCrosshair: false,
         crosshairX: null,
@@ -2093,6 +2139,16 @@ export default function SignalViewer() {
           aria-label={canvasDescription}
           onKeyDown={handleCanvasKeyDown}
           onBlur={handleCanvasBlur}
+        />
+
+        {/* Transparent crosshair overlay, stacked pixel-perfectly over the base
+            canvas. pointer-events:none so pointer events still reach the wrapper.
+            aria-hidden — the base canvas carries the accessible description and the
+            keyboard cursor speaks via the live region. */}
+        <canvas
+          ref={overlayCanvasCallbackRef}
+          className={styles.overlayCanvas}
+          aria-hidden="true"
         />
 
         {/* Lane headers as positioned HTML overlay (keyboard accessible). */}

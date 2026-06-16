@@ -480,6 +480,21 @@
   width: 100%;
 }
 
+/* Transparent crosshair overlay stacked over the base canvas. Absolutely
+   positioned at the same origin and width so it aligns pixel-perfectly; its
+   height is set in px by the renderer to match the base. pointer-events:none so
+   pointer events pass through to .canvasWrapper. It shares the wrapper's scroll
+   (same scrolling box) so it tracks the base while scrolling — mirroring how
+   .laneHeaders overlays the canvas. */
+.overlayCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: block;
+  pointer-events: none;
+}
+
 /* ── Status bar ───────────────────────────────────────────────── */
 
 .statusBar {
