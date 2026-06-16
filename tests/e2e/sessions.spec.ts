@@ -328,9 +328,13 @@ test.describe('Session Detail', () => {
     await expect(ahiCard.getByText('RDI', { exact: true })).toBeVisible();
     await expect(ahiCard.getByText(/events\/hr \(incl\. RERA\)/)).toBeVisible();
 
-    // Leak Rate metric card
-    await expect(page.getByRole('heading', { name: 'Leak Rate' })).toBeVisible();
-    await expect(page.getByText('4.5')).toBeVisible();
+    // Leak Rate metric card — leak displays as a whole number (L/min) per the
+    // measurement-uncertainty precision rules, so the injected 4.5 renders as "4".
+    const leakCard = page
+      .locator('div', { has: page.getByRole('heading', { name: 'Leak Rate' }) })
+      .filter({ hasText: 'L/min median' })
+      .last();
+    await expect(leakCard.getByText('4', { exact: true })).toBeVisible();
 
     // Pressure metric card
     await expect(page.getByRole('heading', { name: 'Pressure' })).toBeVisible();
