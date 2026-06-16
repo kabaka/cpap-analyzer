@@ -48,11 +48,12 @@ import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
 import { useWearableLanes, type WearableSeries } from '@/hooks/useWearableLanes';
 import type { SignalManifest, ChannelDescriptor } from '@/services/storage/OPFSService';
 import { OPFSService } from '@/services/storage/OPFSService';
-import { lttbImpl } from '@/services/workers/downsample.worker';
+import { lttbInto, lttbOutLength, columnEnvelopeInto } from '@/services/workers/downsample.worker';
 import { useAppStore } from '@/stores/useAppStore';
 import type { Event as TherapyEvent } from '@/types';
 
 import { evaluateDeepLink, formatOffsetLabel } from './deepLinkGuard';
+import { createFramePaintScheduler, type FramePaintScheduler } from './framePaintScheduler';
 import {
   detectionReadoutText,
   EMPTY_HOVERED_REGION,
@@ -139,6 +140,32 @@ const PADDING = { top: 20, right: 24, bottom: 28, left: 56 } as const;
 
 /** Number of viewport pixels to downsample target. */
 const DOWNSAMPLE_MULTIPLIER = 2;
+
+/**
+ * Samples-per-pixel threshold separating the two dense-CPAP render modes.
+ *
+ * - When the in-viewport source holds MORE than this many samples per output
+ *   pixel column (zoomed OUT), the lane renders a per-column MIN/MAX ENVELOPE —
+ *   a true envelope cannot hide a 1-sample spike/notch the LTTB polyline's
+ *   vertex-picking can skip (the approved fidelity change).
+ * - When it holds ≤ this many (zoomed IN), the lane renders the EXACT existing
+ *   LTTB polyline, byte-identical to before — at that density each column holds
+ *   ≈1 sample, so there is nothing to envelope.
+ *
+ * Set to 1.0 so the boundary is exactly "1 source sample per pixel". At the
+ * boundary each column's min≈max, the envelope collapses to a ~1px ribbon, and
+ * the look matches the polyline — the transition is seamless (no pop/flicker).
+ */
+const ENVELOPE_SAMPLES_PER_PIXEL = 1;
+
+/**
+ * Envelope source density target. The per-column min/max must be computed from a
+ * source with COMFORTABLY more than one sample per pixel column, so we select a
+ * pyramid level using a target of `plotWidth * this` (≥ several× the column
+ * count). The pyramid preserves extrema at every level, so a coarser-but-still
+ * dense level yields the same per-column extremes far cheaper than scanning raw.
+ */
+const ENVELOPE_SOURCE_OVERSCAN = 4;
 
 /**
  * Vertical offset (px) from the top of the flow lane to the detection-chip band.
@@ -407,10 +434,56 @@ export default function SignalViewer() {
    */
   const liveViewportRef = useRef<ViewportRange | null>(null);
 
-  /** rAF handle coalescing wheel-zoom paints to one per frame. */
-  const wheelRafRef = useRef<number | null>(null);
   /** Trailing-debounce handle that commits the settled wheel viewport to state. */
   const wheelCommitTimerRef = useRef<number | null>(null);
+
+  /**
+   * Shared rAF-coalescing paint scheduler for BOTH the wheel-zoom and drag-pan
+   * hot paths. Each input event records the latest viewport and the scheduler
+   * paints it at most once per animation frame (see {@link framePaintScheduler}).
+   * Created lazily on first use against the live `renderRangeDirect` (read via
+   * `renderRangeDirectRef` so the scheduler never goes stale across renders).
+   */
+  const paintSchedulerRef = useRef<FramePaintScheduler | null>(null);
+
+  /**
+   * Per-lane reusable LTTB scratch buffers (keyed by lane name). DOUBLE-BUFFERED:
+   * each lane keeps two `Float32Array`s and alternates between them every frame
+   * (`flip` toggles 0/1). Because the renderer retains the just-built channel
+   * `data` in `lastViewportRef` and the crosshair overlay later re-samples it,
+   * we must NOT overwrite the buffer the previous frame handed out until that
+   * frame's render + overlay-resync has completed. Alternating two buffers
+   * guarantees the previous frame's view survives through the next frame's full
+   * render+resync. `targetPoints` is tracked so the buffers are reallocated only
+   * when the budget changes (e.g. on resize), not per frame.
+   */
+  const lttbScratchRef = useRef<
+    Map<string, { a: Float32Array; b: Float32Array; flip: 0 | 1; capacity: number }>
+  >(new Map());
+
+  /**
+   * Per-lane reusable MIN/MAX-envelope scratch buffers (keyed by lane name).
+   * DOUBLE-BUFFERED for the same reason as {@link lttbScratchRef}: the renderer
+   * retains the just-built channel's `envelope` arrays in `lastViewportRef`, and a
+   * following crosshair/overlay render must still read last frame's buffers, so we
+   * never overwrite a buffer until its frame's render + overlay-resync completed.
+   * Each entry holds two {min,max} buffer pairs and alternates `flip` per frame.
+   * Capacity tracks the column budget (≈ plot width) so reallocation happens only
+   * on resize, not per frame. Only the zoomed-OUT dense-CPAP path uses these.
+   */
+  const envelopeScratchRef = useRef<
+    Map<
+      string,
+      {
+        aMin: Float32Array;
+        aMax: Float32Array;
+        bMin: Float32Array;
+        bMax: Float32Array;
+        flip: 0 | 1;
+        capacity: number;
+      }
+    >
+  >(new Map());
 
   /**
    * Mirror of the committed `viewport` state, readable synchronously from the
@@ -970,7 +1043,12 @@ export default function SignalViewer() {
   // ── Build CPAP channel for the current viewport ──────────────
 
   const buildCpapChannel = useCallback(
-    (laneName: string, targetPoints: number, range: ViewportRange): SignalChannel | null => {
+    (
+      laneName: string,
+      targetPoints: number,
+      plotWidth: number,
+      range: ViewportRange,
+    ): SignalChannel | null => {
       const fcd = fullDataRef.current.get(laneName);
       if (!fcd || fcd.data.length === 0) return null;
       const meta = cpapChannelMeta.get(laneName);
@@ -984,12 +1062,28 @@ export default function SignalViewer() {
       const startSample = Math.floor(startFrac * totalSamples);
       const endSample = Math.min(Math.ceil(endFrac * totalSamples), totalSamples);
 
-      // Pick the source samples for this viewport. When a decimation pyramid has
-      // been built for this channel, select an appropriate level (level 0 / raw
-      // for already-small windows, so zoomed-in output is byte-identical to
-      // slicing raw); otherwise fall back to the exact pre-pyramid behaviour
-      // (raw subarray) so pre-build frames are unchanged.
       const pyramid = pyramidsRef.current.get(laneName);
+
+      // ── Hybrid threshold: envelope (zoomed out) vs polyline (zoomed in) ──
+      //
+      // Samples-per-pixel = raw in-viewport sample count / plot width. When MORE
+      // than ENVELOPE_SAMPLES_PER_PIXEL samples map to each pixel column, the LTTB
+      // polyline can skip a 1-sample spike, so we render a per-column MIN/MAX
+      // envelope instead (the approved fidelity change). Otherwise (zoomed in) we
+      // render the EXACT existing LTTB polyline below — byte-identical to before.
+      const columns = Math.max(1, Math.round(plotWidth));
+      const rawSpan = endSample - startSample;
+      const useEnvelope =
+        plotWidth > 0 && rawSpan > columns * ENVELOPE_SAMPLES_PER_PIXEL && pyramid !== undefined;
+
+      // ── Always build the LTTB display data ──────────────────────────────
+      //
+      // In BOTH modes we keep populating `data` with the LTTB output (selected via
+      // the existing pyramid level for `targetPoints`). In envelope mode the
+      // renderer draws the envelope for the waveform, but `data` is still the
+      // crosshair's value source (getValuesAtTime samples it), so the readout
+      // keeps working and reading correctly for envelope lanes. The LTTB path here
+      // is byte-identical to before (same level select, same lttbInto scratch).
       let levelSlice: Float32Array;
       if (pyramid) {
         const pslice = selectPyramidLevel(pyramid, startSample, endSample, targetPoints);
@@ -998,9 +1092,60 @@ export default function SignalViewer() {
         levelSlice = fullData.subarray(startSample, endSample);
       }
 
-      // SAME LTTB as before, only when the source is denser than the target.
-      const displayData =
-        levelSlice.length > targetPoints ? lttbImpl(levelSlice, targetPoints) : levelSlice;
+      let displayData: Float32Array;
+      if (levelSlice.length > targetPoints) {
+        const needed = lttbOutLength(levelSlice.length, targetPoints);
+        let scratch = lttbScratchRef.current.get(laneName);
+        if (!scratch || scratch.capacity < needed) {
+          const capacity = Math.max(needed, targetPoints);
+          scratch = {
+            a: new Float32Array(capacity),
+            b: new Float32Array(capacity),
+            flip: 0,
+            capacity,
+          };
+          lttbScratchRef.current.set(laneName, scratch);
+        }
+        const out = scratch.flip === 0 ? scratch.a : scratch.b;
+        scratch.flip = scratch.flip === 0 ? 1 : 0;
+        displayData = lttbInto(levelSlice, targetPoints, out);
+      } else {
+        displayData = levelSlice;
+      }
+
+      // ── Envelope (zoomed-out fidelity path) ─────────────────────────────
+      //
+      // Compute per-column min/max from a pyramid level dense enough to have
+      // several samples per pixel column (selected with a target of
+      // columns * ENVELOPE_SOURCE_OVERSCAN). The pyramid preserves extrema at
+      // every level, so this is faithful AND cheaper than the per-frame LTTB it
+      // replaces. Written into per-lane DOUBLE-BUFFERED scratch (same retention
+      // rationale as lttbScratchRef) so steady-state drags allocate ~0.
+      let envelope: SignalChannel['envelope'] | undefined;
+      if (useEnvelope && pyramid) {
+        const envTarget = columns * ENVELOPE_SOURCE_OVERSCAN;
+        const eslice = selectPyramidLevel(pyramid, startSample, endSample, envTarget);
+        const envSource = eslice.data.subarray(eslice.startIndex, eslice.endIndex);
+        if (envSource.length > 0) {
+          let escr = envelopeScratchRef.current.get(laneName);
+          if (!escr || escr.capacity < columns) {
+            escr = {
+              aMin: new Float32Array(columns),
+              aMax: new Float32Array(columns),
+              bMin: new Float32Array(columns),
+              bMax: new Float32Array(columns),
+              flip: 0,
+              capacity: columns,
+            };
+            envelopeScratchRef.current.set(laneName, escr);
+          }
+          const outMin = escr.flip === 0 ? escr.aMin : escr.bMin;
+          const outMax = escr.flip === 0 ? escr.aMax : escr.bMax;
+          escr.flip = escr.flip === 0 ? 1 : 0;
+          const env = columnEnvelopeInto(envSource, columns, outMin, outMax);
+          envelope = { min: env.min, max: env.max, columns: env.columns };
+        }
+      }
 
       const viewDurationMs = range.endTime - range.startTime;
       // Output-point density over the viewport duration — independent of which
@@ -1027,6 +1172,7 @@ export default function SignalViewer() {
         physicalMax: domain?.max ?? desc.physicalMax,
         kind: 'cpap',
         render: 'line',
+        ...(envelope ? { envelope } : {}),
       };
     },
     [cpapChannelMeta, cpapDisplayDomains, totalDurationMs],
@@ -1124,13 +1270,16 @@ export default function SignalViewer() {
     (range: ViewportRange): ViewportState | null => {
       if (!manifest) return null;
       const targetPoints = Math.max(100, Math.round(canvasSize.width * DOWNSAMPLE_MULTIPLIER));
+      // Plot width drives the envelope column count (one column per x pixel) and
+      // the samples-per-pixel threshold that selects envelope vs polyline.
+      const plotWidth = canvasSize.width - PADDING.left - PADDING.right;
 
       const channels: SignalChannel[] = [];
       for (const { lane, height } of renderLanes) {
         let channel: SignalChannel | null = null;
 
         if (lane.group === 'cpap') {
-          channel = buildCpapChannel(lane.name, targetPoints, range);
+          channel = buildCpapChannel(lane.name, targetPoints, plotWidth, range);
         } else {
           // Wearable / sleep lane — look up the memoized, viewport-independent base.
           const base = baseWearableChannels.get(lane.id);
@@ -1237,6 +1386,23 @@ export default function SignalViewer() {
     [buildViewportState, buildRenderOptions],
   );
   renderRangeDirectRef.current = renderRangeDirect;
+
+  /**
+   * Lazily create (once) the shared rAF-coalescing paint scheduler used by BOTH
+   * the wheel-zoom and drag-pan hot paths. The paint callback routes through
+   * `renderRangeDirectRef` so it always invokes the latest `renderRangeDirect`
+   * (which keeps `lastViewportRef`/overlay coherent), never a stale closure.
+   */
+  const getPaintScheduler = useCallback((): FramePaintScheduler => {
+    let scheduler = paintSchedulerRef.current;
+    if (!scheduler) {
+      scheduler = createFramePaintScheduler((range) => {
+        renderRangeDirectRef.current?.(range);
+      });
+      paintSchedulerRef.current = scheduler;
+    }
+    return scheduler;
+  }, []);
 
   /** Commit a settled live (pan/wheel) viewport to React state, then clear it. */
   const commitLiveViewport = useCallback(() => {
@@ -1498,13 +1664,9 @@ export default function SignalViewer() {
       const range = { startTime: newStart, endTime: newEnd };
       liveViewportRef.current = range;
 
-      // Coalesce paints to one per frame.
-      if (wheelRafRef.current === null) {
-        wheelRafRef.current = window.requestAnimationFrame(() => {
-          wheelRafRef.current = null;
-          if (liveViewportRef.current) renderRangeDirect(liveViewportRef.current);
-        });
-      }
+      // Coalesce paints to one per frame via the shared scheduler (same handle
+      // the pan path uses).
+      getPaintScheduler().schedule(range);
 
       // (Re)arm the trailing commit so the settled viewport reaches React state
       // exactly once after the gesture stops — matching what was last painted.
@@ -1513,11 +1675,9 @@ export default function SignalViewer() {
       }
       wheelCommitTimerRef.current = window.setTimeout(() => {
         wheelCommitTimerRef.current = null;
-        if (wheelRafRef.current !== null) {
-          window.cancelAnimationFrame(wheelRafRef.current);
-          wheelRafRef.current = null;
-        }
-        // Paint the final viewport once more so committed state == last frame.
+        // Cancel any frame still pending and paint the final viewport once more
+        // so committed state == last painted frame.
+        getPaintScheduler().cancel();
         if (liveViewportRef.current) renderRangeDirect(liveViewportRef.current);
         commitLiveViewport();
       }, WHEEL_COMMIT_DELAY_MS);
@@ -1526,10 +1686,7 @@ export default function SignalViewer() {
     wrapper.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       wrapper.removeEventListener('wheel', onWheel);
-      if (wheelRafRef.current !== null) {
-        window.cancelAnimationFrame(wheelRafRef.current);
-        wheelRafRef.current = null;
-      }
+      paintSchedulerRef.current?.cancel();
       if (wheelCommitTimerRef.current !== null) {
         window.clearTimeout(wheelCommitTimerRef.current);
         wheelCommitTimerRef.current = null;
@@ -1539,7 +1696,7 @@ export default function SignalViewer() {
         commitLiveViewport();
       }
     };
-  }, [totalDurationMs, renderRangeDirect, commitLiveViewport]);
+  }, [totalDurationMs, renderRangeDirect, commitLiveViewport, getPaintScheduler]);
 
   // ── Hovered-region hit-test (shared by pointer + keyboard) ───
 
@@ -1635,8 +1792,13 @@ export default function SignalViewer() {
         }
         const range = { startTime: newStart, endTime: newEnd };
         liveViewportRef.current = range;
-        // crosshairXRef is already set above; renderRangeDirect picks it up.
-        renderRangeDirect(range);
+        // crosshairXRef is already set above; the scheduled renderRangeDirect
+        // picks it up. PAN HOT PATH now mirrors the wheel path: high-rate
+        // pointers (120–1000 Hz) fire many moves per displayed frame, so we
+        // coalesce to AT MOST ONE renderRangeDirect per animation frame via the
+        // shared scheduler instead of painting synchronously on every move. The
+        // final frame is painted + committed once on pointerup/leave.
+        getPaintScheduler().schedule(range);
         return;
       }
 
@@ -1652,7 +1814,7 @@ export default function SignalViewer() {
         });
       }
     },
-    [isPanning, totalDurationMs, renderRangeDirect, updateHoveredRegion],
+    [isPanning, totalDurationMs, updateHoveredRegion, getPaintScheduler],
   );
 
   const handlePointerUp = useCallback(() => {
