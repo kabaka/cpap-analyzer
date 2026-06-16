@@ -71,6 +71,7 @@ import {
   toggleId,
   type LanePrefs,
 } from './laneState';
+import { computeLaneDomain } from './signalDomain';
 import {
   buildWearableChannel,
   hypnogramBands,
@@ -363,6 +364,14 @@ export default function SignalViewer() {
   const fullDataRef = useRef<Map<string, FullChannelData>>(new Map());
 
   /**
+   * Per-channel full-session finite data extent (min/max), accumulated during
+   * the same single pass that detects empty channels. Feeds the hybrid display
+   * domain (see {@link computeLaneDomain}). Channels with no finite samples are
+   * absent. Reset on session change alongside `emptyChannels`.
+   */
+  const dataExtentRef = useRef<Map<string, { min: number; max: number }>>(new Map());
+
+  /**
    * Per-channel multi-resolution decimation pyramids, keyed by channel name.
    * Built lazily after the first CPAP paint (see the pyramid-build effect) so it
    * never blocks first frame. Empty until built; the render hot path falls back
@@ -413,6 +422,12 @@ export default function SignalViewer() {
   const [dataLoading, setDataLoading] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
   const [fullDataReady, setFullDataReady] = useState(false);
+
+  /**
+   * Flipped true once the full-session load pass (which fills `dataExtentRef`)
+   * completes. Gates the hybrid-domain memo without coupling it to the viewport.
+   */
+  const [dataExtentReady, setDataExtentReady] = useState(false);
 
   // Interaction state
   const [isPanning, setIsPanning] = useState(false);
@@ -715,6 +730,8 @@ export default function SignalViewer() {
       setDataLoading(true);
       setDataError(null);
       setFullDataReady(false);
+      setDataExtentReady(false);
+      dataExtentRef.current = new Map();
       setManifest(null);
 
       try {
@@ -744,24 +761,33 @@ export default function SignalViewer() {
           fullDataRef.current = newFullData;
 
           const detectedEmpty = new Set<string>();
+          const detectedExtent = new Map<string, { min: number; max: number }>();
           for (const [name, fcd] of newFullData) {
             const data = fcd.data;
             if (data.length === 0) {
               detectedEmpty.add(name);
               continue;
             }
+            // Single pass: empty-channel detection AND finite min/max extent.
             let hasMeaningful = false;
+            let lo = Number.POSITIVE_INFINITY;
+            let hi = Number.NEGATIVE_INFINITY;
             for (let i = 0; i < data.length; i++) {
               const v = data[i];
-              if (!Number.isNaN(v) && v !== 0) {
-                hasMeaningful = true;
-                break;
-              }
+              if (v === undefined || Number.isNaN(v)) continue;
+              if (v !== 0) hasMeaningful = true;
+              if (v < lo) lo = v;
+              if (v > hi) hi = v;
             }
             if (!hasMeaningful) detectedEmpty.add(name);
+            if (Number.isFinite(lo) && Number.isFinite(hi)) {
+              detectedExtent.set(name, { min: lo, max: hi });
+            }
           }
+          dataExtentRef.current = detectedExtent;
           setEmptyChannels(detectedEmpty);
           setFullDataReady(true);
+          setDataExtentReady(true);
         }
       } catch (err) {
         if (!cancelled) {
@@ -891,6 +917,37 @@ export default function SignalViewer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manifest, resolvedTheme, wrapperWidth]);
 
+  // ── Hybrid display domains per CPAP channel ──────────────────
+  //
+  // Resolve each channel's display bounds from a clinical default expanded only
+  // to cover the session's data extent (see `signalDomain.computeLaneDomain`).
+  // This replaces scaling lanes to the EDF `physicalMin`/`physicalMax` decode
+  // anchors, which clip real spikes and waste vertical resolution. Keyed on
+  // `[manifest, dataExtentReady]` only — it is viewport-independent, so pan/zoom
+  // never recomputes it. `dataExtentRef` is read (not a dep) but is guaranteed
+  // populated by the time `dataExtentReady` flips true.
+  const cpapDisplayDomains = useMemo(() => {
+    const map = new Map<string, { min: number; max: number }>();
+    if (!manifest) return map;
+    for (const descriptor of manifest.channels) {
+      const extent = dataExtentRef.current.get(descriptor.name);
+      map.set(
+        descriptor.name,
+        computeLaneDomain({
+          channelName: descriptor.name,
+          unit: descriptor.unit,
+          declaredMin: descriptor.physicalMin,
+          declaredMax: descriptor.physicalMax,
+          dataMin: extent?.min,
+          dataMax: extent?.max,
+        }),
+      );
+    }
+    return map;
+    // dataExtentRef is a ref (stable); dataExtentReady gates when it is read.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manifest, dataExtentReady]);
+
   // ── Build CPAP channel for the current viewport ──────────────
 
   const buildCpapChannel = useCallback(
@@ -933,19 +990,27 @@ export default function SignalViewer() {
       const effectiveSampleRate =
         viewDurationMs > 0 ? (displayData.length / viewDurationMs) * 1000 : desc.sampleRate;
 
+      // Display bounds come from the hybrid clinical domain (expand-only from a
+      // clinical default), NOT the EDF decode anchors. Threading them through
+      // physicalMin/physicalMax keeps the crosshair readout
+      // (getValueAtPosition/getValuesAtTime) and dot positioning automatically
+      // consistent, since they derive from the same fields. Fall back to the EDF
+      // declared range when no hybrid domain is available (e.g. pre-extent).
+      const domain = cpapDisplayDomains.get(laneName);
+
       return {
         name: laneName,
         data: displayData,
         sampleRate: effectiveSampleRate,
         unit: desc.unit,
         color: meta.resolvedColor,
-        physicalMin: desc.physicalMin,
-        physicalMax: desc.physicalMax,
+        physicalMin: domain?.min ?? desc.physicalMin,
+        physicalMax: domain?.max ?? desc.physicalMax,
         kind: 'cpap',
         render: 'line',
       };
     },
-    [cpapChannelMeta, totalDurationMs],
+    [cpapChannelMeta, cpapDisplayDomains, totalDurationMs],
   );
 
   // ── Memoized base wearable channels (viewport-independent) ───

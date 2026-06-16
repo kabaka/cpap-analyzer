@@ -207,15 +207,29 @@ export function toSessionRelative(
 // Physical ranges
 // ---------------------------------------------------------------------------
 
-/** Compute a padded [min, max] for a wearable lane, with sane per-type defaults. */
+/**
+ * Compute a [min, max] for a wearable lane: a sane per-type default range
+ * **expanded only** to cover the data (never contracted below the default).
+ *
+ * This mirrors the CPAP hybrid-domain rule (see `signalDomain.computeLaneDomain`)
+ * so wearable lanes scale consistently: clinically-anchored default floor, grown
+ * outward by data, with ~10% padding applied only to the data-expanded edge(s).
+ * SpO₂ pins its max at 100 and only expands downward.
+ */
 export function wearableRange(
   dataType: WearableIntradayType,
   values: Float32Array,
 ): { min: number; max: number } {
-  // Hypnogram is categorical; its range is the ordinal stage span.
+  // Hypnogram is categorical; its range is the ordinal stage span (fixed).
   if (dataType === 'sleep_stages') {
     return { min: SLEEP_STAGE_CODES.deep, max: SLEEP_STAGE_CODES.wake };
   }
+
+  const def = DEFAULT_RANGES[dataType];
+  const defMin = def[0];
+  const defMax = def[1];
+  // SpO₂ is a percentage: the max is physically pinned at 100 (downward-only).
+  const pinMax = dataType === 'spo2_intraday';
 
   let lo = Number.POSITIVE_INFINITY;
   let hi = Number.NEGATIVE_INFINITY;
@@ -228,17 +242,26 @@ export function wearableRange(
 
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
     // No data — fall back to type defaults so the lane still scales sensibly.
-    const def = DEFAULT_RANGES[dataType];
-    return { min: def[0], max: def[1] };
+    return { min: defMin, max: defMax };
   }
 
   if (lo === hi) {
-    // Flat series — give it a little room.
-    return { min: lo - 1, max: hi + 1 };
+    // Flat series — keep the default floor and give it a little room, still
+    // respecting the SpO₂ max pin.
+    return { min: Math.min(defMin, lo - 1), max: pinMax ? defMax : Math.max(defMax, hi + 1) };
   }
 
-  const pad = (hi - lo) * 0.1;
-  return { min: lo - pad, max: hi + pad };
+  // Expand-only against the default floor.
+  let outMin = Math.min(defMin, lo);
+  let outMax = pinMax ? defMax : Math.max(defMax, hi);
+
+  // Pad only the data-expanded edge(s) (~10%); leave anchored edges exact.
+  const span = outMax - outMin;
+  const pad = span * 0.1;
+  if (lo < defMin) outMin -= pad;
+  if (!pinMax && hi > defMax) outMax += pad;
+
+  return { min: outMin, max: outMax };
 }
 
 const DEFAULT_RANGES: Record<WearableIntradayType, readonly [number, number]> = {

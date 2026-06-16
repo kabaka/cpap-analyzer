@@ -732,6 +732,11 @@ export class SignalRenderer {
     const times = ch.sampleTimes && ch.sampleTimes.length === data.length ? ch.sampleTimes : null;
     const msPerSample = durationMs / data.length;
 
+    // LOAD-BEARING CLIP (defense in depth): the lane display bounds are now a
+    // hybrid clinical domain that may not cover every sample (e.g. a clamped
+    // corrupt spike). This rect clip guarantees an out-of-domain sample can
+    // never paint into a neighbouring lane. Do not remove. (Same rationale for
+    // the clips in drawStep and drawRibbon below.)
     ctx.save();
     ctx.beginPath();
     ctx.rect(plotLeft, stripTop, plotWidth, stripHeight);
@@ -851,6 +856,8 @@ export class SignalRenderer {
       if (median > 0) gapThresholdMs = median * SPARSE_GAP_FACTOR;
     }
 
+    // LOAD-BEARING CLIP (defense in depth): keeps out-of-domain samples from
+    // painting a neighbouring lane. See the note in drawLine. Do not remove.
     ctx.save();
     ctx.beginPath();
     ctx.rect(plotLeft, stripTop, plotWidth, stripHeight);
@@ -951,6 +958,8 @@ export class SignalRenderer {
       return plotLeft + (tMs / durationMs) * plotWidth;
     };
 
+    // LOAD-BEARING CLIP (defense in depth): keeps out-of-domain samples from
+    // painting a neighbouring lane. See the note in drawLine. Do not remove.
     ctx.save();
     ctx.beginPath();
     ctx.rect(plotLeft, stripTop, plotWidth, stripHeight);
