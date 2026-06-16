@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "bench:renderer": "BENCH_RENDERER=1 vitest run src/components/charts/canvas/__tests__/SignalRenderer.bench.test.ts",
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "format": "prettier --write .",
