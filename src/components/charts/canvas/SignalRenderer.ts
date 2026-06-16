@@ -925,7 +925,7 @@ export class SignalRenderer {
         // draw the polyline HERE so the waveform is never invisible during that
         // window. Once `webglLane` is attached, WebGL takes over and chrome skips
         // it. This keeps the two layers mutually exclusive AND gap-free.
-        void 0;
+        // (Intentional no-op: the waveform for this lane is painted by WebGL.)
       } else {
         this.drawLine(ch, viewport, plotLeft, plotWidth, stripTop, stripHeight);
       }

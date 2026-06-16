@@ -212,9 +212,9 @@ export class WebGLWaveformRenderer {
    * `lanes` are disposed; lanes present are replaced.
    */
   uploadLanes(lanes: readonly WaveformLaneInput[]): void {
-    if (this.contextLost) {
-      // Retain the request implicitly by re-keying; geometry re-uploads on restore.
-    }
+    // On a lost context the gl.* calls below are silent no-ops; the host
+    // (HybridSignalRenderer) re-drives uploadLanes from `onContextRestored`, so no
+    // explicit retain is needed here.
     const gl = this.gl;
     const keep = new Set(lanes.map((l) => l.id));
 
