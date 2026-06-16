@@ -84,6 +84,14 @@ interface FidelityWindow {
     physicalMin: number;
     physicalMax: number;
   }[];
+  /**
+   * Force a synchronous WebGL re-render at the harness viewport. The harness
+   * publishes this so each in-page read-back can re-issue the draw in the SAME JS
+   * task immediately before capture — guaranteeing the drawing buffer is
+   * populated (the headless-Chromium blank-read-back mitigation, alongside the
+   * harness's `preserveDrawingBuffer:true`).
+   */
+  renderWebglNow: () => void;
 }
 
 declare global {
@@ -133,6 +141,14 @@ const EXTREME_TOLERANCE_PX = 1;
 // rects are derived from the CSS-px landmarks × DPR. Returns plain numbers /
 // number[] so they cross the CDP boundary cheaply; the heavier diff/SSIM math
 // over the returned buffers runs in Node.
+//
+// BLANK-READ-BACK MITIGATION (headless Chromium / SwiftShader): the harness
+// creates the WebGL2 context with `preserveDrawingBuffer:true` (dev/test-only)
+// AND publishes `window.__fidelity.renderWebglNow()`. Every read-back below calls
+// that to re-issue a SYNCHRONOUS WebGL draw in the SAME JS task right before
+// reading, so the drawing buffer is guaranteed populated when `drawImage` copies
+// it. Without this, a non-preserved buffer can be swapped away and read blank —
+// the exact failure ADR 0019's gate hit on its first CI run.
 
 interface RegionPixels {
   /** Reference region RGBA (opaque), row-major, length = w*h*4 (device px). */
@@ -152,6 +168,10 @@ async function readRegion(page: Page): Promise<RegionPixels> {
       const fid = window.__fidelity;
       if (!fid) throw new Error('window.__fidelity missing — harness did not publish landmarks');
       const dpr = fid.dpr;
+
+      // Re-issue a synchronous WebGL draw in THIS task so the buffer is populated
+      // before we copy it (blank-read-back mitigation).
+      fid.renderWebglNow();
 
       const ref = document.querySelector<HTMLCanvasElement>('[data-testid="ref-canvas"]');
       const webgl = document.querySelector<HTMLCanvasElement>('[data-testid="webgl-canvas"]');
@@ -210,6 +230,12 @@ async function probeWebglLit(
 ): Promise<LitProbe> {
   return page.evaluate(
     ({ xStart, xEnd, yTop, yBottom, litAlpha }) => {
+      const fid = window.__fidelity;
+      if (!fid) throw new Error('window.__fidelity missing — harness did not publish landmarks');
+      // Re-issue a synchronous WebGL draw in THIS task so the buffer is populated
+      // before we copy it (blank-read-back mitigation).
+      fid.renderWebglNow();
+
       const webgl = document.querySelector<HTMLCanvasElement>('[data-testid="webgl-canvas"]');
       if (!webgl) throw new Error('webgl-canvas not found');
       const scratch = document.createElement('canvas');
@@ -357,6 +383,12 @@ test.describe('WebGL fidelity gate (ADR 0019, Stage 3)', () => {
 
   for (const view of VIEWS) {
     test(`view=${view}: WebGL waveform matches the Canvas2D reference`, async ({ page }) => {
+      // The per-viewport pixel-diff + SSIM + extreme/gap/scissor probes each read
+      // back device-pixel regions across multiple page.evaluate round-trips; under
+      // software SwiftShader these are genuinely heavy. Give them headroom so a
+      // slow-but-correct run is not killed by the default 30 s timeout.
+      test.setTimeout(90_000);
+
       const pageErrors: Error[] = [];
       page.on('pageerror', (err) => pageErrors.push(err));
 
@@ -367,10 +399,11 @@ test.describe('WebGL fidelity gate (ADR 0019, Stage 3)', () => {
       const active = (await page.getByTestId('webgl-active').textContent())?.trim();
       expect(
         active,
-        `WebGL2 path did not engage (webgl-active="${active}"). The fidelity gate ` +
-          `requires the GPU path: a Canvas2D fallback means WebGL2 is unavailable ` +
-          `in this runner. Ensure the chromium-fidelity project's SwiftShader ` +
-          `flags are applied. This is a HARD FAILURE, not a skip.`,
+        `[WEBGL INACTIVE] view=${view}: WebGL2 path did not engage ` +
+          `(webgl-active="${active}"). The fidelity gate requires the GPU path: a ` +
+          `Canvas2D fallback means WebGL2 is unavailable in this runner. Ensure the ` +
+          `chromium-fidelity project's SwiftShader flags are applied. This is a ` +
+          `HARD FAILURE, not a skip.`,
       ).toBe('true');
 
       const fid = await readFidelity(page);
@@ -379,6 +412,23 @@ test.describe('WebGL fidelity gate (ADR 0019, Stage 3)', () => {
       const region = await readRegion(page);
       expect(region.width).toBeGreaterThan(0);
       expect(region.height).toBeGreaterThan(0);
+
+      // ── 1b. ACTIVE-but-BLANK guard. WebGL reported active, so any all-zero
+      // read-back is NOT a missing GPU path. With preserveDrawingBuffer:true and
+      // the synchronous re-render before capture, a blank buffer is no longer a
+      // read-back race either — it means SwiftShader genuinely painted nothing.
+      // Fail with a message that says exactly that, so it is distinguishable from
+      // a fidelity mismatch (assertions 2–6) and from WEBGL INACTIVE above. ──
+      const litCount = litRegionPixelCount(region);
+      expect(
+        litCount,
+        `[WEBGL BLANK READBACK] view=${view}: WebGL is ACTIVE but the entire ` +
+          `waveform region read back blank (0 lit pixels of ${region.width * region.height}). ` +
+          `The harness uses preserveDrawingBuffer:true and re-renders synchronously ` +
+          `before capture, so this is NOT a read-back race — it indicates ` +
+          `SwiftShader produced no output (a genuine software-GL render problem to ` +
+          `escalate), not a fidelity mismatch.`,
+      ).toBeGreaterThan(0);
 
       const ratio = mismatchRatio(region);
       expect(
@@ -416,6 +466,21 @@ test.describe('WebGL fidelity gate (ADR 0019, Stage 3)', () => {
     });
   }
 });
+
+/**
+ * Count WebGL region pixels whose alpha exceeds the lit threshold. Used by the
+ * ACTIVE-but-BLANK guard to tell a genuine SwiftShader no-output condition apart
+ * from a fidelity mismatch (the WebGL layer is transparent except the waveform,
+ * so a correctly-rendered frame has many lit pixels).
+ */
+function litRegionPixelCount(region: RegionPixels): number {
+  const { webgl, width, height } = region;
+  let count = 0;
+  for (let i = 0; i < width * height; i++) {
+    if ((webgl[i * 4 + 3] ?? 0) > WEBGL_LIT_ALPHA) count++;
+  }
+  return count;
+}
 
 /** Composite the (transparent) WebGL region over the reference RGBA for SSIM. */
 function compositeWebglOverRef(region: RegionPixels): Uint8ClampedArray {
@@ -459,8 +524,11 @@ async function assertExtremeSurvives(
   );
   expect(
     probe.litCount,
-    `view=${view}: no lit WebGL pixels at the ${positive ? 'spike' : 'notch'} column ` +
-      `(x≈${deviceX.toFixed(1)} device px) — the extreme was lost.`,
+    `[FIDELITY MISMATCH] view=${view}: no lit WebGL pixels at the ` +
+      `${positive ? 'spike' : 'notch'} column (x≈${deviceX.toFixed(1)} device px) — the ` +
+      `extreme was lost. (The whole-region ACTIVE-but-BLANK guard already passed, so ` +
+      `the buffer is populated; this is a genuine spike-survival failure, not a ` +
+      `read-back race.)`,
   ).toBeGreaterThan(0);
 
   // Expected extreme y: positive spike → near lane top (physicalMax side);

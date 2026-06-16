@@ -312,6 +312,14 @@ interface FidelityLandmarks {
     physicalMin: number;
     physicalMax: number;
   }[];
+  /**
+   * Force a SYNCHRONOUS WebGL waveform re-render at the harness viewport. The
+   * fidelity spec calls this inside the same `page.evaluate` task as each pixel
+   * read-back so the drawing buffer is guaranteed freshly populated at read time
+   * (belt-and-suspenders alongside `preserveDrawingBuffer:true`). No-op on the
+   * Canvas2D fallback. DEV/TEST-ONLY.
+   */
+  renderWebglNow: () => void;
 }
 
 declare global {
@@ -401,7 +409,15 @@ export default function FidelityHarness(): React.JSX.Element {
     webglHost.appendChild(chromeCanvas);
     webglHost.appendChild(waveformCanvas);
 
-    const hybrid = new HybridSignalRenderer(chromeCanvas, waveformCanvas, resolveColor);
+    // preserveDrawingBuffer:true is DEV/TEST-ONLY (default false in production).
+    // Without it, reading the WebGL canvas back off-screen (the fidelity gate's
+    // gl.readPixels / drawImage-onto-2D capture) is unreliable in headless
+    // Chromium/SwiftShader: the buffer may have been swapped away and read blank.
+    // Preserving it guarantees a populated buffer at read time. See ADR 0019 and
+    // HybridRendererOptions.
+    const hybrid = new HybridSignalRenderer(chromeCanvas, waveformCanvas, resolveColor, {
+      preserveDrawingBuffer: true,
+    });
     hybrid.resize(CANVAS_WIDTH, CANVAS_HEIGHT);
     hybrid.render(viewport, options);
     const active = hybrid.isWebGLActive();
@@ -437,6 +453,11 @@ export default function FidelityHarness(): React.JSX.Element {
         height: CANVAS_HEIGHT - PADDING.top - PADDING.bottom,
       },
       laneRects,
+      // Re-issue a synchronous WebGL draw at the harness viewport. Called by the
+      // spec immediately before each read-back so the buffer is populated.
+      renderWebglNow: () => {
+        hybrid.render(viewport, options);
+      },
     };
 
     // Mark ready only AFTER both renderers have completed a synchronous draw.
