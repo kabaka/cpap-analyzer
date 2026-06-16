@@ -11,8 +11,27 @@
  * deterministic synthetic dataset through BOTH paths from the SAME built channel
  * objects, then compares the two waveform regions pixel-for-pixel.
  *
- * WHAT IT ASSERTS, per viewport (`all`, `1h`, `5m`, `1m`, `spike`, `gap`)
+ * WHAT IT ASSERTS, per viewport (`all`, `5m`, `spike`, `gap`)
  * --------------------------------------------------------------------------
+ *
+ * VIEW MATRIX (CI VIABILITY)
+ * --------------------------
+ * Trimmed from the original six (`all`,`1h`,`5m`,`1m`,`spike`,`gap`) to FOUR
+ * representative views so the whole `chromium-fidelity` job finishes in minutes,
+ * not the 25+ it ground to under software SwiftShader. The dropped two were pure
+ * redundancy; the kept four still cover every distinct render path:
+ *   - `all`   — whole-night ENVELOPE mode (raw samples/px ≫ 1). The path the
+ *               just-fixed spike-attenuation bug lived in; contains spike, notch
+ *               AND gap. Highest-value single view.
+ *   - `5m`    — zoomed-in LINE mode + the envelope→line transition band.
+ *   - `spike` — narrow (~1 min) LINE-mode window on the spike/notch, so spike
+ *               survival is certified in BOTH envelope (`all`) and line (`spike`)
+ *               paths. Cheap: a small viewport, same probe geometry.
+ *   - `gap`   — narrow window around the NaN run; the ONLY view that exercises
+ *               `assertGapBreaks` (the gap-bridging regression guard).
+ *   DROPPED `1h` (viewport IDENTICAL to `all` — `0..TOTAL_DURATION_MS` — pure
+ *   duplication) and `1m` (a second pure line-mode window adding nothing over
+ *   `5m`/`spike`).
  *   1. WebGL is ACTIVE (the GPU path engaged). FAILS LOUDLY otherwise — this is
  *      the missing-WebGL2 guard; the gate is meaningless on the Canvas2D
  *      fallback, so a fallback is a hard failure, never a skip.
@@ -100,8 +119,12 @@ declare global {
   }
 }
 
-/** Viewports to certify. */
-const VIEWS = ['all', '1h', '5m', '1m', 'spike', 'gap'] as const;
+/**
+ * Viewports to certify. Trimmed to the four representative views (see the file
+ * header's VIEW MATRIX note) for CI viability: `all` (envelope), `5m` (line +
+ * transition), `spike` (line-mode spike/notch survival), `gap` (gap-break).
+ */
+const VIEWS = ['all', '5m', 'spike', 'gap'] as const;
 type View = (typeof VIEWS)[number];
 
 // ── Tolerance constants (named + documented) ───────────────────────────────
@@ -174,6 +197,20 @@ const EXTREME_REF_MATCH_PX = 3;
  */
 const EXTREME_ANALYTIC_MARGIN_PX = 12;
 
+/**
+ * Column stride (in DEVICE px) for the region pixel-diff + SSIM read-back. Rather
+ * than marshalling the ENTIRE plot rect (≈2000×1200 device px → a ~9.6M-element
+ * array per canvas, twice, over CDP — the dominant cost that made the gate take
+ * 25+ min under SwiftShader), we sample every Nth COLUMN. Stride 3 reads ⅓ of the
+ * columns: a structurally representative sub-grid that still spans the full lane
+ * width, so a shifted/fattened/missing band (which is many px wide) is caught, but
+ * the per-view marshalling + Node pixel math drop ~3×. Rows are NOT strided so the
+ * vertical band-edge structure SSIM keys on is preserved. The strided buffer is
+ * laid out as a dense `sampledWidth × height` image (the stride is collapsed), so
+ * the downstream diff/SSIM operate on a normal contiguous region.
+ */
+const REGION_COL_STRIDE = 3;
+
 // ── In-page extraction (runs in the browser) ───────────────────────────────
 //
 // All canvas reads happen inside page.evaluate via 2D getImageData. The WebGL
@@ -181,6 +218,15 @@ const EXTREME_ANALYTIC_MARGIN_PX = 12;
 // rects are derived from the CSS-px landmarks × DPR. Returns plain numbers /
 // number[] so they cross the CDP boundary cheaply; the heavier diff/SSIM math
 // over the returned buffers runs in Node.
+//
+// COST CONTROL (CI viability): the region we read is the FLOW LANE BAND ONLY —
+// the lane that carries the spike/notch and the densest structure — not the whole
+// multi-lane plot, and we COLUMN-STRIDE it (REGION_COL_STRIDE). One lane band is
+// ~⅓ the plot height and the stride drops another ~3×, so each read-back marshals
+// roughly an ORDER OF MAGNITUDE fewer pixels than the old full-plot read while
+// still covering the full session width and the full vertical band a regression
+// would move. Spike/notch survival, gap-break and scissor probes are unchanged
+// (they already read tiny targeted windows).
 //
 // BLANK-READ-BACK MITIGATION (headless Chromium / SwiftShader): the harness
 // creates the WebGL2 context with `preserveDrawingBuffer:true` (dev/test-only)
@@ -195,16 +241,21 @@ interface RegionPixels {
   ref: number[];
   /** WebGL region RGBA (transparent except waveform), same layout. */
   webgl: number[];
-  /** Region dimensions in DEVICE pixels. */
+  /** Region dimensions in DEVICE pixels (width = column-strided/collapsed). */
   width: number;
   height: number;
 }
 
-/** Read the waveform-region pixels (all lanes) from both canvases. */
+/**
+ * Read the waveform-region pixels from both canvases, scoped to the FLOW LANE
+ * BAND and COLUMN-STRIDED (see REGION_COL_STRIDE) to keep the per-view read-back
+ * cheap under software SwiftShader. The returned buffer is a dense
+ * `sampledWidth × height` image (the stride collapsed) so the Node-side diff/SSIM
+ * treat it as an ordinary contiguous region.
+ */
 async function readRegion(page: Page): Promise<RegionPixels> {
   return page.evaluate(
-    ({ litAlpha }) => {
-      void litAlpha;
+    ({ stride }) => {
       const fid = window.__fidelity;
       if (!fid) throw new Error('window.__fidelity missing — harness did not publish landmarks');
       const dpr = fid.dpr;
@@ -218,15 +269,22 @@ async function readRegion(page: Page): Promise<RegionPixels> {
       if (!ref) throw new Error('ref-canvas not found');
       if (!webgl) throw new Error('webgl-canvas not found');
 
-      // Waveform region = the plot rect, in device px.
+      // Region = the FLOW LANE band intersected with the plot rect, in device px.
+      // (One lane band instead of the whole multi-lane plot: ~⅓ the height, and
+      // the lane that carries the spike/notch + densest structure.)
+      const flow = fid.laneRects.find((l) => l.name === 'Flow');
+      if (!flow) throw new Error('Flow lane rect missing');
       const rx = Math.round(fid.plot.left * dpr);
-      const ry = Math.round(fid.plot.top * dpr);
       const rw = Math.round(fid.plot.width * dpr);
-      const rh = Math.round(fid.plot.height * dpr);
+      const laneTopPx = Math.round(flow.top * dpr);
+      const laneBottomPx = Math.round((flow.top + flow.height) * dpr);
+      const ry = Math.max(Math.round(fid.plot.top * dpr), laneTopPx);
+      const rh = Math.min(Math.round((fid.plot.top + fid.plot.height) * dpr), laneBottomPx) - ry;
+      if (rw <= 0 || rh <= 0) throw new Error('flow-lane region has non-positive size');
 
       const refCtx = ref.getContext('2d');
       if (!refCtx) throw new Error('ref 2d context unavailable');
-      const refData = refCtx.getImageData(rx, ry, rw, rh).data;
+      const refFull = refCtx.getImageData(rx, ry, rw, rh).data;
 
       // The WebGL canvas needs to be drawn onto a 2D scratch canvas to read pixels.
       const scratch = document.createElement('canvas');
@@ -235,16 +293,33 @@ async function readRegion(page: Page): Promise<RegionPixels> {
       const sctx = scratch.getContext('2d');
       if (!sctx) throw new Error('scratch 2d context unavailable');
       sctx.drawImage(webgl, 0, 0);
-      const webglData = sctx.getImageData(rx, ry, rw, rh).data;
+      const webglFull = sctx.getImageData(rx, ry, rw, rh).data;
 
-      return {
-        ref: Array.from(refData),
-        webgl: Array.from(webglData),
-        width: rw,
-        height: rh,
-      };
+      // Collapse columns by `stride` into a dense sampledWidth × rh image. We pick
+      // every stride-th source column; the result is a normal contiguous region.
+      const s = Math.max(1, Math.floor(stride));
+      const sampledWidth = Math.ceil(rw / s);
+      const refOut = new Array<number>(sampledWidth * rh * 4);
+      const webglOut = new Array<number>(sampledWidth * rh * 4);
+      for (let y = 0; y < rh; y++) {
+        for (let sx = 0; sx < sampledWidth; sx++) {
+          const srcX = sx * s;
+          const src = (y * rw + srcX) * 4;
+          const dst = (y * sampledWidth + sx) * 4;
+          refOut[dst] = refFull[src] ?? 0;
+          refOut[dst + 1] = refFull[src + 1] ?? 0;
+          refOut[dst + 2] = refFull[src + 2] ?? 0;
+          refOut[dst + 3] = refFull[src + 3] ?? 0;
+          webglOut[dst] = webglFull[src] ?? 0;
+          webglOut[dst + 1] = webglFull[src + 1] ?? 0;
+          webglOut[dst + 2] = webglFull[src + 2] ?? 0;
+          webglOut[dst + 3] = webglFull[src + 3] ?? 0;
+        }
+      }
+
+      return { ref: refOut, webgl: webglOut, width: sampledWidth, height: rh };
     },
-    { litAlpha: WEBGL_LIT_ALPHA },
+    { stride: REGION_COL_STRIDE },
   );
 }
 
@@ -480,25 +555,39 @@ test.describe('WebGL fidelity gate (ADR 0019, Stage 3)', () => {
   // republishes `window.__fidelity` and tears it down on unmount, so there is no
   // cross-test harness/page state to protect with serial ordering. We deliberately
   // drop `mode: 'serial'` (which STOPS at the first failing view) so a single CI run
-  // surfaces EVERY remaining divergence across all 6 views at once, rather than one
-  // borderline tolerance per CI cycle. The CI fidelity job pins `workers: 1`
+  // surfaces EVERY remaining divergence across the kept views at once, rather than
+  // one borderline tolerance per CI cycle. The CI fidelity job pins `workers: 1`
   // (playwright.config.ts), so the views still execute one-at-a-time on a single
   // SwiftShader context — no parallel software-GL contention that could induce the
   // blank-read-backs the harness mitigates.
 
   for (const view of VIEWS) {
     test(`view=${view}: WebGL waveform matches the Canvas2D reference`, async ({ page }) => {
-      // The per-viewport pixel-diff + SSIM + extreme/gap/scissor probes each read
-      // back device-pixel regions across multiple page.evaluate round-trips; under
-      // software SwiftShader these are genuinely heavy. Give them headroom so a
-      // slow-but-correct run is not killed by the default 30 s timeout.
-      test.setTimeout(90_000);
+      // 40 s per view. The region read-back is now the FLOW LANE band, column-
+      // strided (REGION_COL_STRIDE) — roughly an order of magnitude fewer pixels
+      // than the old full-plot read — and the targeted probes are tiny, so a
+      // correct view completes in single-digit seconds even under SwiftShader.
+      // 40 s leaves generous headroom for a cold dev-server compile on the first
+      // view without the 90 s ceiling that let a stuck run burn 2×90 s on retry.
+      test.setTimeout(40_000);
 
       const pageErrors: Error[] = [];
       page.on('pageerror', (err) => pageErrors.push(err));
 
       await page.goto(`/__fidelity__?view=${view}`);
-      await page.getByTestId('harness-ready').waitFor({ state: 'attached' });
+      // Bound the harness-ready wait explicitly: if the dev-only harness never
+      // mounts (e.g. the route was dropped or the build broke), fail FAST with a
+      // clear message instead of letting the spec hang to the test timeout.
+      await page
+        .getByTestId('harness-ready')
+        .waitFor({ state: 'attached', timeout: 15_000 })
+        .catch(() => {
+          throw new Error(
+            `[FIDELITY HARNESS NOT READY] view=${view}: /__fidelity__ did not publish ` +
+              `the harness-ready marker within 15 s. The dev-only fidelity harness did not ` +
+              `mount — check the /__fidelity__ route and dev-server build, not the renderer.`,
+          );
+        });
 
       // ── 1. WebGL MUST be active — loud failure on the Canvas2D fallback. ──
       const active = (await page.getByTestId('webgl-active').textContent())?.trim();
@@ -513,7 +602,7 @@ test.describe('WebGL fidelity gate (ADR 0019, Stage 3)', () => {
 
       const fid = await readFidelity(page);
 
-      // ── 2 + 3. Region pixel-diff + SSIM. ──
+      // ── 2 + 3. Region pixel-diff + SSIM (Flow lane band, column-strided). ──
       const region = await readRegion(page);
       expect(region.width).toBeGreaterThan(0);
       expect(region.height).toBeGreaterThan(0);

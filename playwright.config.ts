@@ -51,6 +51,15 @@ export default defineConfig({
     {
       name: 'chromium-fidelity',
       testMatch: FIDELITY_SPEC,
+      // A fidelity mismatch is DETERMINISTIC under the fixed synthetic dataset +
+      // software SwiftShader — retrying cannot change the pixels, it only burns
+      // another full (slow) run per view. We pin retries to 0 here (overriding the
+      // matrix-wide `retries: 2` above) so a failing gate fails ONCE and fast,
+      // instead of the 3× heavy re-runs that helped push the job past 25 min.
+      retries: 0,
+      // Per-test cap as a backstop to the in-spec `test.setTimeout(40_000)`; with
+      // the slimmed lane-band/column-strided reads, a view completes well inside it.
+      timeout: 60_000,
       use: {
         ...devices['Desktop Chrome'],
         deviceScaleFactor: 2,
