@@ -61,6 +61,13 @@
   color: var(--color-text-muted);
 }
 
+/* Reliability chip footer — a secondary row so the chip never collides with
+   the top-right clinical-severity badge (ui-design §2.1). */
+.reliabilityFooter {
+  display: flex;
+  align-items: center;
+}
+
 .skeleton {
   display: block;
   width: 80px;

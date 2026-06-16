@@ -22,6 +22,16 @@ export interface SummaryStats {
   meanPressureP95: number;
   complianceRate: number;
   totalSessions: number;
+  /**
+   * Total respiratory-event count summed across the window. Drives the
+   * count-based reliability gate for AHI/hypopnea (consensus D8: precision is
+   * keyed on N, not session hours).
+   */
+  totalEventCount: number;
+  /** Total hypopnea count across the window. */
+  totalHypopneaCount: number;
+  /** Mean mask-on session length (hours) across the window. */
+  meanMaskOnHours: number;
   /** Percent change: first 7-day avg vs last 7-day avg. */
   trendAHIPercent: number;
   trendLeakPercent: number;
@@ -114,6 +124,9 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
       meanPressureP95: 0,
       complianceRate: 0,
       totalSessions: 0,
+      totalEventCount: 0,
+      totalHypopneaCount: 0,
+      meanMaskOnHours: 0,
       trendAHIPercent: 0,
       trendLeakPercent: 0,
       trendUsagePercent: 0,
@@ -129,6 +142,10 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
   const usageValues = aggregates.map((a) => a.usageHours);
   const pressureP95Values = aggregates.map((a) => a.pressureP95);
   const compliantCount = aggregates.filter((a) => a.complianceStatus === 'compliant').length;
+
+  const totalEventCount = aggregates.reduce((s, a) => s + a.eventCount, 0);
+  const totalHypopneaCount = aggregates.reduce((s, a) => s + a.eventsByType.hypopnea, 0);
+  const meanMaskOnHours = mean(aggregates.map((a) => a.maskOnTimeMinutes / 60));
 
   const meanAHI = mean(ahiValues);
   const medianAHI = median(ahiValues);
@@ -175,6 +192,9 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
     meanPressureP95,
     complianceRate,
     totalSessions: aggregates.length,
+    totalEventCount,
+    totalHypopneaCount,
+    meanMaskOnHours,
     trendAHIPercent,
     trendLeakPercent,
     trendUsagePercent,

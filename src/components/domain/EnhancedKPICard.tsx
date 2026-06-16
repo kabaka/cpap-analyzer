@@ -11,6 +11,8 @@ import React, { useMemo } from 'react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Card, Badge } from '@/components/ui';
 import { useChartColors } from '@/components/charts/useChartColors';
+import { ReliabilityChip } from '@/components/domain/ReliabilityChip';
+import type { DataQualityFlag, ReliabilityTier } from '@/analysis/uncertainty';
 import styles from './EnhancedKPICard.module.css';
 
 type TrendDirection = 'up' | 'down' | 'stable';
@@ -39,6 +41,17 @@ export interface EnhancedKPICardProps {
   tooltip?: string;
   /** Sparkline color override (CSS color string). */
   sparklineColor?: string;
+  /**
+   * Optional measurement-reliability annotation for soft metrics (consensus
+   * D2/D6). A `high` tier with no active flags renders nothing; otherwise a
+   * quiet chip is shown in a footer row so it never collides with the
+   * top-right clinical-severity badge.
+   */
+  reliability?: {
+    readonly tier: ReliabilityTier;
+    readonly flags?: readonly DataQualityFlag[];
+    readonly reason?: string;
+  };
 }
 
 const TREND_ICONS: Record<TrendDirection, string> = {
@@ -61,6 +74,37 @@ const SEVERITY_LABELS: Record<Severity, string> = {
   severe: 'Severe',
 };
 
+const RELIABILITY_TIER_PHRASE: Record<ReliabilityTier, string> = {
+  high: 'high reliability',
+  moderate: 'estimate',
+  low: 'modeled value',
+};
+
+const DATA_QUALITY_FLAG_PHRASE: Record<DataQualityFlag, string> = {
+  'high-leak': 'leak-affected',
+  'short-session': 'short session',
+  'low-coverage': 'low coverage',
+  'low-count': 'few events',
+};
+
+/**
+ * Build a terse reliability phrase for the card's `<article aria-label>` so SR
+ * users hear the reliability state without reaching the chip (ux §5).
+ */
+function reliabilityAriaSuffix(reliability: {
+  readonly tier: ReliabilityTier;
+  readonly flags?: readonly DataQualityFlag[];
+}): string {
+  const parts: string[] = [];
+  if (reliability.tier !== 'high') {
+    parts.push(RELIABILITY_TIER_PHRASE[reliability.tier]);
+  }
+  for (const flag of reliability.flags ?? []) {
+    parts.push(DATA_QUALITY_FLAG_PHRASE[flag]);
+  }
+  return parts.join(', ');
+}
+
 export const EnhancedKPICard = React.memo(function EnhancedKPICard({
   title,
   value,
@@ -73,6 +117,7 @@ export const EnhancedKPICard = React.memo(function EnhancedKPICard({
   loading,
   tooltip,
   sparklineColor,
+  reliability,
 }: EnhancedKPICardProps) {
   const colors = useChartColors();
   const lineColor = sparklineColor ?? colors.chart1;
@@ -89,9 +134,20 @@ export const EnhancedKPICard = React.memo(function EnhancedKPICard({
     return `30-day ${title} trend, ${dir} from ${first} to ${last}`;
   }, [sparklineData, title, trendPercent]);
 
+  // High tier with no active flags shows no chip; only render the footer row
+  // when there is something decision-relevant to display.
+  const showReliability =
+    !loading &&
+    reliability !== undefined &&
+    (reliability.tier !== 'high' || (reliability.flags?.length ?? 0) > 0);
+
+  const articleLabel = showReliability
+    ? `${title}: ${value} ${unit}, ${reliabilityAriaSuffix(reliability)}`
+    : `${title}: ${value} ${unit}`;
+
   return (
     <Card className={styles.card}>
-      <article aria-label={`${title}: ${value} ${unit}`}>
+      <article aria-label={articleLabel}>
         <div className={styles.header}>
           <span className={styles.title} title={tooltip}>
             {title}
@@ -139,6 +195,16 @@ export const EnhancedKPICard = React.memo(function EnhancedKPICard({
         )}
 
         {loading && <div className={styles.sparklineSkeleton} aria-label="Loading sparkline" />}
+
+        {showReliability && reliability && (
+          <div className={styles.reliabilityFooter}>
+            <ReliabilityChip
+              tier={reliability.tier}
+              flags={reliability.flags}
+              reason={reliability.reason}
+            />
+          </div>
+        )}
       </article>
     </Card>
   );
