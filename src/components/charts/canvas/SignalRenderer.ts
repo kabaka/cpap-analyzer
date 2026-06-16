@@ -9,8 +9,16 @@
  * directly on an HTMLCanvasElement and is designed to be called from
  * `requestAnimationFrame` for smooth 60 fps rendering.
  *
+ * In the WebGL2 hybrid (ADR 0019) this class plays two roles: the **Canvas2D
+ * chrome layer** (in `chromeOnly` mode, where it skips the dense-CPAP waveform
+ * the WebGL layer paints) and the **permanent automatic fallback** (in normal
+ * mode, where it draws everything). The chrome/waveform split is governed by the
+ * shared pure predicate {@link isDenseCpapWaveform}.
+ *
  * @module components/charts/canvas/SignalRenderer
  */
+
+import { isDenseCpapWaveform } from '../hybridWaveformPlan';
 
 // ── Public interfaces ────────────────────────────────────────────
 
@@ -98,6 +106,24 @@ export interface SignalChannel {
     readonly max: Float32Array;
     /** Number of populated columns. */
     readonly columns: number;
+  };
+  /**
+   * Per-lane WebGL geometry source for the hybrid renderer (ADR 0019). Carries
+   * the WHOLE chosen pyramid level in a stable, absolute ms domain so the WebGL2
+   * waveform layer can pan/zoom via uniforms WITHOUT re-uploading. The Canvas2D
+   * path IGNORES this field — it consumes the pre-sliced {@link data}/{@link
+   * envelope} above — so attaching it is fully back-compatible and the fallback
+   * path is unaffected. Typed structurally to avoid a Canvas→WebGL import cycle;
+   * the authoritative shape is {@link WebGLLaneGeometry} in `hybridWaveformPlan`.
+   */
+  readonly webglLane?: {
+    readonly mode: 'envelope' | 'line';
+    readonly levelData: Float32Array;
+    readonly levelIndex: number;
+    readonly dataXPerElementMs: number;
+    readonly dataXStartMs: number;
+    readonly plotWidthColumns: number;
+    readonly physRange: number;
   };
 }
 
@@ -393,6 +419,47 @@ export class SignalRenderer {
    */
   private readonly cssVarFrameCache = new Map<string, string>();
 
+  /**
+   * Chrome-only mode (ADR 0019 hybrid composition). When `true`, {@link
+   * renderImmediate} draws everything EXCEPT the dense-CPAP waveform itself
+   * (`kind: 'cpap'`, `render: 'line'`) — i.e. it still draws channel
+   * backgrounds, grid, event-marker + detection washes, Y/X axis labels, the
+   * hypnogram ribbon, sparse/step lanes, and wearable line lanes, but SKIPS the
+   * `drawLine`/`drawEnvelope` call for dense CPAP lanes because the WebGL2
+   * waveform layer composited above paints those instead.
+   *
+   * Defaults to `false`, in which case this class is the full, self-contained
+   * Canvas2D renderer it has always been — byte-identical output, so the
+   * existing tests and the automatic Canvas2D fallback path are unchanged. The
+   * {@link HybridSignalRenderer} flips this to `true` only when WebGL2 is active
+   * and flips it back to `false` whenever it must fall back (no WebGL2 / context
+   * lost), so the fallback frame draws the waveforms here too.
+   */
+  private chromeOnly = false;
+
+  /**
+   * Toggle {@link chromeOnly} mode. See that field for semantics. No-op-safe to
+   * call repeatedly; the next {@link render}/{@link renderImmediate} reflects it.
+   */
+  setChromeOnly(enabled: boolean): void {
+    this.chromeOnly = enabled;
+  }
+
+  /** Whether chrome-only mode is currently active. */
+  isChromeOnly(): boolean {
+    return this.chromeOnly;
+  }
+
+  /**
+   * The base canvas element this renderer owns. Exposed so the hybrid compositor
+   * ({@link module:components/charts/HybridSignalRenderer}) can CSS-translate the
+   * chrome layer during a drag without re-rendering it (the per-frame-upload trap
+   * fix). Read-only use only — do not mutate its size/context here.
+   */
+  getCanvasElement(): HTMLCanvasElement {
+    return this.canvas;
+  }
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -497,6 +564,22 @@ export class SignalRenderer {
       this.pendingFrame = null;
       this.renderImmediate(viewport, options);
     });
+  }
+
+  /**
+   * Render the base layer SYNCHRONOUSLY (no rAF coalescing), cancelling any frame
+   * already queued. Used by the hybrid compositor on pan-settle so the chrome
+   * canvas is repainted at the settled viewport IN THE SAME TICK that its CSS
+   * pan-translate is cleared — avoiding a one-frame flash of stale-content /
+   * wrong-position that a deferred (rAF) paint would cause. Output is identical to
+   * {@link render}; only the timing differs.
+   */
+  renderSync(viewport: ViewportState, options: RenderOptions): void {
+    if (this.pendingFrame !== null) {
+      cancelAnimationFrame(this.pendingFrame);
+      this.pendingFrame = null;
+    }
+    this.renderImmediate(viewport, options);
   }
 
   /**
@@ -829,6 +912,20 @@ export class SignalRenderer {
         this.drawRibbon(ch, viewport, options, plotLeft, plotWidth, stripTop, stripHeight);
       } else if (ch.render === 'step' || ch.sparse) {
         this.drawStep(ch, viewport, plotLeft, plotWidth, stripTop, stripHeight);
+      } else if (this.chromeOnly && isDenseCpapWaveform(ch) && ch.webglLane) {
+        // Hybrid composition (ADR 0019): the dense-CPAP waveform itself is painted
+        // by the WebGL2 layer above. Skip drawLine/drawEnvelope here, but the
+        // background/grid/markers/axis for this lane were already drawn above so
+        // the chrome is complete. Wearable line lanes (kind: 'wearable') are NOT
+        // dense CPAP and still draw here.
+        //
+        // We only skip when the lane actually carries WebGL geometry (`webglLane`).
+        // Before the host's decimation pyramid lands (the first frame[s]), a dense
+        // CPAP lane has no `webglLane`, so the WebGL layer cannot paint it yet — we
+        // draw the polyline HERE so the waveform is never invisible during that
+        // window. Once `webglLane` is attached, WebGL takes over and chrome skips
+        // it. This keeps the two layers mutually exclusive AND gap-free.
+        // (Intentional no-op: the waveform for this lane is painted by WebGL.)
       } else {
         this.drawLine(ch, viewport, plotLeft, plotWidth, stripTop, stripHeight);
       }

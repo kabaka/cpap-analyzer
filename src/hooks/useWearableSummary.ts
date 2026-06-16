@@ -149,6 +149,15 @@ export function useWearableSummary(): UseWearableSummaryResult {
         }
       }
     })();
+
+    // On unmount (or before the next run), invalidate this request so the async
+    // IIFE above never calls setState after the component is gone. Every setState
+    // is already gated on `requestId === requestIdRef.current`; bumping the ref
+    // here makes those guards bail, preventing a "window is not defined"
+    // setState-after-teardown rejection (surfaced as a flaky unit-test error).
+    return () => {
+      requestIdRef.current++;
+    };
   }, [lastImportAt, cpapDateRange]);
 
   return { summary, loading, error };

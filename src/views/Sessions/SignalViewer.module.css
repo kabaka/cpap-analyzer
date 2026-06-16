@@ -480,6 +480,23 @@
   width: 100%;
 }
 
+/* Transparent WebGL2 waveform layer (ADR 0019). Stacked over the base chrome
+   canvas and BENEATH the crosshair overlay. Absolutely positioned at the same
+   origin and width so it aligns pixel-perfectly; its height is set in px by the
+   renderer to match the base (DPR 2). pointer-events:none so events pass through
+   to .canvasWrapper. Declared before .overlayCanvas so the crosshair composites
+   on top of the waveform. During an active drag the BASE canvas is CSS-translated
+   to follow the pan without re-uploading; this WebGL layer pans via uniforms, so
+   it is NOT translated. */
+.waveformCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: block;
+  pointer-events: none;
+}
+
 /* Transparent crosshair overlay stacked over the base canvas. Absolutely
    positioned at the same origin and width so it aligns pixel-perfectly; its
    height is set in px by the renderer to match the base. pointer-events:none so

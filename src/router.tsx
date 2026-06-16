@@ -1,5 +1,5 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import { lazy } from 'react';
+import { lazy, type ReactElement } from 'react';
 import RootLayout from '@/components/layouts/RootLayout';
 import { SuspenseWrapper } from '@/components/SuspenseWrapper';
 
@@ -28,6 +28,29 @@ const Settings = lazy(() => import('@/views/Settings/Settings'));
 const HelpHome = lazy(() => import('@/views/Help/HelpHome'));
 const HelpArticle = lazy(() => import('@/views/Help/HelpArticle'));
 const KeyboardShortcutsPage = lazy(() => import('@/views/Help/KeyboardShortcutsPage'));
+
+// DEV/TEST-ONLY route list, spread into the route tree only in development. The
+// `lazy(() => import(...))` for the WebGL fidelity-gate harness (ADR 0019, Stage
+// 3) lives INSIDE the `import.meta.env.DEV` guard so the bundler drops BOTH the
+// route AND the dynamic-import chunk from production builds — the harness is
+// never present in `npm run build` output (verified: no FidelityHarness chunk
+// and no `__fidelity__` route string in dist/).
+function buildDevOnlyRoutes(): { path: string; element: ReactElement }[] {
+  if (!import.meta.env.DEV) return [];
+  const FidelityHarness = lazy(() => import('@/views/_dev/FidelityHarness'));
+  return [
+    {
+      path: '__fidelity__',
+      element: (
+        <SuspenseWrapper>
+          <FidelityHarness />
+        </SuspenseWrapper>
+      ),
+    },
+  ];
+}
+
+const devOnlyRoutes = buildDevOnlyRoutes();
 
 export const router = createBrowserRouter(
   [
@@ -225,6 +248,7 @@ export const router = createBrowserRouter(
             },
           ],
         },
+        ...devOnlyRoutes,
       ],
     },
   ],
