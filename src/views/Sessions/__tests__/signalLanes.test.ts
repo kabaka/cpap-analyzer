@@ -132,10 +132,66 @@ describe('wearableRange', () => {
     expect(r.max).toBe(SLEEP_STAGE_CODES.wake);
   });
 
-  it('pads a numeric range by 10%', () => {
+  it('keeps the default floor when data fits inside it (expand-only)', () => {
+    // HR default range is [40, 120]; data [50, 100] fits entirely inside, so the
+    // domain stays anchored at the clinical default with no padding.
     const r = wearableRange('heart_rate_intraday', new Float32Array([50, 100]));
-    expect(r.min).toBeCloseTo(45, 5);
-    expect(r.max).toBeCloseTo(105, 5);
+    expect(r.min).toBe(40);
+    expect(r.max).toBe(120);
+  });
+
+  it('expands and pads only the edge the data pushes past the default', () => {
+    // HR default [40, 120]; data max 140 exceeds it.
+    // outMin = min(40, 50) = 40; outMax = max(120, 140) = 140.
+    // span = 140 - 40 = 100; pad = span·0.1 = 10. Only hi > defMax (140 > 120) so
+    // outMax += 10 → 150; lo (50) is NOT < defMin (40) so the floor stays exact.
+    const r = wearableRange('heart_rate_intraday', new Float32Array([50, 140]));
+    expect(r.min).toBe(40); // anchored low edge, no pad
+    expect(r.max).toBe(150); // expanded + ~10% pad
+    expect(r.max).toBeGreaterThan(140); // genuinely covers the data
+  });
+
+  it('expands the low edge with pad when data dips below the default floor', () => {
+    // HR default [40, 120]; data [30, 100]. outMin = min(40, 30) = 30;
+    // outMax = max(120, 100) = 120. span = 120 - 30 = 90; pad = 9.
+    // lo (30) < defMin (40) → outMin -= 9 → 21. hi (100) NOT > defMax (120) → exact 120.
+    const r = wearableRange('heart_rate_intraday', new Float32Array([30, 100]));
+    expect(r.min).toBe(21);
+    expect(r.max).toBe(120);
+  });
+
+  it('pads both edges when data exceeds the default on both sides', () => {
+    // HRV default [0, 120]; data [-5, 150]. outMin = min(0, -5) = -5;
+    // outMax = max(120, 150) = 150. span = 155; pad = 15.5.
+    // lo (-5) < 0 → outMin -= 15.5 → -20.5. hi (150) > 120 → outMax += 15.5 → 165.5.
+    const r = wearableRange('hrv_detail', new Float32Array([-5, 150]));
+    expect(r.min).toBeCloseTo(-20.5, 10);
+    expect(r.max).toBeCloseTo(165.5, 10);
+  });
+
+  it('pins SpO₂ max at 100 and only expands downward', () => {
+    // SpO₂ default [85, 100]; data [78, 99]. pinMax → outMax stays 100.
+    // outMin = min(85, 78) = 78. span = 100 - 78 = 22; pad = 2.2.
+    // lo (78) < defMin (85) → outMin -= 2.2 → 75.8. hi pinned, no pad.
+    const r = wearableRange('spo2_intraday', new Float32Array([78, 99]));
+    expect(r.max).toBe(100);
+    expect(r.min).toBeCloseTo(75.8, 10);
+    expect(r.min).toBeLessThan(78); // covers the dip
+  });
+
+  it('never lets the SpO₂ max exceed 100 even for an impossible >100 sample', () => {
+    // A corrupt 103 reading must not push the pinned max above 100.
+    // data [95, 103]: pinMax → outMax = 100; outMin = min(85, 95) = 85 (95 not below).
+    const r = wearableRange('spo2_intraday', new Float32Array([95, 103]));
+    expect(r.max).toBe(100);
+    expect(r.min).toBe(85);
+  });
+
+  it('keeps SpO₂ at the default when data sits inside the default band', () => {
+    // data [88, 97] fits inside [85, 100] → no expansion, no pad.
+    const r = wearableRange('spo2_intraday', new Float32Array([88, 97]));
+    expect(r.min).toBe(85);
+    expect(r.max).toBe(100);
   });
 
   it('falls back to type defaults when there is no finite data', () => {
@@ -144,10 +200,36 @@ describe('wearableRange', () => {
     expect(r.max).toBe(100);
   });
 
-  it('gives a flat series breathing room', () => {
+  it('falls back to type defaults for an empty value array', () => {
+    // No samples at all → lo/hi stay ±Infinity → default fallback.
+    const r = wearableRange('heart_rate_intraday', new Float32Array([]));
+    expect(r.min).toBe(40);
+    expect(r.max).toBe(120);
+  });
+
+  it('gives a flat series breathing room while keeping the default floor', () => {
+    // HRV default [0, 120]; a flat series at 42 keeps the default span (the
+    // value already fits) rather than collapsing to a 1-unit band.
     const r = wearableRange('hrv_detail', new Float32Array([42, 42, 42]));
-    expect(r.min).toBe(41);
-    expect(r.max).toBe(43);
+    expect(r.min).toBe(0);
+    expect(r.max).toBe(120);
+  });
+
+  it('extends a flat series that sits below the default floor (lo - 1) and never collapses', () => {
+    // HR default [40, 120]; flat series at -10 (all equal → lo === hi branch).
+    // min = min(defMin 40, lo - 1 = -11) = -11; max = max(defMax 120, hi + 1) = 120.
+    const r = wearableRange('heart_rate_intraday', new Float32Array([-10, -10]));
+    expect(r.min).toBe(-11);
+    expect(r.max).toBe(120);
+    expect(r.min).toBeLessThan(r.max); // never degenerate
+  });
+
+  it('respects the SpO₂ max pin for a flat series above the default max region', () => {
+    // SpO₂ flat at 100 (lo === hi). pinMax → max stays defMax (100), not hi + 1 = 101.
+    // min = min(defMin 85, lo - 1 = 99) = 85.
+    const r = wearableRange('spo2_intraday', new Float32Array([100, 100]));
+    expect(r.max).toBe(100); // pinned, not 101
+    expect(r.min).toBe(85);
   });
 });
 
