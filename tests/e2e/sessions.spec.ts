@@ -459,6 +459,145 @@ test.describe('Signal Viewer', () => {
       await expect(noData.or(error)).toBeVisible();
     }
   });
+
+  // ── Crosshair overlay canvas ─────────────────────────────────────
+  //
+  // The crosshair was moved onto a dedicated transparent OVERLAY canvas layered
+  // over the base waveform canvas, so hovering repaints only the overlay (not the
+  // waveforms). These tests assert structural/behavioural facts rather than canvas
+  // pixels — verifying the overlay exists with the right attributes and that
+  // pointer interactions over the chart don't error. They no-op gracefully when
+  // signal data isn't available in the E2E sandbox (OPFS has no real chunks), so
+  // they stay green whether or not the waveforms actually render.
+  //
+  // CSS Modules hash class names, so the canvases are matched via [class*="…"]
+  // attribute selectors (same convention as the comparison-picker tests above).
+
+  /** Resolve to the canvasWrapper locator only if the viewer rendered the chart. */
+  async function getCanvasWrapper(page: Page) {
+    const viewerLoaded = await page
+      .locator('text="Signal Viewer"')
+      .isVisible()
+      .catch(() => false);
+    if (!viewerLoaded) return null;
+    const wrapper = page.locator('[class*="canvasWrapper"]');
+    const present = await wrapper
+      .first()
+      .isVisible()
+      .catch(() => false);
+    return present ? wrapper.first() : null;
+  }
+
+  test('renders a base canvas and a transparent crosshair overlay canvas', async ({ page }) => {
+    const { sessions, aggregates } = createTestSessions();
+    await setupWithData(page, sessions, aggregates, '/sessions/sess-1/signals');
+
+    await page.waitForLoadState('networkidle');
+    const wrapper = await getCanvasWrapper(page);
+
+    if (!wrapper) {
+      // No chart in this environment — verify the fallback state instead so the
+      // test still asserts something meaningful and never silently passes.
+      await expect(
+        page.getByText('No Signal Data').or(page.getByText(/failed to load|not supported/i)),
+      ).toBeVisible();
+      return;
+    }
+
+    // The wrapper holds two stacked canvases: the base waveform canvas and the
+    // transparent crosshair overlay.
+    const canvases = wrapper.locator('canvas');
+    await expect(canvases).toHaveCount(2);
+
+    // Base canvas: carries the accessible description and is focusable.
+    const baseCanvas = wrapper.locator('canvas[role="img"]');
+    await expect(baseCanvas).toBeVisible();
+    await expect(baseCanvas).toHaveAttribute('tabindex', '0');
+
+    // Overlay canvas: aria-hidden and pointer-events:none so it never steals
+    // pointer events nor announces to assistive tech.
+    const overlay = wrapper.locator('[class*="overlayCanvas"]');
+    await expect(overlay).toHaveCount(1);
+    await expect(overlay).toHaveAttribute('aria-hidden', 'true');
+    await expect(overlay).toHaveCSS('pointer-events', 'none');
+    await expect(overlay).toHaveCSS('position', 'absolute');
+  });
+
+  test('moving the pointer over the chart does not error and keeps it responsive', async ({
+    page,
+  }) => {
+    const pageErrors: Error[] = [];
+    page.on('pageerror', (err) => pageErrors.push(err));
+
+    const { sessions, aggregates } = createTestSessions();
+    await setupWithData(page, sessions, aggregates, '/sessions/sess-1/signals');
+
+    await page.waitForLoadState('networkidle');
+    const wrapper = await getCanvasWrapper(page);
+
+    if (!wrapper) {
+      await expect(
+        page.getByText('No Signal Data').or(page.getByText(/failed to load|not supported/i)),
+      ).toBeVisible();
+      expect(pageErrors, pageErrors.map((e) => e.message).join('\n')).toHaveLength(0);
+      return;
+    }
+
+    const box = await wrapper.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+
+    // Sweep the pointer across the chart — the crosshair overlay should repaint
+    // without throwing. Use deterministic steps (no waitForTimeout / frame-rate
+    // assumptions; the perf benchmark owns frame timing).
+    for (const fraction of [0.25, 0.5, 0.75]) {
+      await page.mouse.move(box.x + box.width * fraction, box.y + box.height / 2, { steps: 5 });
+    }
+
+    // The base canvas remains visible and the overlay is still present after hover.
+    await expect(wrapper.locator('canvas[role="img"]')).toBeVisible();
+    await expect(wrapper.locator('[class*="overlayCanvas"]')).toHaveCount(1);
+
+    expect(pageErrors, pageErrors.map((e) => e.message).join('\n')).toHaveLength(0);
+  });
+
+  test('pointer leave and canvas blur after hover do not error', async ({ page }) => {
+    const pageErrors: Error[] = [];
+    page.on('pageerror', (err) => pageErrors.push(err));
+
+    const { sessions, aggregates } = createTestSessions();
+    await setupWithData(page, sessions, aggregates, '/sessions/sess-1/signals');
+
+    await page.waitForLoadState('networkidle');
+    const wrapper = await getCanvasWrapper(page);
+
+    if (!wrapper) {
+      await expect(
+        page.getByText('No Signal Data').or(page.getByText(/failed to load|not supported/i)),
+      ).toBeVisible();
+      expect(pageErrors, pageErrors.map((e) => e.message).join('\n')).toHaveLength(0);
+      return;
+    }
+
+    const box = await wrapper.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+
+    // Hover the chart, focus the base canvas, then leave and blur — exercising the
+    // pointerleave / blur cleanup paths that clear the crosshair overlay.
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 5 });
+    const baseCanvas = wrapper.locator('canvas[role="img"]');
+    await baseCanvas.focus();
+
+    // Move the pointer well away from the chart (pointerleave) and blur the canvas.
+    await page.mouse.move(box.x + box.width / 2, Math.max(0, box.y - 50), { steps: 5 });
+    await baseCanvas.blur();
+
+    // Overlay and base canvas survive the cleanup; no uncaught errors.
+    await expect(baseCanvas).toBeVisible();
+    await expect(wrapper.locator('[class*="overlayCanvas"]')).toHaveCount(1);
+    expect(pageErrors, pageErrors.map((e) => e.message).join('\n')).toHaveLength(0);
+  });
 });
 
 test.describe('Session List → Detail → Signal Viewer Journey', () => {
