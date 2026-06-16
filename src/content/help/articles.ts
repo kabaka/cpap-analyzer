@@ -951,6 +951,88 @@ export const helpArticles: readonly HelpArticle[] = [
       },
     ],
   },
+
+  // ─── UNDERSTANDING MEASUREMENT UNCERTAINTY ────────────────────────
+  {
+    slug: 'understanding-measurement-uncertainty',
+    title: 'Understanding Measurement Uncertainty',
+    summary:
+      'Why every number carries error, how to read the reliability tiers and the typical-range band, why a multi-night trend beats a single night, and how leak, device limits, and consumer wearables shape what you can trust.',
+    icon: 'statistics',
+    featured: true,
+    sections: [
+      {
+        heading: 'Why every number has error',
+        paragraphs: [
+          'The most common way a sleep-data tool misleads is not by computing the wrong number — it is by presenting a correct number with more confidence than that number deserves. Every metric here is an estimate, and an honest estimate comes with a sense of how much to trust it. This tool does not diagnose; it describes the data your machine and any paired sensors recorded, and it tries to be explicit about the uncertainty in that description.',
+          'It helps to separate two kinds of error. Systematic error (bias) shifts every measurement in the same direction and does not average out — for example, a leak-model error that makes every tidal-volume estimate read high. Random error scatters measurements around the truth and does average out as you collect more nights. A number can be precise (reproducible) yet biased (consistently off), which is exactly the situation with a device AHI that is repeatable on the same input but differs from how a sleep lab would score the same night.',
+          'A second, equally important split is between uncertainty that more data can fix and uncertainty it cannot. Limited nights, an unknown sensor offset, or an algorithm you cannot inspect are knowledge gaps that shrink as you gather more or better data. Genuine night-to-night biological variation — your airway really does behave differently with body position, sleep stage, alcohol, congestion, and overnight fluid shift — is a real feature of you, not noise to be hidden. The app aims to show the second kind, not paper over it.',
+        ],
+      },
+      {
+        heading: 'The reliability tiers, the chip, and the band',
+        paragraphs: [
+          'Each metric is assigned one of three reliability tiers. High-reliability metrics are directly measured: delivered pressure (the device actively regulates to it), usage / mask-on time (a simple timer), and unintentional leak below the device threshold. Moderate-reliability metrics are algorithmically detected from a leak-corrected flow estimate: the apnea/hypopnea counts and the AHI, tidal volume, minute ventilation, and respiratory rate. Low-reliability metrics are modeled inferences: the central-versus-obstructive split, the flow-limitation index, RERA, and consumer-wearable SpO₂ and multi-stage sleep.',
+          'The reliability cue is quiet by default. A high-reliability metric carries no chip at all — the absence of a caveat is the trust signal. A chip appears only when it changes how you should read a value: on a low-tier modeled metric, when a data-quality condition (such as high leak or a very short session) is active, or when a single night sits right on a severity boundary. These cues use a neutral violet visual axis and always pair a shape and a text label with any color, so the signal never depends on color alone and never collides with the red/orange axis reserved for clinical severity.',
+          'For trends, the headline AHI is shown as a rolling median line with a shaded band that is the empirical inter-quartile range (the middle 50%, from the 25th to the 75th percentile) of the recent nights — labelled the "typical nightly range." The band is deliberately not a textbook confidence interval of the mean: consecutive nights are correlated and your underlying state can shift (a new mask, a pressure change), which makes the usual narrow error bar both invalid and misleading. The empirical quartile band makes no normality assumption, widens honestly when your nights genuinely vary, and is consistent with a median centre line.',
+        ],
+      },
+      {
+        heading: 'Why a multi-night trend beats a single night',
+        paragraphs: [
+          'A single night is a noisy snapshot. In the largest study to date — over 11 million nights from more than 67,000 people using a validated under-mattress sensor — diagnosing sleep apnea from a single night misclassified roughly 20% of people, and classification reliability kept improving until it plateaued at around 14 nights of data (Lechat and colleagues, 2022, as reported by PubMed). The lesson is not that the device is broken; it is that one night simply does not pin down your typical state.',
+          'There are two independent reasons. First, genuine biology: your airway behaviour varies night to night, and that variation is largest in the mild range where a category boundary is nearby. Second, counting noise: respiratory events behave like a random arrival process, so the relative precision of a rate improves only as the square root of the number of events. A short or low-event night therefore gives a wide, uncertain AHI even if the detector were perfect.',
+          'A worked illustration: two nights both report AHI = 5.0, the normal/mild boundary. Night A has 30 events over 6 hours; night B has 5 events over 1 hour. The counting uncertainty on the rate is the square root of the event count divided by the hours — about ±0.9 /h for night A but about ±2.2 /h for night B. Night B\'s honest interval straddles "normal" and well into "mild." Same number, completely different confidence. This is why the app leads with a trailing multi-night statistic rather than last night\'s raw value, treats a single-night change of one or two events per hour as essentially flat, and annotates a value sitting on a boundary as "could fall either side" rather than asserting a category.',
+        ],
+      },
+      {
+        heading: 'How leak degrades flow-derived metrics',
+        paragraphs: [
+          'Unintentional mask leak is the most insidious error source because it is systematic and shared. The device estimates your breathing flow by subtracting a modelled leak from total flow; if that leak model is off, the error flows straight into every metric computed from the flow trace — tidal volume, minute ventilation, respiratory rate, the central/obstructive classification, and flow-based event detection — all at once. Because they share a common cause, those errors reinforce each other rather than cancelling, so a high-leak night should be read as "several correlated numbers are suspect," not "a few independent noisy readings."',
+          "The application gates on leak in two graduated steps, matching the device's own reporting conventions. At the device large-leak red line (24 L/min) it raises a data-quality notice. At a higher threshold (30 L/min) it actually flags or suppresses the flow-derived metrics, because by then their morphology is too distorted to trust. The step is graduated rather than a hard cliff so that usable nights in the 24–30 band are not over-suppressed, and the robust aggregate apnea count — which tolerates leak far better than tidal volume does — is kept usable. These thresholds are ResMed device/reporting conventions, not clinical (AASM) standards, and are documented as such. The practical rule: on a high-leak night, trust pressure and usage, but discount the flow-derived numbers and the central/obstructive split.",
+        ],
+      },
+      {
+        heading: 'Device data is not a sleep study',
+        paragraphs: [
+          'A CPAP machine scores events from airflow and pressure alone, using a proprietary algorithm, and cannot see the EEG arousals that a laboratory polysomnogram uses. It also divides events by mask-on time rather than true sleep time. As a result, a device-reported AHI is not interchangeable with a lab-scored AHI — the mean difference is often small, but the limits of agreement (the spread of disagreement on any given night) are wide. Treat device events as a monitoring and screening signal that is excellent for tracking your own trend over time, not as a diagnostic substitute for a sleep study.',
+          'The central-versus-obstructive split deserves a specific caution. The device tells the two apart by briefly probing the airway with a small pressure oscillation during an apnea (the forced oscillation technique) and watching the response — open airway implies central, closed implies obstructive. This probe is degraded by leak, and the device tends to under-call closed-airway central events; on top of that, when true central events are rare, even a small false-positive rate on the abundant obstructive pool inflates the central count. So the precise central number on any one night is low-precision. The safety-critical point: low precision lowers confidence in the number, it does not mean "ignore it." A sustained upward trend in central events still warrants a conversation with your clinician, because treatment-emergent central apnea is real and actionable. The app surfaces such a trend rather than burying it, and it never recommends a therapy change — for example, it will not suggest a switch to a different device mode, which is a clinician decision informed by the full clinical picture.',
+        ],
+      },
+      {
+        heading: 'Consumer wearables: SpO₂ and sleep stages',
+        paragraphs: [
+          'Wearable data is a welcome context layer, but its reliability varies sharply by sensor. A dedicated or cleared pulse oximeter (a finger transmissive device, or a calibrated ring) is a moderate-reliability measurement with an accuracy of roughly two percentage points, which is already enough that sub-percent SpO₂ digits are noise; a documented residual bias related to skin pigmentation also exists. A consumer wrist or ring SpO₂, by contrast, uses uncalibrated reflectance optics, is sensitive to motion and perfusion, tends to overestimate at darker skin tones, and is intended for wellness rather than measurement — read it as a trend, never as a clinical value.',
+          'Wearable multi-stage sleep (Light / Deep / REM) is a modeled inference, not a measurement: without EEG the device cannot truly stage sleep, and agreement with polysomnography is moderate at best and worse in disordered sleep. It is genuinely useful for locating when event clusters fall — for example, whether your apneas concentrate in REM-dominant stretches — but the exact minutes in each stage should be taken loosely. For every oximetry-derived number, read it next to the oximetry coverage percentage: a dramatic minimum or T90 computed over only a few minutes of valid signal is not reassuring, just under-sampled.',
+        ],
+      },
+      {
+        heading: 'A note on the per-night sampling interval',
+        paragraphs: [
+          'For low-count nights the app can show a per-night sampling interval around the AHI. It is computed from the event count as a Poisson (counting) interval: for larger counts the standard error of a count is approximately its square root, $u(N) \\approx \\sqrt{N}$, so the AHI uncertainty is $u(\\text{AHI}) = \\sqrt{N}/T$ where $T$ is the recorded hours; for small counts an exact form is used instead, and a night with zero scored events still has a nonzero upper bound rather than an impossible "exactly zero."',
+          'This interval is deliberately labelled a lower bound on uncertainty, never "the 95% confidence interval." Real apnea events cluster — in REM, in supine position, in arousal cascades — so the true spread is wider than a pure counting model implies. Rather than invent an inflation factor that could not be justified from one night, the app accounts for that extra, real spread at the multi-night level, where the empirical typical-range band captures it directly. So: read the per-night interval as "at least this uncertain," and lean on the trend band for the fuller picture.',
+        ],
+      },
+      {
+        heading: 'The bottom line: surface, do not diagnose',
+        paragraphs: [
+          'The guiding posture is to surface patterns and defer interpretation to your clinician. Trust the high-reliability numbers (pressure, usage) plainly. Read the moderate ones (AHI, leak, the flow-derived metrics) as good trend trackers that are not lab-grade and degrade under leak. Treat the low ones (the central/obstructive split, flow limitation, RERA, consumer-wearable SpO₂ and sleep stages) as modeled estimates — informative as trends, not as precise single values. Prefer the multi-night median and its typical-range band over any single night, and take any value on a severity boundary as ambiguous.',
+          'Above all, a low reliability tier lowers the precision claim; it never silences a clinically important trend. CPAP Analyzer is not a medical device, is not certified for diagnosis, and does not provide medical advice. Bring the patterns it surfaces — especially anything new, sustained, or trending across a boundary — to a qualified clinician, who can place them in the context of your full history.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Lechat, B., Naik, G., Reynolds, A., et al. (2022). Multinight Prevalence, Variability, and Diagnostic Misclassification of Obstructive Sleep Apnea. American Journal of Respiratory and Critical Care Medicine, 205(5), 563–569. DOI: 10.1164/rccm.202107-1761OC. PMID: 34904935. — Single-night diagnosis misclassifies ~20% of people; reliability plateaus after ~14 nights.',
+          'Prasad, B., Usmani, S., Steffen, A. D., et al. (2016). Short-Term Variability in Apnea-Hypopnea Index during Extended Home Portable Monitoring. Journal of Clinical Sleep Medicine, 12(6), 855–863. DOI: 10.5664/jcsm.5886. PMID: 26857059. — Night-to-night AHI variability, larger in the mild range.',
+          'Bland, J. M., & Altman, D. G. (1986). Statistical methods for assessing agreement between two methods of clinical measurement. The Lancet, 1(8476), 307–310. DOI: 10.1016/S0140-6736(86)90837-8. PMID: 2868172. — Bias versus limits of agreement, the lens for device-versus-sleep-study comparison.',
+          'JCGM 100:2008. Evaluation of measurement data — Guide to the expression of uncertainty in measurement (GUM). Joint Committee for Guides in Metrology / BIPM. — Vocabulary of systematic versus random uncertainty and the propagation of uncertainty.',
+          'Kapur, V. K., Auckley, D. H., Chowdhuri, S., et al. (2017). Clinical Practice Guideline for Diagnostic Testing for Adult Obstructive Sleep Apnea: An AASM Clinical Practice Guideline. Journal of Clinical Sleep Medicine, 13(3), 479–504. DOI: 10.5664/jcsm.6506. — Polysomnography is the diagnostic standard; device-derived event counts are a screening signal.',
+          'ResMed. Unintentional leak is flagged as a large leak at 24 L/min (device/manufacturer convention; some oronasal masks use ~36 L/min). This is a device threshold, not an AASM clinical standard.',
+        ],
+      },
+    ],
+  },
 ] as const;
 
 /** Map of article slug → article for O(1) lookup */

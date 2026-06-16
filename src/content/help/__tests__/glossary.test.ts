@@ -171,6 +171,50 @@ describe('Glossary content', () => {
       expect(km).toBeDefined();
       expect(km?.detailed).toMatch(/not currently computed by CPAP Analyzer/i);
     });
+
+    it('should attach uncertainty framing to the most error-prone terms (consensus D5)', () => {
+      const mustHaveUncertainty = [
+        'ahi',
+        'hypopnea',
+        'rera',
+        'central-apnea',
+        'mask-leak',
+        'spo2',
+        'odi',
+        'flow-limitation',
+      ];
+      for (const id of mustHaveUncertainty) {
+        const entry = glossaryMap.get(id);
+        expect(entry, `Missing glossary entry "${id}"`).toBeDefined();
+        expect(typeof entry?.uncertainty, `Entry "${id}" should have an uncertainty field`).toBe(
+          'string',
+        );
+        expect(entry?.uncertainty?.length ?? 0).toBeGreaterThan(50);
+      }
+    });
+
+    it('should frame the central-split uncertainty as low-precision but trend-relevant', () => {
+      const ca = glossaryMap.get('central-apnea');
+      expect(ca?.uncertainty).toBeTruthy();
+      const text = (ca?.uncertainty ?? '').toLowerCase();
+      // Low precision must never read as "ignore it": a trend still matters.
+      expect(text).toContain('trend');
+      expect(text).toContain('clinician');
+      expect(text).not.toMatch(/switch to (asv|bipap)/);
+    });
+
+    it('should label the leak thresholds as device conventions, not AASM standards', () => {
+      const leak = glossaryMap.get('mask-leak');
+      expect(leak?.uncertainty).toMatch(/not AASM clinical standards/i);
+    });
+
+    it('should keep uncertainty framing free of diagnostic claims', () => {
+      for (const entry of glossaryEntries) {
+        if (entry.uncertainty) {
+          expect(entry.uncertainty.toLowerCase()).not.toMatch(/\byou have (sleep apnea|osa|csa)\b/);
+        }
+      }
+    });
   });
 
   describe('glossaryMap', () => {

@@ -248,6 +248,17 @@ export function GlossaryPanel({ initialTermId, standalone = false }: GlossaryPan
                           </div>
                         )}
 
+                        {depthLevel === 'detailed' && entry.uncertainty && (
+                          <div
+                            className={styles.uncertainty}
+                            role="note"
+                            aria-label={`Measurement uncertainty for ${entry.term}`}
+                          >
+                            <span className={styles.uncertaintyLabel}>Measurement uncertainty</span>
+                            <p className={styles.uncertaintyText}>{entry.uncertainty}</p>
+                          </div>
+                        )}
+
                         {depthLevel !== 'detailed' && (
                           <div className={styles.depthLinks}>
                             {depthLevel === 'quick' && (

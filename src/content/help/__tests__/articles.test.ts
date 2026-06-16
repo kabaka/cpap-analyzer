@@ -83,6 +83,23 @@ describe('Help articles', () => {
       const featured = helpArticles.filter((a) => a.featured === true);
       expect(featured.length).toBeGreaterThanOrEqual(1);
     });
+
+    it('should register the measurement-uncertainty article', () => {
+      const article = articleMap.get('understanding-measurement-uncertainty');
+      expect(article).toBeDefined();
+      expect(article?.title).toBe('Understanding Measurement Uncertainty');
+      expect(articleSlugs).toContain('understanding-measurement-uncertainty');
+      // It should cover the load-bearing topics from the consensus.
+      const body = (article?.sections ?? [])
+        .flatMap((s) => s.paragraphs)
+        .join(' ')
+        .toLowerCase();
+      expect(body).toContain('reliability'); // tiers / chip
+      expect(body).toContain('leak'); // 24/30 leak gate
+      expect(body).toContain('clinician'); // surface, don't diagnose
+      expect(body).toContain('14 nights'); // single-night misclassification finding
+      expect(body).not.toMatch(/switch to (asv|bipap)/); // no therapy-specific advice
+    });
   });
 
   describe('articleMap', () => {
