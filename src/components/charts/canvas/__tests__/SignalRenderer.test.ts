@@ -7,6 +7,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   formatTimeLabel,
+  formatWallClockLabel,
+  formatWallClockDate,
+  formatDurationClock,
+  wallClockDayBoundaries,
   chooseTimeTickInterval,
   chooseYTicks,
   computeLaneLayout,
@@ -92,6 +96,163 @@ describe('formatTimeLabel', () => {
 
   it('should handle 59 minutes 59 seconds without hour prefix', () => {
     expect(formatTimeLabel(3_599_000)).toBe('59:59');
+  });
+});
+
+// ── formatWallClockLabel ─────────────────────────────────────────
+//
+// `wallClockEpochMs` is the session start in the wall-clock-as-UTC convention,
+// so expected values are read with UTC getters (timezone-independent under any
+// CI zone). The label shows the recording device's then-current local clock.
+
+describe('formatWallClockLabel', () => {
+  // 2025-06-17 22:30:00 wall clock, encoded as UTC.
+  const START = Date.UTC(2025, 5, 17, 22, 30, 0);
+
+  it('formats HH:MM when withSeconds is false', () => {
+    expect(formatWallClockLabel(START, 0, false)).toBe('22:30');
+  });
+
+  it('formats HH:MM:SS when withSeconds is true', () => {
+    expect(formatWallClockLabel(START, 0, true)).toBe('22:30:00');
+  });
+
+  it('wraps past midnight: 22:30 + 3h → 01:30 the next day', () => {
+    expect(formatWallClockLabel(START, 3 * 60 * 60 * 1000, false)).toBe('01:30');
+    expect(formatWallClockLabel(START, 3 * 60 * 60 * 1000, true)).toBe('01:30:00');
+  });
+
+  it('zero-pads single-digit components', () => {
+    const base = Date.UTC(2025, 0, 1, 3, 4, 5);
+    expect(formatWallClockLabel(base, 0, true)).toBe('03:04:05');
+  });
+
+  it('uses UTC getters (reads 02:00:00 for a Date.UTC 02:00 epoch)', () => {
+    expect(formatWallClockLabel(Date.UTC(2025, 2, 15, 2, 0, 0), 0, true)).toBe('02:00:00');
+  });
+});
+
+// ── formatWallClockDate ──────────────────────────────────────────
+
+describe('formatWallClockDate', () => {
+  it('formats Mon DD with a fixed en abbreviation', () => {
+    expect(formatWallClockDate(Date.UTC(2025, 5, 18, 0, 0, 0))).toBe('Jun 18');
+  });
+
+  it('zero-pads the day', () => {
+    expect(formatWallClockDate(Date.UTC(2025, 0, 3, 0, 0, 0))).toBe('Jan 03');
+  });
+
+  it('uses UTC getters so the label does not drift by timezone', () => {
+    // Just before midnight UTC on the 18th → still the 18th under UTC getters.
+    expect(formatWallClockDate(Date.UTC(2025, 11, 18, 23, 59, 59))).toBe('Dec 18');
+  });
+});
+
+// ── formatDurationClock ──────────────────────────────────────────
+
+describe('formatDurationClock', () => {
+  it('formats sub-hour offsets as +M:SS', () => {
+    expect(formatDurationClock(0)).toBe('+0:00');
+    expect(formatDurationClock(5 * 60_000 + 30_000)).toBe('+5:30');
+  });
+
+  it('formats hour-plus offsets as +H:MM:SS', () => {
+    // 1h 12m 08s
+    expect(formatDurationClock(3600_000 + 12 * 60_000 + 8_000)).toBe('+1:12:08');
+  });
+
+  it('clamps negatives to +0:00', () => {
+    expect(formatDurationClock(-5000)).toBe('+0:00');
+  });
+});
+
+// ── wallClockDayBoundaries ───────────────────────────────────────
+
+describe('wallClockDayBoundaries', () => {
+  // Session starts 2025-06-17 22:30:00 wall clock.
+  const START = Date.UTC(2025, 5, 17, 22, 30, 0);
+
+  it('finds the single midnight crossing inside a window that spans it', () => {
+    // Window: start (22:30) → +4h (02:30 next day). Midnight is at +1h30m.
+    const out = wallClockDayBoundaries(START, 0, 4 * 60 * 60 * 1000);
+    expect(out).toHaveLength(1);
+    // The crossing is at 90 minutes into the session.
+    expect(out[0]).toBe(90 * 60 * 1000);
+    // And it lands on 2025-06-18 00:00.
+    expect(formatWallClockDate(START + out[0]!)).toBe('Jun 18');
+  });
+
+  it('returns none when the window does not reach midnight', () => {
+    // 22:30 → 23:30, no crossing.
+    expect(wallClockDayBoundaries(START, 0, 60 * 60 * 1000)).toEqual([]);
+  });
+
+  it('finds two crossings across a multi-day window', () => {
+    const out = wallClockDayBoundaries(START, 0, 30 * 60 * 60 * 1000); // ~30h
+    expect(out).toHaveLength(2);
+  });
+
+  it('returns none for a non-finite epoch (duration fallback)', () => {
+    expect(wallClockDayBoundaries(NaN, 0, 4 * 60 * 60 * 1000)).toEqual([]);
+  });
+
+  it('returns none for a non-positive window', () => {
+    expect(wallClockDayBoundaries(START, 100, 100)).toEqual([]);
+  });
+});
+
+// ── tick interval → label precision ──────────────────────────────
+//
+// `drawXAxis` selects seconds precision when the chosen tick interval is finer
+// than a minute (`tickInterval < 60_000`), else HH:MM. We assert the boundary
+// rule directly against the chooser output for representative ranges.
+
+describe('tick interval → label precision', () => {
+  const SECONDS = (interval: number) => interval < 60_000;
+
+  it('selects seconds precision for sub-minute intervals (zoomed in)', () => {
+    // 30s range over 800px → fine ticks (< 60s).
+    const interval = chooseTimeTickInterval(30_000, 800);
+    expect(interval).toBeLessThan(60_000);
+    expect(SECONDS(interval)).toBe(true);
+  });
+
+  it('selects HH:MM precision at and above a minute interval (zoomed out)', () => {
+    // 1h range over 800px → 10-minute ticks (≥ 60s).
+    const interval = chooseTimeTickInterval(3_600_000, 800);
+    expect(interval).toBeGreaterThanOrEqual(60_000);
+    expect(SECONDS(interval)).toBe(false);
+  });
+
+  it('treats exactly one minute as HH:MM (boundary is strict <)', () => {
+    expect(SECONDS(60_000)).toBe(false);
+  });
+});
+
+// ── axis / crosshair clock agreement ─────────────────────────────
+//
+// The axis labels and the crosshair time badge MUST report the same wall clock
+// for the same instant. Both derive from `formatWallClockLabel` with the SAME
+// wall-clock-as-UTC epoch + session-relative offset, so identical inputs yield
+// identical output.
+
+describe('axis / crosshair clock agreement', () => {
+  const START = Date.UTC(2025, 5, 17, 22, 30, 0);
+
+  it('same epoch + offset → identical HH:MM:SS for axis and crosshair', () => {
+    const rel = 3 * 60 * 60 * 1000 + 12 * 60 * 1000 + 8_000; // +3:12:08
+    const axisLabel = formatWallClockLabel(START, rel, true);
+    const crosshairLabel = formatWallClockLabel(START, rel, true);
+    expect(axisLabel).toBe(crosshairLabel);
+    expect(axisLabel).toBe('01:42:08');
+  });
+
+  it('HH:MM axis label is the seconds-truncated crosshair label', () => {
+    const rel = 17 * 60 * 1000 + 42_000; // +17:42
+    expect(formatWallClockLabel(START, rel, false)).toBe(
+      formatWallClockLabel(START, rel, true).slice(0, 5),
+    );
   });
 });
 

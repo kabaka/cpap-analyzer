@@ -106,26 +106,31 @@ describe('formatDuration', () => {
 });
 
 describe('formatClockTime', () => {
-  it('returns the local wall-clock HH:MM:SS for sessionStartMs + relMs', () => {
+  // `sessionStartMs` is the wall-clock-as-UTC epoch, so the expected wall-clock
+  // value is read with UTC getters (timezone-independent under any CI zone).
+  it('returns the wall-clock HH:MM:SS for sessionStartMs + relMs', () => {
     const relMs = 14 * 60 * 1000 + 7 * 1000; // 14m07s into the session
     const d = new Date(SESSION_START + relMs);
-    const expected = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(
-      2,
-      '0',
-    )}:${String(d.getSeconds()).padStart(2, '0')}`;
+    const expected = `${String(d.getUTCHours()).padStart(2, '0')}:${String(
+      d.getUTCMinutes(),
+    ).padStart(2, '0')}:${String(d.getUTCSeconds()).padStart(2, '0')}`;
     expect(formatClockTime(SESSION_START, relMs)).toBe(expected);
   });
 
+  it('reads UTC getters off the wall-clock-as-UTC epoch (e.g. 02:00:00)', () => {
+    // SESSION_START = Date.UTC(2025, 2, 15, 2, 0, 0) → wall clock 02:00:00.
+    expect(formatClockTime(SESSION_START, 0)).toBe('02:00:00');
+  });
+
+  it('wraps past midnight: 22:30 + 3h → 01:30:00 the next day', () => {
+    const base = Date.UTC(2025, 5, 17, 22, 30, 0); // wall clock 22:30:00
+    expect(formatClockTime(base, 3 * 60 * 60 * 1000)).toBe('01:30:00');
+  });
+
   it('zero-pads hours, minutes, and seconds below ten', () => {
-    // Pick an absolute instant whose local components are all single-digit.
-    const base = new Date(2025, 0, 1, 3, 4, 5, 0).getTime(); // local 03:04:05
+    const base = Date.UTC(2025, 0, 1, 3, 4, 5, 0); // wall clock 03:04:05
     const result = formatClockTime(base, 0);
-    const d = new Date(base);
-    const expected = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(
-      2,
-      '0',
-    )}:${String(d.getSeconds()).padStart(2, '0')}`;
-    expect(result).toBe(expected);
+    expect(result).toBe('03:04:05');
     // Each component is exactly two characters.
     const [hh, mm, ss] = result.split(':');
     expect(hh).toHaveLength(2);
@@ -208,6 +213,24 @@ describe('eventReadoutText', () => {
     });
     const clock = formatClockTime(SESSION_START, relMs);
     expect(eventReadoutText(event, SESSION_START, false)).toBe(`Central Apnea · ${clock} · 12s`);
+  });
+
+  it('uses the wall-clock epoch (4th arg) for the clock, raw epoch for the offset', () => {
+    // Raw session-start epoch (could differ from the wall-clock-as-UTC epoch by a
+    // timezone offset in the real app). Here we make them differ by +5h so the
+    // distinction is observable.
+    const rawStart = Date.UTC(2025, 5, 17, 22, 0, 0);
+    const wallClock = rawStart + 5 * 60 * 60 * 1000; // pretend wall clock is 03:00
+    const relMs = 30 * 60 * 1000; // 30 minutes into the session
+    const event = makeEvent({
+      type: 'Hypopnea',
+      timestamp: rawStart + relMs, // offset computed against rawStart
+      duration: 8,
+    });
+    // Clock is formatted against the wall-clock epoch (03:30:00), NOT rawStart.
+    const expectedClock = formatClockTime(wallClock, relMs);
+    expect(expectedClock).toBe('03:30:00');
+    expect(eventReadoutText(event, rawStart, false, wallClock)).toBe(`Hypopnea · 03:30:00 · 8s`);
   });
 });
 
