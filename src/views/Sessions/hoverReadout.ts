@@ -23,12 +23,21 @@ export function formatEventType(type: string): string {
   return type.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
-/** Format a session-relative ms offset as a wall clock `HH:MM:SS`. */
+/**
+ * Format a session-relative ms offset as a wall clock `HH:MM:SS` (the recording
+ * device's then-current local clock).
+ *
+ * `sessionStartMs` MUST be the session start in the **wall-clock-as-UTC**
+ * convention (see {@link module:views/Sessions/signalLanes}.sessionWallClockEpoch).
+ * Reading UTC getters off `sessionStartMs + relMs` then yields the device's local
+ * wall clock and — critically — matches the X-axis tick labels and the crosshair
+ * time badge exactly (they share the same epoch + UTC-getter convention).
+ */
 export function formatClockTime(sessionStartMs: number, relMs: number): string {
   const d = new Date(sessionStartMs + relMs);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
   return `${hh}:${mm}:${ss}`;
 }
 
@@ -59,16 +68,25 @@ export function hoveredRegionKey(region: HoveredRegion): string {
  * Build the device-event clause for the readout, e.g.
  * `▮ Obstructive Apnea · 02:14:07 · 18s` (plus a leak metric for LargeLeak).
  * `withMetric=false` drops the optional metric so a combined line still fits.
+ *
+ * Two epochs are passed because they serve different roles:
+ * - `sessionStartMs` is the RAW session-start epoch, used only to turn the
+ *   event's absolute `timestamp` into a session-relative offset.
+ * - `wallClockEpochMs` is the session start in the **wall-clock-as-UTC**
+ *   convention, used to format the displayed clock time so it matches the axis
+ *   and crosshair exactly. Defaults to `sessionStartMs` for back-compat (when a
+ *   caller already supplies a wall-clock-as-UTC epoch for both).
  */
 export function eventReadoutText(
   event: TherapyEvent,
   sessionStartMs: number,
   withMetric: boolean,
+  wallClockEpochMs: number = sessionStartMs,
 ): string {
   const startRel = event.timestamp - sessionStartMs;
   const parts = [
     formatEventType(event.type),
-    formatClockTime(sessionStartMs, startRel),
+    formatClockTime(wallClockEpochMs, startRel),
     formatDuration(event.duration),
   ];
   let text = parts.join(' · ');

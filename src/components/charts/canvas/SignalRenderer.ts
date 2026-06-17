@@ -216,6 +216,14 @@ export interface RenderOptions {
     bottom: number;
     left: number;
   }>;
+  /**
+   * Wall-clock-as-UTC epoch (ms) of the session start, used to label the X axis
+   * with the recording device's then-current local clock time instead of
+   * duration-into-session. When `undefined` or `NaN` the axis falls back to the
+   * duration labels ({@link formatTimeLabel}). See
+   * {@link module:views/Sessions/signalLanes}.sessionWallClockEpoch.
+   */
+  readonly axisWallClockEpochMs?: number;
 }
 
 /** Result from a positional value lookup. */
@@ -279,6 +287,103 @@ export function formatTimeLabel(ms: number): string {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * Format a session-relative duration as a signed clock-style elapsed string for
+ * the crosshair readout: `+H:MM:SS` for an hour or more, `+M:SS` under an hour.
+ * Negative inputs (cursor before session start) clamp to `+0:00`.
+ */
+export function formatDurationClock(relMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(relMs / 1000));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) {
+    return `+${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  return `+${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Fixed `en` month abbreviations — locale/timezone-independent date labels. */
+const MONTH_ABBR = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+/**
+ * Format a wall-clock time as `HH:MM` or `HH:MM:SS` (24h), reading the
+ * recording device's then-current local wall clock.
+ *
+ * `wallClockEpochMs` is the session start in the wall-clock-as-UTC convention
+ * (see {@link module:views/Sessions/signalLanes}.sessionWallClockEpoch). Adding
+ * the session-relative offset `relMs` and reading UTC getters yields the device's
+ * local wall clock at that instant — timezone-independent for a given import.
+ */
+export function formatWallClockLabel(
+  wallClockEpochMs: number,
+  relMs: number,
+  withSeconds: boolean,
+): string {
+  const d = new Date(wallClockEpochMs + relMs);
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  if (!withSeconds) return `${hh}:${mm}`;
+  const ss = String(d.getUTCSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+/**
+ * Format a calendar-day label as `Mon DD` (e.g. `Jun 18`) for a wall-clock
+ * epoch, using fixed `en` month abbreviations and UTC getters to avoid
+ * locale/timezone drift.
+ */
+export function formatWallClockDate(wallClockEpochMs: number): string {
+  const d = new Date(wallClockEpochMs);
+  const month = MONTH_ABBR[d.getUTCMonth()] ?? '';
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${month} ${day}`;
+}
+
+/**
+ * Walk the `00:00:00` wall-clock day boundaries that fall strictly inside the
+ * visible window `(startRel, endRel)` and return them as session-relative ms
+ * offsets. `wallClockEpochMs` is the session-start wall-clock-as-UTC epoch; UTC
+ * getters define the day grid so the boundaries match the axis/crosshair labels.
+ * There are at most a few per viewport.
+ */
+export function wallClockDayBoundaries(
+  wallClockEpochMs: number,
+  startRel: number,
+  endRel: number,
+): number[] {
+  if (!Number.isFinite(wallClockEpochMs) || endRel <= startRel) return [];
+  const DAY_MS = 86_400_000;
+  // First midnight at or after the window start, in absolute wall-clock space.
+  const startAbs = wallClockEpochMs + startRel;
+  const startDay = new Date(startAbs);
+  // Midnight of the day containing startAbs (UTC convention).
+  let midnight = Date.UTC(startDay.getUTCFullYear(), startDay.getUTCMonth(), startDay.getUTCDate());
+  if (midnight < startAbs) midnight += DAY_MS;
+  const endAbs = wallClockEpochMs + endRel;
+  const out: number[] = [];
+  // Bound the loop defensively; viewports never span more than a handful of days.
+  for (let i = 0; i < 400 && midnight <= endAbs; i++) {
+    const rel = midnight - wallClockEpochMs;
+    if (rel > startRel && rel <= endRel) out.push(rel);
+    midnight += DAY_MS;
+  }
+  return out;
 }
 
 /**
@@ -947,7 +1052,7 @@ export class SignalRenderer {
     if (options.showGrid) {
       this.drawXGrid(viewport, plotLeft, plotWidth, padding.top, totalH);
     }
-    this.drawXAxis(viewport, plotLeft, plotWidth, padding.top, totalH);
+    this.drawXAxis(viewport, options, plotLeft, plotWidth, padding.top, totalH);
 
     // Crosshair overlay. When a dedicated overlay canvas is attached the
     // crosshair is drawn there instead (see renderOverlay), so the base never
@@ -1614,6 +1719,7 @@ export class SignalRenderer {
 
   private drawXAxis(
     viewport: ViewportState,
+    options: RenderOptions,
     plotLeft: number,
     plotWidth: number,
     plotTop: number,
@@ -1628,6 +1734,26 @@ export class SignalRenderer {
 
     const axisY = plotTop + laneStackHeight + 4;
 
+    // Clock-time labels when a valid wall-clock epoch is supplied; otherwise the
+    // legacy duration-into-session labels (fallback).
+    const wallClockEpoch = options.axisWallClockEpochMs;
+    const useWallClock = wallClockEpoch !== undefined && !Number.isNaN(wallClockEpoch);
+    // Seconds resolution only when ticks are finer than a minute.
+    const withSeconds = tickInterval < 60_000;
+
+    // Day-boundary markers + date labels: drawn first so the tick labels paint on
+    // top, and only when the wall-clock epoch is valid.
+    if (useWallClock) {
+      this.drawDayBoundaries(
+        viewport,
+        wallClockEpoch,
+        plotLeft,
+        plotWidth,
+        plotTop,
+        laneStackHeight,
+      );
+    }
+
     ctx.save();
     ctx.fillStyle = this.resolveCSSVar('--color-chart-axis', '#6b7280');
     ctx.font = `${AXIS_FONT_SIZE}px ${this.fontFamily()}`;
@@ -1636,7 +1762,61 @@ export class SignalRenderer {
 
     for (let t = firstTick; t <= viewport.endTime; t += tickInterval) {
       const x = plotLeft + ((t - viewport.startTime) / durationMs) * plotWidth;
-      ctx.fillText(formatTimeLabel(t), x, axisY);
+      const label = useWallClock
+        ? formatWallClockLabel(wallClockEpoch, t, withSeconds)
+        : formatTimeLabel(t);
+      ctx.fillText(label, x, axisY);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Draw a solid, full-stack-height vertical rule + `Mon DD` date label at each
+   * calendar-day boundary (`00:00:00` wall-clock) inside the viewport. Uses the
+   * stronger `--color-chart-axis` token (vs. the dashed grid colour) so day
+   * changes read at a glance. The date label sits at the rule's TOP (just below
+   * the plot-top padding) while the tick labels sit at the axis baseline, so a
+   * tick landing on `00:00` never visually collides with the date label.
+   */
+  private drawDayBoundaries(
+    viewport: ViewportState,
+    wallClockEpoch: number,
+    plotLeft: number,
+    plotWidth: number,
+    plotTop: number,
+    laneStackHeight: number,
+  ): void {
+    const durationMs = viewport.endTime - viewport.startTime;
+    if (durationMs <= 0) return;
+
+    const boundaries = wallClockDayBoundaries(wallClockEpoch, viewport.startTime, viewport.endTime);
+    if (boundaries.length === 0) return;
+
+    const ctx = this.activeCtx;
+    ctx.save();
+
+    const axisColor = this.resolveCSSVar('--color-chart-axis', '#6b7280');
+    const totalHeight = plotTop + laneStackHeight;
+
+    for (const rel of boundaries) {
+      const x = plotLeft + ((rel - viewport.startTime) / durationMs) * plotWidth;
+
+      // Full-stack vertical rule.
+      ctx.strokeStyle = axisColor;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(x, plotTop);
+      ctx.lineTo(x, totalHeight);
+      ctx.stroke();
+
+      // Date label at the top of the rule, just below the plot-top padding.
+      ctx.fillStyle = axisColor;
+      ctx.font = `${AXIS_FONT_SIZE}px ${this.fontFamily()}`;
+      ctx.textBaseline = 'top';
+      ctx.textAlign = 'left';
+      ctx.fillText(formatWallClockDate(wallClockEpoch + rel), x + 3, plotTop + 2);
     }
 
     ctx.restore();
@@ -1705,10 +1885,17 @@ export class SignalRenderer {
     ctx.lineTo(crosshairX, totalHeight);
     ctx.stroke();
 
-    // Time readout at top
+    // Time readout at top: clock time (primary) with duration-into-session as a
+    // muted suffix, e.g. `23:16:42 (+1:12:08)`. Falls back to duration-only when
+    // no valid wall-clock epoch is supplied.
     const time = this.getTimeAtX(crosshairX, viewport, options);
     if (time >= viewport.startTime && time <= viewport.endTime) {
-      this.drawReadoutBadge(crosshairX, padding.top - 2, formatTimeLabel(time), 'bottom');
+      const wallClockEpoch = options.axisWallClockEpochMs;
+      const useWallClock = wallClockEpoch !== undefined && !Number.isNaN(wallClockEpoch);
+      const label = useWallClock
+        ? `${formatWallClockLabel(wallClockEpoch, time, true)} (${formatDurationClock(time)})`
+        : formatTimeLabel(time);
+      this.drawReadoutBadge(crosshairX, padding.top - 2, label, 'bottom');
     }
 
     // Value readouts + intersection dots for ALL channels

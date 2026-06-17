@@ -29,6 +29,8 @@ import { HybridSignalRenderer } from '@/components/charts/HybridSignalRenderer';
 import { parseCssColorToRgba } from '@/components/charts/cssColor';
 import {
   computeLaneLayout,
+  formatWallClockDate,
+  formatWallClockLabel,
   type DetectionEpisode,
   type EventMarker,
   type RenderOptions,
@@ -266,6 +268,25 @@ function buildEventMarkers(
     type: evt.type,
     color: resolveColor(containerEl, EVENT_COLORS[evt.type] ?? 'var(--color-chart-7)'),
   }));
+}
+
+/**
+ * Spell a session-relative duration naturally for an aria-live announcement,
+ * e.g. `1 hour 12 minutes`, `5 minutes`, `42 seconds`. Used by the keyboard
+ * data-cursor readout so the elapsed time is spoken in words rather than a
+ * `H:MM:SS` glyph string.
+ */
+function spokenElapsed(relMs: number): string {
+  const totalSeconds = Math.max(0, Math.round(relMs / 1000));
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  const parts: string[] = [];
+  if (h > 0) parts.push(`${h} hour${h === 1 ? '' : 's'}`);
+  if (m > 0) parts.push(`${m} minute${m === 1 ? '' : 's'}`);
+  // Show seconds only when under an hour (keeps long offsets concise).
+  if (h === 0 && (s > 0 || parts.length === 0)) parts.push(`${s} second${s === 1 ? '' : 's'}`);
+  return parts.join(' ');
 }
 
 // ── Breathing-detection confidence chip (overlay) ────────────────
@@ -1493,8 +1514,12 @@ export default function SignalViewer() {
       ribbonBands: wearableRibbonBands,
       channelHeight: CHANNEL_HEIGHT,
       padding: PADDING,
+      // Wall-clock-as-UTC epoch so the X axis + crosshair label CLOCK time (the
+      // recording device's then-current local wall clock), not duration. NaN when
+      // the session start is unparseable → renderer falls back to duration labels.
+      axisWallClockEpochMs: wallClockEpoch,
     };
-  }, [eventMarkers, detectionMarkers, wearableRibbonBands]);
+  }, [eventMarkers, detectionMarkers, wearableRibbonBands, wallClockEpoch]);
 
   /**
    * Render an arbitrary viewport `range` DIRECTLY to the canvas, bypassing React
@@ -2189,11 +2214,27 @@ export default function SignalViewer() {
         regionParts.push(`in ${short} candidate, ${pct}% confidence`);
       }
 
-      const elapsedSec = Math.round(timeMs / 1000);
-      const lead = `At ${elapsedSec}s: ${parts.join('; ') || 'no data'}`;
+      // Lead with CLOCK time (matching the axis + crosshair), then the natural
+      // duration-into-session. Append the date when the cursor sits in a calendar
+      // day after the session's start day (e.g. `, Jun 18`), so a cursor that has
+      // crossed midnight is unambiguous. Falls back to elapsed seconds when no
+      // valid wall-clock epoch is available.
+      const useWallClock = !Number.isNaN(wallClockEpoch);
+      let lead: string;
+      if (useWallClock) {
+        const clock = formatWallClockLabel(wallClockEpoch, timeMs, true);
+        const elapsed = spokenElapsed(timeMs);
+        const startDay = formatWallClockDate(wallClockEpoch);
+        const cursorDay = formatWallClockDate(wallClockEpoch + timeMs);
+        const dateClause = cursorDay !== startDay ? `, ${cursorDay}` : '';
+        lead = `At ${clock}${dateClause}, ${elapsed} into session: ${parts.join('; ') || 'no data'}`;
+      } else {
+        const elapsedSec = Math.round(timeMs / 1000);
+        lead = `At ${elapsedSec}s: ${parts.join('; ') || 'no data'}`;
+      }
       setCursorReadout(regionParts.length > 0 ? `${lead} — ${regionParts.join('; ')}` : lead);
     },
-    [canvasSize.width, findHoveredRegion],
+    [canvasSize.width, findHoveredRegion, wallClockEpoch],
   );
 
   const handleCanvasKeyDown = useCallback(
@@ -2274,10 +2315,18 @@ export default function SignalViewer() {
   const viewportLabel = useMemo(() => {
     const durMs = viewport.endTime - viewport.startTime;
     if (durMs <= 0) return '';
-    // Shared with the deep-link announcement so the on-screen "Showing …" label
-    // and the framed-event aria-live copy use identical formatting.
-    return formatOffsetLabel(durMs);
-  }, [viewport]);
+    // `formatOffsetLabel` (the visible-window DURATION) is shared with the
+    // deep-link announcement so the on-screen label and the framed-event aria-live
+    // copy use identical duration formatting.
+    const span = formatOffsetLabel(durMs);
+    // Lead with the visible CLOCK range (device local wall clock) so seeing the
+    // window's clock time is immediate, with the duration as a trailing `· <span>`.
+    // Falls back to duration-only when no valid wall-clock epoch is available.
+    if (Number.isNaN(wallClockEpoch)) return span;
+    const from = formatWallClockLabel(wallClockEpoch, viewport.startTime, false);
+    const to = formatWallClockLabel(wallClockEpoch, viewport.endTime, false);
+    return `${from} – ${to} · ${span}`;
+  }, [viewport, wallClockEpoch]);
 
   // ── Event types present in this session (for legend) ─────────
 
@@ -2309,8 +2358,9 @@ export default function SignalViewer() {
     const fullSegments: string[] = [];
     if (event) {
       // In the combined case the event's optional metric is omitted so the line fits.
-      segments.push(`▮ ${eventReadoutText(event, sessionStartMs, !both)}`);
-      fullSegments.push(`▮ ${eventReadoutText(event, sessionStartMs, true)}`);
+      // `wallClockEpoch` is passed so the displayed clock matches the axis exactly.
+      segments.push(`▮ ${eventReadoutText(event, sessionStartMs, !both, wallClockEpoch)}`);
+      fullSegments.push(`▮ ${eventReadoutText(event, sessionStartMs, true, wallClockEpoch)}`);
     }
     if (episode) {
       // In the combined case the detection's cycle/duration tail is omitted so the line fits.
@@ -2326,7 +2376,7 @@ export default function SignalViewer() {
       text: segments.join(' · '),
       title: fullSegments.join(' · '),
     };
-  }, [hoveredRegion, sessionStartMs]);
+  }, [hoveredRegion, sessionStartMs, wallClockEpoch]);
 
   // ── Lane layout for HTML header overlay positioning ──────────
 
@@ -2445,9 +2495,21 @@ export default function SignalViewer() {
     );
   }
 
+  // X axis is labelled in clock time (device local wall clock) when available; the
+  // off-canvas description states the visible clock range so AT users get the same
+  // orientation the on-screen axis provides.
+  const axisRangeClause = Number.isNaN(wallClockEpoch)
+    ? ''
+    : ` Showing clock time from ${formatWallClockLabel(
+        wallClockEpoch,
+        viewport.startTime,
+        false,
+      )} to ${formatWallClockLabel(wallClockEpoch, viewport.endTime, false)}.`;
   const canvasDescription = `Signal waveform viewer. ${renderLanes.length} lane${
     renderLanes.length === 1 ? '' : 's'
-  } visible: ${renderLanes.map((r) => `${r.lane.name} (${r.lane.pill})`).join(', ')}. Use arrow keys to move the data cursor.`;
+  } visible: ${renderLanes
+    .map((r) => `${r.lane.name} (${r.lane.pill})`)
+    .join(', ')}.${axisRangeClause} Use arrow keys to move the data cursor.`;
 
   return (
     <div className={styles.container} ref={containerRef}>
