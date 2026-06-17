@@ -16,7 +16,10 @@
  * Uniforms:
  *   - `u_clipScale`  (vec2): per-axis data→clip scale `(scaleX, scaleY)`.
  *   - `u_clipOffset` (vec2): per-axis data→clip offset `(offsetX, offsetY)`.
- *   - `u_color`      (vec4): resolved lane colour as premultiplied-ready RGBA.
+ *   - `u_color`      (vec4): resolved lane colour as STRAIGHT (non-premultiplied)
+ *     RGBA in 0..1. The fragment shader premultiplies it (`rgb*a, a`) before output
+ *     to match the premultipliedAlpha:true context and (ONE, ONE_MINUS_SRC_ALPHA)
+ *     blend, so silhouette/MSAA edges fade to transparent black, not white.
  *   - `u_viewport`   (vec2): drawing-buffer size in device px. Currently feeds the
  *     `v_devicePos` varying only; reserved for an optional explicit edge feather,
  *     so the renderer's uniform wiring stays stable. Unused by the fragment stage.
@@ -61,10 +64,15 @@ uniform vec4 u_color;     // resolved lane RGBA (0..1)
 out vec4 fragColor;
 
 void main() {
-  // The rasteriser already covers the band's interior; GPU MSAA (antialias:true)
-  // handles the silhouette AA. We additionally guard against any premultiply
-  // surprise by keeping the interior fully opaque and letting MSAA feather edges.
-  fragColor = u_color;
+  // The rasteriser covers the band's interior; GPU MSAA (antialias:true) feathers
+  // the silhouette by coverage-weighting this fragment's output against the
+  // destination. The context is premultipliedAlpha:true with (ONE, ONE_MINUS_SRC_ALPHA)
+  // blending, so the drawing buffer holds PREMULTIPLIED colour — output premultiplied.
+  // For an opaque lane (a == 1) this equals the straight colour, so the interior is
+  // unchanged; but at a partially-covered silhouette sample (or a translucent lane)
+  // premultiplying keeps the edge fading toward transparent black instead of blooming
+  // toward white, matching the line treatment and the Canvas2D fill AA.
+  fragColor = vec4(u_color.rgb * u_color.a, u_color.a);
 }
 `;
 
