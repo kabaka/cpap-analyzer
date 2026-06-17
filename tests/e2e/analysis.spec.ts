@@ -611,9 +611,16 @@ test.describe('Analysis Engine — Integration', () => {
       await expect(page.getByRole('heading', { name: route.heading })).toBeVisible();
     }
 
-    // Filter out React Router / dev-mode noise — only real app errors matter
+    // Filter out React Router / dev-mode noise — only real app errors matter.
+    // `NS_BINDING_ABORTED` is benign Firefox noise: rapidly navigating between
+    // routes (the loop above) aborts in-flight resource/worker loads, which
+    // Firefox surfaces via Playwright's juggler harness as a console error. It is
+    // not an application fault and flakily blocked the deploy pipeline.
     const realErrors = consoleErrors.filter(
-      (msg) => !msg.includes('React Router') && !msg.includes('DevTools'),
+      (msg) =>
+        !msg.includes('React Router') &&
+        !msg.includes('DevTools') &&
+        !msg.includes('NS_BINDING_ABORTED'),
     );
     expect(realErrors).toHaveLength(0);
   });
