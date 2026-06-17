@@ -123,6 +123,12 @@
   /* SIGNAL VIEWER CROSSHAIR */
   --color-crosshair: rgba(82, 82, 82, 0.55);
 
+  /* SIGNAL VIEWER SHIFT-DRAG ZOOM-TO-RANGE SELECTION BAND
+     Semi-transparent fill + a subtle border, tinted with the primary accent so
+     it reads as an interactive selection in both light and dark themes. */
+  --color-selection-band-bg: rgba(37, 99, 235, 0.16);
+  --color-selection-band-border: rgba(37, 99, 235, 0.6);
+
   /* SIGNAL VIEWER LANE METRICS */
   --signal-lane-height: 150px;
   --signal-lane-height-hero: 200px;
@@ -321,6 +327,11 @@
 
   /* SIGNAL VIEWER CROSSHAIR */
   --color-crosshair: rgba(220, 220, 220, 0.5);
+
+  /* SIGNAL VIEWER SHIFT-DRAG ZOOM-TO-RANGE SELECTION BAND (dark) — brighter
+     accent + slightly higher fill alpha so it stays visible over dark waveforms. */
+  --color-selection-band-bg: rgba(96, 165, 250, 0.2);
+  --color-selection-band-border: rgba(96, 165, 250, 0.7);
 
   /* SIGNAL VIEWER LANE METRICS — dark-mode lane-name halo */
   --signal-lane-name-shadow: rgba(0, 0, 0, 0.95);

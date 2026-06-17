@@ -475,6 +475,14 @@
   cursor: grabbing;
 }
 
+/* Shift held over the plot (or an active shift-drag selection): show a horizontal
+   zoom/range affordance so zoom-to-range is discoverable. `col-resize` reads as
+   "drag a horizontal range" across browsers without a custom cursor asset. Wins
+   over the default `crosshair` (declared later / more specific). */
+.canvasWrapper[data-shiftzoom='true'] {
+  cursor: col-resize;
+}
+
 .canvas {
   display: block;
   width: 100%;
@@ -510,6 +518,24 @@
   width: 100%;
   display: block;
   pointer-events: none;
+}
+
+/* Shift-drag zoom-to-range selection band. A full-height, semi-transparent band
+   spanning the dragged x-range, positioned (left/width in px) inline by the JSX.
+   pointer-events:none so the pointer events still reach the wrapper underneath.
+   Sits above the waveform/overlay canvases but below the lane headers, and uses
+   theme tokens so it works in light and dark. Only painted while a selection is
+   in flight, so it never costs anything at rest. */
+.selectionBand {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  pointer-events: none;
+  background: var(--color-selection-band-bg);
+  border-left: 1px solid var(--color-selection-band-border);
+  border-right: 1px solid var(--color-selection-band-border);
+  box-sizing: border-box;
+  z-index: 1;
 }
 
 /* ── Status bar ───────────────────────────────────────────────── */

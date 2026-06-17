@@ -108,9 +108,16 @@ void main() {
   // The round join/cap falls out for free because distToSegment clamps to the
   // endpoints, so the iso-distance contour is a stadium with semicircular ends.
   float aa = 1.0;
-  float alpha = 1.0 - smoothstep(v_halfWidth - 0.5, v_halfWidth + aa - 0.5, d);
-  if (alpha <= 0.0) discard;
-  fragColor = vec4(u_color.rgb, u_color.a * alpha);
+  float coverage = 1.0 - smoothstep(v_halfWidth - 0.5, v_halfWidth + aa - 0.5, d);
+  if (coverage <= 0.0) discard;
+  // The context is premultipliedAlpha:true and blending is (ONE, ONE_MINUS_SRC_ALPHA),
+  // so the drawing buffer holds PREMULTIPLIED colour. Output premultiplied: scale RGB
+  // by the same alpha that feathers the edge. If we left RGB at full brightness while
+  // only alpha fell off, the compositor would (un)premultiply by the low edge alpha and
+  // the feathered pixels would bloom toward white — the classic AA halo. Premultiplying
+  // makes edges fade toward transparent black, revealing the dark chart cleanly.
+  float a = u_color.a * coverage;
+  fragColor = vec4(u_color.rgb * a, a);
 }
 `;
 
