@@ -76,6 +76,11 @@ import {
 } from './laneState';
 import { computeLaneDomain } from './signalDomain';
 import {
+  applyCursorAnchoredZoom,
+  pixelRangeToTimeRange,
+  wheelDeltaToZoomFactor,
+} from './signalZoom';
+import {
   buildWearableChannel,
   hypnogramBands,
   seriesHasData,
@@ -128,11 +133,13 @@ const ZOOM_PRESETS: readonly { label: string; ms: number | null }[] = [
   { label: 'All', ms: null },
 ];
 
-/** Zoom factor per wheel notch. */
-const ZOOM_FACTOR = 1.5;
-
-/** Minimum visible time window in ms (0.5 second). */
-const MIN_VIEWPORT_MS = 500;
+/**
+ * Wheel-zoom sensitivity and the min/max zoom-span clamps now live in the pure
+ * {@link module:views/Sessions/signalZoom} helper (`WHEEL_ZOOM_RATE`,
+ * `MIN_VIEWPORT_MS`), so the sensitivity curve and the shift-drag pixel→time
+ * math are unit-testable without a browser. The product owner tunes feel via
+ * `WHEEL_ZOOM_RATE` there.
+ */
 
 /** Default pixel height per CPAP channel strip. */
 const CHANNEL_HEIGHT = 150;
@@ -515,6 +522,36 @@ export default function SignalViewer() {
   // Interaction state
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ x: number; viewport: ViewportRange } | null>(null);
+
+  /**
+   * Active SHIFT-DRAG zoom-to-range selection (rubber-band), or `null`.
+   * `startX`/`currentX` are canvas-relative CSS px; `viewport` is the viewport
+   * the drag started over (the px→time mapping basis). A Shift+pointerdown starts
+   * this INSTEAD of a pan; releasing applies the selected time range as the new
+   * viewport. The visual band is a cheap positioned DOM element (no waveform
+   * repaint) driven by `selectionRect`. Mouse-only enhancement — keyboard users
+   * zoom via the existing preset buttons / wheel controls (unchanged).
+   */
+  const selectionStartRef = useRef<{
+    startX: number;
+    currentX: number;
+    viewport: ViewportRange;
+  } | null>(null);
+
+  /**
+   * Whether Shift is currently held while the pointer is over the plot, so the
+   * cursor flips to a zoom/col-resize style affordance (discoverability). Updated
+   * by pointermove/keyboard listeners; independent of an in-flight selection.
+   */
+  const [shiftZoomArmed, setShiftZoomArmed] = useState(false);
+
+  /**
+   * Pixel rect of the live selection band ({left,width} in CSS px relative to the
+   * canvas wrapper), or `null` when no selection is in flight. Kept in React
+   * state because the band is a DOM element — it repaints only the band, never
+   * the waveform stack.
+   */
+  const [selectionRect, setSelectionRect] = useState<{ left: number; width: number } | null>(null);
 
   // Canvas dimensions
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({
@@ -1798,24 +1835,15 @@ export default function SignalViewer() {
             }
           : { startTime: viewportRef.current.startTime, endTime: viewportRef.current.endTime });
 
-      const cursorTimeMs = prev.startTime + cursorFrac * (prev.endTime - prev.startTime);
-      const zoomIn = e.deltaY < 0;
-      const factor = zoomIn ? 1 / ZOOM_FACTOR : ZOOM_FACTOR;
-      const currentDuration = prev.endTime - prev.startTime;
-      let newDuration = currentDuration * factor;
-      newDuration = Math.max(MIN_VIEWPORT_MS, Math.min(totalDurationMs, newDuration));
-
-      let newStart = cursorTimeMs - cursorFrac * newDuration;
-      let newEnd = newStart + newDuration;
-      if (newStart < 0) {
-        newStart = 0;
-        newEnd = newDuration;
-      }
-      if (newEnd > totalDurationMs) {
-        newEnd = totalDurationMs;
-        newStart = Math.max(0, newEnd - newDuration);
-      }
-      const range = { startTime: newStart, endTime: newEnd };
+      // Device-aware, GENTLE zoom factor: exp(-normalizedDelta * WHEEL_ZOOM_RATE)
+      // (see signalZoom). Mouse-wheel notches (DOM_DELTA_LINE) and trackpad pinch
+      // pixel streams (DOM_DELTA_PIXEL) are normalized to a common magnitude so
+      // neither feels jumpy, and the per-event delta is clamped so one fat delta
+      // can't teleport the zoom. The factor composes multiplicatively across the
+      // accumulating live viewport, and cursor-anchored zoom keeps the time under
+      // the pointer fixed. Sensitivity is the single WHEEL_ZOOM_RATE knob.
+      const factor = wheelDeltaToZoomFactor(e.deltaY, e.deltaMode);
+      const range = applyCursorAnchoredZoom(prev, factor, cursorFrac, totalDurationMs);
       liveViewportRef.current = range;
 
       // Coalesce paints to one per frame via the shared scheduler (same handle
@@ -1851,6 +1879,21 @@ export default function SignalViewer() {
       }
     };
   }, [totalDurationMs, renderRangeDirect, commitLiveViewport, getPaintScheduler]);
+
+  // ── Shift-key cursor affordance (window-level keyup) ─────────
+  //
+  // Releasing Shift anywhere drops the "zoom-to-range" cursor affordance even if
+  // the pointer is parked over the plot (a pointermove may not follow). An
+  // IN-FLIGHT selection is intentionally NOT cancelled here — releasing Shift
+  // mid-drag still completes on pointerup (less surprising: the user already drew
+  // the band). The window-level keyup just keeps the cursor honest.
+  useEffect(() => {
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftZoomArmed(false);
+    };
+    window.addEventListener('keyup', onKeyUp);
+    return () => window.removeEventListener('keyup', onKeyUp);
+  }, []);
 
   // ── Hovered-region hit-test (shared by pointer + keyboard) ───
 
@@ -1900,6 +1943,23 @@ export default function SignalViewer() {
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
+
+      // SHIFT+drag starts a zoom-to-range SELECTION instead of a pan. The band is
+      // drawn as a cheap DOM element; on release the pixel range is converted to a
+      // time range and applied as the viewport. A plain drag (no Shift) pans.
+      if (e.shiftKey) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const x = e.clientX - rect.left;
+        selectionStartRef.current = { startX: x, currentX: x, viewport: { ...viewport } };
+        // Capture so the drag keeps tracking even when the pointer leaves the
+        // canvas (pointer-capture); see handlePointerMove/Up.
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        // Seed a zero-width band at the anchor; widened on move.
+        setSelectionRect(null);
+        return;
+      }
+
       setIsPanning(true);
       panStartRef.current = { x: e.clientX, viewport: { ...viewport } };
       panDxRef.current = 0;
@@ -1911,6 +1971,34 @@ export default function SignalViewer() {
     [viewport],
   );
 
+  /**
+   * Apply (or discard) the active shift-drag selection. Converts the pixel
+   * x-range to a clamped, min-span-floored time range via the pure
+   * {@link pixelRangeToTimeRange} helper and commits it to the viewport. A drag
+   * shorter than the helper's minimum (or a shift-click) is a no-op so the
+   * viewport never snaps to a sliver. Always clears the band + selection ref.
+   */
+  const finishSelection = useCallback(() => {
+    const sel = selectionStartRef.current;
+    selectionStartRef.current = null;
+    setSelectionRect(null);
+    if (!sel) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const plotWidth = rect.width - PADDING.left - PADDING.right;
+    const result = pixelRangeToTimeRange(
+      sel.startX,
+      sel.currentX,
+      PADDING.left,
+      plotWidth,
+      sel.viewport,
+      totalDurationMs,
+    );
+    if (result.kind === 'zoom') {
+      setViewport(result.range);
+    }
+  }, [totalDurationMs]);
+
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -1918,6 +2006,25 @@ export default function SignalViewer() {
 
       const x = e.clientX - rect.left;
       crosshairXRef.current = x;
+
+      // ACTIVE SHIFT-DRAG SELECTION: update the band's pixel rect (clamped to the
+      // plot band) and skip the crosshair/pan paths entirely. The band is a DOM
+      // element so this repaints only the band, never the waveform stack.
+      const sel = selectionStartRef.current;
+      if (sel) {
+        const plotLeft = PADDING.left;
+        const plotRight = rect.width - PADDING.right;
+        const clampedX = Math.max(plotLeft, Math.min(plotRight, x));
+        sel.currentX = clampedX;
+        const left = Math.min(sel.startX, clampedX);
+        const width = Math.abs(clampedX - sel.startX);
+        setSelectionRect({ left, width });
+        return;
+      }
+
+      // Keep the shift-zoom cursor affordance in sync with the modifier state
+      // while hovering (no selection in flight). Only toggles state on change.
+      setShiftZoomArmed((armed) => (armed === e.shiftKey ? armed : e.shiftKey));
 
       // Non-obstructive hovered-region readout: hit-test the cursor time against
       // device events / detection episodes and surface the match in the sticky
@@ -1983,6 +2090,11 @@ export default function SignalViewer() {
   );
 
   const handlePointerUp = useCallback(() => {
+    // A shift-drag selection takes precedence over a pan: apply (or discard) it.
+    if (selectionStartRef.current) {
+      finishSelection();
+      return;
+    }
     setIsPanning(false);
     panStartRef.current = null;
     panDxRef.current = 0;
@@ -1992,10 +2104,19 @@ export default function SignalViewer() {
     paintSchedulerRef.current?.cancel();
     rendererRef.current?.endPan();
     commitLiveViewport();
-  }, [commitLiveViewport]);
+  }, [commitLiveViewport, finishSelection]);
 
   const handlePointerLeave = useCallback(() => {
     crosshairXRef.current = null;
+    // Drop the shift-cursor affordance once the pointer leaves the plot.
+    setShiftZoomArmed(false);
+    // A selection in flight when the pointer leaves WITHOUT pointer-capture (the
+    // capture normally keeps events flowing): apply what was selected so the
+    // gesture completes gracefully rather than silently vanishing. With capture
+    // active this rarely fires mid-drag — pointerup handles the common case.
+    if (selectionStartRef.current) {
+      finishSelection();
+    }
     // Clear the hovered-region readout (only if it isn't already empty) and reset
     // the identity ref so the next hover re-enters cleanly.
     if (hoveredKeyRef.current !== '') {
@@ -2023,7 +2144,7 @@ export default function SignalViewer() {
         crosshairX: null,
       });
     }
-  }, [isPanning, commitLiveViewport]);
+  }, [isPanning, commitLiveViewport, finishSelection]);
 
   // ── Keyboard data cursor (arrow keys move crosshair) ─────────
 
@@ -2463,6 +2584,7 @@ export default function SignalViewer() {
         ref={canvasWrapperRef}
         className={styles.canvasWrapper}
         data-panning={isPanning}
+        data-shiftzoom={shiftZoomArmed || selectionRect !== null}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -2501,6 +2623,20 @@ export default function SignalViewer() {
           className={styles.overlayCanvas}
           aria-hidden="true"
         />
+
+        {/* Shift-drag zoom-to-range selection band. A cheap full-height DOM
+            element spanning the dragged x-range (theme-tokened, semi-transparent
+            with a subtle border); only the band repaints during the drag — never
+            the waveform stack. aria-hidden: this is a mouse-only enhancement;
+            keyboard users zoom via the preset buttons / wheel. Rendered only
+            while a selection is in flight. */}
+        {selectionRect !== null && (
+          <div
+            className={styles.selectionBand}
+            aria-hidden="true"
+            style={{ left: `${selectionRect.left}px`, width: `${selectionRect.width}px` }}
+          />
+        )}
 
         {/* Lane headers as positioned HTML overlay (keyboard accessible). */}
         <div className={styles.laneHeaders} aria-label="Lane controls">
