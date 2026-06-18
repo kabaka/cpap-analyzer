@@ -1,4 +1,12 @@
 .statusBar {
+  /* Pinned to the viewport bottom, mirroring the sticky header. Because a
+     sticky element still occupies its normal flow space at the end of the
+     flex-column `.content`, page content in `.main` is never hidden behind it
+     (no overlap). The sticky z-index keeps it above scrolling content, and the
+     opaque `--color-surface-secondary` background keeps it readable. */
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -10,6 +18,17 @@
   border-top: 1px solid var(--color-border-default);
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
+}
+
+/* ── Responsive: < 768px ── */
+
+@media (max-width: 767px) {
+  /* Drop below the mobile nav-drawer overlay (`calc(var(--z-sticky) - 1)`) so
+     the open drawer dims the status bar along with the rest of the content,
+     while still sitting above normal scrolling content. */
+  .statusBar {
+    z-index: calc(var(--z-sticky) - 2);
+  }
 }
 
 .cluster {
