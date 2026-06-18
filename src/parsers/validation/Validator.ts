@@ -12,6 +12,7 @@
 import type { EventType } from '@/types/events';
 import type { EDFFile } from '../edf/types';
 import type { BuildResult } from '../resmed/SessionBuilder';
+import { PHYSIOLOGICAL_RANGES } from './physiologicalRanges';
 
 // ---------------------------------------------------------------------------
 // Exported interfaces
@@ -40,24 +41,6 @@ export interface ValidationResult {
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-
-/** Acceptable physiological ranges per channel [min, max]. */
-const PHYSIOLOGICAL_RANGES: Readonly<Record<string, readonly [number, number]>> = {
-  flow: [-300, 300],
-  maskPressure: [0, 30],
-  pressure: [0, 40],
-  eprPressure: [0, 30],
-  leak: [0, 200],
-  tidalVolume: [0, 3000],
-  minuteVent: [0, 50],
-  respRate: [0, 60],
-  epap: [4, 25],
-  ipap: [4, 30],
-  spo2: [50, 100],
-  pulse: [30, 250],
-  snore: [0, 100],
-  flowLimitation: [0, 1],
-};
 
 /** Minimum AASM apnea duration in seconds. */
 const MIN_APNEA_DURATION = 10;
