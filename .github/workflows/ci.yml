@@ -11,8 +11,16 @@ permissions:
   pages: write
   id-token: write
 
+# Concurrency is scoped PER REF (branch / PR), not global. A previous static
+# `group: pages` cancelled EVERY in-flight run across all branches, so opening
+# or pushing one PR would cancel another PR's (and main's) CI. Keying on the ref
+# means a run only supersedes an OLDER run of the SAME branch/PR — exactly the
+# "newer push wins" behaviour we want — while different PRs run independently.
+# GitHub Pages deploy serialization lives on the `deploy` job instead (it uses a
+# dedicated `pages` group with cancel-in-progress: false so a live deploy is
+# never killed mid-publish).
 concurrency:
-  group: 'pages'
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -57,6 +65,23 @@ jobs:
   test-e2e:
     name: E2E Tests (${{ matrix.browser == 'chromium' && 'Chromium' || matrix.browser == 'firefox' && 'Firefox' || 'WebKit' }})
     runs-on: ubuntu-latest
+    # Run inside the official Playwright image. It ships every browser AND all of
+    # their system (apt) dependencies preinstalled, so we DON'T run
+    # `playwright install --with-deps`. That apt step once took ~30 min on a slow
+    # Ubuntu mirror (WebKit was worst), turning a ~6-min job into a 37-min
+    # pipeline that looked hung. The container removes apt from the critical path.
+    # The tag MUST match the Playwright version locked in package-lock.json
+    # (@playwright/test 1.58.2). A mismatch ships a different browser revision and
+    # Playwright fails with "Executable doesn't exist" — keep this tag in lockstep
+    # with the lockfile when bumping Playwright.
+    container: mcr.microsoft.com/playwright:v1.58.2-noble
+    # `actions/setup-node` repoints $HOME at a runner temp dir not owned by the
+    # container's root user. Chromium/WebKit tolerate it, but Firefox REFUSES to
+    # launch unless $HOME is owned by the current user ("Failed to launch the
+    # browser process"). Pinning HOME=/root (the image's root home) is the
+    # documented Playwright workaround and fixes the Firefox-only launch failure.
+    env:
+      HOME: /root
     strategy:
       fail-fast: false
       matrix:
@@ -68,7 +93,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps ${{ matrix.browser }}
+      # No `playwright install --with-deps`: browsers + OS deps are baked into the
+      # image, and the pinned tag guarantees the bundled revision matches
+      # @playwright/test, so no install step is required.
       - run: npx playwright test --project=${{ matrix.browser }}
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -80,6 +107,12 @@ jobs:
   test-e2e-fidelity:
     name: E2E WebGL Fidelity Gate (ADR 0019)
     runs-on: ubuntu-latest
+    # Same official Playwright image as test-e2e (see that job for the 30-min apt
+    # incident this avoids). Tag pinned to the locked @playwright/test 1.58.2.
+    # The image bundles the Mesa/GL userspace libraries that software WebGL2
+    # (ANGLE + SwiftShader) needs, so the fidelity gate runs unchanged without any
+    # apt install.
+    container: mcr.microsoft.com/playwright:v1.58.2-noble
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -87,7 +120,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # No `playwright install --with-deps`: Chromium + its OS/GL deps are baked
+      # into the image at the pinned revision.
       # Software WebGL2 (ANGLE + SwiftShader) is configured in the
       # `chromium-fidelity` Playwright project. RUN_FIDELITY=1 enables the gate;
       # a missing WebGL2 context fails the gate LOUDLY (it never silently skips).
@@ -120,6 +154,12 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
+    # Serialize Pages deploys here (not workflow-wide). cancel-in-progress is
+    # false so an in-flight publish is allowed to finish rather than be aborted
+    # by a newer commit's deploy.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
