@@ -20,6 +20,7 @@
  * for large blobs, and supports efficient chunked/streaming access patterns.
  */
 
+import { MAX_SESSION_SECONDS } from '@/parsers/resmed/assembleChannels';
 import { ErrorCategory, ErrorSeverity } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -298,7 +299,43 @@ export class OPFSService {
       const sessionDir = await this.getSessionDir(sessionId, true);
 
       const durationSeconds = (endTime - startTime) / 1000;
+
+      // Load-bearing DoS guard. The chunk count below is
+      // `ceil(durationSeconds / 300s)` and each chunk drives an async file
+      // create + writable + write + close. The window (`startTime`/`endTime`)
+      // is derived from segment headers and chained across segments, so a
+      // crafted import can declare an arbitrarily long window (millions of
+      // chunks → freeze / file-handle / quota exhaustion) even when the
+      // assembled channels are tiny or empty. Reject any window that is
+      // non-finite, non-positive, or longer than the same plausibility ceiling
+      // the channel assembler uses (`MAX_SESSION_SECONDS`, imported from
+      // assembleChannels so the two layers can never drift). The throw
+      // propagates to ImportService.storeSession, whose compensation rolls back
+      // the IDB metadata and any partial OPFS chunks. Context is PHI-free
+      // (sessionId + numeric durations only — no wall-clock timestamps).
+      if (
+        !Number.isFinite(durationSeconds) ||
+        durationSeconds <= 0 ||
+        durationSeconds > MAX_SESSION_SECONDS
+      ) {
+        throw new OPFSError(
+          'OPFS_WRITE_FAILED',
+          `Refusing to write session "${sessionId}": session window out of bounds ` +
+            `(durationSeconds=${durationSeconds}, maxSeconds=${MAX_SESSION_SECONDS}).`,
+          { context: { sessionId, durationSeconds, maxSessionSeconds: MAX_SESSION_SECONDS } },
+        );
+      }
+
       const chunkCount = Math.max(1, Math.ceil(durationSeconds / CHUNK_DURATION_SECONDS));
+
+      // Defensive dev-time guard: each channel is expected to be window-aligned
+      // (one gap-padded series spanning [startTime, endTime]; see
+      // assembleChannels). If a channel's sample span is MATERIALLY shorter than
+      // the declared window, the chunker would silently truncate the night — the
+      // exact multi-segment bug this guard exists to surface. We only WARN (never
+      // throw): a genuinely short final segment can legitimately fall a little
+      // short, and writing what we have is better than failing the import.
+      this.warnIfChannelsUnderspanWindow(channels, durationSeconds);
 
       // Build channel descriptors
       const channelDescriptors: ChannelDescriptor[] = channels.map((ch, i) => ({
@@ -409,6 +446,40 @@ export class OPFSService {
         `Failed to write session "${sessionId}": ${String(error)}`,
         { cause: error, context: { sessionId, startTime, endTime } },
       );
+    }
+  }
+
+  /**
+   * Dev-time sanity check: warn if any channel spans materially less time than
+   * the declared session window.
+   *
+   * Channels are expected to be window-aligned (one gap-padded series of length
+   * ≈ `sampleRate * windowDurationSeconds`; see `assembleChannels`). A channel
+   * whose `data.length / sampleRate` is well short of the window means upstream
+   * assembly regressed and the chunker is about to truncate the night — the
+   * multi-segment truncation bug. We only warn (no throw) so a legitimately
+   * short tail does not fail an otherwise-valid import.
+   */
+  private warnIfChannelsUnderspanWindow(
+    channels: readonly ChannelInput[],
+    windowDurationSeconds: number,
+  ): void {
+    if (windowDurationSeconds <= 0) return;
+    // Tolerance: a channel may fall short by up to one chunk (5 min) plus 1%
+    // before we consider it "materially" short. Below that, warn.
+    const toleranceSeconds = CHUNK_DURATION_SECONDS + windowDurationSeconds * 0.01;
+    for (const ch of channels) {
+      if (ch.sampleRate <= 0) continue;
+      const spanSeconds = ch.data.length / ch.sampleRate;
+      if (windowDurationSeconds - spanSeconds > toleranceSeconds) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[OPFSService] Channel "${ch.name}" spans ~${spanSeconds.toFixed(0)}s but the ` +
+            `session window is ~${windowDurationSeconds.toFixed(0)}s. The signal will be ` +
+            `truncated by ~${(windowDurationSeconds - spanSeconds).toFixed(0)}s. This usually ` +
+            `means multi-segment channel assembly did not window-align the data.`,
+        );
+      }
     }
   }
 

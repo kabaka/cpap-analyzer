@@ -65,7 +65,7 @@ export interface ParsedRecord<T> {
 // ---------------------------------------------------------------------------
 
 /**
- * Raw sleep entry shape from `Sleep/sleep-YYYY-MM-DD.json` files.
+ * Raw sleep entry shape from `Global Export Data/sleep-YYYY-MM-DD.json` files.
  * Only the fields we consume are declared.
  */
 interface RawSleepEntry {

@@ -11,10 +11,18 @@
  * - Production of domain `Session`, `NightlyAggregate`, and `Event[]`
  *
  * ## Sentinel / gap policy
- * A missing/undefined sample is SKIPPED, never folded in as a real `0`. ResMed
- * channels also use specific physiologic sentinels: SpO₂ uses `0` (no probe).
- * Skipping (rather than `?? 0`) keeps means/medians/percentiles from being
- * biased toward zero by padding or dropout. See {@link collectValidSamples}.
+ * A missing sample is SKIPPED, never folded in as a real `0`. Two kinds of
+ * "missing" occur:
+ *   - `undefined` — an out-of-bounds read (defensive; in-bounds Float32 reads
+ *     never yield `undefined`).
+ *   - `NaN` — the gap sentinel written by {@link assembleChannels} for the
+ *     lead-in before the first segment and any inter-segment gap on a
+ *     multi-segment night. A `Float32Array` returns `NaN` (not `undefined`) for
+ *     an in-bounds NaN, so every stats guard MUST test `Number.isNaN`, not just
+ *     `=== undefined`.
+ * ResMed channels also use specific physiologic sentinels: SpO₂ uses `0` (no
+ * probe). Skipping (rather than `?? 0`) keeps means/medians/percentiles from
+ * being biased toward zero by padding or dropout.
  */
 
 import { LEAK_NOTICE_LPM, SPO2_COVERAGE_MIN } from '@/analysis/uncertainty/constants';
@@ -23,6 +31,7 @@ import { CMS_COMPLIANCE_HOURS } from '@/analysis/clinical';
 import type { Event } from '@/types/events';
 import type { Session, NightlyAggregate, ChannelMetadata, MachineSettings } from '@/types/session';
 import type { ResMedInterpretation, StandardChannel } from './ResMedInterpreter';
+import { assembleChannels } from './assembleChannels';
 import type { MaskInterval } from './STRParser';
 
 // ---------------------------------------------------------------------------
@@ -216,19 +225,25 @@ export class SessionBuilder {
     const endTime = new Date(endMs);
     const durationSeconds = (endMs - startMs) / 1000;
 
-    // Merge channels (prefer more samples; use higher sample rate as tiebreaker)
+    // Assemble channels across ALL segments into one window-aligned, gap-padded
+    // series per channel name (see {@link assembleChannels}). A multi-segment
+    // night must be CONCATENATED, not reduced to its longest single segment:
+    // the old "longest wins" merge computed pressure/leak/usage off one segment
+    // only, so a two-segment night reported aggregates for ~55 min less than it
+    // recorded. The SAME assembler feeds the OPFS signal write in
+    // ImportService.buildChannelInputs, so signals and aggregates agree.
+    //
+    // Inter-segment gaps are NaN (the no-data sentinel); the stats helpers below
+    // SKIP NaN so padding never biases means/medians/percentiles toward 0.
     const channelMap = new Map<string, StandardChannel>();
-    for (const interp of group) {
-      for (const ch of interp.channels) {
-        const existing = channelMap.get(ch.name);
-        if (
-          !existing ||
-          ch.samples.length > existing.samples.length ||
-          (ch.samples.length === existing.samples.length && ch.sampleRate > existing.sampleRate)
-        ) {
-          channelMap.set(ch.name, ch);
-        }
-      }
+    for (const assembled of assembleChannels(group, startMs, endMs)) {
+      channelMap.set(assembled.name, {
+        name: assembled.name,
+        unit: assembled.unit,
+        sampleRate: assembled.sampleRate,
+        samples: assembled.samples,
+        metadata: assembled.metadata,
+      });
     }
 
     // Compute usage time. Prefer the machine's own recorded mask-on/off
@@ -550,8 +565,9 @@ export class SessionBuilder {
 
     for (let i = 0; i < samples.length; i++) {
       const val = samples[i];
-      if (val === undefined) {
-        // Treat a missing sample as a gap: hold current state, count it as
+      if (val === undefined || Number.isNaN(val)) {
+        // Treat a missing/gap sample (NaN inter-segment padding, or an
+        // out-of-bounds undefined) as a gap: hold current state, count it as
         // usage if currently on (the machine was running), and do not advance
         // the off-dwell counter toward an off transition.
         if (maskOn) usageSamples++;
@@ -673,7 +689,7 @@ export class SessionBuilder {
     let largeLeakSamples = 0;
     for (let i = 0; i < leakChannel.samples.length; i++) {
       const val = leakChannel.samples[i];
-      if (val === undefined) continue;
+      if (val === undefined || Number.isNaN(val)) continue; // skip gap padding
       valid[n++] = val;
       if (val > max) max = val;
       if (val > LARGE_LEAK_THRESHOLD) largeLeakSamples++;
@@ -771,7 +787,9 @@ export class SessionBuilder {
     let timeBelow90Count = 0;
     for (let i = 0; i < spo2Channel.samples.length; i++) {
       const val = spo2Channel.samples[i];
-      if (val === undefined || val === SPO2_SENTINEL || val < 0) continue;
+      // Skip out-of-bounds (undefined), NaN gap padding, the SpO₂ no-probe
+      // sentinel (0), and any negative value.
+      if (val === undefined || Number.isNaN(val) || val === SPO2_SENTINEL || val < 0) continue;
       validOrdered.push(val);
       sum += val;
       if (val < min) min = val;
@@ -984,9 +1002,10 @@ export class SessionBuilder {
    * Collect a channel's valid samples, computing mean and max in one pass and
    * returning them alongside a single sorted copy for percentile queries.
    *
-   * "Valid" = not `undefined` (a padding/gap sample). This is the one place the
-   * sentinel policy is applied for pressure/leak/respiratory channels: gaps are
-   * SKIPPED, never folded in as a real `0` that would drag stats down.
+   * "Valid" = not `undefined` and not `NaN` (a padding/gap sample). This is the
+   * one place the sentinel policy is applied for pressure/leak/respiratory
+   * channels: gaps are SKIPPED, never folded in as a real `0` that would drag
+   * stats down.
    *
    * @returns `{ sorted, mean, max }` over valid samples, or `null` if none.
    */
@@ -999,7 +1018,7 @@ export class SessionBuilder {
     let max = -Infinity;
     for (let i = 0; i < samples.length; i++) {
       const val = samples[i];
-      if (val === undefined) continue;
+      if (val === undefined || Number.isNaN(val)) continue; // skip gap padding
       valid[n++] = val;
       sum += val;
       if (val > max) max = val;

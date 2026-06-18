@@ -35,17 +35,20 @@ interface DataTypeSource {
 }
 
 /**
+ * Matches a dated Fitbit sleep-log filename, e.g. `sleep-2014-05-15.json`.
+ * In real Google Takeout / Fitbit exports these live under `Global Export Data/`
+ * (verified against a full export); the legacy `Sleep/` directory holds only a
+ * `Sleep Profile.csv`, never the dated session JSONs. Each file carries both the
+ * night's session summary and the stage hypnogram, so it is registered against
+ * both `sleep_session` and `sleep_stages` (see the `Global Export Data` block).
+ */
+const SLEEP_FILE_PATTERN = /^sleep-\d{4}-\d{2}-\d{2}\.json$/;
+
+/**
  * Maps top-level Google Health directory names to the data types they contain
  * and the filename patterns used to identify source files.
  */
 const DATA_TYPE_SOURCES: Readonly<Record<string, readonly DataTypeSource[]>> = {
-  Sleep: [
-    {
-      dataType: 'sleep_session',
-      pattern: /^sleep-\d{4}-\d{2}-\d{2}\.json$/,
-      tier: 1,
-    },
-  ],
   'Sleep Score': [
     {
       dataType: 'sleep_score',
@@ -103,6 +106,21 @@ const DATA_TYPE_SOURCES: Readonly<Record<string, readonly DataTypeSource[]>> = {
       dataType: 'heart_rate_intraday',
       pattern: /^heart_rate-\d{4}-\d{2}-\d{2}\.json$/,
       tier: 2,
+    },
+    {
+      // Sleep logs. Each dated `sleep-*.json` carries both the night's session
+      // summary and the stage hypnogram; the parser returns `{ sessions, stages }`
+      // from one read and the import dispatch routes each data type to its own
+      // bucket — mirroring the `snoring_daily` / `snoring_segments` precedent
+      // where two data types share a single source file.
+      dataType: 'sleep_session',
+      pattern: SLEEP_FILE_PATTERN,
+      tier: 1,
+    },
+    {
+      dataType: 'sleep_stages',
+      pattern: SLEEP_FILE_PATTERN,
+      tier: 1,
     },
   ],
   'Daily Readiness': [
