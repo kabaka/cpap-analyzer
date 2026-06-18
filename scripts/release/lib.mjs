@@ -45,14 +45,18 @@ export function isoDate(date) {
  */
 export function computeNextVersion(tags, date) {
   const prefix = calverPrefix(date);
-  // Match `v<prefix>.<micro>` exactly, capturing the integer MICRO.
-  const re = new RegExp(`^v${prefix.replace(/\./g, '\\.')}\\.(\\d+)$`);
+  // Match any well-formed `v<year>.<month>.<micro>` tag, capturing the
+  // `<year>.<month>` prefix and the integer MICRO. A static pattern (no
+  // interpolation of `prefix`) avoids building a RegExp from a string and the
+  // partial-escaping pitfalls that come with it; the month gate is done by an
+  // exact string comparison against `prefix` below instead.
+  const re = /^v(\d+\.\d{2})\.(\d+)$/;
 
   let highest = -1;
   for (const tag of tags) {
     const m = re.exec(tag.trim());
-    if (m) {
-      const micro = Number.parseInt(m[1], 10);
+    if (m && m[1] === prefix) {
+      const micro = Number.parseInt(m[2], 10);
       if (Number.isInteger(micro) && micro > highest) {
         highest = micro;
       }
