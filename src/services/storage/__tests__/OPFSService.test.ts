@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OPFSService, OPFSError, type ChannelInput } from '@/services/storage/OPFSService';
+import { MAX_SESSION_SECONDS } from '@/parsers/resmed/assembleChannels';
 
 // ---------------------------------------------------------------------------
 // In-memory OPFS mock
@@ -446,6 +447,240 @@ describe('OPFSService', () => {
       const cached = await service.readDownsampledCache('lod-key');
       expect(cached).not.toBeNull();
       expect(Array.from(cached as Float32Array)).toEqual(Array.from(values));
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Multi-segment truncation regression
+  //
+  // When a channel is window-aligned upstream (one series spanning the whole
+  // [startTime, endTime] window — as assembleChannels now produces), the last
+  // non-empty chunk MUST reach endTime. The pre-fix bug handed the chunker a
+  // segment-only channel that started at the LONG segment's origin, so the data
+  // ran out ~55 min before the true end and the last chunks were empty.
+  // -----------------------------------------------------------------------
+
+  describe('window-aligned channel reaches endTime (multi-segment regression)', () => {
+    it('the last non-empty chunk extends to endTime for a full-window channel', async () => {
+      installOPFS();
+      const service = new OPFSService();
+      await service.initialize();
+
+      // A 20-minute window at 1 Hz → 1200 samples spanning the WHOLE window.
+      // Chunks are 5 min (300 s) → 4 chunks, all full.
+      const startTime = 1_000_000;
+      const windowSeconds = 20 * 60;
+      const endTime = startTime + windowSeconds * 1000;
+      const sampleRate = 1;
+      const data = new Float32Array(windowSeconds * sampleRate);
+      for (let i = 0; i < data.length; i++) data[i] = i; // distinct values
+
+      const manifest = await service.writeSession('multi-seg', startTime, endTime, [
+        makeChannel({ name: 'Flow', sampleRate, data }),
+      ]);
+
+      // Every chunk has samples (none empty) — no truncation.
+      for (const chunk of manifest.chunks) {
+        expect(chunk.samples['Flow'] ?? 0).toBeGreaterThan(0);
+      }
+
+      // The LAST chunk's endTime equals the session endTime.
+      const lastChunk = manifest.chunks[manifest.chunks.length - 1];
+      expect(lastChunk?.endTime).toBe(endTime);
+      // And it carries real samples right up to the end.
+      expect(lastChunk?.samples['Flow'] ?? 0).toBeGreaterThan(0);
+
+      // Read back the whole channel: all window samples present and ordered.
+      const readBack = await service.readChannel('multi-seg', 'Flow');
+      expect(readBack.length).toBe(data.length);
+      expect(readBack[readBack.length - 1]).toBe(data[data.length - 1]);
+    });
+
+    it('warns when a channel materially underspans the declared window', async () => {
+      installOPFS();
+      const service = new OPFSService();
+      await service.initialize();
+
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      // 20-minute window but the channel only carries 5 minutes of data — the
+      // exact misalignment the dev-time guard exists to surface.
+      const startTime = 0;
+      const endTime = 20 * 60 * 1000;
+      const shortData = new Float32Array(5 * 60); // 5 min @ 1 Hz
+      await service.writeSession('short', startTime, endTime, [
+        makeChannel({ name: 'Flow', sampleRate: 1, data: shortData }),
+      ]);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain('truncated');
+    });
+
+    it('does not warn for a window-aligned channel', async () => {
+      installOPFS();
+      const service = new OPFSService();
+      await service.initialize();
+
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const startTime = 0;
+      const endTime = 20 * 60 * 1000;
+      const fullData = new Float32Array(20 * 60); // 20 min @ 1 Hz
+      await service.writeSession('full', startTime, endTime, [
+        makeChannel({ name: 'Flow', sampleRate: 1, data: fullData }),
+      ]);
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // DoS guard: session-window bound on writeSession
+  //
+  // The chunk loop creates one file per `ceil(window / 300s)` chunk. The window
+  // is segment-header-derived and chainable across segments, so a crafted import
+  // can declare an arbitrarily long window — even when the assembled channels
+  // are tiny/empty. writeSession must reject any non-finite, non-positive, or
+  // over-bound window BEFORE the loop, so it never spawns a flood of chunk-file
+  // operations. The bound is the same MAX_SESSION_SECONDS the assembler uses
+  // (imported here so the test pins the shared constant).
+  // -----------------------------------------------------------------------
+
+  describe('session-window DoS guard', () => {
+    /** Count every getFileHandle(create) attempt across all directory handles. */
+    function spyOnFileCreates(): { count: () => number } {
+      let creates = 0;
+      const original = MockDirectoryHandle.prototype.getFileHandle;
+      vi.spyOn(MockDirectoryHandle.prototype, 'getFileHandle').mockImplementation(async function (
+        this: MockDirectoryHandle,
+        name: string,
+        options?: { create?: boolean },
+      ) {
+        if (options?.create) creates += 1;
+        return original.call(this, name, options) as Promise<MockFileHandle>;
+      });
+      return { count: () => creates };
+    }
+
+    it('throws OPFSError for a window longer than MAX_SESSION_SECONDS and writes no chunk files', async () => {
+      const { root } = installOPFS();
+      const service = new OPFSService();
+      await service.initialize();
+      const probe = spyOnFileCreates();
+
+      // Window = MAX + 1 hour. Naively → ceil((MAX+3600)/300) ≈ 600+ chunk files.
+      const startTime = 1_000_000;
+      const overBoundSeconds = MAX_SESSION_SECONDS + 3600;
+      const endTime = startTime + overBoundSeconds * 1000;
+
+      await expect(
+        service.writeSession('dos-overbound', startTime, endTime, [makeChannel()]),
+      ).rejects.toBeInstanceOf(OPFSError);
+
+      // The guard fires before the chunk loop: no chunk files are created.
+      // (The session directory itself may be created; assert NO chunk-*.bin /
+      // manifest writes happened.)
+      const sessionDir = root
+        .childDir('cpap-analyzer')
+        ?.childDir('signals')
+        ?.childDir('dos-overbound');
+      expect(sessionDir?.fileSize() ?? 0).toBe(0);
+      // And far fewer than the ~600 file creates a successful over-bound write
+      // would have attempted.
+      expect(probe.count()).toBeLessThan(5);
+    });
+
+    it('error context is PHI-free (sessionId + numbers only, no wall-clock timestamps)', async () => {
+      installOPFS();
+      const service = new OPFSService();
+      await service.initialize();
+
+      const startTime = 1_700_000_000_000; // a real-looking epoch ms
+      const endTime = startTime + (MAX_SESSION_SECONDS + 3600) * 1000;
+
+      let caught: OPFSError | undefined;
+      try {
+        await service.writeSession('dos-phi', startTime, endTime, [makeChannel()]);
+      } catch (err) {
+        caught = err as OPFSError;
+      }
+
+      expect(caught).toBeInstanceOf(OPFSError);
+      expect(caught?.code).toBe('OPFS_WRITE_FAILED');
+      const ctx = caught?.context ?? {};
+      expect(ctx).toHaveProperty('sessionId', 'dos-phi');
+      expect(ctx).toHaveProperty('durationSeconds');
+      expect(ctx).toHaveProperty('maxSessionSeconds', MAX_SESSION_SECONDS);
+      // No raw start/end epoch timestamps leaked into the context.
+      expect(ctx).not.toHaveProperty('startTime');
+      expect(ctx).not.toHaveProperty('endTime');
+      expect(JSON.stringify(ctx)).not.toContain(String(startTime));
+      expect(JSON.stringify(ctx)).not.toContain(String(endTime));
+    });
+
+    it('throws OPFSError for a non-finite window (NaN endTime) without writing chunks', async () => {
+      installOPFS();
+      const service = new OPFSService();
+      await service.initialize();
+      const probe = spyOnFileCreates();
+
+      await expect(
+        service.writeSession('dos-nan', 0, Number.NaN, [makeChannel()]),
+      ).rejects.toBeInstanceOf(OPFSError);
+
+      expect(probe.count()).toBeLessThan(5);
+    });
+
+    it('throws OPFSError for a negative-duration window (endTime < startTime)', async () => {
+      installOPFS();
+      const service = new OPFSService();
+      await service.initialize();
+      const probe = spyOnFileCreates();
+
+      await expect(
+        service.writeSession('dos-negative', 5_000_000, 1_000_000, [makeChannel()]),
+      ).rejects.toBeInstanceOf(OPFSError);
+
+      expect(probe.count()).toBeLessThan(5);
+    });
+
+    it('writes normally for a legitimate ~9-hour night (within bound)', async () => {
+      installOPFS();
+      const service = new OPFSService();
+      await service.initialize();
+
+      // ~9.13 h night at 25 Hz (matching the real June 13 recording duration).
+      const startTime = 1_700_000_000_000;
+      const nightSeconds = Math.round(9.13 * 3600);
+      const endTime = startTime + nightSeconds * 1000;
+      const sampleRate = 25;
+      const data = new Float32Array(nightSeconds * sampleRate);
+
+      const manifest = await service.writeSession('legit-night', startTime, endTime, [
+        makeChannel({ name: 'Flow', sampleRate, data }),
+      ]);
+
+      expect(manifest.sessionId).toBe('legit-night');
+      expect(manifest.durationSeconds).toBe(nightSeconds);
+      // Within bound → real chunks written.
+      expect(manifest.chunks.length).toBe(Math.ceil(nightSeconds / 300));
+      expect(manifest.chunks.length).toBeGreaterThan(0);
+    });
+
+    it('accepts a window exactly at MAX_SESSION_SECONDS (boundary is inclusive)', async () => {
+      installOPFS();
+      const service = new OPFSService();
+      await service.initialize();
+
+      const startTime = 0;
+      const endTime = MAX_SESSION_SECONDS * 1000;
+      // Tiny channel — we only care that the boundary does not throw.
+      const data = new Float32Array([1, 2, 3]);
+
+      const manifest = await service.writeSession('boundary', startTime, endTime, [
+        makeChannel({ name: 'Flow', sampleRate: 1, data }),
+      ]);
+      expect(manifest.durationSeconds).toBe(MAX_SESSION_SECONDS);
     });
   });
 });
