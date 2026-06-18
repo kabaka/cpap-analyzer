@@ -4,6 +4,8 @@ export { Button } from './Button';
 export { Card } from './Card';
 export { Dialog } from './Dialog';
 export { DropdownMenu } from './DropdownMenu';
+export { Icon } from './Icon';
+export type { IconName, IconSize } from './Icon';
 export { Input } from './Input';
 export { Popover } from './Popover';
 export { Select } from './Select';
