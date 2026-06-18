@@ -11,8 +11,16 @@ permissions:
   pages: write
   id-token: write
 
+# Concurrency is scoped PER REF (branch / PR), not global. A previous static
+# `group: pages` cancelled EVERY in-flight run across all branches, so opening
+# or pushing one PR would cancel another PR's (and main's) CI. Keying on the ref
+# means a run only supersedes an OLDER run of the SAME branch/PR — exactly the
+# "newer push wins" behaviour we want — while different PRs run independently.
+# GitHub Pages deploy serialization lives on the `deploy` job instead (it uses a
+# dedicated `pages` group with cancel-in-progress: false so a live deploy is
+# never killed mid-publish).
 concurrency:
-  group: 'pages'
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -67,6 +75,13 @@ jobs:
     # Playwright fails with "Executable doesn't exist" — keep this tag in lockstep
     # with the lockfile when bumping Playwright.
     container: mcr.microsoft.com/playwright:v1.58.2-noble
+    # `actions/setup-node` repoints $HOME at a runner temp dir not owned by the
+    # container's root user. Chromium/WebKit tolerate it, but Firefox REFUSES to
+    # launch unless $HOME is owned by the current user ("Failed to launch the
+    # browser process"). Pinning HOME=/root (the image's root home) is the
+    # documented Playwright workaround and fixes the Firefox-only launch failure.
+    env:
+      HOME: /root
     strategy:
       fail-fast: false
       matrix:
@@ -139,6 +154,12 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
+    # Serialize Pages deploys here (not workflow-wide). cancel-in-progress is
+    # false so an in-flight publish is allowed to finish rather than be aborted
+    # by a newer commit's deploy.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
