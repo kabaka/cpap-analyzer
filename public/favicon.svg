@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="CPAP Analyzer">
+  <rect width="32" height="32" rx="7" fill="#2563eb"/>
+  <g fill="none" stroke="#ffffff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 18 C9 18 9 10 12 10 C14 10 14 22 16 22 C18 22 18 13 21 13 C24 13 23 18 26 18"/>
+  </g>
+  <circle cx="12" cy="10" r="2" fill="#ffffff"/>
+</svg>
