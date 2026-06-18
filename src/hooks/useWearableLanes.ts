@@ -121,6 +121,43 @@ export const SLEEP_STAGE_CODES = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Date helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the calendar dates to query for a session anchored on `date`: the
+ * anchor plus its immediate neighbours (`date - 1` and `date + 1`).
+ *
+ * Intraday samples are stored split by the calendar date of each sample's own
+ * timestamp, so a night spanning e.g. 23:00→07:00 lands in two date-keyed
+ * records (the anchor's evening tail and the next day's morning bulk). Loading
+ * both neighbours robustly covers sessions that start just after OR just before
+ * midnight without the caller having to know which way the night straddles.
+ *
+ * Arithmetic is done on the `YYYY-MM-DD` string via {@link Date.UTC} so it is
+ * timezone-independent and DST-safe, consistent with the wall-clock-as-UTC
+ * convention documented in the module docstring. Returns `[date]` unchanged if
+ * the input is not a well-formed `YYYY-MM-DD` string.
+ */
+function neighbourDates(date: string): string[] {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return [date];
+  const [, y, mo, d] = m;
+  const baseMs = Date.UTC(Number(y), Number(mo) - 1, Number(d));
+  const fmt = (ms: number): string => {
+    const dt = new Date(ms);
+    const yy = dt.getUTCFullYear();
+    const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getUTCDate()).padStart(2, '0');
+    return `${yy}-${mm}-${dd}`;
+  };
+  const DAY_MS = 86_400_000;
+  // Anchor first so it remains the natural primary; order is otherwise
+  // irrelevant because samples are merged and sorted by absolute timestamp.
+  return [date, fmt(baseMs - DAY_MS), fmt(baseMs + DAY_MS)];
+}
+
+// ---------------------------------------------------------------------------
 // Time-base helpers
 // ---------------------------------------------------------------------------
 
@@ -218,12 +255,25 @@ function normalise(dataType: FitbitTimeseriesType, data: unknown): WearableSampl
   }
 }
 
+/**
+ * Sort `rawSamples` ascending, de-duplicate by `timestampMs`, and derive the
+ * series bounds. De-duplication is defensive: the disjoint split-by-date storage
+ * means a sample cannot legitimately appear in two of the merged date records,
+ * but identical timestamps would otherwise produce overlapping points.
+ */
 function buildSeries(
   dataType: WearableIntradayType,
   date: string,
   rawSamples: WearableSample[],
 ): WearableSeries {
-  const samples = rawSamples.slice().sort((a, b) => a.timestampMs - b.timestampMs);
+  const sorted = rawSamples.slice().sort((a, b) => a.timestampMs - b.timestampMs);
+  const samples: WearableSample[] = [];
+  let lastTs = Number.NaN;
+  for (const s of sorted) {
+    if (s.timestampMs === lastTs) continue;
+    samples.push(s);
+    lastTs = s.timestampMs;
+  }
   const startMs = samples.length > 0 ? (samples[0]?.timestampMs ?? null) : null;
   const endMs = samples.length > 0 ? (samples[samples.length - 1]?.timestampMs ?? null) : null;
   return { dataType, date, samples, startMs, endMs };
@@ -234,13 +284,24 @@ function buildSeries(
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch and normalise intraday wearable series for a single calendar date.
+ * Fetch and normalise intraday wearable series for a session anchored on a
+ * calendar date.
  *
- * One record per (source, dataType, date) is stored, so this issues an O(1)
- * keyed lookup per requested type. When `date` is `null` or `dataTypes` is
- * empty, no query runs and an empty result is returned.
+ * Intraday samples are stored split by the calendar date of each sample's own
+ * timestamp, so a session crossing midnight straddles two date-keyed records.
+ * To avoid silently truncating one side of midnight, this loads the anchor
+ * `date` **and** its immediate neighbours (`date ± 1`) for every requested type,
+ * then merges, de-duplicates, and sorts the normalised samples (see
+ * {@link neighbourDates}). One record per (source, dataType, date) is stored, so
+ * this issues `dataTypes.length × 3` O(1) keyed lookups, parallelised. Missing
+ * neighbour records are normal and simply contribute nothing.
  *
- * @param date       - Calendar date (YYYY-MM-DD) to load, or `null` to skip.
+ * The off-window tail of a neighbour day is harmless to the viewer: the renderer
+ * drops samples outside the session viewport, and {@link WearableSeries.date}
+ * remains the anchor date. When `date` is `null` or `dataTypes` is empty, no
+ * query runs and an empty result is returned.
+ *
+ * @param date       - Anchor calendar date (YYYY-MM-DD), or `null` to skip.
  * @param dataTypes  - Which intraday series to load.
  * @param source     - Integration source. Defaults to `'fitbit'`.
  * @returns Normalised series keyed by data type, plus loading/error state.
@@ -272,13 +333,17 @@ export function useWearableLanes(
 
     // Snapshot the requested types for this run.
     const types = typesKey.split(',') as WearableIntradayType[];
+    // Anchor + adjacent dates: covers sessions straddling midnight either way.
+    const dates = neighbourDates(date);
 
     void (async () => {
       try {
         const db = await getDB();
 
+        // One keyed lookup per (type, date) — flattened so a single Promise.all
+        // parallelises them all. Indexed as records[typeIndex * dates.length + d].
         const records = await Promise.all(
-          types.map((dt) => db.getIntegrationTimeseriesByKey(source, dt, date)),
+          types.flatMap((dt) => dates.map((d) => db.getIntegrationTimeseriesByKey(source, dt, d))),
         );
 
         // Discard if a newer request superseded this one.
@@ -287,13 +352,25 @@ export function useWearableLanes(
         const next: Partial<Record<WearableIntradayType, WearableSeries>> = {};
         for (let i = 0; i < types.length; i++) {
           const dt = types[i];
-          const record = records[i];
-          if (!dt || !record) continue;
+          if (!dt) continue;
 
-          const samples = normalise(record.dataType, record.data);
-          if (!samples) continue;
+          // Merge every neighbour record's normalised samples for this type.
+          const merged: WearableSample[] = [];
+          let hadRecord = false;
+          for (let d = 0; d < dates.length; d++) {
+            const record = records[i * dates.length + d];
+            if (!record) continue; // Missing neighbour date — normal.
+            const samples = normalise(record.dataType, record.data);
+            if (!samples) continue;
+            hadRecord = true;
+            for (const s of samples) merged.push(s);
+          }
 
-          next[dt] = buildSeries(dt, date, samples);
+          // Omit types with no stored record on any of the dates (preserves the
+          // existing "absent, not empty" return contract).
+          if (!hadRecord) continue;
+
+          next[dt] = buildSeries(dt, date, merged);
         }
 
         setSeries(next);
