@@ -117,12 +117,13 @@ function findType(
 // ---------------------------------------------------------------------------
 
 describe('scanGoogleHealthExport', () => {
-  it('discovers BOTH sleep_session and sleep_stages from a single sleep-*.json file (regression guard)', async () => {
-    // A root with >= 2 known subdirs so isGoogleHealthRoot accepts it. The
-    // Sleep directory holds a single dated session file that carries both the
-    // session summary and the stage hypnogram.
+  it('discovers BOTH sleep_session and sleep_stages from a Global Export Data sleep-*.json (regression guard)', async () => {
+    // Verified against a real Google Takeout / Fitbit export: sleep logs are
+    // dated `sleep-YYYY-MM-DD.json` files under `Global Export Data/` (the same
+    // directory as intraday heart rate), NOT under `Sleep/`. Each file carries
+    // both the night's session summary and the stage hypnogram.
     const root = makeDirHandle('Google Health', {
-      Sleep: {
+      'Global Export Data': {
         'sleep-2026-05-12.json': 2048,
       },
       'Sleep Score': {
@@ -135,13 +136,14 @@ describe('scanGoogleHealthExport', () => {
     const session = findType(result.dataTypes, 'sleep_session');
     const stages = findType(result.dataTypes, 'sleep_stages');
 
-    // Both must be discovered. Before the fix, sleep_stages was never offered.
+    // Both must be discovered. Before the fix, sleep was looked for only in
+    // `Sleep/` (which holds no session JSONs), so neither was offered.
     expect(session).toBeDefined();
     expect(stages).toBeDefined();
 
-    // Both resolve to the same source file, listed under the Sleep directory.
-    expect(session!.files).toContain('Sleep/sleep-2026-05-12.json');
-    expect(stages!.files).toContain('Sleep/sleep-2026-05-12.json');
+    // Both resolve to the same source file under Global Export Data.
+    expect(session!.files).toContain('Global Export Data/sleep-2026-05-12.json');
+    expect(stages!.files).toContain('Global Export Data/sleep-2026-05-12.json');
 
     // Each is a tier-1 (core sleep) type with one matching file.
     expect(session!.tier).toBe(1);
@@ -149,15 +151,35 @@ describe('scanGoogleHealthExport', () => {
     expect(session!.recordCount).toBe(1);
     expect(stages!.recordCount).toBe(1);
 
-    // Date range is estimated from the filename for both.
+    // Date range is estimated from the dashed filename for both.
     expect(stages!.dateRange).toEqual({ start: '2026-05-12', end: '2026-05-12' });
+  });
+
+  it('does NOT mistake the Sleep/ directory (Sleep Profile only) for sleep logs', async () => {
+    // The original bug: the scanner looked for `sleep-*.json` under `Sleep/`,
+    // but real exports put only `Sleep Profile.csv` there. A `Sleep/` directory
+    // with no dated session JSON must yield no sleep_session / sleep_stages.
+    const root = makeDirHandle('Google Health', {
+      Sleep: {
+        'Sleep Profile.csv': 512,
+        'Sleep Profile README.txt': 128,
+      },
+      'Sleep Score': {
+        'sleep_score.csv': 512,
+      },
+    });
+
+    const result = await scanGoogleHealthExport(asDirHandle(root));
+
+    expect(findType(result.dataTypes, 'sleep_session')).toBeUndefined();
+    expect(findType(result.dataTypes, 'sleep_stages')).toBeUndefined();
   });
 
   it('returns an empty result when the directory is not a Google Health root', async () => {
     // Only one known subdir — below the MIN_KNOWN_SUBDIRS threshold of 2.
     const root = makeDirHandle('Not An Export', {
-      Sleep: {
-        'sleep-2026-05-12.json': 2048,
+      'Sleep Score': {
+        'sleep_score.csv': 512,
       },
     });
 
@@ -171,7 +193,7 @@ describe('scanGoogleHealthExport', () => {
     // The sleep file matches two sources (session + stages); mirroring the
     // accepted snoring double-count, it contributes once per data type.
     const root = makeDirHandle('Google Health', {
-      Sleep: {
+      'Global Export Data': {
         'sleep-2026-05-12.json': 2048,
       },
       'Sleep Score': {
