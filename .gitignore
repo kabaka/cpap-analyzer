@@ -45,11 +45,21 @@ pnpm-debug.log*
 # Real patient data — NEVER commit
 sample-data/
 
-# Validation scripts (dev-only)
-scripts/
+# Validation scripts (dev-only) are ignored, EXCEPT the release tooling, which is
+# tracked production code run by CI. Git cannot un-ignore a file under an ignored
+# directory, so the directory itself must be un-ignored before its contents:
+# re-ignore everything inside scripts/, then negate scripts/release/ (the dir) and
+# its tree so those files become trackable.
+scripts/*
+!scripts/release/
+!scripts/release/**
 
 # Claude Code — local-only settings (.claude/agents/ and .claude/skills/ are committed)
 .claude/settings.local.json
+
+# Release tooling: transient notes file written by cut-release.mjs and consumed
+# by `gh release create --notes-file`. It is a build-time artifact, never committed.
+release-notes.md
 
 # Misc
 *.tgz

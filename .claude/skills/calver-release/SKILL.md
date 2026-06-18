@@ -30,7 +30,7 @@ YYYY.0M.MICRO
 1. Ensure all CI checks pass on `main`.
 2. Update `CHANGELOG.md`: move items from `[Unreleased]` to a new version header.
 3. Update `version` in `package.json` to the new CalVer version.
-4. Commit: `chore: release YYYY.0M.MICRO`
+4. Commit: `chore(release): YYYY.0M.MICRO [skip ci]` (the form the CI automation uses)
 5. Tag: `git tag vYYYY.0M.MICRO`
 6. Push tag: `git push origin vYYYY.0M.MICRO`
 

@@ -1,0 +1,29 @@
+{
+  // Type-checks the release tooling's TypeScript — chiefly the Vitest test
+  // (scripts/release/__tests__/lib.test.ts), which the src-scoped tsconfig.json
+  // does NOT cover, so `tsc --noEmit` otherwise never sees it. Node/ES2022
+  // target because these run under Node in CI, not in the browser/bundler.
+  // allowJs (without checkJs) lets the test resolve and type its `../lib.mjs`
+  // import from JSDoc without subjecting the side-effecting .mjs CLI entrypoints
+  // (cut-release / compute-version) to full strict .js checking they were never
+  // written for.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": ["scripts/release/**/*.ts"]
+}
