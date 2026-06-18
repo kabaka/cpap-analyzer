@@ -165,9 +165,13 @@ test.describe('Import Wizard — full directory import', () => {
     // The session count UI reflects BOTH same-day sessions. This is the
     // user-facing confirmation of the multi-session-per-day fix — verified via
     // the list/count UI, not just the wizard's internal counter.
-    await expect(page.getByText(`${tree.expectedSessions} sessions`, { exact: false })).toBeVisible(
-      { timeout: 10_000 },
-    );
+    // Scope to main content — the StatusBar footer also renders an "N sessions"
+    // label since the Phase 1 chrome redesign.
+    await expect(
+      page
+        .locator('#main-content')
+        .getByText(`${tree.expectedSessions} sessions`, { exact: false }),
+    ).toBeVisible({ timeout: 10_000 });
 
     const rows = page.locator('tbody tr');
     await expect(rows).toHaveCount(tree.expectedSessions);

@@ -5,6 +5,47 @@
   color: var(--color-text-primary);
 }
 
+/* Visually hidden but exposed to assistive tech and text-based selectors. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ── Skip-to-content ── */
+
+.skipLink {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: var(--z-toast);
+  padding: var(--space-2) var(--space-4);
+  background-color: var(--color-surface-elevated);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  text-decoration: none;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  /* Visually hidden until focused */
+  transform: translateY(-200%);
+  transition: transform var(--transition-fast);
+}
+
+.skipLink:focus-visible,
+.skipLink:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
 /* ── Sidebar ── */
 
 .sidebar {
@@ -13,7 +54,7 @@
   left: 0;
   bottom: 0;
   width: 240px;
-  background-color: var(--color-surface-secondary);
+  background-color: var(--color-surface-sidebar);
   border-right: 1px solid var(--color-border-default);
   display: flex;
   flex-direction: column;
@@ -21,47 +62,111 @@
   transition: transform var(--transition-base);
 }
 
-.sidebarHeader {
+.brandArea {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4);
-  border-bottom: 1px solid var(--color-border-default);
+  height: 56px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+  flex-shrink: 0;
 }
 
-.logo {
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-1);
+  margin: calc(-1 * var(--space-1));
+}
+
+.brand:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.brandMark {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25em;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
+  letter-spacing: var(--letter-spacing-tight);
   white-space: nowrap;
 }
 
+.wordmarkPrimary {
+  color: var(--color-text-primary);
+}
+
+.wordmarkSecondary {
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ── Navigation ── */
+
 .nav {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
-  padding: var(--space-2) 0;
+  padding: var(--space-3) var(--space-2) var(--space-2);
+  min-height: 0;
+}
+
+.navGroups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.navGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.navGroupLabel {
+  margin: 0 0 var(--space-1);
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--letter-spacing-wide);
+  text-transform: uppercase;
+  color: var(--color-text-nav-group);
 }
 
 .navList {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .navLink {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  height: 40px;
+  margin: 0 var(--space-2);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
   color: var(--color-text-secondary);
   text-decoration: none;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  border-left: 3px solid transparent;
   transition:
     background-color var(--transition-fast),
-    color var(--transition-fast),
-    border-color var(--transition-fast);
+    color var(--transition-fast);
 }
 
 .navLink:hover {
@@ -75,17 +180,40 @@
 }
 
 .navLinkActive {
-  color: var(--color-primary);
-  background-color: var(--color-info-bg);
-  border-left-color: var(--color-primary);
+  color: var(--color-nav-active-fg);
+  background-color: var(--color-nav-active-bg);
   font-weight: var(--font-weight-semibold);
 }
 
+/* Non-colour active cue: a rounded vertical accent bar on the inner-left.
+   Preserves WCAG 1.4.1 (colour is not the sole signal). */
+.navLinkActive::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 20%;
+  height: 60%;
+  width: 3px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-primary);
+}
+
 .navIcon {
-  font-size: var(--font-size-base);
-  width: 1.5em;
-  text-align: center;
   flex-shrink: 0;
+}
+
+.navLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Sidebar footer (pinned) ── */
+
+.sidebarFooter {
+  margin-top: auto;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 /* ── Content wrapper ── */
@@ -96,6 +224,7 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-width: 0;
 }
 
 /* ── Header bar ── */
@@ -104,7 +233,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-3) var(--space-6);
+  height: 56px;
+  padding: 0 var(--space-6);
   background-color: var(--color-surface-primary);
   border-bottom: 1px solid var(--color-border-default);
   position: sticky;
@@ -112,79 +242,26 @@
   z-index: var(--z-sticky);
 }
 
-.headerTitle {
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sectionTitle {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
-}
-
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.themeToggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-primary);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: var(--font-size-base);
-  transition:
-    background-color var(--transition-fast),
-    color var(--transition-fast);
-}
-
-.themeToggle:hover {
-  background-color: var(--color-surface-tertiary);
-  color: var(--color-text-primary);
-}
-
-.themeToggle:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
-}
-
-/* ── Utility navigation ── */
-
-.utilityNav {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.utilityButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-primary);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: var(--font-size-base);
-  text-decoration: none;
-  transition:
-    background-color var(--transition-fast),
-    color var(--transition-fast);
-}
-
-.utilityButton:hover {
-  background-color: var(--color-surface-tertiary);
-  color: var(--color-text-primary);
-}
-
-.utilityButton:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── Main ── */
@@ -192,6 +269,7 @@
 .main {
   flex: 1;
   padding: var(--space-6);
+  min-width: 0;
 }
 
 /* ── Mobile hamburger ── */
@@ -202,12 +280,16 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border: 1px solid var(--color-border-default);
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--color-surface-primary);
+  background: transparent;
   color: var(--color-text-primary);
   cursor: pointer;
-  font-size: var(--font-size-lg);
+  transition: background-color var(--transition-fast);
+}
+
+.menuToggle:hover {
+  background-color: var(--color-surface-tertiary);
 }
 
 .menuToggle:focus-visible {
@@ -236,6 +318,9 @@
 
   .menuToggle {
     display: flex;
+    /* ≥44px touch target on mobile (WCAG 2.5.5) */
+    width: 44px;
+    height: 44px;
   }
 
   .overlay {
