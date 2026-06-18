@@ -412,7 +412,7 @@ describe('EDFParser', () => {
     // used to derive an astronomical recording duration downstream.
     it('should reject an implausibly large data record duration', () => {
       const buffer = generateEDFFile({
-        dataRecordDuration: 100000, // 1e5 s/record — far above the 60 s ceiling
+        dataRecordDuration: 100000, // 1e5 s/record — far above the one-day / 86400 s ceiling
         numDataRecords: 1,
         signals: [
           {
@@ -426,6 +426,115 @@ describe('EDFParser', () => {
       });
       // Buffer is tiny (one 1-sample record) yet would imply a 1e5 s recording.
       expect(buffer.byteLength).toBeLessThan(1024);
+      let thrown: unknown;
+      try {
+        parser.parse(buffer);
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(EDFParseError);
+      expect((thrown as EDFParseError).code).toBe('INVALID_RECORD_DURATION');
+    });
+
+    // STR.edf regression guard: ResMed's SD-card summary file stores one
+    // daily-summary record per calendar day, so its dataRecordDuration is
+    // exactly 86400 s (one full day). It must parse, not be rejected.
+    it('should accept a one-day (86400 s) data record duration (ResMed STR.edf)', () => {
+      const buffer = generateEDFFile({
+        dataRecordDuration: 86400,
+        numDataRecords: 3,
+        signals: [
+          {
+            label: 'Flow',
+            physicalDimension: 'L/min',
+            physicalMin: -60,
+            physicalMax: 60,
+            samplesPerRecord: 1,
+          },
+        ],
+      });
+      const result = parser.parse(buffer);
+      expect(result.header.dataRecordDuration).toBe(86400);
+    });
+
+    // STR.edf multi-year regression guard. This mirrors the REAL STR.edf shape:
+    // 86400 s/record with a record count that exceeds the OLD 366-day derived-
+    // duration cap. STR.edf accrues one daily-summary record per calendar day
+    // over a device's entire service life, so a long-term user has hundreds-to-
+    // thousands of records. The old 366-day ceiling rejected these at the second
+    // guard (derived duration = numDataRecords × dataRecordDuration). This is the
+    // test that would have caught the incomplete fix. ~3650 records ≈ 10 years.
+    it('should accept a multi-year STR.edf history (86400 s/record, > 366 days)', () => {
+      const numDataRecords = 3650; // ~10 years of daily-summary records
+      const buffer = generateEDFFile({
+        dataRecordDuration: 86400,
+        numDataRecords,
+        signals: [
+          {
+            label: 'Flow',
+            physicalDimension: 'L/min',
+            physicalMin: -60,
+            physicalMax: 60,
+            samplesPerRecord: 1,
+          },
+        ],
+      });
+      // Sanity: the derived duration exceeds the OLD 366-day cap, proving this
+      // exercises the second guard, not just the per-record guard.
+      expect(numDataRecords * 86400).toBeGreaterThan(366 * 24 * 60 * 60);
+
+      const result = parser.parse(buffer);
+      expect(result.header.numDataRecords).toBe(numDataRecords);
+      expect(result.header.dataRecordDuration).toBe(86400);
+      expect(result.duration).toBe(numDataRecords * 86400);
+    });
+
+    // Boundary: a derived duration just ABOVE the 20-year ceiling is still
+    // rejected as an absurd/corrupt header. 20 years × 366-day years = the cap;
+    // one extra day's worth of records pushes the product over it.
+    it('should reject a derived duration just above the 20-year ceiling', () => {
+      // 20 * 366 days = 7320 daily records is exactly at the cap; 7321 is over.
+      const numDataRecords = 20 * 366 + 1;
+      const buffer = generateEDFFile({
+        dataRecordDuration: 86400,
+        numDataRecords,
+        signals: [
+          {
+            label: 'Flow',
+            physicalDimension: 'L/min',
+            physicalMin: -60,
+            physicalMax: 60,
+            samplesPerRecord: 1,
+          },
+        ],
+      });
+      expect(numDataRecords * 86400).toBeGreaterThan(20 * 366 * 24 * 60 * 60);
+
+      let thrown: unknown;
+      try {
+        parser.parse(buffer);
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(EDFParseError);
+      expect((thrown as EDFParseError).code).toBe('INVALID_NUM_RECORDS');
+    });
+
+    // Boundary: one second over a full day is still implausible and rejected.
+    it('should reject a data record duration one second over a day (86401 s)', () => {
+      const buffer = generateEDFFile({
+        dataRecordDuration: 86401, // one second past the 86400 s ceiling
+        numDataRecords: 1,
+        signals: [
+          {
+            label: 'Flow',
+            physicalDimension: 'L/min',
+            physicalMin: -60,
+            physicalMax: 60,
+            samplesPerRecord: 1,
+          },
+        ],
+      });
       let thrown: unknown;
       try {
         parser.parse(buffer);
