@@ -120,25 +120,37 @@ describe('Icon', () => {
       ['lg', 'var(--icon-size-lg)'],
     ];
 
-    it.each(cases)('maps size "%s" to width/height %s', (size, expected) => {
+    // Sizing is applied through CSS width/height (inline style), not the SVG
+    // presentation attributes — SVG geometry attributes do not accept `var()`
+    // and WebKit rejects them with a console error.
+    it.each(cases)('maps size "%s" to CSS width/height %s', (size, expected) => {
       const { container } = render(<Icon name="brand" size={size} />);
-      const svg = container.querySelector('svg');
-      expect(svg?.getAttribute('width')).toBe(expected);
-      expect(svg?.getAttribute('height')).toBe(expected);
+      const svg = container.querySelector<SVGSVGElement>('svg');
+      expect(svg?.style.width).toBe(expected);
+      expect(svg?.style.height).toBe(expected);
     });
 
     it('defaults to the md size token when size is omitted', () => {
       const { container } = render(<Icon name="brand" />);
-      const svg = container.querySelector('svg');
-      expect(svg?.getAttribute('width')).toBe('var(--icon-size-md)');
-      expect(svg?.getAttribute('height')).toBe('var(--icon-size-md)');
+      const svg = container.querySelector<SVGSVGElement>('svg');
+      expect(svg?.style.width).toBe('var(--icon-size-md)');
+      expect(svg?.style.height).toBe('var(--icon-size-md)');
     });
 
     it('always sets matching width and height', () => {
       for (const size of ['sm', 'md', 'lg'] as IconSize[]) {
         const { container } = render(<Icon name="clock" size={size} />);
+        const svg = container.querySelector<SVGSVGElement>('svg');
+        expect(svg?.style.width).toBe(svg?.style.height);
+      }
+    });
+
+    it('never places a var() token in the width/height SVG attributes', () => {
+      for (const size of ['sm', 'md', 'lg'] as IconSize[]) {
+        const { container } = render(<Icon name="clock" size={size} />);
         const svg = container.querySelector('svg');
-        expect(svg?.getAttribute('width')).toBe(svg?.getAttribute('height'));
+        expect(svg?.getAttribute('width') ?? '').not.toContain('var(');
+        expect(svg?.getAttribute('height') ?? '').not.toContain('var(');
       }
     });
   });

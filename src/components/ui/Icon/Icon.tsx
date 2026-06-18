@@ -172,6 +172,16 @@ export function Icon({ name, size = 'md', title, className, style }: IconProps) 
   const dimension = SIZE_TOKEN[size];
   const labelled = title !== undefined && title.length > 0;
 
+  // Sizing is applied via CSS width/height (which accept `var()`) rather than
+  // the SVG presentation attributes `width`/`height` (which do NOT accept
+  // `var()` — WebKit reports "Invalid value for <svg> attribute" while
+  // Chromium/Firefox silently ignore it). Caller-provided style overrides win.
+  const sizedStyle: CSSProperties = {
+    width: dimension,
+    height: dimension,
+    ...style,
+  };
+
   return (
     <svg
       viewBox="0 0 24 24"
@@ -180,10 +190,8 @@ export function Icon({ name, size = 'md', title, className, style }: IconProps) 
       strokeWidth="1.75"
       strokeLinecap="round"
       strokeLinejoin="round"
-      width={dimension}
-      height={dimension}
       className={className}
-      style={style}
+      style={sizedStyle}
       role={labelled ? 'img' : undefined}
       aria-hidden={labelled ? undefined : true}
       aria-label={labelled ? title : undefined}
