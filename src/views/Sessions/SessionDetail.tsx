@@ -665,7 +665,7 @@ export default function SessionDetail() {
           <AHICard aggregate={aggregate} />
           <LeakCard aggregate={aggregate} />
           <PressureCard aggregate={aggregate} machineType={session.machineType} />
-          {session.hasOximetry && <SpO2Card aggregate={aggregate} />}
+          {session.hasOximetry && aggregate.spo2Mean != null && <SpO2Card aggregate={aggregate} />}
         </section>
       )}
 
