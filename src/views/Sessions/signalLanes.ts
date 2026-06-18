@@ -215,10 +215,21 @@ export function toSessionRelative(
  * so wearable lanes scale consistently: clinically-anchored default floor, grown
  * outward by data, with ~10% padding applied only to the data-expanded edge(s).
  * SpO₂ pins its max at 100 and only expands downward.
+ *
+ * When `times` and `windowMs` are supplied, only samples whose session-relative
+ * time falls within `[windowMs.start, windowMs.end]` drive the data-expanded edges.
+ * The Signal Viewer merges neighbour-day wearable data (to avoid cross-midnight
+ * line truncation), but those off-session-window tails — e.g. an adjacent day's
+ * daytime/exercise heart rate — must NOT inflate the lane's range and compress
+ * the actual nighttime waveform. The full series still feeds the rendered line;
+ * only this range computation is clipped to the session window. When the window
+ * args are omitted, behaviour is identical to scanning the whole `values` array.
  */
 export function wearableRange(
   dataType: WearableIntradayType,
   values: Float32Array,
+  times?: Float64Array,
+  windowMs?: { start: number; end: number },
 ): { min: number; max: number } {
   // Hypnogram is categorical; its range is the ordinal stage span (fixed).
   if (dataType === 'sleep_stages') {
@@ -231,11 +242,18 @@ export function wearableRange(
   // SpO₂ is a percentage: the max is physically pinned at 100 (downward-only).
   const pinMax = dataType === 'spo2_intraday';
 
+  // Restrict the data-expanded scan to the session window when one is given.
+  const clipToWindow = times !== undefined && windowMs !== undefined;
+
   let lo = Number.POSITIVE_INFINITY;
   let hi = Number.NEGATIVE_INFINITY;
   for (let i = 0; i < values.length; i++) {
     const v = values[i];
     if (v === undefined || Number.isNaN(v)) continue;
+    if (clipToWindow) {
+      const t = times[i];
+      if (t === undefined || t < windowMs.start || t > windowMs.end) continue;
+    }
     if (v < lo) lo = v;
     if (v > hi) hi = v;
   }
@@ -318,6 +336,13 @@ export function sleepStageName(value: number): string {
  * Build a renderer {@link SignalChannel} for a wearable series, projected onto
  * session-relative time. `resolveColor` and `resolveHeight` let the caller inject
  * theme-resolved values (kept out of this pure module).
+ *
+ * `windowMs` (the session-relative session window, `[start, end]`) restricts the
+ * lane's fixed y-axis range to in-window samples so merged neighbour-day tails do
+ * not inflate it (see {@link wearableRange}). The full merged series is always
+ * kept in `data`/`sampleTimes` so panning/line drawing still shows neighbour data
+ * where it legitimately overlaps — only the range is window-aware. When `windowMs`
+ * is omitted the range scans the whole series (back-compat).
  */
 export function buildWearableChannel(
   spec: (typeof WEARABLE_LANE_SPECS)[number],
@@ -325,9 +350,10 @@ export function buildWearableChannel(
   wallClockEpoch: number,
   resolveColor: (cssVar: string) => string,
   resolveHeight: (cssVar: string) => number,
+  windowMs?: { start: number; end: number },
 ): SignalChannel {
   const { values, times } = toSessionRelative(series, wallClockEpoch);
-  const { min, max } = wearableRange(spec.dataType, values);
+  const { min, max } = wearableRange(spec.dataType, values, times, windowMs);
 
   // Effective sample rate is informational here (renderer uses sampleTimes for
   // positioning); approximate from coverage so it is non-zero.

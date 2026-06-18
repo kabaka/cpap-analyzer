@@ -231,6 +231,65 @@ describe('wearableRange', () => {
     expect(r.max).toBe(100); // pinned, not 101
     expect(r.min).toBe(85);
   });
+
+  // ---- Window-aware range (session-window clipping) ---------------------------
+
+  it('ignores an off-window neighbour-day HR spike so it does not inflate the range', () => {
+    // The Signal Viewer merges neighbour-day data; an adjacent day's daytime HR of
+    // 180 sits OUTSIDE the session window [0, end]. With the window applied, only
+    // the nighttime 50–70 readings drive the edges, so the range stays at the
+    // default floor [40, 120] — NOT inflated toward ~180.
+    const end = 8 * 60 * 60 * 1000; // 8h session window
+    const values = new Float32Array([55, 70, 50, 180]);
+    const times = new Float64Array([0, 60_000, 120_000, end + 600_000]); // last is off-window
+
+    const windowed = wearableRange('heart_rate_intraday', values, times, { start: 0, end });
+    expect(windowed.min).toBe(40);
+    expect(windowed.max).toBe(120);
+
+    // Equivalent to dropping the spike entirely (same in-window data only).
+    const withoutSpike = wearableRange('heart_rate_intraday', new Float32Array([55, 70, 50]));
+    expect(windowed.min).toBe(withoutSpike.min);
+    expect(windowed.max).toBe(withoutSpike.max);
+  });
+
+  it('still expands the range for an in-window extreme (expand-only preserved)', () => {
+    // A 150 reading INSIDE the window must still push the edge out.
+    // outMax = max(120, 150) = 150; span = 150 - 40 = 110; pad = 11 → 161.
+    const end = 8 * 60 * 60 * 1000;
+    const values = new Float32Array([55, 150, 60]);
+    const times = new Float64Array([0, 60_000, 120_000]); // all in-window
+    const r = wearableRange('heart_rate_intraday', values, times, { start: 0, end });
+    expect(r.min).toBe(40);
+    expect(r.max).toBe(161);
+    expect(r.max).toBeGreaterThan(150);
+  });
+
+  it('falls back to per-type defaults when every sample is off-window (no throw, no ±Infinity)', () => {
+    const end = 8 * 60 * 60 * 1000;
+    const values = new Float32Array([180, 175, 60]);
+    const times = new Float64Array([end + 1, end + 2, -1]); // all outside [0, end]
+    const r = wearableRange('heart_rate_intraday', values, times, { start: 0, end });
+    expect(r.min).toBe(40);
+    expect(r.max).toBe(120);
+    expect(Number.isFinite(r.min)).toBe(true);
+    expect(Number.isFinite(r.max)).toBe(true);
+  });
+
+  it('is identical to pre-change behaviour when the window args are omitted (back-compat)', () => {
+    // Same value array, with and without window args. Omitting the window must
+    // scan the whole array exactly as before.
+    const values = new Float32Array([50, 140]);
+    const withWindow = wearableRange('heart_rate_intraday', values, new Float64Array([0, 60_000]), {
+      start: 0,
+      end: 8 * 60 * 60 * 1000,
+    });
+    const withoutWindow = wearableRange('heart_rate_intraday', values);
+    expect(withoutWindow.min).toBe(40);
+    expect(withoutWindow.max).toBe(150);
+    expect(withWindow.min).toBe(withoutWindow.min);
+    expect(withWindow.max).toBe(withoutWindow.max);
+  });
 });
 
 describe('buildWearableChannel', () => {
@@ -258,6 +317,38 @@ describe('buildWearableChannel', () => {
     expect(channel.sampleTimes).toBeDefined();
     expect(Array.from(channel.sampleTimes!)).toEqual([1000, 2000]);
     expect(Array.from(channel.data)).toEqual([58, 61]);
+  });
+
+  it('threads the session window through to the range yet keeps the full sample arrays', () => {
+    // Three nighttime samples in-window plus one neighbour-day daytime spike (180)
+    // an hour past the session end. The off-window spike must be kept in
+    // data/sampleTimes (the renderer clips off-viewport itself) but must NOT
+    // inflate the lane range, which stays at the HR default floor [40, 120].
+    const epoch = Date.UTC(2026, 0, 15, 22, 0, 0);
+    const end = 8 * 60 * 60 * 1000;
+    const series = makeSeries('heart_rate_intraday', [
+      { timestampMs: epoch, value: 55 },
+      { timestampMs: epoch + 60_000, value: 70 },
+      { timestampMs: epoch + 120_000, value: 50 },
+      { timestampMs: epoch + end + 3_600_000, value: 180 }, // off-window neighbour day
+    ]);
+
+    const channel = buildWearableChannel(
+      hrSpec,
+      series,
+      epoch,
+      () => '#ff0000',
+      () => 200,
+      { start: 0, end },
+    );
+
+    // Range is window-aware: the 180 spike does NOT inflate it.
+    expect(channel.physicalMin).toBe(40);
+    expect(channel.physicalMax).toBe(120);
+
+    // The full merged series is preserved for the rendered line.
+    expect(Array.from(channel.data)).toEqual([55, 70, 50, 180]);
+    expect(Array.from(channel.sampleTimes!)).toEqual([0, 60_000, 120_000, end + 3_600_000]);
   });
 
   it('marks the HRV step lane as sparse', () => {

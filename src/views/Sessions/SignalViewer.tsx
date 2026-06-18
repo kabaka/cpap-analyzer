@@ -1382,6 +1382,12 @@ export default function SignalViewer() {
         wallClockEpoch,
         (cssVar) => resolveColor(container, cssVar),
         (token) => resolveLengthPx(container, token, CHANNEL_HEIGHT),
+        // Clip the lane's fixed y-range to the session window so merged
+        // neighbour-day tails (e.g. an adjacent day's daytime HR) don't inflate
+        // it. The full merged series still feeds the rendered line. While
+        // totalDurationMs is unmeasured (0), no sample is in-window and the range
+        // falls back to per-type defaults; the memo recomputes once it updates.
+        { start: 0, end: totalDurationMs },
       );
 
       let ribbonBands: readonly RibbonBand[] | undefined;
@@ -1405,8 +1411,9 @@ export default function SignalViewer() {
     }
     return map;
     // wrapperWidth + resolvedTheme drive re-resolution of getComputedStyle reads.
+    // totalDurationMs bounds the window-aware wearable y-range.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wearableSeries, wallClockEpoch, resolvedTheme, wrapperWidth]);
+  }, [wearableSeries, wallClockEpoch, resolvedTheme, wrapperWidth, totalDurationMs]);
 
   // ── Build the full ordered channel list + render ─────────────
 
