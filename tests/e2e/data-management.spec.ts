@@ -38,7 +38,12 @@ test.describe('Data Management View', () => {
     await expect(page.getByText(/storage overview/i)).toBeVisible();
     await expect(page.getByText(/total used/i)).toBeVisible();
     await expect(page.getByText(/available/i).first()).toBeVisible();
-    await expect(page.getByText('Sessions', { exact: true })).toBeVisible();
+    // Scope the "Sessions" storage-card label to the Storage Overview section.
+    // Since the Phase 1 chrome redesign wrapped the sidebar nav label text in a
+    // span, an unscoped exact "Sessions" now also matches the nav item.
+    // The Overview tabpanel (aria-label="Overview") contains the storage cards
+    // (Total Used / Available / Sessions / Imports) but not the sidebar nav.
+    await expect(page.getByLabel('Overview').getByText('Sessions', { exact: true })).toBeVisible();
   });
 
   test('Overview tab should have an Import Data button', async ({ page }) => {

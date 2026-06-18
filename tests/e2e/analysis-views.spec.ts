@@ -17,6 +17,22 @@ import { test, expect, type Page } from '@playwright/test';
  * 9. Chart export — PNG export button is present and clickable
  */
 
+// ── Theme dropdown helpers ──
+// The Phase 1 chrome redesign replaced the old single cycling "Switch theme"
+// button with a dropdown menu: an icon trigger named "Theme: <Setting>" that
+// opens Light/Dark/System `menuitemradio` options. Mirrors tests/e2e/theme.spec.ts.
+
+const themeTrigger = (page: Page) => page.getByRole('button', { name: /^Theme:/ });
+const themeOption = (page: Page, name: 'Light' | 'Dark' | 'System') =>
+  page.getByRole('menuitemradio', { name: new RegExp(`^${name}`) });
+
+async function selectTheme(page: Page, name: 'Light' | 'Dark' | 'System') {
+  await themeTrigger(page).click();
+  // Radix renders the menu into a portal on open; wait for it to mount.
+  await expect(page.getByRole('menuitemradio').first()).toBeVisible();
+  await themeOption(page, name).click();
+}
+
 // ── Constants ──
 
 const DB_NAME = 'cpap-analyzer';
@@ -627,17 +643,16 @@ test.describe('Analysis Views — Theme Changes', () => {
     const chartFigure = page.locator('[role="figure"]').filter({ hasText: /Rolling Average/i });
     await expect(chartFigure).toBeVisible({ timeout: 15_000 });
 
-    // Toggle theme: system → light → dark
-    const themeToggle = page.getByRole('button', { name: /switch theme/i });
-    await themeToggle.click(); // system → light
-    await themeToggle.click(); // light → dark
+    // Force a theme change via the dropdown menu (Light → Dark).
+    await selectTheme(page, 'Dark');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     // Chart should still be visible after theme change
     await expect(chartFigure).toBeVisible();
 
-    // Toggle back: dark → system
-    await themeToggle.click();
+    // Toggle back to Light.
+    await selectTheme(page, 'Light');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 
     // Chart should still be visible
     await expect(chartFigure).toBeVisible();
@@ -662,10 +677,9 @@ test.describe('Analysis Views — Theme Changes', () => {
     const scatterChart = page.locator('[role="figure"]').filter({ hasText: /AHI vs. Pressure/i });
     await expect(scatterChart).toBeVisible({ timeout: 15_000 });
 
-    // Toggle theme to dark
-    const themeToggle = page.getByRole('button', { name: /switch theme/i });
-    await themeToggle.click();
-    await themeToggle.click();
+    // Force a theme change to dark via the dropdown menu.
+    await selectTheme(page, 'Dark');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 
     await expect(scatterChart).toBeVisible();
 

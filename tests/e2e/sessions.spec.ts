@@ -220,8 +220,9 @@ test.describe('Session List', () => {
     // Heading
     await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible();
 
-    // Session count
-    await expect(page.getByText('3 sessions')).toBeVisible();
+    // Session count (scope to main content — the StatusBar footer also renders
+    // an "N sessions" label since the Phase 1 chrome redesign).
+    await expect(page.locator('#main-content').getByText('3 sessions')).toBeVisible();
 
     // Table headers
     await expect(page.getByRole('columnheader', { name: 'Date' })).toBeVisible();
