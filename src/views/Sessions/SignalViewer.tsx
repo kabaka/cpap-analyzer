@@ -56,6 +56,7 @@ import { lttbInto, lttbOutLength, columnEnvelopeInto } from '@/services/workers/
 import { useAppStore } from '@/stores/useAppStore';
 import type { Event as TherapyEvent } from '@/types';
 
+import { isMeaningfulSample } from '@/parsers/validation/physiologicalRanges';
 import { evaluateDeepLink, formatOffsetLabel } from './deepLinkGuard';
 import { createFramePaintScheduler, type FramePaintScheduler } from './framePaintScheduler';
 import {
@@ -909,14 +910,19 @@ export default function SignalViewer() {
               detectedEmpty.add(name);
               continue;
             }
-            // Single pass: empty-channel detection AND finite min/max extent.
+            // Single pass: sentinel/range-aware empty-channel detection AND
+            // finite min/max extent over MEANINGFUL samples only. Excluding
+            // non-meaningful samples (e.g. a `-1` probe-off sentinel) from the
+            // extent keeps `cpapDisplayDomains` from being skewed by sentinels
+            // on partially-valid oximetry channels. The predicate is shared with
+            // the Validator (`isMeaningfulSample`) — single source of truth.
             let hasMeaningful = false;
             let lo = Number.POSITIVE_INFINITY;
             let hi = Number.NEGATIVE_INFINITY;
             for (let i = 0; i < data.length; i++) {
               const v = data[i];
-              if (v === undefined || Number.isNaN(v)) continue;
-              if (v !== 0) hasMeaningful = true;
+              if (v === undefined || !isMeaningfulSample(name, v)) continue;
+              hasMeaningful = true;
               if (v < lo) lo = v;
               if (v > hi) hi = v;
             }
