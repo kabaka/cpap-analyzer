@@ -1,0 +1,11 @@
+{
+  "name": "CPAP Analyzer",
+  "short_name": "CPAP",
+  "description": "Client-side analysis of CPAP therapy data.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#ffffff",
+  "icons": [{ "src": "favicon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" }]
+}
