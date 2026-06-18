@@ -7,8 +7,8 @@
  * @module views/Sessions/SessionList
  */
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
   Input,
@@ -24,6 +24,7 @@ import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
 import { useAppStore } from '@/stores/useAppStore';
 import { useDataStore } from '@/stores/useDataStore';
 import { classifyAhiSeverity, type AhiSeverity } from '@/analysis/clinical';
+import { PAGE_PARAM, parsePageParam } from './paginationParams';
 import styles from './SessionList.module.css';
 
 // ---------------------------------------------------------------------------
@@ -315,16 +316,68 @@ export default function SessionList() {
   const [searchFilter, setSearchFilter] = useState('');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [currentPage, setCurrentPage] = useState(1);
+
+  // The current page lives in the URL query string (`?page=N`) rather than in
+  // React state so that browser Back/Forward restores it. Opening a session
+  // detail unmounts this view; returning via Back remounts it and we recover
+  // the page from the URL instead of snapping back to page 1.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentPage = parsePageParam(searchParams.get(PAGE_PARAM));
+
+  /**
+   * Update the page in the URL. Page 1 is the default, so we delete the param
+   * rather than write `page=1` to keep URLs clean (mirrors the Correlations
+   * pattern). `{ replace: true }` avoids polluting history with each pagination
+   * click; only the row-click navigation pushes a new history entry. All other
+   * existing query params (start/end/session/…) are preserved verbatim.
+   */
+  const setPage = useCallback(
+    (page: number) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (page <= 1) {
+            next.delete(PAGE_PARAM);
+          } else {
+            next.set(PAGE_PARAM, String(page));
+          }
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   // Load sessions when dateRange changes
   useEffect(() => {
     void loadSessions(dateRange);
   }, [dateRange, loadSessions]);
 
-  // Reset to page 1 when filter/sort changes
+  // Reset to page 1 only when the filter/sort VALUES actually change. We compare
+  // against the previously-seen values rather than using a "skip first mount"
+  // ref: under React StrictMode (dev) the mount/cleanup/mount cycle re-runs this
+  // effect, and a didMount ref would survive the remount and fire setPage(1) on
+  // the second mount — wiping a deep-linked or Back-restored `?page=N`. Tracking
+  // the prior values makes the reset idempotent across StrictMode remounts.
+  //
+  // `setPage` (via react-router's setSearchParams) gets a NEW identity on every
+  // URL change, so it is read through a ref and kept OUT of the effect deps:
+  // including it would re-fire the reset on each pagination/date-range URL write
+  // and snap the page back to 1.
+  const setPageRef = useRef(setPage);
+  setPageRef.current = setPage;
+  const prevFilterSortRef = useRef({ searchFilter, sortField, sortDirection });
   useEffect(() => {
-    setCurrentPage(1);
+    const prev = prevFilterSortRef.current;
+    const changed =
+      prev.searchFilter !== searchFilter ||
+      prev.sortField !== sortField ||
+      prev.sortDirection !== sortDirection;
+    prevFilterSortRef.current = { searchFilter, sortField, sortDirection };
+    if (changed) {
+      setPageRef.current(1);
+    }
   }, [searchFilter, sortField, sortDirection]);
 
   // Convert Map to array
@@ -524,7 +577,7 @@ export default function SessionList() {
                   currentPage={safePage}
                   totalPages={totalPages}
                   totalItems={sortedRows.length}
-                  onPageChange={setCurrentPage}
+                  onPageChange={setPage}
                 />
               </div>
             </Card>

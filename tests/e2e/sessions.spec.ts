@@ -294,6 +294,157 @@ test.describe('Session List', () => {
   });
 });
 
+test.describe('Session List Pagination', () => {
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  //
+  // Pagination only renders when there is more than one page (> PAGE_SIZE = 25
+  // sessions). We inject 60 sessions, each on a distinct calendar day. Because
+  // the dates span ~60 days but the app's default global date range is the last
+  // 30 days (see useAppStore.defaultDateRange / DateRangeSelector), the older
+  // sessions would be filtered out and pagination would never appear. So after
+  // landing on /sessions we switch the global date-range selector to "All time"
+  // (start = 2000-01-01) which reloads the session list with every injected
+  // session present. This is the single load-bearing gotcha for these tests.
+
+  const PAGE_COUNT = 60; // > 2 * PAGE_SIZE so we get 3 pages of 25/25/10.
+
+  function createManySessions() {
+    const sessions = [];
+    const aggregates = [];
+    for (let i = 0; i < PAGE_COUNT; i++) {
+      // daysAgo(1) is the most-recent → page 1; daysAgo(PAGE_COUNT) is oldest.
+      // Each on a distinct day so the default desc-by-date sort is stable.
+      const date = daysAgoStr(i + 1);
+      const id = `pg-sess-${String(i).padStart(3, '0')}`;
+      const aggId = `pg-agg-${String(i).padStart(3, '0')}`;
+      sessions.push(makeSession(id, date));
+      aggregates.push(makeAggregate(aggId, id, date));
+    }
+    return { sessions, aggregates };
+  }
+
+  /**
+   * Switch the global date-range selector to "All time" so all 60 injected
+   * sessions (spanning ~60 days) are loaded, not just those in the default
+   * last-30-days window. Waits until pagination renders to confirm the reload.
+   */
+  async function selectAllTimeRange(page: Page) {
+    // Radix Select trigger is labelled by the "Date range" label.
+    const trigger = page.getByRole('combobox', { name: 'Date range' });
+    await expect(trigger).toBeVisible({ timeout: 10000 });
+    await trigger.click();
+    await page.getByRole('option', { name: 'All time' }).click();
+
+    // Wait until the WIDE range has actually loaded all 60 sessions. The default
+    // 30-day range already yields > 25 sessions (so the pagination nav alone is
+    // not proof the wide range took effect); assert on the total instead.
+    await expect(page.getByText(/of 60 sessions/)).toBeVisible({ timeout: 10000 });
+
+    // The date-range change is mirrored to the URL by a 300ms-debounced sync
+    // (useURLStateSync writes ?start/&end). Wait for that write to land BEFORE
+    // we click a page button, otherwise our `page=N` write and the debounced
+    // start/end write race. Once start=2000-01-01 is present the debounce has
+    // settled and subsequent param writes merge cleanly.
+    await expect(page).toHaveURL(/[?&]start=2000-01-01(&|$)/, { timeout: 10000 });
+  }
+
+  test('persists page in URL and restores it after browser Back (regression)', async ({ page }) => {
+    const { sessions, aggregates } = createManySessions();
+    await setupWithData(page, sessions, aggregates, '/sessions');
+
+    await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible();
+    await selectAllTimeRange(page);
+
+    // ── 1. Navigate to page 2 ──────────────────────────────────────────────
+    await page.getByRole('button', { name: 'Page 2' }).click();
+
+    // URL reflects the page; page-info text and active button confirm the rows.
+    await expect(page).toHaveURL(/[?&]page=2(&|$)/);
+    await expect(page.getByText('Showing 26–50 of 60 sessions')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Page 2' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    // ── 2. Open a session detail from page 2 ───────────────────────────────
+    // The rows on page 2 are sessions 25..49 (0-based) by recency. Click the
+    // first visible row and capture the id we land on.
+    await page.locator('tbody tr').first().click();
+    await expect(page).toHaveURL(/\/sessions\/pg-sess-\d+/);
+
+    // ── 3. Browser Back ────────────────────────────────────────────────────
+    await page.goBack();
+
+    // ── 4. Core regression assertion: we are back on PAGE 2, not page 1. ────
+    await expect(page).toHaveURL(/[?&]page=2(&|$)/);
+    await expect(page.getByText('Showing 26–50 of 60 sessions')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Page 2' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    // And page 1 is NOT the active page.
+    await expect(page.getByRole('button', { name: 'Page 1' })).not.toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
+  test('loading /sessions?page=2 directly shows page 2 (URL-driven state)', async ({ page }) => {
+    // This test deliberately avoids the date-range selector to keep it free of
+    // the debounced ?start/&end URL write. Instead it injects 28 sessions that
+    // all fall INSIDE the default last-30-days window (daysAgo(1)…daysAgo(28)),
+    // so the default range loads them all → 2 pages (25 + 3) with NO range change.
+    const sessions = [];
+    const aggregates = [];
+    for (let i = 1; i <= 28; i++) {
+      const date = daysAgoStr(i);
+      const id = `dl-sess-${String(i).padStart(3, '0')}`;
+      sessions.push(makeSession(id, date));
+      aggregates.push(makeAggregate(`dl-agg-${String(i).padStart(3, '0')}`, id, date));
+    }
+
+    // Deep-link straight to page 2.
+    await setupWithData(page, sessions, aggregates, '/sessions?page=2');
+
+    await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible();
+
+    // The URL-supplied page drives the rendered page without any interaction.
+    await expect(page.getByText('Showing 26–28 of 28 sessions')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'Page 2' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    // Page 2 holds the remaining 3 rows.
+    await expect(page.locator('tbody tr')).toHaveCount(3);
+    // The deep-linked page param is preserved through the date-range URL sync.
+    await expect(page).toHaveURL(/[?&]page=2(&|$)/);
+  });
+
+  test('filtering resets pagination back to page 1 (page param dropped)', async ({ page }) => {
+    const { sessions, aggregates } = createManySessions();
+    await setupWithData(page, sessions, aggregates, '/sessions');
+
+    await expect(page.getByRole('heading', { name: 'Sessions' })).toBeVisible();
+    await selectAllTimeRange(page);
+
+    // Go to page 2 first.
+    await page.getByRole('button', { name: 'Page 2' }).click();
+    await expect(page).toHaveURL(/[?&]page=2(&|$)/);
+
+    // Typing into the filter resets to page 1 → the page param is dropped.
+    // Filter on a date string that matches a single session (the most recent).
+    const filterInput = page.getByRole('searchbox', { name: /filter/i });
+    await filterInput.fill(daysAgoStr(1));
+
+    // The `page` query param is removed (page 1 is the clean default).
+    await expect(page).not.toHaveURL(/[?&]page=/);
+    // Fewer than a full page of results now.
+    const rows = page.locator('tbody tr');
+    await expect(rows.first()).toBeVisible();
+    expect(await rows.count()).toBeLessThan(25);
+  });
+});
+
 test.describe('Session Detail', () => {
   test('displays session detail with metric cards', async ({ page }) => {
     const { sessions, aggregates } = createTestSessions();
