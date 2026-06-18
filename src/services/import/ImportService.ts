@@ -21,7 +21,8 @@
  * @module services/import/ImportService
  */
 
-import type { ResMedInterpretation, StandardChannel } from '@/parsers/resmed/ResMedInterpreter';
+import type { ResMedInterpretation } from '@/parsers/resmed/ResMedInterpreter';
+import { assembleChannels } from '@/parsers/resmed/assembleChannels';
 import { SessionBuilder, type BuildResult } from '@/parsers/resmed/SessionBuilder';
 import { STRParser, type MaskInterval } from '@/parsers/resmed/STRParser';
 import type { MachineSettings } from '@/types/session';
@@ -790,10 +791,25 @@ export class ImportService {
     //    successful commit is never left pointing at a failed signal write.
     if (this.opfs) {
       try {
-        const channelInputs = this.buildChannelInputs(interpretations, contributingFiles);
-        if (channelInputs.length > 0) {
-          const startMs = new Date(session.startTime).getTime();
-          const endMs = new Date(session.endTime).getTime();
+        const startMs = new Date(session.startTime).getTime();
+        const endMs = new Date(session.endTime).getTime();
+        const channelInputs = this.buildChannelInputs(
+          interpretations,
+          contributingFiles,
+          startMs,
+          endMs,
+        );
+        // Skip the write when every assembled channel is empty. The assembler
+        // (`assembleChannels`) bails to an empty Float32Array when a segment's
+        // declared window exceeds its own safety bounds, but still emits one
+        // descriptor per channel — so `channelInputs.length > 0` alone is not
+        // proof there is anything to store. Writing an all-empty set would
+        // produce a manifest with no usable signal data; `writeSession`'s own
+        // window guard is the load-bearing DoS defence, this is a cheap
+        // defensive skip layered on top.
+        const hasSignalData =
+          channelInputs.length > 0 && channelInputs.some((ch) => ch.data.length > 0);
+        if (hasSignalData) {
           await this.opfs.writeSession(session.id, startMs, endMs, channelInputs);
         }
       } catch (opfsErr) {
@@ -821,37 +837,41 @@ export class ImportService {
   }
 
   /**
-   * Merge the contributing files' channels (preferring the longest series for a
-   * given channel name) and convert them to {@link ChannelInput}s for OPFS.
+   * Assemble the contributing files' channels into window-aligned, gap-padded
+   * series spanning the full session window, then convert them to
+   * {@link ChannelInput}s for OPFS.
+   *
+   * A single therapy night can be split across several consecutive EDF files
+   * (segments). Each must be CONCATENATED at its own window offset — not merged
+   * by "longest segment wins", which discarded shorter segments and shifted the
+   * surviving samples to the window origin, truncating multi-segment nights.
+   * {@link assembleChannels} is the single shared assembler used here and in
+   * {@link SessionBuilder.buildFromGroup}, so OPFS signal data and the nightly
+   * aggregates agree and both span the whole night. Gaps are filled with NaN
+   * (the project-wide no-data sentinel; see {@link assembleChannels}).
    */
   private buildChannelInputs(
     interpretations: InterpretationMap,
     contributingFiles: Set<string>,
+    sessionStartMs: number,
+    sessionEndMs: number,
   ): ChannelInput[] {
-    const mergedChannels = new Map<string, StandardChannel>();
+    const segments: ResMedInterpretation[] = [];
     for (const filePath of contributingFiles) {
       const interp = interpretations.get(filePath);
-      if (!interp) continue;
-      for (const ch of interp.channels) {
-        const existing = mergedChannels.get(ch.name);
-        if (!existing || ch.samples.length > existing.samples.length) {
-          mergedChannels.set(ch.name, ch);
-        }
-      }
+      if (interp) segments.push(interp);
     }
 
-    const channelInputs: ChannelInput[] = [];
-    for (const [, channel] of mergedChannels) {
-      channelInputs.push({
-        name: channel.name,
-        sampleRate: channel.sampleRate,
-        unit: channel.unit,
-        physicalMin: channel.metadata.physicalMin,
-        physicalMax: channel.metadata.physicalMax,
-        data: channel.samples,
-      });
-    }
-    return channelInputs;
+    const assembled = assembleChannels(segments, sessionStartMs, sessionEndMs);
+
+    return assembled.map((channel) => ({
+      name: channel.name,
+      sampleRate: channel.sampleRate,
+      unit: channel.unit,
+      physicalMin: channel.metadata.physicalMin,
+      physicalMax: channel.metadata.physicalMax,
+      data: channel.samples,
+    }));
   }
 
   /** Compute SHA-256 hash of an ArrayBuffer, returned as hex string. */

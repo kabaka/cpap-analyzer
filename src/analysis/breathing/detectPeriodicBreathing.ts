@@ -229,9 +229,15 @@ interface RawRun {
  * @returns     Detected candidate episodes and session-level summary.
  *
  * @remarks
- * **Missing-data strategy.** Non-finite flow / ventilation samples are treated
- * as 0 in the envelope; leak gaps are excluded from the clean-fraction
- * denominator (pairwise). Empty input → empty result.
+ * **Missing-data strategy.** Non-finite samples are gap-aware, never zero-filled.
+ * On the *flow* path a non-finite sample breaks breath segmentation: any breath
+ * interval containing a gap is dropped rather than fabricating a breath across
+ * it, while real breaths before and after the gap are both detected — the
+ * resulting envelope is always finite (zero-order hold carries the last finite
+ * breath amplitude across the gap). On the *minute-ventilation* path non-finite
+ * samples are bridged by interpolation across the nearest finite neighbours;
+ * only an all-non-finite input yields 0. Leak gaps are excluded from the
+ * clean-fraction denominator (pairwise). Empty input → empty result.
  */
 export function detectPeriodicBreathing(input: PeriodicBreathingInput): PeriodicBreathingResult {
   const params = resolveParams(input.params);

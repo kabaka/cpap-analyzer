@@ -82,8 +82,21 @@ function meanFinite(values: ArrayLike<number>): number {
 
 /**
  * Centered moving-average smoother with a window of `radius` samples on each
- * side. Used to remove the high-frequency carrier before zero-crossing breath
- * segmentation. Pure; returns a new array.
+ * side, computed over **finite samples only**. Used to remove the
+ * high-frequency carrier before zero-crossing breath segmentation. Pure;
+ * returns a new array.
+ *
+ * **NaN handling (load-bearing).** Multi-segment nights are stored with the
+ * inter-segment gaps padded with `NaN` (see `assembleChannels.ts`). A naive
+ * prefix-sum smoother poisons the entire suffix once it hits the first `NaN`
+ * (every subsequent prefix entry is `NaN`), collapsing all downstream breath
+ * detection. We instead carry a *parallel* prefix-count of finite samples and
+ * divide the running sum by the count of finite samples in the window. A window
+ * containing at least one finite sample yields the mean of those samples; a
+ * window with **zero** finite samples (the interior of a real no-data gap)
+ * yields `NaN`, which `segmentBreaths` then treats as a segmentation break — it
+ * never fabricates a breath spanning the gap. Non-finite samples contribute to
+ * neither the sum nor the count.
  */
 function movingAverage(values: Float32Array, radius: number): Float32Array {
   const n = values.length;
@@ -92,16 +105,24 @@ function movingAverage(values: Float32Array, radius: number): Float32Array {
     out.set(values);
     return out;
   }
-  // Prefix sums for O(n) windowed mean.
-  const prefix = new Float64Array(n + 1);
+  // Parallel prefix sums of finite values and of the finite-sample count, so a
+  // NaN can poison neither (it contributes 0 to both). O(n).
+  const prefixSum = new Float64Array(n + 1);
+  const prefixCount = new Float64Array(n + 1);
   for (let i = 0; i < n; i++) {
-    prefix[i + 1] = (prefix[i] as number) + (values[i] as number);
+    const v = values[i] as number;
+    const finite = Number.isFinite(v);
+    prefixSum[i + 1] = (prefixSum[i] as number) + (finite ? v : 0);
+    prefixCount[i + 1] = (prefixCount[i] as number) + (finite ? 1 : 0);
   }
   for (let i = 0; i < n; i++) {
     const lo = Math.max(0, i - radius);
     const hi = Math.min(n - 1, i + radius);
-    const sum = (prefix[hi + 1] as number) - (prefix[lo] as number);
-    out[i] = sum / (hi - lo + 1);
+    const sum = (prefixSum[hi + 1] as number) - (prefixSum[lo] as number);
+    const count = (prefixCount[hi + 1] as number) - (prefixCount[lo] as number);
+    // A window with no finite samples (a real no-data gap) yields NaN, which
+    // breaks breath segmentation downstream rather than fabricating a breath.
+    out[i] = count > 0 ? sum / count : NaN;
   }
   return out;
 }
@@ -142,12 +163,25 @@ interface Breath {
  * spurious double-crossings from noise. Movement/arousal spikes inflate a
  * single breath's amplitude but, being isolated, do not create the *sustained*
  * oscillation the downstream periodicity test requires.
+ *
+ * **No-data gaps (multi-segment nights).** Channels are stored with the
+ * inter-segment gaps padded with `NaN` (see `assembleChannels.ts`). A `NaN`
+ * sample is treated as *no data*: it can neither begin nor end a breath, and a
+ * breath is never emitted spanning a gap. Sign tracking resets across a gap, so
+ * the first upward crossing *after* the gap is a fresh breath onset rather than
+ * a crossing straddling the missing interval. Real breaths before AND after the
+ * gap are both detected; only a breath that would have straddled the gap is
+ * dropped. Inter-segment gaps are typically tens of seconds — far longer than a
+ * single breath — so breaking segmentation across them (rather than bridging) is
+ * the clinically safe choice: it never fabricates a multi-minute "breath" and
+ * never invents a periodic oscillation across missing data.
  */
 export function segmentBreaths(flow: Float32Array, sampleRateHz: number): Breath[] {
   const n = flow.length;
   if (n === 0 || sampleRateHz <= 0) return [];
 
-  // Smooth to suppress the sub-respiratory ripple (~0.4 s radius).
+  // Smooth to suppress the sub-respiratory ripple (~0.4 s radius). NaN-aware:
+  // the interior of a no-data gap smooths to NaN (see `movingAverage`).
   const smoothRadius = Math.max(1, Math.round(0.4 * sampleRateHz));
   const smoothed = movingAverage(flow, smoothRadius);
   const baseline = meanFinite(smoothed);
@@ -155,12 +189,25 @@ export function segmentBreaths(flow: Float32Array, sampleRateHz: number): Breath
   // Minimum spacing between accepted onsets (~1 s) to reject noise crossings.
   const minSpacing = Math.max(1, Math.round(1.0 * sampleRateHz));
 
-  // Find upward zero-crossings of (smoothed - baseline).
+  // Find upward zero-crossings of (smoothed - baseline). A NaN (no-data) sample
+  // resets `prevSign` to null so no crossing is detected across a gap; the first
+  // finite-to-finite upward transition after the gap is a fresh onset.
   const onsets: number[] = [];
-  let prevSign = (smoothed[0] as number) - baseline >= 0 ? 1 : -1;
+  const firstFinite = Number.isFinite(smoothed[0] as number);
+  let prevSign: number | null = firstFinite
+    ? (smoothed[0] as number) - baseline >= 0
+      ? 1
+      : -1
+    : null;
   for (let i = 1; i < n; i++) {
-    const sign = (smoothed[i] as number) - baseline >= 0 ? 1 : -1;
-    if (prevSign < 0 && sign > 0) {
+    const s = smoothed[i] as number;
+    if (!Number.isFinite(s)) {
+      // No-data gap: forget the prior sign so the crossing can't span the gap.
+      prevSign = null;
+      continue;
+    }
+    const sign = s - baseline >= 0 ? 1 : -1;
+    if (prevSign !== null && prevSign < 0 && sign > 0) {
       if (onsets.length === 0 || i - (onsets[onsets.length - 1] as number) >= minSpacing) {
         onsets.push(i);
       }
@@ -177,11 +224,21 @@ export function segmentBreaths(flow: Float32Array, sampleRateHz: number): Breath
     const endIdx = onsets[b + 1] as number;
     let peak = 0;
     let tidal = 0;
+    let spansGap = false;
     for (let i = startIdx; i < endIdx; i++) {
-      const v = (flow[i] as number) - baseline;
+      const raw = flow[i] as number;
+      if (!Number.isFinite(raw)) {
+        // A no-data sample inside the interval means this "breath" straddles a
+        // gap (two onsets separated by missing data). Drop it rather than
+        // integrating a fabricated breath across the hole.
+        spansGap = true;
+        break;
+      }
+      const v = raw - baseline;
       if (v > peak) peak = v;
       if (v > 0) tidal += v * dtMin; // integrate positive (inspiratory) flow
     }
+    if (spansGap) continue;
     breaths.push({ startIdx, endIdx, amplitude: peak, tidalProxy: tidal });
   }
   return breaths;

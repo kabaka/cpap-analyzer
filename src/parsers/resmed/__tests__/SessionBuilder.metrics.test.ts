@@ -844,3 +844,72 @@ describe('STR decode → SessionBuilder integration (noon-anchored)', () => {
     expect(agg.usageHours).toBeCloseTo(2, 5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Multi-segment night: aggregates reflect BOTH segments
+//
+// Regression for the truncation bug. A night split into two contiguous EDF
+// segments was reduced to its longest single segment, so pressure/leak/usage
+// aggregates were computed off ONE segment only (under-reporting usage by the
+// length of the discarded segment). The shared assembler now concatenates both
+// segments into one window-aligned series before the stats run, so the
+// aggregates span the whole night and gap padding (NaN) never biases them.
+// ---------------------------------------------------------------------------
+
+describe('multi-segment night aggregates', () => {
+  it('usage reflects both segments, not just the longest one', () => {
+    const start = new Date(2026, 5, 14, 2, 51, 42);
+
+    // Segment 1: 54 min, mask ON at constant pressure.
+    const seg1 = interpretation({
+      startTime: start,
+      durationSeconds: 54 * 60,
+      channels: [maskPressure(54 * 60, 10)],
+    });
+
+    // ~35 s gap (file roll), then Segment 2: 8 h, mask ON.
+    const seg2Start = new Date(start.getTime() + (54 * 60 + 35) * 1000);
+    const seg2 = interpretation({
+      startTime: seg2Start,
+      durationSeconds: 8 * 3600,
+      channels: [maskPressure(8 * 3600, 10)],
+    });
+
+    const result = builder.buildSessions([seg1, seg2])[0]!;
+    const expectedHours = (54 * 60 + 35 + 8 * 3600) / 3600; // ~9.13 h window
+
+    // Session window spans both segments.
+    expect(result.session.durationMinutes / 60).toBeCloseTo(expectedHours, 2);
+
+    // Usage covers BOTH segments (≈ whole window — mask on throughout, the
+    // ~35 s gap is held as on). The pre-fix bug would report only the 8 h
+    // segment-2 usage (~8.0 h), missing the 54-min segment 1.
+    expect(result.aggregate.usageHours).toBeGreaterThan(8.5);
+    expect(result.aggregate.usageHours).toBeCloseTo(expectedHours, 1);
+  });
+
+  it('pressure mean is computed over both segments and ignores the NaN gap', () => {
+    const start = new Date(2026, 5, 14, 2, 51, 42);
+
+    // Segment 1: 10 min at 6 cmH₂O. Segment 2: 10 min at 12 cmH₂O.
+    const seg1 = interpretation({
+      startTime: start,
+      durationSeconds: 600,
+      channels: [maskPressure(600, 6)],
+    });
+    const seg2Start = new Date(start.getTime() + (600 + 35) * 1000);
+    const seg2 = interpretation({
+      startTime: seg2Start,
+      durationSeconds: 600,
+      channels: [maskPressure(600, 12)],
+    });
+
+    const agg = builder.buildSessions([seg1, seg2])[0]!.aggregate;
+
+    // Equal-length segments at 6 and 12 → mean 9. If the gap were folded in as
+    // real 0s the mean would be dragged well below 9; NaN padding keeps it ~9.
+    expect(agg.pressureMean).toBeCloseTo(9, 5);
+    // And both extremes are represented (single-segment merge would give 6 or 12).
+    expect(agg.pressureMax).toBeCloseTo(12, 5);
+  });
+});

@@ -242,6 +242,122 @@ describe('segmentBreaths / buildEnvelopeFromFlow', () => {
 });
 
 // ---------------------------------------------------------------------------
+// NaN no-data gaps (multi-segment nights) — regression for the QA BLOCKER.
+//
+// Multi-segment nights are stored with inter-segment gaps padded with NaN (see
+// assembleChannels.ts). The previous prefix-sum smoother poisoned the entire
+// suffix at the first NaN, so EVERY breath after the first gap was lost
+// (zero-crossing test `smoothed - baseline >= 0` is always false for NaN). The
+// QA repro: a clean 120 s 4 Hz sinusoidal flow segments to 28 breaths; a 10 s
+// interior NaN gap collapsed it to 13 (pre-gap only). The fix must keep
+// pre-gap AND post-gap breaths, dropping only the one straddling the gap.
+// ---------------------------------------------------------------------------
+
+/**
+ * A plain sinusoidal flow at `breathSec` period — one upward zero-crossing per
+ * breath — sampled at `rateHz` for `durationSec`. No slow modulation, so the
+ * breath count is deterministic (≈ durationSec / breathSec).
+ */
+function sinusoidalFlow(breathSec: number, durationSec: number, rateHz: number): Float32Array {
+  const n = Math.floor(durationSec * rateHz);
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const t = i / rateHz;
+    out[i] = 20 * Math.sin((2 * Math.PI * t) / breathSec);
+  }
+  return out;
+}
+
+/** Return a copy of `flow` with `[startSec, startSec + lenSec)` set to NaN. */
+function withNaNGap(
+  flow: Float32Array,
+  rateHz: number,
+  startSec: number,
+  lenSec: number,
+): Float32Array {
+  const out = Float32Array.from(flow);
+  const lo = Math.round(startSec * rateHz);
+  const hi = Math.round((startSec + lenSec) * rateHz);
+  for (let i = lo; i < hi && i < out.length; i++) out[i] = NaN;
+  return out;
+}
+
+describe('segmentBreaths — NaN no-data gaps (multi-segment night regression)', () => {
+  const RATE = 4;
+  const BREATH_SEC = 4;
+  const DURATION = 120;
+  const GAP_START = 55;
+  const GAP_LEN = 10;
+
+  it('a clean sinusoidal flow segments the expected number of breaths', () => {
+    const flow = sinusoidalFlow(BREATH_SEC, DURATION, RATE);
+    const clean = segmentBreaths(flow, RATE).length;
+    // 120 s / 4 s ≈ 30 onsets → ~28–29 breaths (intervals between onsets).
+    expect(clean).toBeGreaterThanOrEqual(26);
+    expect(clean).toBeLessThanOrEqual(30);
+  });
+
+  it('keeps pre-gap AND post-gap breaths through an interior NaN gap (no suffix collapse)', () => {
+    const flow = sinusoidalFlow(BREATH_SEC, DURATION, RATE);
+    const clean = segmentBreaths(flow, RATE).length;
+
+    const gapped = withNaNGap(flow, RATE, GAP_START, GAP_LEN);
+    const breaths = segmentBreaths(gapped, RATE);
+    const gappedCount = breaths.length;
+
+    // A 10 s gap erases the ~2–3 breaths overlapping it, NOT the whole suffix.
+    // Old (NaN-poisoned) behaviour collapsed to roughly the pre-gap count
+    // (≈ GAP_START / BREATH_SEC ≈ 13); the fix keeps within a few breaths of
+    // the clean count.
+    expect(gappedCount).toBeGreaterThan(clean - 5);
+    expect(gappedCount).toBeLessThanOrEqual(clean);
+    // Hard floor: must exceed the pre-gap-only count (the old collapse).
+    const preGapOnly = Math.ceil(GAP_START / BREATH_SEC);
+    expect(gappedCount).toBeGreaterThan(preGapOnly);
+
+    // No breath interval may contain a NaN sample (i.e. none straddles the gap).
+    const lo = GAP_START * RATE;
+    const hi = (GAP_START + GAP_LEN) * RATE;
+    for (const b of breaths) {
+      for (let i = b.startIdx; i < b.endIdx; i++) {
+        expect(Number.isFinite(gapped[i]!)).toBe(true);
+      }
+    }
+
+    // Both regions are represented: at least one breath fully before the gap and
+    // at least one fully after it.
+    const before = breaths.filter((b) => b.endIdx <= lo).length;
+    const after = breaths.filter((b) => b.startIdx >= hi).length;
+    expect(before).toBeGreaterThan(0);
+    expect(after).toBeGreaterThan(0);
+  });
+
+  it('movingAverage (via segmentBreaths smoothing) yields finite breaths after an interior gap', () => {
+    // Detect onsets strictly after the gap; their amplitudes (which come from the
+    // smoothed/raw flow) must be finite — proving the smoother is not
+    // NaN-poisoned past the gap.
+    const flow = sinusoidalFlow(BREATH_SEC, DURATION, RATE);
+    const gapped = withNaNGap(flow, RATE, GAP_START, GAP_LEN);
+    const breaths = segmentBreaths(gapped, RATE);
+    const hi = (GAP_START + GAP_LEN) * RATE;
+    const postGap = breaths.filter((b) => b.startIdx >= hi);
+    expect(postGap.length).toBeGreaterThan(0);
+    for (const b of postGap) {
+      expect(Number.isFinite(b.amplitude)).toBe(true);
+      expect(Number.isFinite(b.tidalProxy)).toBe(true);
+    }
+  });
+
+  it('buildEnvelopeFromFlow over NaN-gapped flow yields an all-finite envelope', () => {
+    const flow = sinusoidalFlow(BREATH_SEC, DURATION, RATE);
+    const gapped = withNaNGap(flow, RATE, GAP_START, GAP_LEN);
+    const env = buildEnvelopeFromFlow(gapped, RATE, 0, 1);
+    expect(env.values.length).toBeGreaterThan(0);
+    for (const v of env.values) expect(Number.isFinite(v)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PB / CSR detector
 // ---------------------------------------------------------------------------
 

@@ -35,6 +35,32 @@ export interface ValidationIssue {
 /** Minimum buffer size: the fixed 256-byte header. */
 const MIN_HEADER_BYTES = 256;
 
+/**
+ * Maximum plausible duration (seconds) for a single EDF data record.
+ *
+ * Security bound (memory-exhaustion DoS): `dataRecordDuration` is read straight
+ * from an untrusted header and is later multiplied by `numDataRecords` to derive
+ * the recording `duration`, which downstream sizes allocations against. ResMed
+ * records are sub-second to a few seconds; legitimate EDF/EDF+ files never use
+ * record durations of minutes. A generous 60 s/record ceiling rejects crafted or
+ * corrupt headers (e.g. duration = 1e9) before they can inflate `duration` into
+ * a multi-GB allocation, while leaving every real file untouched.
+ */
+const MAX_RECORD_DURATION_SECONDS = 60;
+
+/**
+ * Maximum plausible total recording duration (seconds) derived from a header.
+ *
+ * Security bound (memory-exhaustion DoS): even with each individual field in
+ * range, `numDataRecords * dataRecordDuration` can be astronomically large for a
+ * crafted header. A continuous EDF recording spanning more than ~1 year is not a
+ * plausible single CPAP file (nightly files are hours; the largest realistic
+ * full-night-plus is well under a day). 366 days is an intentionally generous
+ * ceiling that still caps the derived `duration` far below anything that could
+ * drive a runaway allocation.
+ */
+const MAX_RECORDING_DURATION_SECONDS = 366 * 24 * 60 * 60;
+
 /** EDF+ annotation signal label. */
 const ANNOTATION_LABEL = 'EDF Annotations';
 
@@ -150,6 +176,19 @@ export class EDFParser {
 
     const duration =
       header.dataRecordDuration > 0 ? header.numDataRecords * header.dataRecordDuration : 0;
+
+    // Security: the resolved duration (covers the numDataRecords = -1 path, where
+    // the real count is derived from file size) must still be within bounds. A
+    // file large enough to legitimately exceed this is not a plausible single
+    // CPAP recording, so fail it rather than hand a runaway duration downstream.
+    if (!Number.isFinite(duration) || duration > MAX_RECORDING_DURATION_SECONDS) {
+      throw new EDFParseError(
+        'INVALID_NUM_RECORDS',
+        `Resolved recording duration out of range: ${duration} s ` +
+          `(max ${MAX_RECORDING_DURATION_SECONDS} s)`,
+        { duration, maxRecordingDuration: MAX_RECORDING_DURATION_SECONDS },
+      );
+    }
 
     return {
       header,
@@ -330,6 +369,42 @@ export class EDFParser {
         `Data record duration must be non-negative: ${dataRecordDuration}`,
         { dataRecordDuration },
       );
+    }
+
+    // Security: reject non-finite or implausibly large record durations. Both
+    // `parseFloatField` (NaN) and a crafted huge value would otherwise flow into
+    // the derived `duration = numDataRecords * dataRecordDuration` and from there
+    // into downstream allocation sizing — a memory-exhaustion DoS from a tiny
+    // file. A corrupt header must fail this file, not mis-scale a real night.
+    if (!Number.isFinite(dataRecordDuration) || dataRecordDuration > MAX_RECORD_DURATION_SECONDS) {
+      throw new EDFParseError(
+        'INVALID_RECORD_DURATION',
+        `Data record duration out of range: ${dataRecordDuration} (max ${MAX_RECORD_DURATION_SECONDS} s/record)`,
+        { dataRecordDuration, maxRecordDuration: MAX_RECORD_DURATION_SECONDS },
+      );
+    }
+
+    // Security: the derived recording duration (numDataRecords ×
+    // dataRecordDuration) must be finite and within a plausible bound. A negative
+    // numDataRecords other than the sentinel -1 (handled in `parse`) is invalid,
+    // and an astronomically large product would drive runaway allocation
+    // downstream. We skip the sentinel here; the real count is resolved in
+    // `parse` and bounded by the on-disk size, which cannot exceed this cap.
+    if (numDataRecords !== -1) {
+      const derivedDuration = numDataRecords * dataRecordDuration;
+      if (!Number.isFinite(derivedDuration) || derivedDuration > MAX_RECORDING_DURATION_SECONDS) {
+        throw new EDFParseError(
+          'INVALID_NUM_RECORDS',
+          `Derived recording duration out of range: ${derivedDuration} s ` +
+            `(numDataRecords=${numDataRecords}, dataRecordDuration=${dataRecordDuration}, ` +
+            `max ${MAX_RECORDING_DURATION_SECONDS} s)`,
+          {
+            numDataRecords,
+            dataRecordDuration,
+            maxRecordingDuration: MAX_RECORDING_DURATION_SECONDS,
+          },
+        );
+      }
     }
 
     return {
