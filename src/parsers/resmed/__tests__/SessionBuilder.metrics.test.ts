@@ -618,6 +618,62 @@ describe('T90 (time-based) and SpO₂ coverage', () => {
 });
 
 // ---------------------------------------------------------------------------
+// hasOximetry reflects VALID (non-sentinel) oximetry, not mere channel presence
+//
+// An spo2 channel object can exist while every sample is the SPO2_SENTINEL
+// (0 → no oximeter / probe off / finger off). In that case the session has no
+// real oximetry, and `computeSpO2Stats` already returns null (all spo2*
+// aggregate fields null). `session.hasOximetry` must agree: it is true only
+// when at least one valid, non-sentinel SpO₂ sample exists.
+// ---------------------------------------------------------------------------
+
+describe('session.hasOximetry derives from valid oximetry samples', () => {
+  it('is false when the spo2 channel is entirely sentinel (0) values', () => {
+    const arr = new Array<number>(120).fill(0); // all SPO2_SENTINEL
+    const interp = interpretation({
+      durationSeconds: 120,
+      channels: [maskPressure(120), channel('spo2', Float32Array.from(arr), 1, '%')],
+    });
+    const result = builder.buildSessions([interp])[0]!;
+    // No valid oximetry → hasOximetry false, consistent with null spo2 stats.
+    expect(result.session.hasOximetry).toBe(false);
+    expect(result.aggregate.spo2Mean).toBeNull();
+  });
+
+  it('is false when a pulse channel is present but spo2 is all-sentinel', () => {
+    // Oximetry validity must NOT be inferred from a pulse channel's presence:
+    // a pulse channel can exist (or hold its own sentinels) while the SpO₂
+    // probe never produced a valid reading.
+    const spo2 = new Array<number>(120).fill(0); // all SPO2_SENTINEL
+    const pulse = new Array<number>(120).fill(60); // present, but irrelevant
+    const interp = interpretation({
+      durationSeconds: 120,
+      channels: [
+        maskPressure(120),
+        channel('pulse', Float32Array.from(pulse), 1, 'bpm'),
+        channel('spo2', Float32Array.from(spo2), 1, '%'),
+      ],
+    });
+    const result = builder.buildSessions([interp])[0]!;
+    expect(result.session.hasOximetry).toBe(false);
+    expect(result.aggregate.spo2Mean).toBeNull();
+  });
+
+  it('is true when genuine valid SpO₂ samples are present (regression)', () => {
+    const arr: number[] = [];
+    for (let i = 0; i < 120; i++) arr.push(96); // real oximetry
+    const interp = interpretation({
+      durationSeconds: 120,
+      channels: [maskPressure(120), channel('spo2', Float32Array.from(arr), 1, '%')],
+    });
+    const result = builder.buildSessions([interp])[0]!;
+    expect(result.session.hasOximetry).toBe(true);
+    expect(result.aggregate.spo2Mean).toBeCloseTo(96, 5);
+    expect(result.aggregate.spo2Min).toBe(96);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Task 6: Sentinel/gap handling for pressure & leak
 // ---------------------------------------------------------------------------
 

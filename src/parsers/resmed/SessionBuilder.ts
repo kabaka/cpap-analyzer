@@ -301,6 +301,15 @@ export class SessionBuilder {
     const sessionDate = sessionDateForUsage;
     const machineSettings = strSettingsByDate?.get(sessionDate) ?? null;
 
+    // Compute SpO2 stats up front so `hasOximetry` reflects the presence of at
+    // least one VALID (non-sentinel) oximetry sample, not merely the existence
+    // of an spo2 channel object. `computeSpO2Stats` returns null when every
+    // sample is a sentinel (no oximeter / probe off), keeping `hasOximetry`
+    // consistent with the null spo2* aggregate fields. Depends only on
+    // channelMap and durationSeconds, both available here. The single result is
+    // reused for the aggregate below.
+    const spo2Result = this.computeSpO2Stats(channelMap, durationSeconds);
+
     const session: Session = {
       id: sessionId,
       date: this.formatDate(startTime),
@@ -315,7 +324,7 @@ export class SessionBuilder {
       sourceHash,
       channels: channelMetadata,
       signalChunkIds: [],
-      hasOximetry: channelMap.has('spo2'),
+      hasOximetry: spo2Result !== null,
       deleted: false,
       importedAt: new Date().toISOString(),
       machineSettings,
@@ -352,7 +361,7 @@ export class SessionBuilder {
 
     const leakResult = this.computeLeakStats(channelMap);
     const pressureResult = this.computePressureStats(channelMap);
-    const spo2Result = this.computeSpO2Stats(channelMap, durationSeconds);
+    // spo2Result computed earlier (hoisted so it can drive `hasOximetry`).
     const respiratoryResult = this.computeRespiratoryMetrics(channelMap);
 
     // Determine compliance status
