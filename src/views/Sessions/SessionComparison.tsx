@@ -189,12 +189,13 @@ export default function SessionComparison() {
     return CHART_METRIC_KEYS.reduce<ChartMetric[]>((acc, key) => {
       const def = COMPARISON_METRICS.find((m) => m.key === key);
       if (!def) return acc;
-      acc.push({
-        label: def.label,
-        unit: def.unit,
-        valueA: readMetric(aggA, key),
-        valueB: readMetric(aggB, key),
-      });
+      const valueA = readMetric(aggA, key);
+      const valueB = readMetric(aggB, key);
+      // Skip metrics where either session lacks a value (per-hour rate
+      // undefined on a too-short night) — a bar can't express a gap without
+      // implying 0.
+      if (valueA == null || valueB == null) return acc;
+      acc.push({ label: def.label, unit: def.unit, valueA, valueB });
       return acc;
     }, []);
   }, [detailA.aggregate, detailB.aggregate]);
@@ -337,9 +338,14 @@ export default function SessionComparison() {
                   if (!aggA || !aggB) return null;
                   const valA = readMetric(aggA, metric.key);
                   const valB = readMetric(aggB, metric.key);
-                  const delta = valB - valA;
-                  const pct = percentChange(valA, valB);
-                  const colorClass = deltaClass(delta, metric.direction);
+                  // A metric is null when its per-hour rate is undefined on a
+                  // too-short night. Only compute delta/percent when BOTH
+                  // sessions have a value; otherwise show em-dashes and skip
+                  // the comparison (never treat a missing rate as 0).
+                  const comparable = valA != null && valB != null;
+                  const delta = comparable ? valB - valA : null;
+                  const pct = comparable ? percentChange(valA, valB) : NaN;
+                  const colorClass = delta != null ? deltaClass(delta, metric.direction) : '';
 
                   return (
                     <TableRow key={metric.key}>
@@ -355,11 +361,18 @@ export default function SessionComparison() {
                       <TableCell className={styles.numericCell}>
                         {fmt(valB, metric.decimals)}
                       </TableCell>
-                      <TableCell className={`${styles.numericCell} ${colorClass}`}>
-                        {delta > 0 ? '+' : ''}
-                        {fmt(delta, metric.decimals)}
+                      <TableCell
+                        className={`${styles.numericCell} ${colorClass}`}
+                        title={delta == null ? 'Insufficient recording time' : undefined}
+                      >
+                        {delta == null
+                          ? '—'
+                          : `${delta > 0 ? '+' : ''}${fmt(delta, metric.decimals)}`}
                       </TableCell>
-                      <TableCell className={`${styles.numericCell} ${colorClass}`}>
+                      <TableCell
+                        className={`${styles.numericCell} ${colorClass}`}
+                        title={delta == null ? 'Insufficient recording time' : undefined}
+                      >
                         {Number.isNaN(pct) ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`}
                       </TableCell>
                     </TableRow>

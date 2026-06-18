@@ -46,17 +46,27 @@ export interface BandSeriesPoint<T> {
  * Non-finite medians/quartiles (e.g. a window with no finite values) are
  * emitted as `null` so the chart shows a gap rather than a spurious 0.
  *
+ * Null-handling (skip-night): the accessor may return `null` for an UNDEFINED
+ * per-hour rate (e.g. an AHI night below MIN_INDEX_USAGE_HOURS). Such values are
+ * mapped to `NaN`, so {@link rollingMedianBand} excludes them from every window
+ * it falls in — they neither plot a centre point nor bias the rolling
+ * median/quartiles toward a fabricated 0.
+ *
  * @param series chronological data (e.g. nightly aggregates).
- * @param value accessor returning the metric to band (e.g. `d => d.ahi`).
+ * @param value accessor returning the metric to band (e.g. `d => d.ahi`); may
+ *   return `null` for an undefined rate.
  * @param window trailing window length in points (default
  *   {@link AHI_BAND_WINDOW_NIGHTS}).
  */
 export function buildRollingBandSeries<T>(
   series: readonly T[],
-  value: (d: T) => number,
+  value: (d: T) => number | null,
   window: number = AHI_BAND_WINDOW_NIGHTS,
 ): BandSeriesPoint<T>[] {
-  const values = series.map(value);
+  const values = series.map((d) => {
+    const v = value(d);
+    return v === null ? NaN : v;
+  });
   const band = rollingMedianBand(values, window);
 
   return series.map((source, i) => {

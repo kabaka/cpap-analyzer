@@ -62,8 +62,21 @@ const TherapyOverview = React.memo(function TherapyOverview({
   );
 
   const maxAHI = useMemo(() => {
-    const max = Math.max(...trendData.map((d) => d.ahi), 0);
+    // d.ahi is null on nights too short for a per-hour rate; skip those so the
+    // axis is scaled from real values rather than a coerced 0.
+    const ahiValues = trendData.map((d) => d.ahi).filter((v): v is number => v != null);
+    const max = Math.max(...ahiValues, 0);
     return computeAxisMax(max, AHI_AXIS_FLOOR);
+  }, [trendData]);
+
+  const ahiSummary = useMemo(() => {
+    const ahiValues = trendData.map((d) => d.ahi).filter((v): v is number => v != null);
+    if (ahiValues.length === 0) {
+      return 'No nights with a defined AHI in this period (recordings too short for a per-hour rate).';
+    }
+    return `AHI ranged from ${Math.min(...ahiValues).toFixed(1)} to ${Math.max(
+      ...ahiValues,
+    ).toFixed(1)} over the period.`;
   }, [trendData]);
 
   const maxUsage = useMemo(() => {
@@ -106,10 +119,7 @@ const TherapyOverview = React.memo(function TherapyOverview({
         <Card className={styles.chartCard}>
           <h3 className={styles.chartTitle}>AHI Trend</h3>
           <div aria-label="AHI trend over the last 30 days">
-            <span className={styles.srOnly}>
-              AHI ranged from {Math.min(...trendData.map((d) => d.ahi)).toFixed(1)} to{' '}
-              {Math.max(...trendData.map((d) => d.ahi)).toFixed(1)} over the period.
-            </span>
+            <span className={styles.srOnly}>{ahiSummary}</span>
             <ResponsiveContainer width="100%" height={280}>
               <ComposedChart data={chartData} margin={{ top: 8, right: 40, bottom: 24, left: 16 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
@@ -198,6 +208,7 @@ const TherapyOverview = React.memo(function TherapyOverview({
                   strokeWidth={2}
                   dot={{ r: 3, fill: colors.chart1 }}
                   activeDot={{ r: 5, fill: colors.chart1 }}
+                  connectNulls={false}
                   isAnimationActive={false}
                 />
               </ComposedChart>

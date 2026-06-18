@@ -356,14 +356,28 @@ export class AnalysisEngine {
    * from `usageHours`.
    */
   private toTecsaNightRecords(data: NightlyAggregate[]): TecsaNightRecord[] {
-    return data.map((d) => ({
-      date: d.date,
-      centralApneaIndex: d.ahiCentral,
-      obstructiveIndex: d.ahiObstructive,
-      hypopneaIndex: d.ahiHypopnea,
-      leakMetric: d.leakMedian,
-      usableHours: d.usageHours,
-    }));
+    // Null-handling (skip-night / listwise on the index triple): a night whose
+    // central, obstructive, or hypopnea index is null was below the
+    // rate-validity floor (MIN_INDEX_USAGE_HOURS), so its per-hour rate is
+    // undefined — not zero. The TECSA classifier requires numeric indices; a
+    // null coerced to 0 would fabricate a benign night and could mask (or
+    // falsely create) a treatment-emergent pattern. We therefore drop such
+    // nights entirely, mirroring the Breathing view's per-night candidate calc.
+    const records: TecsaNightRecord[] = [];
+    for (const d of data) {
+      if (d.ahiCentral === null || d.ahiObstructive === null || d.ahiHypopnea === null) {
+        continue;
+      }
+      records.push({
+        date: d.date,
+        centralApneaIndex: d.ahiCentral,
+        obstructiveIndex: d.ahiObstructive,
+        hypopneaIndex: d.ahiHypopnea,
+        leakMetric: d.leakMedian,
+        usableHours: d.usageHours,
+      });
+    }
+    return records;
   }
 
   // -----------------------------------------------------------------------

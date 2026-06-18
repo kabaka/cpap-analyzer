@@ -11,6 +11,7 @@ import { useState, useEffect } from 'react';
 import type { NightlyAggregate } from '@/types';
 import { getDB } from '@/services/storage/getDB';
 import { formatDate } from '@/utils/formatDate';
+import { pooledRate } from '@/analysis/uncertainty/rateIndex';
 
 /** Computed summary statistics for a date range. */
 export interface SummaryStats {
@@ -45,7 +46,11 @@ export interface SummaryStats {
 /** A single day's data point for trend display. */
 export interface TrendDataPoint {
   date: string;
-  ahi: number;
+  /**
+   * Per-night AHI, or `null` when the night's recording was below the
+   * rate-validity floor. Renderers must draw `null` as a GAP, never as 0.
+   */
+  ahi: number | null;
   leakMedian: number;
   usageHours: number;
   pressureP95: number;
@@ -136,7 +141,6 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
     };
   }
 
-  const ahiValues = aggregates.map((a) => a.ahi);
   const leakValues = aggregates.map((a) => a.leakMedian);
   const leakP95Values = aggregates.map((a) => a.leakP95);
   const usageValues = aggregates.map((a) => a.usageHours);
@@ -147,8 +151,15 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
   const totalHypopneaCount = aggregates.reduce((s, a) => s + a.eventsByType.hypopnea, 0);
   const meanMaskOnHours = mean(aggregates.map((a) => a.maskOnTimeMinutes / 60));
 
-  const meanAHI = mean(ahiValues);
-  const medianAHI = median(ahiValues);
+  // AHI is a per-hour RATE: nights with a null AHI had too little recording for
+  // a defined rate and are EXCLUDED from every AHI statistic (never coerced to
+  // 0). The window mean is the duration-weighted POOLED rate
+  // (Σ ahi·hours / Σ hours = Σ events / Σ hours), so a short noisy night cannot
+  // dominate the average; the median and trend are computed over the qualifying
+  // (non-null) nights only.
+  const meanAHI = pooledRate(aggregates.map((a) => ({ rate: a.ahi, hours: a.usageHours }))) ?? 0;
+  const qualifyingAhiValues = aggregates.map((a) => a.ahi).filter((v): v is number => v !== null);
+  const medianAHI = median(qualifyingAhiValues);
   const meanLeak = mean(leakValues);
   const leakP95 = mean(leakP95Values);
   const meanUsageHours = mean(usageValues);
@@ -174,8 +185,12 @@ function computeStats(aggregates: NightlyAggregate[]): SummaryStats {
     },
   }));
 
-  // Compute trend percents: compare first 7-day avg vs last 7-day avg
-  const trendAHIPercent = computeTrendPercent(trendSlice.map((a) => a.ahi));
+  // Compute trend percents: compare first 7-day avg vs last 7-day avg.
+  // AHI nulls (rate undefined) are excluded so a short night neither anchors nor
+  // skews either half of the comparison.
+  const trendAHIPercent = computeTrendPercent(
+    trendSlice.map((a) => a.ahi).filter((v): v is number => v !== null),
+  );
   const trendLeakPercent = computeTrendPercent(trendSlice.map((a) => a.leakMedian));
   const trendUsagePercent = computeTrendPercent(trendSlice.map((a) => a.usageHours));
   const trendCompliancePercent = computeTrendPercent(

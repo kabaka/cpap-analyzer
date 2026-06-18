@@ -18,8 +18,13 @@ import styles from './SessionComparison.module.css';
  */
 export type ImprovementDirection = 'lower' | 'higher';
 
-/** Format a number with a fixed number of decimal places. */
-export function fmt(value: number, decimals: number): string {
+/**
+ * Format a number with a fixed number of decimal places. `null`/`undefined`
+ * (e.g. a per-hour rate undefined on a too-short night) render as an em-dash,
+ * never as 0.
+ */
+export function fmt(value: number | null | undefined, decimals: number): string {
+  if (value == null || Number.isNaN(value)) return '—';
   return value.toFixed(decimals);
 }
 
@@ -44,9 +49,13 @@ export function deltaClass(delta: number, direction: ImprovementDirection): stri
   return delta > 0 ? (styles.deltaImprovedUp ?? '') : (styles.deltaWorsenedUp ?? '');
 }
 
-/** Read a numeric metric value from an aggregate, coalescing null to 0. */
-export function readMetric(agg: NightlyAggregate, key: keyof NightlyAggregate): number {
+/**
+ * Read a numeric metric value from an aggregate. Returns `null` when the field
+ * is null/undefined (e.g. a per-hour rate undefined on a too-short night) so
+ * callers can render an em-dash and skip delta/percent math — never coercing a
+ * missing rate to 0.
+ */
+export function readMetric(agg: NightlyAggregate, key: keyof NightlyAggregate): number | null {
   const val = agg[key];
-  if (typeof val === 'number') return val;
-  return 0;
+  return typeof val === 'number' ? val : null;
 }

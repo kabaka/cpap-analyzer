@@ -128,7 +128,14 @@ export function generateInsights(aggregates: NightlyAggregate[], stats: SummaryS
   let centralEventHours = 0;
   let centralUsageHours = 0;
   for (const a of aggregates) {
-    if (a.usageHours >= MIN_CENTRAL_USAGE_HOURS) {
+    // Null-handling (skip-night): a null central index is an UNDEFINED rate
+    // (recording below MIN_INDEX_USAGE_HOURS), not zero. Such a night
+    // contributes neither events nor hours to this duration-weighted pooled
+    // rate — excluding it keeps the weighting equal to total events / total
+    // hours over nights with a defined rate. (The usage gate already excludes
+    // < 1 h nights, but the explicit null guard makes the contract intent clear
+    // and is robust to the gate changing.)
+    if (a.usageHours >= MIN_CENTRAL_USAGE_HOURS && a.ahiCentral !== null) {
       centralEventHours += a.ahiCentral * a.usageHours;
       centralUsageHours += a.usageHours;
     }

@@ -143,17 +143,30 @@ const PressureResponseSection = React.memo(function PressureResponseSection({
   aggregates: NightlyAggregate[];
 }) {
   const result = useMemo<PressureResponseResult | null>(() => {
-    const pressures = aggregates.map((a) => a.pressureMean);
-    const ahiValues = aggregates.map((a) => a.ahi);
+    // Null-handling (pairwise deletion): a night with a null AHI has an
+    // UNDEFINED rate (recording below MIN_INDEX_USAGE_HOURS), not zero — it
+    // carries no information about the pressure→AHI response. Drop the WHOLE
+    // (pressure, AHI) pair so the two arrays the regression consumes stay
+    // index-aligned.
+    const pressures: number[] = [];
+    const ahiValues: number[] = [];
+    for (const a of aggregates) {
+      if (a.ahi === null) continue;
+      pressures.push(a.pressureMean);
+      ahiValues.push(a.ahi);
+    }
     if (pressures.length < 3) return null;
     return pressureResponseCurve(pressures, ahiValues);
   }, [aggregates]);
 
   const scatterData = useMemo<ScatterDataPoint[]>(() => {
-    return aggregates.map((a) => ({
-      x: a.pressureMean,
-      y: a.ahi,
-    }));
+    // Drop scatter points with an undefined AHI (null) — render a gap, not a 0.
+    return aggregates
+      .filter((a): a is typeof a & { ahi: number } => a.ahi !== null)
+      .map((a) => ({
+        x: a.pressureMean,
+        y: a.ahi,
+      }));
   }, [aggregates]);
 
   if (scatterData.length === 0) return null;
@@ -272,8 +285,16 @@ const TitrationSection = React.memo(function TitrationSection({
   aggregates: NightlyAggregate[];
 }) {
   const result = useMemo<TitrationResult | null>(() => {
-    const pressures = aggregates.map((a) => a.pressureMean);
-    const ahiValues = aggregates.map((a) => a.ahi);
+    // Null-handling (pairwise deletion): drop the whole (pressure, AHI) pair
+    // when AHI is null (undefined rate) so the arrays stay aligned and the
+    // titration regression sees only nights with a defined AHI.
+    const pressures: number[] = [];
+    const ahiValues: number[] = [];
+    for (const a of aggregates) {
+      if (a.ahi === null) continue;
+      pressures.push(a.pressureMean);
+      ahiValues.push(a.ahi);
+    }
     if (pressures.length < 3) return null;
     return titrationHelper(pressures, ahiValues);
   }, [aggregates]);
@@ -341,7 +362,11 @@ const BiPAPSection = React.memo(function BiPAPSection({
     const ahiValues: number[] = [];
 
     for (const agg of aggregates) {
-      if (agg.epapMedian !== null && agg.ipapMedian !== null) {
+      // Null-handling (pairwise/listwise deletion): require EPAP, IPAP, AND a
+      // defined AHI together. A null AHI is an undefined rate (not zero), so a
+      // night missing any of the three is dropped as a whole row, keeping all
+      // three arrays index-aligned for the effectiveness regression.
+      if (agg.epapMedian !== null && agg.ipapMedian !== null && agg.ahi !== null) {
         epapValues.push(agg.epapMedian);
         ipapValues.push(agg.ipapMedian);
         ahiValues.push(agg.ahi);

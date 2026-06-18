@@ -227,8 +227,14 @@ export class Validator {
       }
     }
 
-    // AHI sanity check
-    if (aggregate.ahi > MAX_SANE_AHI) {
+    // AHI sanity check.
+    //
+    // Null-handling (skip check): a null AHI is an UNDEFINED rate (recording
+    // below MIN_INDEX_USAGE_HOURS), not an out-of-range value — it is a valid
+    // "no defined rate" state, so it must NOT raise a HIGH_AHI warning. Skipping
+    // also keeps `context.ahi` numeric (the context value type is
+    // string | number | boolean and cannot hold null).
+    if (aggregate.ahi !== null && aggregate.ahi > MAX_SANE_AHI) {
       warnings.push({
         code: 'HIGH_AHI',
         message: `Computed AHI ${aggregate.ahi.toFixed(1)} exceeds ${MAX_SANE_AHI}, possible data error`,

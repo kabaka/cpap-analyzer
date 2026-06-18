@@ -287,6 +287,83 @@ describe('ReportService', () => {
       expect(csv).toContain('Mean AHI:');
     });
 
+    it('renders an insufficient-data indicator for a null-rate night and pools the mean over valid nights only', () => {
+      // Two valid nights with EQUAL usage (pooled == unweighted): mean =
+      // (3.2*7 + 4.0*7)/(7+7) = (3.2 + 4.0)/2 = 3.6 → "3.6" at 1 dp.
+      // The null-AHI night (sub-floor mask-fit clip, usage 0.02 h) is excluded
+      // from the mean and renders "insufficient data" for its rate cells.
+      const aggregates = [
+        makeAggregate({ id: 'v1', date: '2024-01-01', ahi: 3.2, usageHours: 7 }),
+        makeAggregate({ id: 'v2', date: '2024-01-02', ahi: 4.0, usageHours: 7 }),
+        makeAggregate({
+          id: 'nullnight',
+          date: '2024-01-03',
+          ahi: null,
+          ahiObstructive: null,
+          ahiCentral: null,
+          ahiHypopnea: null,
+          usageHours: 0.02,
+        }),
+      ];
+      const csv = buildCSVFromAggregates(aggregates, DATE_RANGE);
+      const lines = csv.split('\n');
+
+      // Mean AHI excludes the null night and is the pooled rate of the valid two.
+      expect(csv).toContain('# Mean AHI: 3.6');
+      // All three sessions are still counted.
+      expect(csv).toContain('# Total Sessions: 3');
+
+      // The null night's row surfaces the insufficient-data indicator.
+      const nullRow = lines.find((l) => !l.startsWith('#') && l.startsWith('2024-01-03'));
+      expect(nullRow).toBeDefined();
+      expect(nullRow).toContain('insufficient data');
+      const cells = nullRow!.split(',');
+      // date, ahi, ahiObstructive, ahiCentral, ahiHypopnea, ...
+      expect(cells[1]).toBe('insufficient data');
+      expect(cells[2]).toBe('insufficient data');
+      expect(cells[3]).toBe('insufficient data');
+      expect(cells[4]).toBe('insufficient data');
+    });
+
+    it('generates a PDF without throwing when a null-AHI night is present', async () => {
+      const withNull = [
+        makeAggregate({ id: 'v1', date: '2024-01-01', ahi: 3.2, usageHours: 7 }),
+        makeAggregate({
+          id: 'nullnight',
+          date: '2024-01-02',
+          ahi: null,
+          ahiObstructive: null,
+          ahiCentral: null,
+          ahiHypopnea: null,
+          usageHours: 0.02,
+        }),
+      ];
+      mockGetDB.mockResolvedValue({
+        getNightlyAggregatesByDateRange: vi.fn().mockResolvedValue(withNull),
+      });
+
+      const selection: ReportContentSelection = {
+        template: 'full-analysis',
+        dateRange: DATE_RANGE,
+        sections: {
+          summaryStatistics: true,
+          sessionDetails: true,
+          ahiTrend: true,
+          leakAnalysis: false,
+          pressureMetrics: false,
+          eventBreakdown: false,
+          complianceReport: true,
+          usagePatterns: false,
+        },
+        format: 'pdf',
+      };
+
+      const result = await generatePDF(selection);
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.mimeType).toBe('application/pdf');
+      expect(mockJsPDFInstance.output).toHaveBeenCalledWith('blob');
+    });
+
     it('should report compliance rate in the comment header', () => {
       const csv = buildCSVFromAggregates(SAMPLE_AGGREGATES, DATE_RANGE);
       // 2 out of 3 compliant = 66.7%

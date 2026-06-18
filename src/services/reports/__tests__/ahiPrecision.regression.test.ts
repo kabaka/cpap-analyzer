@@ -104,6 +104,46 @@ describe('AHI display-precision regression (D9)', () => {
     expect(csv).not.toMatch(/Mean AHI: \d+\.\d{2}/);
   });
 
+  it('renders "insufficient data" for a null-rate night and pools the mean over valid nights only', () => {
+    // Two valid nights with EQUAL usage (so pooled == unweighted): pooled mean
+    // = (3.2*7 + 4.0*7)/(7+7) = (3.2 + 4.0)/2 = 3.6 → "3.6" at 1 dp.
+    // The third night is a sub-floor mask-fit clip: every per-hour rate is null
+    // (undefined), usage 0.02 h. It must NOT contribute to the mean and its rate
+    // cells must render the literal "insufficient data" marker, not 0 or blank.
+    const aggregates = [
+      makeAggregate({ id: 'v1', date: '2024-01-01', ahi: 3.2, usageHours: 7 }),
+      makeAggregate({ id: 'v2', date: '2024-01-02', ahi: 4.0, usageHours: 7 }),
+      makeAggregate({
+        id: 'nullnight',
+        date: '2024-01-03',
+        ahi: null,
+        ahiObstructive: null,
+        ahiCentral: null,
+        ahiHypopnea: null,
+        usageHours: 0.02,
+      }),
+    ];
+    const csv = buildCSVFromAggregates(aggregates, DATE_RANGE);
+    const lines = csv.split('\n');
+
+    // Mean AHI header is the POOLED rate over the two valid nights only.
+    expect(csv).toContain('# Mean AHI: 3.6');
+
+    // The data row for the null night must carry the insufficient-data marker
+    // for every nullable per-hour rate column (ahi/obstructive/central/hypopnea).
+    const nullRow = lines.find((l) => !l.startsWith('#') && l.startsWith('2024-01-03'));
+    expect(nullRow).toBeDefined();
+    const cells = nullRow!.split(',');
+    // Columns: date, ahi, ahiObstructive, ahiCentral, ahiHypopnea, ...
+    expect(cells[1]).toBe('insufficient data');
+    expect(cells[2]).toBe('insufficient data');
+    expect(cells[3]).toBe('insufficient data');
+    expect(cells[4]).toBe('insufficient data');
+    // The null night must not have leaked a 0 into any rate column.
+    expect(cells.slice(1, 5)).not.toContain('0');
+    expect(cells.slice(1, 5)).not.toContain('0.0');
+  });
+
   it('formatMetric("ahi") never emits more than one decimal (worker + view path)', () => {
     expect(formatMetric('ahi', 3.3666666)).toBe('3.4');
     expect(formatMetric('ahi', 4.97)).toBe('5.0');

@@ -538,9 +538,21 @@ export function Breathing(): JSX.Element {
   const nightFlags = useMemo<TecsaNightFlag[]>(() => {
     const threshold = classification?.caiThreshold ?? 5;
     const obstructiveControlled = 5;
+    // Null-handling (skip-night): a night whose central or obstructive index is
+    // null was below the rate-validity floor (MIN_INDEX_USAGE_HOURS), so its
+    // per-hour rate is undefined — not zero. The TECSA candidate rule and the
+    // CAI sparkline both require numeric indices, so such nights cannot be
+    // candidates and carry no plottable CAI. We drop them entirely (listwise on
+    // the central/obstructive pair) rather than coercing to 0, which would
+    // fabricate a benign-looking night. These nights are already excluded by the
+    // leak/usage gates in spirit; this makes the rate-validity exclusion explicit.
     return aggregates
       .slice()
       .sort((a, b) => a.date.localeCompare(b.date))
+      .filter(
+        (a): a is typeof a & { ahiCentral: number; ahiObstructive: number } =>
+          a.ahiCentral !== null && a.ahiObstructive !== null,
+      )
       .map((a) => {
         const highLeak = a.leakMedian > LEAK_NOTICE_LPM || a.usageHours < 2;
         const candidate =

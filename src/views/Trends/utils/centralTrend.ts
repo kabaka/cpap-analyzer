@@ -58,7 +58,12 @@ function weightedCentralIndex(nights: readonly NightlyAggregate[]): number {
   let eventHours = 0;
   let usageHours = 0;
   for (const n of nights) {
-    if (n.usageHours >= MIN_CENTRAL_USAGE_HOURS) {
+    // Null-handling (skip-night): a null central index is an UNDEFINED rate
+    // (recording below the rate-validity floor), not zero. Such a night
+    // contributes nothing to this duration-weighted pooled rate. The ≥ 1 h
+    // usage gate already excludes sub-floor nights, but the explicit null guard
+    // keeps the contract intent clear and survives any gate change.
+    if (n.usageHours >= MIN_CENTRAL_USAGE_HOURS && n.ahiCentral !== null) {
       eventHours += n.ahiCentral * n.usageHours;
       usageHours += n.usageHours;
     }

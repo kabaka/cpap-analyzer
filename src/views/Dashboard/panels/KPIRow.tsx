@@ -75,7 +75,11 @@ interface KPIRowProps {
 const KPIRow = React.memo(function KPIRow({ stats, loading }: KPIRowProps) {
   const colors = useChartColors();
 
-  const ahiSparkline = stats?.trendData.map((d) => d.ahi) ?? [];
+  // d.ahi is null on nights too short for a per-hour rate. The sparkline
+  // consumer takes number[] and cannot express gaps, so drop the null nights
+  // (never coerce to 0, which would draw a spurious dip to zero).
+  const ahiSparkline =
+    stats?.trendData.map((d) => d.ahi).filter((v): v is number => v != null) ?? [];
   const leakSparkline = stats?.trendData.map((d) => d.leakMedian) ?? [];
   const complianceSparkline =
     stats?.trendData.map((d) => (d.complianceStatus === 'compliant' ? 1 : 0)) ?? [];

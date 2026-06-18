@@ -157,6 +157,93 @@ describe('useSummaryStats', () => {
     expect(dates).toEqual(sortedDates);
   });
 
+  it('weights mean AHI by usage hours (unequal usage)', async () => {
+    const db = await getDB();
+    // Night A: ahi=10 over 8 h; Night B: ahi=2 over 1 h.
+    // Pooled (duration-weighted) mean = (10*8 + 2*1) / (8 + 1) = 82/9 ≈ 9.111,
+    // NOT the unweighted (10 + 2)/2 = 6.0 — a long high-AHI night must dominate.
+    await db.addNightlyAggregate(makeAggregate({ date: '2025-06-01', ahi: 10, usageHours: 8 }));
+    await db.addNightlyAggregate(makeAggregate({ date: '2025-06-02', ahi: 2, usageHours: 1 }));
+
+    const dateRange = { start: new Date('2025-06-01'), end: new Date('2025-06-30') };
+    const { result } = renderHook(() => useSummaryStats(dateRange));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.stats).not.toBeNull();
+    expect(result.current.stats!.meanAHI).toBeCloseTo(82 / 9, 3);
+    // Guard against a regression to the unweighted arithmetic mean.
+    expect(result.current.stats!.meanAHI).not.toBeCloseTo(6.0, 3);
+  });
+
+  it('excludes null-AHI short sessions from mean, median, and trend', async () => {
+    const db = await getDB();
+    // Three valid nights (equal usage so pooled == unweighted): ahi 4, 6, 8.
+    await db.addNightlyAggregate(makeAggregate({ date: '2025-06-01', ahi: 4, usageHours: 7 }));
+    await db.addNightlyAggregate(makeAggregate({ date: '2025-06-02', ahi: 6, usageHours: 7 }));
+    await db.addNightlyAggregate(makeAggregate({ date: '2025-06-03', ahi: 8, usageHours: 7 }));
+    // A sub-floor mask-fit clip: AHI is undefined (null), tiny usage hours.
+    await db.addNightlyAggregate(
+      makeAggregate({
+        date: '2025-06-04',
+        ahi: null,
+        usageHours: 0.01,
+        eventCount: 1,
+        eventsByType: {
+          obstructive: 1,
+          central: 0,
+          mixed: 0,
+          hypopnea: 0,
+          rera: 0,
+          flowLimitation: 0,
+          largeLeak: 0,
+          periodicBreathing: 0,
+        },
+      }),
+    );
+
+    const dateRange = { start: new Date('2025-06-01'), end: new Date('2025-06-30') };
+    const { result } = renderHook(() => useSummaryStats(dateRange));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.stats).not.toBeNull();
+    // Pooled over the 3 valid nights only (equal usage) = (4 + 6 + 8)/3 = 6.0.
+    expect(result.current.stats!.meanAHI).toBeCloseTo(6.0, 3);
+    // Median of [4, 6, 8] with the null night excluded.
+    expect(result.current.stats!.medianAHI).toBe(6);
+    // The null night still counts as a session.
+    expect(result.current.stats!.totalSessions).toBe(4);
+
+    // The null night must appear in the trend as a gap (ahi === null), never 0.
+    const nullPoint = result.current.stats!.trendData.find((t) => t.date === '2025-06-04');
+    expect(nullPoint).toBeDefined();
+    expect(nullPoint!.ahi).toBeNull();
+    expect(nullPoint!.ahi).not.toBe(0);
+  });
+
+  it('trendData carries null AHI as a gap, not zero', async () => {
+    const db = await getDB();
+    await db.addNightlyAggregate(makeAggregate({ date: '2025-06-01', ahi: 5, usageHours: 7 }));
+    await db.addNightlyAggregate(makeAggregate({ date: '2025-06-02', ahi: null, usageHours: 0.5 }));
+
+    const dateRange = { start: new Date('2025-06-01'), end: new Date('2025-06-30') };
+    const { result } = renderHook(() => useSummaryStats(dateRange));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.stats).not.toBeNull();
+    const nullPoint = result.current.stats!.trendData.find((t) => t.date === '2025-06-02');
+    expect(nullPoint).toBeDefined();
+    expect(nullPoint!.ahi).toBeNull();
+  });
+
   it('should handle errors gracefully', async () => {
     const mockGetDB = vi.spyOn(await import('@/services/storage/getDB'), 'getDB');
     mockGetDB.mockRejectedValueOnce(new Error('DB failure'));

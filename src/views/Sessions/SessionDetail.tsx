@@ -316,29 +316,53 @@ function EventSummaryTable({ events }: EventSummaryTableProps) {
  * Respiratory Disturbance Index: AHI + RERA index. Prefer the stored `rdi`
  * field; fall back to `ahi + ahiRera` for aggregates persisted before the
  * field existed (see {@link NightlyAggregate.rdi}).
+ *
+ * Returns `null` when no rate is defined (recording too short): `rdi` is null
+ * and the `ahi + ahiRera` fallback cannot be formed because either operand is
+ * null. Never coerces a missing rate to 0.
  */
-function resolveRdi(aggregate: NightlyAggregate): number {
-  return aggregate.rdi ?? aggregate.ahi + aggregate.ahiRera;
+function resolveRdi(aggregate: NightlyAggregate): number | null {
+  if (aggregate.rdi != null) return aggregate.rdi;
+  if (aggregate.ahi != null && aggregate.ahiRera != null) {
+    return aggregate.ahi + aggregate.ahiRera;
+  }
+  return null;
 }
 
 function AHICard({ aggregate }: { aggregate: NightlyAggregate }) {
-  const severity = classifyAhiSeverity(aggregate.ahi);
-  const badgeVariant = ahiBadgeVariant(severity);
+  // aggregate.ahi is null when the recording was too short for a per-hour
+  // rate; show an em-dash with an accessible explanation rather than a 0.
+  const ahiDefined = aggregate.ahi != null;
+  const severity = ahiDefined ? classifyAhiSeverity(aggregate.ahi) : null;
+  const badgeVariant = severity ? ahiBadgeVariant(severity) : 'default';
   const rdi = resolveRdi(aggregate);
 
   return (
     <Card className={styles.metricCard}>
       <div className={styles.metricCardHeader}>
         <h3 className={styles.metricCardTitle}>AHI</h3>
-        <Badge variant={badgeVariant} size="sm">
-          {severity.charAt(0).toUpperCase() + severity.slice(1)}
-        </Badge>
+        {severity ? (
+          <Badge variant={badgeVariant} size="sm">
+            {severity.charAt(0).toUpperCase() + severity.slice(1)}
+          </Badge>
+        ) : (
+          <span title="Insufficient recording time" aria-label="Not available">
+            <Badge variant="default" size="sm">
+              N/A
+            </Badge>
+          </span>
+        )}
       </div>
       <div className={styles.metricPrimary}>
         <span
-          className={`${styles.metricValue} ${styles[`ahi${severity.charAt(0).toUpperCase() + severity.slice(1)}`]}`}
+          className={`${styles.metricValue} ${
+            severity
+              ? (styles[`ahi${severity.charAt(0).toUpperCase() + severity.slice(1)}`] ?? '')
+              : ''
+          }`}
+          title={ahiDefined ? undefined : 'Insufficient recording time'}
         >
-          {aggregate.ahi.toFixed(1)}
+          {fmt(aggregate.ahi)}
         </span>
         <span className={styles.metricUnit}>events/hr</span>
       </div>
@@ -360,10 +384,10 @@ function AHICard({ aggregate }: { aggregate: NightlyAggregate }) {
           <span className={styles.breakdownLabel}>Mixed</span>
           <span className={styles.breakdownValue}>{fmt(aggregate.ahiMixed)}</span>
         </div>
-        {(aggregate.ahiUnclassified ?? 0) > 0 && (
+        {(aggregate.ahiUnclassified === null || (aggregate.ahiUnclassified ?? 0) > 0) && (
           <div className={styles.breakdownItem}>
             <span className={styles.breakdownLabel}>Unclassified</span>
-            <span className={styles.breakdownValue}>{fmt(aggregate.ahiUnclassified ?? 0)}</span>
+            <span className={styles.breakdownValue}>{fmt(aggregate.ahiUnclassified)}</span>
           </div>
         )}
         <div className={styles.breakdownItem}>

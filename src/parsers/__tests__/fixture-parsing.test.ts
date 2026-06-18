@@ -338,7 +338,7 @@ describe('Fixture parsing', () => {
       expect(types).not.toContain('MixedApnea');
     });
 
-    it('should compute AHI correctly from known events', () => {
+    it('nullifies per-hour indices for the sub-1-hour fixture but preserves event counts', () => {
       const brp = parseAndInterpret('brp-airsense11.edf');
       const pld = parseAndInterpret('pld-airsense11.edf');
       const eve = parseAndInterpret('eve-airsense11.edf');
@@ -348,23 +348,29 @@ describe('Fixture parsing', () => {
       const results = builder.buildSessions([brp, pld, eve, sad]);
       const aggregate = results[0]!.aggregate;
 
-      // AHI buckets: ObstructiveApnea, CentralApnea, MixedApnea,
-      // UnclassifiedApnea, and Hypopnea each have their own index. RERA is NOT
-      // part of AHI (it belongs to RDI); it is added here only because this
-      // fixture scores no RERAs, so it contributes 0.
-      const totalAHIEvents =
-        aggregate.ahiObstructive +
-        aggregate.ahiCentral +
-        aggregate.ahiMixed +
-        (aggregate.ahiUnclassified ?? 0) +
-        aggregate.ahiHypopnea +
-        aggregate.ahiRera;
-      // Should be the AHI per hour; total depends on usage hours
-      // All fixture files have same startTime; session duration = 60 seconds max
-      // The AHI counts are per-hour rates, verify they're consistent:
-      // If usage=0 (maskPressure from PLD is ~10 cmH2O, so usage > 0)
-      expect(aggregate.ahi).toBeGreaterThan(0);
-      expect(totalAHIEvents).toBe(aggregate.ahi);
+      // These fixtures share one startTime and span only ~60 seconds of usage —
+      // far below the 1-hour rate-validity floor (MIN_INDEX_USAGE_HOURS). A
+      // per-hour index over seconds of recording is meaningless (the old code
+      // would have extrapolated to a wildly inflated rate), so EVERY per-hour
+      // index must be null here — never 0, never an inflated number.
+      expect(aggregate.usageHours).toBeLessThan(1);
+      expect(aggregate.ahi).toBeNull();
+      expect(aggregate.rdi).toBeNull();
+      expect(aggregate.ahiObstructive).toBeNull();
+      expect(aggregate.ahiCentral).toBeNull();
+      expect(aggregate.ahiMixed).toBeNull();
+      expect(aggregate.ahiHypopnea).toBeNull();
+      expect(aggregate.ahiRera).toBeNull();
+
+      // The raw event COUNTS are not rates and remain fully populated, so the
+      // events are still recorded and visible — they just don't anchor a rate.
+      const totalApneaHypopnea =
+        aggregate.eventsByType.obstructive +
+        aggregate.eventsByType.central +
+        aggregate.eventsByType.mixed +
+        (aggregate.eventsByType.unclassified ?? 0) +
+        aggregate.eventsByType.hypopnea;
+      expect(totalApneaHypopnea).toBeGreaterThan(0);
     });
 
     it('should return undefined SpO2 stats (all-zero sentinel)', () => {

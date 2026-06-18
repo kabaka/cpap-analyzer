@@ -9,6 +9,7 @@
  */
 
 export * from './constants';
+export * from './rateIndex';
 export * from './poissonCI';
 export * from './rollingBand';
 export * from './reliabilityTier';

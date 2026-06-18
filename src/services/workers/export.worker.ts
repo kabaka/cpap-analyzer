@@ -8,9 +8,21 @@
  */
 
 import * as Comlink from 'comlink';
-import { formatMetric } from '@/analysis/uncertainty';
+import { formatMetric, pooledRate } from '@/analysis/uncertainty';
 import type { NightlyAggregate } from '@/types';
 import type { EncryptionParams } from '@/services/reports/types';
+
+/**
+ * CSV/label indicator for a per-hour rate whose recording was too short for a
+ * defined rate. Matches the ReportService convention — null rate cells render
+ * as this marker, never blank or 0.
+ */
+const INSUFFICIENT_DATA = 'insufficient data';
+
+/** Render a nullable per-hour rate cell: a number, or the insufficient marker. */
+function rateCell(value: number | null): string | number {
+  return value === null ? INSUFFICIENT_DATA : value;
+}
 
 // ── Helpers (duplicated to avoid main-thread module imports) ─────
 
@@ -57,13 +69,13 @@ function getField(a: NightlyAggregate, field: CSVHeader): string | number {
     case 'date':
       return a.date;
     case 'ahi':
-      return a.ahi;
+      return rateCell(a.ahi);
     case 'ahiObstructive':
-      return a.ahiObstructive;
+      return rateCell(a.ahiObstructive);
     case 'ahiCentral':
-      return a.ahiCentral;
+      return rateCell(a.ahiCentral);
     case 'ahiHypopnea':
-      return a.ahiHypopnea;
+      return rateCell(a.ahiHypopnea);
     case 'eventCount':
       return a.eventCount;
     case 'leakMedian':
@@ -110,8 +122,13 @@ function generateCSV(
   dateRange: { start: string; end: string },
 ): string {
   const total = aggregates.length;
-  const ahiValues = aggregates.map((a) => a.ahi);
-  const meanAHI = total > 0 ? ahiValues.reduce((s, v) => s + v, 0) / total : 0;
+  // AHI is a per-hour RATE: nights with a null AHI had too little recording for
+  // a defined rate and are EXCLUDED from every AHI statistic (never coerced to
+  // 0). The summary mean is the duration-weighted POOLED rate
+  // (Σ ahi·hours / Σ hours = Σ events / Σ hours); the median is over the
+  // qualifying (non-null) nights only.
+  const meanAHI = pooledRate(aggregates.map((a) => ({ rate: a.ahi, hours: a.usageHours }))) ?? 0;
+  const qualifyingAhiValues = aggregates.map((a) => a.ahi).filter((v): v is number => v !== null);
   const compliantCount = aggregates.filter((a) => a.complianceStatus === 'compliant').length;
   const complianceRate = total > 0 ? compliantCount / total : 0;
 
@@ -124,7 +141,7 @@ function generateCSV(
   lines.push(`# Total Sessions: ${total}`);
   // AHI is rendered at 1 dp (consensus D9 — no false precision).
   lines.push(`# Mean AHI: ${formatMetric('ahi', meanAHI)}`);
-  lines.push(`# Median AHI: ${formatMetric('ahi', median(ahiValues))}`);
+  lines.push(`# Median AHI: ${formatMetric('ahi', median(qualifyingAhiValues))}`);
   lines.push(`# Compliance Rate: ${(complianceRate * 100).toFixed(1)}%`);
   lines.push('');
 

@@ -41,7 +41,13 @@ import styles from './IntegrationAnalysis.module.css';
 interface CpapMetricDef {
   readonly key: string;
   readonly label: string;
-  readonly extract: (agg: NightlyAggregate) => number;
+  /**
+   * Per-night metric accessor. Per-hour rate indices (AHI and its sub-indices)
+   * are `number | null`: `null` is an UNDEFINED rate (recording below
+   * MIN_INDEX_USAGE_HOURS), never zero. `extractCpapFromJoined` drops null
+   * (and non-finite) values pairwise so correlations only see defined nights.
+   */
+  readonly extract: (agg: NightlyAggregate) => number | null;
 }
 
 const CPAP_METRICS: readonly CpapMetricDef[] = [
@@ -241,8 +247,12 @@ function extractCpapFromJoined(
 ): Array<{ date: string; value: number }> {
   const result: Array<{ date: string; value: number }> = [];
   for (const record of data) {
+    // Null-handling (pairwise deletion): a null index is an undefined rate
+    // (sub-floor recording), not zero. Drop it (and any non-finite value) so it
+    // never enters a correlation / Bland-Altman / lagged-CCF series; alignSeries
+    // then drops the matching wearable point, keeping the paired series aligned.
     const v = metric.extract(record.cpap);
-    if (Number.isFinite(v)) {
+    if (v !== null && Number.isFinite(v)) {
       result.push({ date: record.date, value: v });
     }
   }
@@ -448,21 +458,44 @@ const CorrelationMatrixTab = React.memo(function CorrelationMatrixTab({
   const matrixResult = useMemo((): CrossSourceCorrelationMatrix | null => {
     if (data.length < 3 || availableWearableMetrics.length === 0) return null;
 
-    // Build CpapDailyRecord array
-    const cpapData: CpapDailyRecord[] = data.map((d) => ({
-      date: d.date,
-      ahi: d.cpap.ahi,
-      pressureMean: d.cpap.pressureMean,
-      pressure95th: d.cpap.pressureP95,
-      leakMedian: d.cpap.leakMedian,
-      leak95th: d.cpap.leakP95,
-      usageHours: d.cpap.usageHours,
-      ahiObstructive: d.cpap.ahiObstructive,
-      ahiCentral: d.cpap.ahiCentral,
-      respiratoryRateMedian: d.cpap.respRateMedian ?? undefined,
-      tidalVolumeMedian: d.cpap.tidalVolumeMedian ?? undefined,
-      minuteVentilationMedian: d.cpap.minuteVentMean ?? undefined,
-    }));
+    // Build CpapDailyRecord array.
+    //
+    // Null-handling (listwise deletion): CpapDailyRecord requires numeric `ahi`
+    // and sub-indices, but those are `number | null` on a NightlyAggregate —
+    // `null` is an UNDEFINED rate (recording below MIN_INDEX_USAGE_HOURS), never
+    // zero. Rather than widen the analysis module's record contract, we drop the
+    // whole night when `ahi` is null. Because every AHI component shares the same
+    // rate-validity floor and usage-hours denominator, `ahi !== null` guarantees
+    // `ahiObstructive`/`ahiCentral` are also non-null on the kept rows, so the
+    // matrix never sees a fabricated 0. CAVEAT FOR QA: this reduces the row count
+    // (and thus the per-cell n) for the correlation matrix on date ranges that
+    // contain sub-floor nights.
+    const cpapData: CpapDailyRecord[] = data
+      .filter(
+        (
+          d,
+        ): d is typeof d & {
+          cpap: NightlyAggregate & {
+            ahi: number;
+            ahiObstructive: number;
+            ahiCentral: number;
+          };
+        } => d.cpap.ahi !== null && d.cpap.ahiObstructive !== null && d.cpap.ahiCentral !== null,
+      )
+      .map((d) => ({
+        date: d.date,
+        ahi: d.cpap.ahi,
+        pressureMean: d.cpap.pressureMean,
+        pressure95th: d.cpap.pressureP95,
+        leakMedian: d.cpap.leakMedian,
+        leak95th: d.cpap.leakP95,
+        usageHours: d.cpap.usageHours,
+        ahiObstructive: d.cpap.ahiObstructive,
+        ahiCentral: d.cpap.ahiCentral,
+        respiratoryRateMedian: d.cpap.respRateMedian ?? undefined,
+        tidalVolumeMedian: d.cpap.tidalVolumeMedian ?? undefined,
+        minuteVentilationMedian: d.cpap.minuteVentMean ?? undefined,
+      }));
 
     // Build wearable metric series
     const wearableData: Record<string, Array<{ date: string; value: number }>> = {};

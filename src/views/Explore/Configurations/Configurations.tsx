@@ -71,7 +71,13 @@ interface MetricDef {
   readonly label: string;
   readonly axisLabel: string;
   readonly unit: string;
-  readonly getNightValue: (a: NightlyAggregate) => number;
+  /**
+   * Per-night metric accessor. Returns `number | null`: per-hour rate indices
+   * (AHI, central) are `null` when the night was below the rate-validity floor
+   * (an UNDEFINED rate, never zero). Consumers drop nulls (listwise) before
+   * plotting; leak/usage accessors never return null.
+   */
+  readonly getNightValue: (a: NightlyAggregate) => number | null;
   readonly getSummary: (p: ConfigPeriod) => OutcomeSummary | null;
   /** Lower is better (the typical case for clinical outcomes). */
   readonly lowerIsBetter: boolean;
@@ -556,7 +562,12 @@ function CompareSection({ periods, metric, onMetricChange }: CompareSectionProps
         ? []
         : periods.map((p) => ({
             label: `${formatConfigKey(p.settings)} (n=${p.nights})`,
-            values: p.aggregates.map((a) => metricDef.getNightValue(a)),
+            // Null-handling (listwise): drop nights with an undefined rate
+            // (null index) before plotting — the box-plot summarises only nights
+            // with a defined value, so the plotted n may be < p.nights.
+            values: p.aggregates
+              .map((a) => metricDef.getNightValue(a))
+              .filter((v): v is number => v !== null),
           })),
     [periods, metricDef],
   );
@@ -609,7 +620,11 @@ function SinglePeriodStrip({
   readonly metric: MetricDef;
 }): JSX.Element {
   const colors = useChartColors();
-  const values = period.aggregates.map((a) => metric.getNightValue(a));
+  // Null-handling (listwise): a null index is an undefined rate, not a plottable
+  // 0; drop those nights from the per-night strip.
+  const values = period.aggregates
+    .map((a) => metric.getNightValue(a))
+    .filter((v): v is number => v !== null);
   const max = Math.max(1, ...values);
   const width = 600;
   const height = 80;
