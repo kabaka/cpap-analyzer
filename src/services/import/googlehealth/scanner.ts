@@ -45,6 +45,16 @@ const DATA_TYPE_SOURCES: Readonly<Record<string, readonly DataTypeSource[]>> = {
       pattern: /^sleep-\d{4}-\d{2}-\d{2}\.json$/,
       tier: 1,
     },
+    {
+      // Sleep-stage hypnograms live in the same `sleep-*.json` files as the
+      // session summaries. The parser returns both `{ sessions, stages }` from
+      // one read, and the import dispatch routes each data type to its own
+      // output bucket — mirroring the snoring precedent below, where
+      // `snoring_daily` and `snoring_segments` share a single source file.
+      dataType: 'sleep_stages',
+      pattern: /^sleep-\d{4}-\d{2}-\d{2}\.json$/,
+      tier: 1,
+    },
   ],
   'Sleep Score': [
     {
