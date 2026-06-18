@@ -406,6 +406,35 @@ describe('EDFParser', () => {
       expect(result.isValid).toBe(false);
       expect(result.errors.some((e) => e.code === 'HEADER_TOO_SHORT')).toBe(true);
     });
+
+    // Security regression (memory-exhaustion DoS): a tiny file whose header
+    // declares an implausibly large per-record duration must be rejected, not
+    // used to derive an astronomical recording duration downstream.
+    it('should reject an implausibly large data record duration', () => {
+      const buffer = generateEDFFile({
+        dataRecordDuration: 100000, // 1e5 s/record — far above the 60 s ceiling
+        numDataRecords: 1,
+        signals: [
+          {
+            label: 'Flow',
+            physicalDimension: 'L/min',
+            physicalMin: -60,
+            physicalMax: 60,
+            samplesPerRecord: 1,
+          },
+        ],
+      });
+      // Buffer is tiny (one 1-sample record) yet would imply a 1e5 s recording.
+      expect(buffer.byteLength).toBeLessThan(1024);
+      let thrown: unknown;
+      try {
+        parser.parse(buffer);
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(EDFParseError);
+      expect((thrown as EDFParseError).code).toBe('INVALID_RECORD_DURATION');
+    });
   });
 
   // -----------------------------------------------------------------------
