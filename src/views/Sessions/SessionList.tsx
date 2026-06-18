@@ -36,7 +36,12 @@ interface SessionRow {
   machineModel: string;
   durationMinutes: number;
   usageMinutes: number;
-  ahi: number;
+  /**
+   * Per-night AHI rate, or `null` when the recording was below the
+   * rate-validity floor (undefined rate). Rendered as an "insufficient
+   * recording time" indicator, never as 0.
+   */
+  ahi: number | null;
   leakMedian: number;
   eventCount: number;
   complianceStatus: 'compliant' | 'non-compliant' | 'partial';
@@ -118,7 +123,11 @@ function compareRows(a: SessionRow, b: SessionRow, field: SortField): number {
     case 'usageMinutes':
       return a.usageMinutes - b.usageMinutes;
     case 'ahi':
-      return a.ahi - b.ahi;
+      // AHI may be null (recording too short for a per-hour rate). Never
+      // coerce null to 0 here; the directional null-last handling lives in
+      // the sort callback (see sortedRows) so nulls stay last regardless of
+      // sort direction.
+      return (a.ahi ?? 0) - (b.ahi ?? 0);
     case 'leakMedian':
       return a.leakMedian - b.leakMedian;
     case 'eventCount':
@@ -132,7 +141,21 @@ function compareRows(a: SessionRow, b: SessionRow, field: SortField): number {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function AHIBadge({ ahi }: { ahi: number }) {
+function AHIBadge({ ahi }: { ahi: number | null }) {
+  if (ahi == null) {
+    // null = recording too short for a per-hour rate; render the
+    // "insufficient recording time" indicator, never 0.
+    return (
+      <span
+        className={styles.ahiBadge}
+        title="Insufficient recording time"
+        aria-label="Not available"
+      >
+        —
+      </span>
+    );
+  }
+
   const severity = classifyAhiSeverity(ahi);
   return (
     <span
@@ -321,6 +344,17 @@ export default function SessionList() {
   // Sort
   const sortedRows = useMemo(() => {
     const sorted = [...filteredRows].sort((a, b) => {
+      // AHI may be null (recording too short for a per-hour rate). Sort null
+      // entries to the end regardless of direction rather than coercing them
+      // to 0 (which would rank them as the best night). Returning here skips
+      // the direction negation below so nulls stay last.
+      if (sortField === 'ahi') {
+        const aNull = a.ahi == null;
+        const bNull = b.ahi == null;
+        if (aNull || bNull) {
+          return aNull === bNull ? 0 : aNull ? 1 : -1;
+        }
+      }
       const cmp = compareRows(a, b, sortField);
       return sortDirection === 'asc' ? cmp : -cmp;
     });

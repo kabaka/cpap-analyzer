@@ -49,8 +49,12 @@ interface AHITrendChartProps {
 /** Chart record: the nightly fields the chart reads plus the derived band. */
 interface AHIChartPoint {
   date: string;
-  /** Raw per-night AHI (demoted to a faint secondary series). */
-  ahi: number;
+  /**
+   * Raw per-night AHI (demoted to a faint secondary series). `null` when the
+   * recording was too short for a per-hour rate — rendered as a GAP in the
+   * line (never plotted as 0).
+   */
+  ahi: number | null;
   /** Rolling median (P50) over the trailing window — the headline series. */
   ahiMedian: number | null;
   /** Floating [P25, P75] band tuple for the recharts range `<Area>`. */
@@ -84,7 +88,11 @@ const AHITrendChart = React.memo(function AHITrendChart({
 
   // Derive the rolling-median + P25–P75 band from per-night aggregates only.
   const chartData: AHIChartPoint[] = useMemo(() => {
-    const band = buildRollingBandSeries(data, (d) => d.ahi, AHI_BAND_WINDOW_NIGHTS);
+    // d.ahi is null on nights too short for a per-hour rate. Map null to NaN
+    // for the band accessor: rollingMedianBand filters non-finite values per
+    // window, so null nights are skipped from the median/IQR (never treated as
+    // 0) and an all-null window yields a null band (a gap).
+    const band = buildRollingBandSeries(data, (d) => d.ahi ?? NaN, AHI_BAND_WINDOW_NIGHTS);
     return data.map((d, i) => {
       const b = band[i];
       return {
@@ -99,7 +107,7 @@ const AHITrendChart = React.memo(function AHITrendChart({
   const maxAHI = useMemo(() => {
     let m = 0;
     for (const d of chartData) {
-      m = Math.max(m, d.ahi, d.ahiBand?.[1] ?? 0);
+      m = Math.max(m, d.ahi ?? 0, d.ahiBand?.[1] ?? 0);
     }
     return computeAxisMax(m, AHI_AXIS_FLOOR);
   }, [chartData]);
@@ -275,6 +283,7 @@ const AHITrendChart = React.memo(function AHITrendChart({
             strokeWidth={1}
             strokeOpacity={0.3}
             dot={false}
+            connectNulls={false}
             isAnimationActive={false}
             activeDot={{ r: 3, cursor: 'pointer' }}
           />

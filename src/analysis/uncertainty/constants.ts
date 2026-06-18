@@ -84,3 +84,43 @@ export const SPO2_COVERAGE_MIN = 0.5;
  * raises a data-quality flag — it does not by itself set the reliability tier.
  */
 export const SHORT_SESSION_HOURS = 4;
+
+/**
+ * Minimum recording time (hours) below which a per-hour RATE index (AHI, RDI,
+ * the AHI sub-indices, and ODI) is **not defined** and must be represented as
+ * `null` — never `0`, never a clamped number.
+ *
+ * ## Why this exists (the bug it fixes)
+ * A per-hour index is `eventCount / usageHours`. As the denominator approaches
+ * zero the quotient explodes: a single event over ~1 second of recording yields
+ * `1 / (1/3600) = 3600` events/hour. That figure is not "imprecise" — it is
+ * *mathematically meaningless*, an extrapolation of seconds of data to an hour.
+ * A ~5-minute mask-fit clip with one unnoticed event must therefore report "no
+ * defined rate" (`null`), not a poisoned 3600.
+ *
+ * ## Why 1 hour, and why it is its own constant
+ * This is a **rate-validity floor**, deliberately distinct from the two other
+ * thresholds it is easy to confuse it with:
+ *
+ * - It is NOT {@link SHORT_SESSION_HOURS} (4 h, the CMS compliance/adherence
+ *   floor). Compliance accounting answers "did the patient use the machine
+ *   long enough to count?"; this answers "is the recording long enough for a
+ *   per-hour rate to mean anything?". A 2-hour night is non-compliant yet still
+ *   yields a perfectly stable AHI — we must not discard its rate.
+ * - It is NOT {@link POISSON_NORMAL_APPROX_MIN_COUNT} (an event-COUNT precision
+ *   gate). That governs how wide the confidence interval is *given* a valid
+ *   rate; this governs whether a rate exists at all. Count-precision and
+ *   time-validity are orthogonal: 0 events over 1 second is still an undefined
+ *   rate even though the count is precise.
+ *
+ * The 1-hour value follows established prior art in this codebase:
+ * `MIN_CENTRAL_USAGE_HOURS = 1` in `views/Trends/utils/centralTrend.ts` already
+ * excludes nights `< 1 h` from the central-index trend "for rate stability".
+ * An hour also guarantees the denominator is `≥ 1`, so the quotient can never
+ * exceed the raw event count — the runaway-amplification failure mode is
+ * structurally impossible above the floor.
+ *
+ * @see SHORT_SESSION_HOURS — the distinct 4 h compliance/adherence floor.
+ * @see POISSON_NORMAL_APPROX_MIN_COUNT — the distinct event-count precision gate.
+ */
+export const MIN_INDEX_USAGE_HOURS = 1;

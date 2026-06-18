@@ -17,7 +17,8 @@
  * biased toward zero by padding or dropout. See {@link collectValidSamples}.
  */
 
-import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
+import { LEAK_NOTICE_LPM, SPO2_COVERAGE_MIN } from '@/analysis/uncertainty/constants';
+import { rateIndex } from '@/analysis/uncertainty/rateIndex';
 import { CMS_COMPLIANCE_HOURS } from '@/analysis/clinical';
 import type { Event } from '@/types/events';
 import type { Session, NightlyAggregate, ChannelMetadata, MachineSettings } from '@/types/session';
@@ -322,21 +323,32 @@ export class SessionBuilder {
 
     // Compute metrics
     const usageHours = usageSeconds / 3600;
-    const ahiResult = this.computeAHIBreakdown(domainEvents, usageHours);
+    const counts = this.countAHIComponents(domainEvents);
+
+    // Per-hour RATE indices are only defined above the rate-validity floor
+    // (MIN_INDEX_USAGE_HOURS). Below it, a single event over near-zero usage
+    // would yield an arbitrarily large, physiologically meaningless rate
+    // (e.g. 1 / (1/3600) = 3600), so every index is NULL — "no defined rate",
+    // never 0. `eventCount`/`eventsByType` below remain valid (they are raw
+    // counts, not rates). The single rateIndex() call site enforces the floor.
+    //
     // AHI = (obstructive + central + mixed + unclassified apneas + hypopneas) /
     // usage hours. An unclassified apnea (bare ResMed "Apnea", e.g. flagged
     // during high leak when the device cannot resolve obstructive vs. central)
     // is still an apnea and MUST count toward the AHI; it is simply not bucketed
     // as mixed. Per AASM 2012 / ICSD-3 RERAs are EXCLUDED from AHI — they belong
     // to RDI.
-    const ahi =
-      ahiResult.obstructive +
-      ahiResult.central +
-      ahiResult.mixed +
-      ahiResult.unclassified +
-      ahiResult.hypopnea;
+    const ahiObstructive = rateIndex(counts.obstructive, usageHours);
+    const ahiCentral = rateIndex(counts.central, usageHours);
+    const ahiMixed = rateIndex(counts.mixed, usageHours);
+    const ahiUnclassified = rateIndex(counts.unclassified, usageHours);
+    const ahiHypopnea = rateIndex(counts.hypopnea, usageHours);
+    const ahiRera = rateIndex(counts.rera, usageHours);
+    const apneaHypopneaCount =
+      counts.obstructive + counts.central + counts.mixed + counts.unclassified + counts.hypopnea;
+    const ahi = rateIndex(apneaHypopneaCount, usageHours);
     // RDI = AHI + RERA index. Equals AHI when no RERAs are scored.
-    const rdi = ahi + ahiResult.rera;
+    const rdi = rateIndex(apneaHypopneaCount + counts.rera, usageHours);
 
     const leakResult = this.computeLeakStats(channelMap);
     const pressureResult = this.computePressureStats(channelMap);
@@ -360,12 +372,12 @@ export class SessionBuilder {
       date: this.formatDate(startTime),
       ahi,
       rdi,
-      ahiObstructive: ahiResult.obstructive,
-      ahiCentral: ahiResult.central,
-      ahiMixed: ahiResult.mixed,
-      ahiUnclassified: ahiResult.unclassified,
-      ahiHypopnea: ahiResult.hypopnea,
-      ahiRera: ahiResult.rera,
+      ahiObstructive,
+      ahiCentral,
+      ahiMixed,
+      ahiUnclassified,
+      ahiHypopnea,
+      ahiRera,
       eventCount: domainEvents.length,
       eventsByType: this.countEventsByType(domainEvents),
       pressureMean: pressureResult.mean,
@@ -569,11 +581,15 @@ export class SessionBuilder {
   // AHI computation
   // ---------------------------------------------------------------------------
 
-  /** Compute AHI breakdown by event type. */
-  private computeAHIBreakdown(
-    events: readonly Event[],
-    usageHours: number,
-  ): {
+  /**
+   * Count AHI/RDI component events by type (raw counts, NOT rates).
+   *
+   * Converting these counts into per-hour indices is deferred to the single
+   * {@link rateIndex} call site in {@link buildFromGroup}, which enforces the
+   * {@link MIN_INDEX_USAGE_HOURS} rate-validity floor. Keeping this helper
+   * count-only means it cannot reintroduce an unguarded `count / hours`.
+   */
+  private countAHIComponents(events: readonly Event[]): {
     obstructive: number;
     central: number;
     mixed: number;
@@ -581,10 +597,6 @@ export class SessionBuilder {
     hypopnea: number;
     rera: number;
   } {
-    if (usageHours <= 0) {
-      return { obstructive: 0, central: 0, mixed: 0, unclassified: 0, hypopnea: 0, rera: 0 };
-    }
-
     let obstructiveCount = 0;
     let centralCount = 0;
     let mixedCount = 0;
@@ -619,12 +631,12 @@ export class SessionBuilder {
     }
 
     return {
-      obstructive: obstructiveCount / usageHours,
-      central: centralCount / usageHours,
-      mixed: mixedCount / usageHours,
-      unclassified: unclassifiedCount / usageHours,
-      hypopnea: hypopneaCount / usageHours,
-      rera: reraCount / usageHours,
+      obstructive: obstructiveCount,
+      central: centralCount,
+      mixed: mixedCount,
+      unclassified: unclassifiedCount,
+      hypopnea: hypopneaCount,
+      rera: reraCount,
     };
   }
 
@@ -736,7 +748,7 @@ export class SessionBuilder {
     min: number;
     below90Percent: number;
     coveragePercent: number;
-    odi: number;
+    odi: number | null;
   } | null {
     const spo2Channel = channels.get('spo2');
     if (!spo2Channel || spo2Channel.samples.length === 0) return null;
@@ -772,10 +784,19 @@ export class SessionBuilder {
     const coveragePercent =
       sessionDurationSeconds > 0 ? Math.min(100, (validSeconds / sessionDurationSeconds) * 100) : 0;
 
-    // ODI: events per hour of analyzed (valid) oximetry time.
+    // ODI: discrete desaturation EVENTS per hour of analyzed (valid) oximetry
+    // time. Like AHI, this per-hour rate is only defined above a minimum amount
+    // of valid recording: ODI's denominator is valid-oximetry hours, so a night
+    // with only a brief probe-on clip cannot anchor a stable hourly rate. We
+    // require BOTH (a) at least MIN_INDEX_USAGE_HOURS of valid oximetry (the
+    // shared rate-validity floor — a runaway 1/(1/3600)=3600 is impossible above
+    // it) AND (b) coverage of at least SPO2_COVERAGE_MIN of the session, so a
+    // few valid minutes inside a long night do not masquerade as a whole-night
+    // ODI. When either condition fails the rate is undefined → null, never 0.
     const eventCount = this.detectDesaturations(validOrdered, rate);
     const validHours = validSeconds / 3600;
-    const odi = validHours > 0 ? eventCount / validHours : 0;
+    const coverageOk = coveragePercent >= SPO2_COVERAGE_MIN * 100;
+    const odi = coverageOk ? rateIndex(eventCount, validHours) : null;
 
     return { mean, median, min, below90Percent, coveragePercent, odi };
   }

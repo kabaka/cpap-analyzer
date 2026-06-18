@@ -30,7 +30,10 @@ const StatsSidebar = React.memo(function StatsSidebar({
       computeMetricStats(
         'AHI',
         '',
-        aggregates.map((a) => a.ahi),
+        // a.ahi is null on nights too short for a per-hour rate; skip those so
+        // the mean/median/stddev/trend are computed only over defined nights
+        // (never coercing null to 0).
+        aggregates.map((a) => a.ahi).filter((v): v is number => v != null),
       ),
     [aggregates],
   );

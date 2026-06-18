@@ -22,6 +22,7 @@ import type {
 import { STRParser } from '@/parsers/resmed/STRParser';
 import type { MaskInterval } from '@/parsers/resmed/STRParser';
 import type { EventType } from '@/types/events';
+import { MIN_INDEX_USAGE_HOURS } from '@/analysis/uncertainty/constants';
 
 // ---------------------------------------------------------------------------
 // Synthetic builders
@@ -129,7 +130,7 @@ describe('AHI / RDI separation (AASM 2012)', () => {
     expect(agg.ahiRera).toBeCloseTo(3, 1);
     // RDI = AHI + RERA index = 8.
     expect(agg.rdi).toBeCloseTo(8, 1);
-    expect(agg.rdi!).toBeGreaterThan(agg.ahi);
+    expect(agg.rdi!).toBeGreaterThan(agg.ahi!);
   });
 
   it('RDI equals AHI when no RERAs are scored', () => {
@@ -139,7 +140,7 @@ describe('AHI / RDI separation (AASM 2012)', () => {
       events: [evt('ObstructiveApnea', 100), evt('Hypopnea', 200)],
     });
     const agg = builder.buildSessions([interp])[0]!.aggregate;
-    expect(agg.rdi).toBeCloseTo(agg.ahi, 5);
+    expect(agg.rdi).toBeCloseTo(agg.ahi!, 5);
     expect(agg.ahiRera).toBe(0);
   });
 
@@ -377,6 +378,116 @@ describe('usage detection', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Rate-validity floor: per-hour indices are NULL below MIN_INDEX_USAGE_HOURS.
+//
+// A per-hour index is count / usageHours. As usageHours → 0 the quotient
+// explodes (1 event / (1/3600) h = 3600), which is meaningless, not imprecise.
+// Below the 1-hour rate-validity floor every per-hour index must be NULL — not
+// 0, not a clamped number. Raw counts (eventCount, eventsByType) stay valid.
+// ---------------------------------------------------------------------------
+
+describe('rate-validity floor (MIN_INDEX_USAGE_HOURS = 1h)', () => {
+  it('nullifies AHI for a ~1s STR-overlap clip with one event (no 3600 poison)', () => {
+    // The exact mask-fit-test foot-gun: an EDF window with one unnoticed event,
+    // but STR records only a 1-second mask-on interval inside it. usageHours ≈
+    // 1/3600 → the OLD code returned 1 / (1/3600) = 3600. Now: null.
+    const start = new Date(2026, 0, 15, 22, 0, 0);
+    const interp = interpretation({
+      startTime: start,
+      durationSeconds: 300, // 5-minute window
+      channels: [maskPressure(300)],
+      events: [evt('ObstructiveApnea', 1)],
+    });
+    // One 1-second STR interval at the very start of the window.
+    const intervals: MaskInterval[] = [
+      { start: new Date(2026, 0, 15, 22, 0, 0), end: new Date(2026, 0, 15, 22, 0, 1) },
+    ];
+    const byDate = new Map<string, MaskInterval[]>([['2026-01-15', intervals]]);
+    const agg = builder.buildSessions([interp], undefined, byDate)[0]!.aggregate;
+
+    // ~1 second of usage, far below the 1-hour floor.
+    expect(agg.usageHours).toBeCloseTo(1 / 3600, 5);
+    // Every per-hour index is NULL — explicitly NOT 3600 and NOT 0.
+    expect(agg.ahi).toBeNull();
+    expect(agg.rdi).toBeNull();
+    expect(agg.ahiObstructive).toBeNull();
+    expect(agg.ahiCentral).toBeNull();
+    expect(agg.ahiMixed).toBeNull();
+    expect(agg.ahiUnclassified).toBeNull();
+    expect(agg.ahiHypopnea).toBeNull();
+    expect(agg.ahiRera).toBeNull();
+    // …but the raw event COUNT is preserved (it is not a rate).
+    expect(agg.eventCount).toBe(1);
+    expect(agg.eventsByType.obstructive).toBe(1);
+  });
+
+  it('nullifies AHI via the pressure-fallback path for a ~1s mask-on clip with one event', () => {
+    // Same poison, different denominator source: no STR map at all, and the
+    // mask-pressure channel is ON for only ~1 second (then near-ambient), so the
+    // hysteresis detector measures ~1s of usage. Index must be null, not 3600.
+    const rate = 25;
+    const seconds = 300;
+    const samples = new Float32Array(seconds * rate).fill(0.5); // near-ambient
+    // One second above the ON threshold near the start.
+    for (let i = 5 * rate; i < 6 * rate; i++) samples[i] = 10;
+    const interp = interpretation({
+      durationSeconds: seconds,
+      channels: [channel('maskPressure', samples, rate, 'cmH2O')],
+      events: [evt('Hypopnea', 5)],
+    });
+    const agg = builder.buildSessions([interp])[0]!.aggregate;
+
+    expect(agg.usageHours).toBeLessThan(MIN_INDEX_USAGE_HOURS);
+    expect(agg.usageHours).toBeGreaterThan(0);
+    expect(agg.ahi).toBeNull();
+    expect(agg.ahiHypopnea).toBeNull();
+    expect(agg.rdi).toBeNull();
+    // Raw count still recorded.
+    expect(agg.eventCount).toBe(1);
+  });
+
+  it('nullifies indices for a session just BELOW the 1-hour floor', () => {
+    // 59 minutes of usage with events: still below the floor → null indices.
+    const seconds = 59 * 60;
+    const interp = interpretation({
+      durationSeconds: seconds,
+      channels: [maskPressure(seconds)],
+      events: [evt('ObstructiveApnea', 100), evt('Hypopnea', 200)],
+    });
+    const agg = builder.buildSessions([interp])[0]!.aggregate;
+    expect(agg.usageHours).toBeLessThan(MIN_INDEX_USAGE_HOURS);
+    expect(agg.ahi).toBeNull();
+    expect(agg.ahiObstructive).toBeNull();
+    expect(agg.ahiHypopnea).toBeNull();
+  });
+
+  it('computes a finite rate for a session exactly AT the 1-hour floor', () => {
+    // Exactly 1 hour of usage with 3 apnea/hypopnea events → AHI = 3, defined.
+    const seconds = 3600;
+    const interp = interpretation({
+      durationSeconds: seconds,
+      channels: [maskPressure(seconds)],
+      events: [evt('ObstructiveApnea', 100), evt('Hypopnea', 200), evt('CentralApnea', 300)],
+    });
+    const agg = builder.buildSessions([interp])[0]!.aggregate;
+    expect(agg.usageHours).toBeCloseTo(1, 5);
+    expect(agg.ahi).toBeCloseTo(3, 1);
+    expect(agg.ahi).not.toBeNull();
+  });
+
+  it('keeps a finite rate well ABOVE the floor (regression guard for existing behaviour)', () => {
+    const interp = interpretation({
+      durationSeconds: 8 * 3600,
+      channels: [maskPressure(8 * 3600)],
+      events: [evt('ObstructiveApnea', 100), evt('Hypopnea', 200)],
+    });
+    const agg = builder.buildSessions([interp])[0]!.aggregate;
+    // 2 events / 8 h = 0.25, a defined finite rate.
+    expect(agg.ahi).toBeCloseTo(0.25, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Task 3: ODI desaturation-event detection
 // ---------------------------------------------------------------------------
 
@@ -393,54 +504,59 @@ describe('ODI desaturation-event detection (1 Hz)', () => {
   }
 
   it('counts one event for a single true 4% dip over 12 s', () => {
-    // 5 min baseline 96, then a 12 s dip to 92 (4% drop), then recovery.
+    // ≥1 h baseline 96 (above the rate-validity floor so ODI is defined), then a
+    // 12 s dip to 92 (4% drop), then recovery.
     const arr: number[] = [];
-    for (let i = 0; i < 300; i++) arr.push(96);
+    for (let i = 0; i < 3600; i++) arr.push(96);
     for (let i = 0; i < 12; i++) arr.push(92);
     for (let i = 0; i < 120; i++) arr.push(96);
     const agg = builder.buildSessions([spo2Session(arr)])[0]!.aggregate;
-    // One event over (432 s ≈ 0.12 h) of valid time.
+    // One event over the full valid-oximetry time.
     const validHours = arr.length / 3600;
-    expect(agg.oxygenDesaturationIndex).toBeCloseTo(1 / validHours, 1);
+    expect(agg.oxygenDesaturationIndex).toBeCloseTo(1 / validHours, 2);
   });
 
   it('returns 0 events for ±1% noisy jitter', () => {
+    // ≥1 h of valid oximetry (above the rate floor) so ODI is defined and we are
+    // genuinely asserting "no spurious events scored", i.e. ODI === 0, not null.
     const arr: number[] = [];
-    for (let i = 0; i < 600; i++) arr.push(96 + (i % 2 === 0 ? 1 : -1));
+    for (let i = 0; i < 3700; i++) arr.push(96 + (i % 2 === 0 ? 1 : -1));
     const agg = builder.buildSessions([spo2Session(arr)])[0]!.aggregate;
     expect(agg.oxygenDesaturationIndex).toBe(0);
   });
 
   it('does not multi-count a single deep dip as it recovers', () => {
-    // One sustained dip to 88 (8% below 96) for 30 s, then recovery — 1 event.
+    // ≥1 h baseline, one sustained dip to 88 (8% below 96) for 30 s, recovery — 1 event.
     const arr: number[] = [];
-    for (let i = 0; i < 300; i++) arr.push(96);
+    for (let i = 0; i < 3600; i++) arr.push(96);
     for (let i = 0; i < 30; i++) arr.push(88);
     for (let i = 0; i < 120; i++) arr.push(96);
     const agg = builder.buildSessions([spo2Session(arr)])[0]!.aggregate;
     const validHours = arr.length / 3600;
-    expect(agg.oxygenDesaturationIndex).toBeCloseTo(1 / validHours, 1);
+    expect(agg.oxygenDesaturationIndex).toBeCloseTo(1 / validHours, 2);
   });
 
   it('handles a slow gradual drift that never recovers without spurious events', () => {
-    // Linear drift 96 → 86 over 30 min: baseline tracks it, no discrete event.
+    // Linear drift 96 → 86 over ~62 min (above the 1 h rate floor so ODI is
+    // defined): the trailing baseline tracks the drift, so no discrete event is
+    // scored → ODI === 0, not null.
     const arr: number[] = [];
-    for (let i = 0; i < 1800; i++) arr.push(96 - (10 * i) / 1800);
+    for (let i = 0; i < 3720; i++) arr.push(96 - (10 * i) / 3720);
     const agg = builder.buildSessions([spo2Session(arr)])[0]!.aggregate;
-    // The trailing baseline tracks the drift, so no discrete event is scored.
     expect(agg.oxygenDesaturationIndex).toBe(0);
   });
 
   it('counts two separate dips as two events', () => {
+    // ≥1 h baseline so ODI is defined; two discrete dips → 2 events.
     const arr: number[] = [];
-    for (let i = 0; i < 200; i++) arr.push(96);
+    for (let i = 0; i < 3600; i++) arr.push(96);
     for (let i = 0; i < 12; i++) arr.push(91); // dip 1
     for (let i = 0; i < 200; i++) arr.push(96); // recovery
     for (let i = 0; i < 12; i++) arr.push(91); // dip 2
     for (let i = 0; i < 100; i++) arr.push(96);
     const agg = builder.buildSessions([spo2Session(arr)])[0]!.aggregate;
     const validHours = arr.length / 3600;
-    expect(agg.oxygenDesaturationIndex).toBeCloseTo(2 / validHours, 1);
+    expect(agg.oxygenDesaturationIndex).toBeCloseTo(2 / validHours, 2);
   });
 });
 
@@ -464,6 +580,28 @@ describe('T90 (time-based) and SpO₂ coverage', () => {
     expect(agg.spo2Below90Percent).toBeCloseTo(25, 5);
     // Coverage: 100 valid seconds of a 150 s session ≈ 66.7%.
     expect(agg.spo2CoveragePercent).toBeCloseTo(66.67, 1);
+  });
+
+  it('nullifies ODI when valid oximetry is below the rate-validity floor', () => {
+    // A long night (mask worn) but oximetry probe on for only ~7 minutes (420 s
+    // of valid SpO₂, 0.117 h — below MIN_INDEX_USAGE_HOURS). Even with a real
+    // desaturation in that clip, ODI is an undefined per-hour rate → null. Mean/
+    // median/min stay defined (they are not per-hour rates).
+    const validSeconds = 420;
+    const arr: number[] = [];
+    for (let i = 0; i < 300; i++) arr.push(96);
+    for (let i = 0; i < 12; i++) arr.push(91); // a genuine dip
+    for (let i = 0; i < 108; i++) arr.push(96);
+    const interp = interpretation({
+      durationSeconds: 2 * 3600, // long session window
+      channels: [maskPressure(2 * 3600), channel('spo2', Float32Array.from(arr), 1, '%')],
+    });
+    const agg = builder.buildSessions([interp])[0]!.aggregate;
+    expect(validSeconds / 3600).toBeLessThan(MIN_INDEX_USAGE_HOURS);
+    expect(agg.oxygenDesaturationIndex).toBeNull();
+    // Non-rate oximetry stats remain available.
+    expect(agg.spo2Min).toBe(91);
+    expect(agg.spo2Mean).not.toBeNull();
   });
 
   it('reports null oximetry stats when all samples are sentinel', () => {

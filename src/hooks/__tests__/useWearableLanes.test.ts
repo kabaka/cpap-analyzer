@@ -147,8 +147,8 @@ describe('useWearableLanes', () => {
 
   it('fetches multiple types in one pass and omits types with no record', async () => {
     const base = Date.UTC(2024, 0, 15, 22, 0, 0);
-    mockGetByKey.mockImplementation((_src: string, dt: string) => {
-      if (dt === 'heart_rate_intraday') {
+    mockGetByKey.mockImplementation((_src: string, dt: string, date: string) => {
+      if (dt === 'heart_rate_intraday' && date === '2024-01-15') {
         return Promise.resolve(
           tsRecord('heart_rate_intraday', '2024-01-15', {
             baseTimestampMs: base,
@@ -157,7 +157,7 @@ describe('useWearableLanes', () => {
           } satisfies FitbitHeartRateIntraday),
         );
       }
-      return Promise.resolve(null); // spo2 absent
+      return Promise.resolve(null); // spo2 absent; neighbour dates absent
     });
 
     const { result } = renderHook(() =>
@@ -167,7 +167,150 @@ describe('useWearableLanes', () => {
 
     expect(result.current.series.heart_rate_intraday).toBeDefined();
     expect(result.current.series.spo2_intraday).toBeUndefined();
-    expect(mockGetByKey).toHaveBeenCalledTimes(2);
+    // Each type now loads the anchor date plus both neighbours (date ± 1):
+    // 2 types × 3 dates = 6 keyed lookups.
+    expect(mockGetByKey).toHaveBeenCalledTimes(6);
+  });
+
+  describe('cross-midnight merge', () => {
+    it('merges anchor and next-day records into one full-night series', async () => {
+      // A night spanning ~23:00 (Jan 15) → ~01:00 (Jan 16). The parser splits
+      // this into two date-keyed records, each on the shared wall-clock-as-UTC
+      // axis. The session is anchored on the start date (2024-01-15).
+      const eveningBase = Date.UTC(2024, 0, 15, 23, 0, 0); // 23:00 tail
+      const morningBase = Date.UTC(2024, 0, 16, 0, 30, 0); // 00:30 bulk
+
+      mockGetByKey.mockImplementation((_src: string, dt: string, date: string) => {
+        if (dt !== 'heart_rate_intraday') return Promise.resolve(null);
+        if (date === '2024-01-15') {
+          return Promise.resolve(
+            tsRecord('heart_rate_intraday', '2024-01-15', {
+              baseTimestampMs: eveningBase,
+              samples: [
+                { offsetSec: 0, bpm: 58, confidence: 3 },
+                { offsetSec: 60, bpm: 57, confidence: 3 },
+              ],
+              sampleCount: 2,
+            } satisfies FitbitHeartRateIntraday),
+          );
+        }
+        if (date === '2024-01-16') {
+          return Promise.resolve(
+            tsRecord('heart_rate_intraday', '2024-01-16', {
+              baseTimestampMs: morningBase,
+              samples: [
+                { offsetSec: 0, bpm: 55, confidence: 3 },
+                { offsetSec: 60, bpm: 54, confidence: 3 },
+              ],
+              sampleCount: 2,
+            } satisfies FitbitHeartRateIntraday),
+          );
+        }
+        return Promise.resolve(null); // 2024-01-14 neighbour absent
+      });
+
+      const { result } = renderHook(() => useWearableLanes('2024-01-15', ['heart_rate_intraday']));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const series = result.current.series.heart_rate_intraday!;
+      // Both sides of midnight are present, in ascending timestamp order.
+      expect(series.samples).toEqual([
+        { timestampMs: eveningBase, value: 58, confidence: 3 },
+        { timestampMs: eveningBase + 60_000, value: 57, confidence: 3 },
+        { timestampMs: morningBase, value: 55, confidence: 3 },
+        { timestampMs: morningBase + 60_000, value: 54, confidence: 3 },
+      ]);
+      expect(series.startMs).toBe(eveningBase);
+      expect(series.endMs).toBe(morningBase + 60_000);
+      // The series still belongs to the anchor date.
+      expect(series.date).toBe('2024-01-15');
+    });
+
+    it('merges a previous-day evening tail when the session starts after midnight', async () => {
+      // Symmetric case: a session anchored on 2024-01-16 whose evening tail was
+      // stored under the previous calendar date (2024-01-15).
+      const eveningBase = Date.UTC(2024, 0, 15, 23, 30, 0);
+      const morningBase = Date.UTC(2024, 0, 16, 0, 0, 0);
+
+      mockGetByKey.mockImplementation((_src: string, dt: string, date: string) => {
+        if (dt !== 'heart_rate_intraday') return Promise.resolve(null);
+        if (date === '2024-01-15') {
+          return Promise.resolve(
+            tsRecord('heart_rate_intraday', '2024-01-15', {
+              baseTimestampMs: eveningBase,
+              samples: [{ offsetSec: 0, bpm: 60, confidence: 3 }],
+              sampleCount: 1,
+            } satisfies FitbitHeartRateIntraday),
+          );
+        }
+        if (date === '2024-01-16') {
+          return Promise.resolve(
+            tsRecord('heart_rate_intraday', '2024-01-16', {
+              baseTimestampMs: morningBase,
+              samples: [{ offsetSec: 0, bpm: 56, confidence: 3 }],
+              sampleCount: 1,
+            } satisfies FitbitHeartRateIntraday),
+          );
+        }
+        return Promise.resolve(null); // 2024-01-17 neighbour absent
+      });
+
+      const { result } = renderHook(() => useWearableLanes('2024-01-16', ['heart_rate_intraday']));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const series = result.current.series.heart_rate_intraday!;
+      expect(series.samples.map((s) => s.value)).toEqual([60, 56]);
+      expect(series.startMs).toBe(eveningBase);
+      expect(series.endMs).toBe(morningBase);
+    });
+
+    it('handles a missing neighbour record gracefully (only anchor present)', async () => {
+      const base = Date.UTC(2024, 0, 15, 23, 0, 0);
+      mockGetByKey.mockImplementation((_src: string, dt: string, date: string) => {
+        if (dt === 'heart_rate_intraday' && date === '2024-01-15') {
+          return Promise.resolve(
+            tsRecord('heart_rate_intraday', '2024-01-15', {
+              baseTimestampMs: base,
+              samples: [{ offsetSec: 0, bpm: 62, confidence: 3 }],
+              sampleCount: 1,
+            } satisfies FitbitHeartRateIntraday),
+          );
+        }
+        return Promise.resolve(null); // both neighbours absent
+      });
+
+      const { result } = renderHook(() => useWearableLanes('2024-01-15', ['heart_rate_intraday']));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const series = result.current.series.heart_rate_intraday!;
+      expect(series.samples).toEqual([{ timestampMs: base, value: 62, confidence: 3 }]);
+      expect(mockGetByKey).toHaveBeenCalledTimes(3);
+    });
+
+    it('de-duplicates samples sharing an identical timestamp across records', async () => {
+      // Defensive: disjoint date grouping should never produce a true overlap,
+      // but identical timestamps must collapse to a single point.
+      const shared = Date.UTC(2024, 0, 16, 0, 0, 0);
+      mockGetByKey.mockImplementation((_src: string, dt: string, date: string) => {
+        if (dt !== 'heart_rate_intraday') return Promise.resolve(null);
+        if (date === '2024-01-15' || date === '2024-01-16') {
+          return Promise.resolve(
+            tsRecord('heart_rate_intraday', date, {
+              baseTimestampMs: shared,
+              samples: [{ offsetSec: 0, bpm: 59, confidence: 3 }],
+              sampleCount: 1,
+            } satisfies FitbitHeartRateIntraday),
+          );
+        }
+        return Promise.resolve(null);
+      });
+
+      const { result } = renderHook(() => useWearableLanes('2024-01-15', ['heart_rate_intraday']));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const series = result.current.series.heart_rate_intraday!;
+      expect(series.samples).toEqual([{ timestampMs: shared, value: 59, confidence: 3 }]);
+    });
   });
 
   it('surfaces an error message when the fetch rejects', async () => {

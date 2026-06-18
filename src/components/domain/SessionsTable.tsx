@@ -39,8 +39,8 @@ const COLUMNS: ColumnDef[] = [
     key: 'ahi',
     label: 'AHI',
     format: (s, m) => {
-      const agg = m.get(s.date);
-      return agg ? agg.ahi.toFixed(1) : '—';
+      const ahi = m.get(s.date)?.ahi;
+      return ahi != null ? ahi.toFixed(1) : '—';
     },
   },
   {
@@ -100,9 +100,22 @@ export function SessionsTable({ sessions, aggregates = [], limit = 10 }: Session
         case 'usageMinutes':
           cmp = a.usageMinutes - b.usageMinutes;
           break;
-        case 'ahi':
-          cmp = (aggMap.get(a.date)?.ahi ?? 0) - (aggMap.get(b.date)?.ahi ?? 0);
+        case 'ahi': {
+          // AHI may be null (recording too short for a per-hour rate). Sort
+          // null entries to the end regardless of direction rather than
+          // coercing them to 0 (which would rank them as the best night).
+          const ahiA = aggMap.get(a.date)?.ahi;
+          const ahiB = aggMap.get(b.date)?.ahi;
+          const aNull = ahiA == null;
+          const bNull = ahiB == null;
+          if (aNull || bNull) {
+            // Keep nulls last irrespective of sort direction (return here so
+            // the direction negation below does not reorder them).
+            return aNull === bNull ? 0 : aNull ? 1 : -1;
+          }
+          cmp = ahiA - ahiB;
           break;
+        }
         case 'leakMedian':
           cmp = (aggMap.get(a.date)?.leakMedian ?? 0) - (aggMap.get(b.date)?.leakMedian ?? 0);
           break;
@@ -209,9 +222,14 @@ export function SessionsTable({ sessions, aggregates = [], limit = 10 }: Session
 }
 
 /** Display AHI with a severity badge. */
-function AHIBadge({ ahi }: { ahi?: number }) {
-  if (ahi === undefined) {
-    return <span className={styles.mono}>—</span>;
+function AHIBadge({ ahi }: { ahi?: number | null }) {
+  if (ahi == null) {
+    // null = recording too short for a per-hour rate; undefined = no aggregate.
+    return (
+      <span className={styles.mono} title="Insufficient recording time" aria-label="Not available">
+        —
+      </span>
+    );
   }
 
   const severity = classifyAhiSeverity(ahi);

@@ -119,10 +119,15 @@ export const REPORT_TEMPLATES: TemplateInfo[] = [
 /** Session row for CSV export. */
 export interface SessionCSVRow {
   date: string;
-  ahi: number;
-  ahiObstructive: number;
-  ahiCentral: number;
-  ahiHypopnea: number;
+  /**
+   * Per-night AHI rate, or `null` when the recording was below the
+   * rate-validity floor. Rendered as an "insufficient data" indicator in CSV,
+   * never as 0.
+   */
+  ahi: number | null;
+  ahiObstructive: number | null;
+  ahiCentral: number | null;
+  ahiHypopnea: number | null;
   eventCount: number;
   leakMedian: number;
   leakP95: number;

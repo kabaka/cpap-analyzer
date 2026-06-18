@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
 import { getDB } from '@/services/storage/getDB';
+import { pooledRate } from '@/analysis/uncertainty';
 import { formatDate } from '@/utils/formatDate';
 
 /** Lightweight session metadata for lists (not the full Session type). */
@@ -10,7 +11,12 @@ interface SessionMetadata {
   machineModel: string;
   durationMinutes: number;
   usageMinutes: number;
-  ahi: number;
+  /**
+   * Per-night AHI rate, or `null` when the recording was below the
+   * rate-validity floor (undefined rate). List/table consumers MUST render
+   * null as an "insufficient recording time" indicator, never as 0.
+   */
+  ahi: number | null;
   leakMedian: number;
   eventCount: number;
   complianceStatus: 'compliant' | 'non-compliant' | 'partial';
@@ -108,7 +114,8 @@ export const useDataStore = create<DataState>()(
               machineModel: s.machineModel,
               durationMinutes: s.durationMinutes,
               usageMinutes: s.usageMinutes,
-              ahi: agg?.ahi ?? 0,
+              // Preserve a null/absent AHI as null (undefined rate); never 0.
+              ahi: agg?.ahi ?? null,
               leakMedian: agg?.leakMedian ?? 0,
               eventCount: agg?.eventCount ?? 0,
               complianceStatus: agg?.complianceStatus ?? 'non-compliant',
@@ -153,7 +160,6 @@ export const useDataStore = create<DataState>()(
           // A newer request superseded this one while it was in flight; discard.
           if (requestId !== summaryStatsRequestId) return;
 
-          const ahiValues = aggregates.map((a) => a.ahi);
           const leakValues = aggregates.map((a) => a.leakMedian);
           const usageValues = aggregates.map((a) => a.usageHours);
           const compliantCount = aggregates.filter(
@@ -161,8 +167,17 @@ export const useDataStore = create<DataState>()(
           ).length;
 
           const totalSessions = aggregates.length;
+          // AHI is a per-hour RATE: nights with a null AHI had too little
+          // recording for a defined rate and are EXCLUDED from every AHI
+          // statistic (never coerced to 0). The window mean is the
+          // duration-weighted POOLED rate (Σ ahi·hours / Σ hours = Σ events /
+          // Σ hours) so a short noisy night cannot dominate; the median is
+          // taken over the qualifying (non-null) nights only.
           const meanAHI =
-            totalSessions > 0 ? ahiValues.reduce((sum, v) => sum + v, 0) / totalSessions : 0;
+            pooledRate(aggregates.map((a) => ({ rate: a.ahi, hours: a.usageHours }))) ?? 0;
+          const qualifyingAhiValues = aggregates
+            .map((a) => a.ahi)
+            .filter((v): v is number => v !== null);
           const meanLeak =
             totalSessions > 0 ? leakValues.reduce((sum, v) => sum + v, 0) / totalSessions : 0;
           const meanUsageHours =
@@ -173,7 +188,7 @@ export const useDataStore = create<DataState>()(
             totalSessions,
             dateRange: { start, end },
             meanAHI,
-            medianAHI: median(ahiValues),
+            medianAHI: median(qualifyingAhiValues),
             meanLeak,
             meanUsageHours,
             complianceRate,

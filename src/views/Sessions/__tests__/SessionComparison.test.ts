@@ -162,14 +162,22 @@ describe('readMetric', () => {
     expect(readMetric(agg, 'ahi')).toBeCloseTo(4.2);
   });
 
-  it('should return 0 for a null value', () => {
+  it('should return null for a null value (never coerce a missing metric to 0)', () => {
+    // A null metric means "not measured / undefined rate", not zero. Coercing it
+    // to 0 produced misleading comparison deltas — readMetric now preserves null
+    // so the comparison UI renders an em-dash and skips delta/percent math.
     const agg = makeAggregate({ spo2Mean: null });
-    expect(readMetric(agg, 'spo2Mean')).toBe(0);
+    expect(readMetric(agg, 'spo2Mean')).toBeNull();
   });
 
-  it('should return 0 for a non-numeric value', () => {
+  it('should return null for a non-numeric value', () => {
     const agg = makeAggregate({ complianceStatus: 'compliant' });
-    expect(readMetric(agg, 'complianceStatus')).toBe(0);
+    expect(readMetric(agg, 'complianceStatus')).toBeNull();
+  });
+
+  it('should return null for a null per-hour rate (too-short night)', () => {
+    const agg = makeAggregate({ ahi: null });
+    expect(readMetric(agg, 'ahi')).toBeNull();
   });
 
   it('should return the exact numeric value for integer metrics', () => {

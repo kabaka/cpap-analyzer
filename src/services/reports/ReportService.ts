@@ -10,6 +10,7 @@
 import { jsPDF } from 'jspdf';
 import { getDB } from '@/services/storage/getDB';
 import { formatMetric } from '@/analysis/uncertainty';
+import { pooledRate } from '@/analysis/uncertainty/rateIndex';
 import {
   AHI_SEVERITY_THRESHOLDS,
   CMS_COMPLIANCE_HOURS,
@@ -77,6 +78,33 @@ function median(values: number[]): number {
   return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
 }
 
+/**
+ * Pearson correlation of (non-null) per-night AHI against another metric,
+ * using pairwise-complete deletion: only nights whose AHI rate is defined
+ * contribute, and the paired metric is taken from those same nights.
+ */
+function pearsonAgainstAhi(
+  aggregates: NightlyAggregate[],
+  pick: (a: NightlyAggregate) => number,
+): number {
+  const ahi: number[] = [];
+  const other: number[] = [];
+  for (const a of aggregates) {
+    if (a.ahi === null) continue;
+    ahi.push(a.ahi);
+    other.push(pick(a));
+  }
+  return pearsonR(ahi, other);
+}
+
+/** CSV/label indicator for a per-hour rate whose recording was too short. */
+const INSUFFICIENT_DATA = 'insufficient data';
+
+/** Format a nullable per-hour rate to 1 dp, or the insufficient-data marker. */
+function formatRateCell(value: number | null): string {
+  return value === null ? INSUFFICIENT_DATA : value.toFixed(1);
+}
+
 /** Escape a CSV field value. */
 function escapeCSV(value: string | number): string {
   const str = String(value);
@@ -118,7 +146,12 @@ function computeStatistics(
   aggregates: NightlyAggregate[],
   dateRange: { start: string; end: string },
 ): ReportStatistics {
-  const ahiValues = aggregates.map((a) => a.ahi);
+  // AHI is a per-hour RATE: nights below the rate-validity floor carry a null
+  // AHI and are EXCLUDED from every AHI statistic (mean/median/min/max/
+  // descriptive/correlation) — never coerced to 0. The window mean AHI is the
+  // duration-weighted POOLED rate (Σ events / Σ hours), not an unweighted mean,
+  // so a short noisy night cannot inflate it.
+  const qualifyingAhiValues = aggregates.map((a) => a.ahi).filter((v): v is number => v !== null);
   const leakValues = aggregates.map((a) => a.leakMedian);
   const pressureValues = aggregates.map((a) => a.pressureMean);
   const usageValues = aggregates.map((a) => a.usageHours);
@@ -132,7 +165,7 @@ function computeStatistics(
   const compliantCount = aggregates.filter((a) => a.complianceStatus === 'compliant').length;
   const total = aggregates.length;
 
-  const meanAHI = total > 0 ? ahiValues.reduce((s, v) => s + v, 0) / total : 0;
+  const meanAHI = pooledRate(aggregates.map((a) => ({ rate: a.ahi, hours: a.usageHours }))) ?? 0;
   const meanLeak = total > 0 ? leakValues.reduce((s, v) => s + v, 0) / total : 0;
   const meanPressure = total > 0 ? pressureValues.reduce((s, v) => s + v, 0) / total : 0;
   const meanUsageHours = total > 0 ? usageValues.reduce((s, v) => s + v, 0) / total : 0;
@@ -173,9 +206,9 @@ function computeStatistics(
     totalSessions: total,
     dateRange,
     meanAHI,
-    medianAHI: median(ahiValues),
-    minAHI: total > 0 ? Math.min(...ahiValues) : 0,
-    maxAHI: total > 0 ? Math.max(...ahiValues) : 0,
+    medianAHI: median(qualifyingAhiValues),
+    minAHI: qualifyingAhiValues.length > 0 ? Math.min(...qualifyingAhiValues) : 0,
+    maxAHI: qualifyingAhiValues.length > 0 ? Math.max(...qualifyingAhiValues) : 0,
     meanLeak,
     meanPressure,
     meanUsageHours,
@@ -193,7 +226,7 @@ function computeStatistics(
     meanLeakDurationMinutes: total > 0 ? leakDurationValues.reduce((s, v) => s + v, 0) / total : 0,
 
     descriptive: {
-      ahi: computeDescriptiveStats(ahiValues),
+      ahi: computeDescriptiveStats(qualifyingAhiValues),
       usageHours: computeDescriptiveStats(usageValues),
       leakMedian: computeDescriptiveStats(leakValues),
       leakP95: computeDescriptiveStats(leakP95Values),
@@ -205,8 +238,11 @@ function computeStatistics(
     eventTotals,
 
     correlations: {
-      ahiVsUsage: pearsonR(ahiValues, usageValues),
-      ahiVsLeak: pearsonR(ahiValues, leakValues),
+      // AHI correlations use pairwise-complete data: nights with a null AHI
+      // (undefined rate) are dropped from BOTH series so the pairing stays
+      // aligned and a missing rate is never read as 0.
+      ahiVsUsage: pearsonAgainstAhi(aggregates, (a) => a.usageHours),
+      ahiVsLeak: pearsonAgainstAhi(aggregates, (a) => a.leakMedian),
       leakVsPressure: pearsonR(leakValues, pressureValues),
     },
 
@@ -344,24 +380,34 @@ function renderAHITrendSection(
   y = ensureSpace(doc, y, LAYOUT.CHART_FULL_HEIGHT + 15, context);
   y = addSubsectionHeading(doc, y, 'AHI Trend');
 
-  if (aggregates.length === 0) {
+  // Plot only nights with a defined AHI rate; nights below the rate-validity
+  // floor (null AHI) are omitted rather than drawn as a misleading 0.
+  const ahiNights = aggregates.filter(
+    (a): a is NightlyAggregate & { ahi: number } => a.ahi !== null,
+  );
+
+  if (ahiNights.length === 0) {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'italic');
     setTextColor(doc, PDF_COLORS.TEXT_MUTED);
-    doc.text('No data available for the selected date range.', LAYOUT.MARGIN_LEFT, y + 10);
+    doc.text(
+      'No AHI data with sufficient recording time for the selected date range.',
+      LAYOUT.MARGIN_LEFT,
+      y + 10,
+    );
     return y + 20;
   }
 
-  const ahiMax = Math.max(Math.ceil(Math.max(...aggregates.map((a) => a.ahi)) * 1.1), 10);
+  const ahiMax = Math.max(Math.ceil(Math.max(...ahiNights.map((a) => a.ahi)) * 1.1), 10);
   const config: LineChartConfig = {
     widthMm: LAYOUT.CONTENT_WIDTH,
     heightMm: LAYOUT.CHART_FULL_HEIGHT,
     title: 'AHI Trend',
-    xLabels: aggregates.map((a) => a.date),
+    xLabels: ahiNights.map((a) => a.date),
     yAxis: { min: 0, max: ahiMax, tickCount: 5, label: 'AHI', unit: 'events/hr' },
     series: [
       {
-        data: aggregates.map((a) => a.ahi),
+        data: ahiNights.map((a) => a.ahi),
         color: PDF_COLORS.CHART_BLUE,
         fillColor: PDF_COLORS.CHART_BLUE_FILL,
         label: 'AHI',
@@ -898,10 +944,10 @@ function renderSessionTableSection(
   ];
   const rows = aggregates.map((a) => [
     a.date,
-    a.ahi.toFixed(1),
-    a.ahiObstructive.toFixed(1),
-    a.ahiCentral.toFixed(1),
-    a.ahiHypopnea.toFixed(1),
+    formatRateCell(a.ahi),
+    formatRateCell(a.ahiObstructive),
+    formatRateCell(a.ahiCentral),
+    formatRateCell(a.ahiHypopnea),
     a.leakMedian.toFixed(1),
     a.leakP95.toFixed(1),
     a.pressureMean.toFixed(1),
@@ -1090,9 +1136,23 @@ function buildCSV(aggregates: NightlyAggregate[], stats: ReportStatistics): stri
   // Header row
   lines.push(headers.map(escapeCSV).join(','));
 
-  // Data rows
+  // Data rows. Nullable per-hour rate cells (undefined rate, recording below
+  // the validity floor) render as an explicit "insufficient data" marker — never
+  // a blank or 0 that a downstream reader could mistake for a real measurement.
+  const nullableRateColumns = new Set<keyof SessionCSVRow>([
+    'ahi',
+    'ahiObstructive',
+    'ahiCentral',
+    'ahiHypopnea',
+  ]);
   for (const row of rows) {
-    const values = headers.map((h) => escapeCSV(row[h]));
+    const values = headers.map((h) => {
+      const value = row[h];
+      if (value === null) {
+        return escapeCSV(nullableRateColumns.has(h) ? INSUFFICIENT_DATA : '');
+      }
+      return escapeCSV(value);
+    });
     lines.push(values.join(','));
   }
 

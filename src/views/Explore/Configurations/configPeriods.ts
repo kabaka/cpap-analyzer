@@ -176,9 +176,19 @@ function quantile(sorted: readonly number[], q: number): number {
   return loV + (hiV - loV) * (idx - lo);
 }
 
-function summarize(values: readonly number[]): OutcomeSummary | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
+function summarize(values: readonly (number | null)[]): OutcomeSummary | null {
+  // Null-handling (listwise deletion): per-hour rate indices (AHI, central,
+  // obstructive) are null when the night was below the rate-validity floor
+  // (MIN_INDEX_USAGE_HOURS) — an UNDEFINED rate, never zero. We drop those
+  // nights from the per-period summary so the reported mean/median/etc. reflect
+  // only nights with a defined rate. CAVEAT FOR QA: this changes the
+  // DENOMINATOR — `OutcomeSummary.n` is the count of non-null nights, which may
+  // be fewer than the period's `nights`. A period whose every night is null
+  // (all sub-floor) yields `null` here and renders as "—", not 0. Non-rate
+  // metrics (leak, usage) never contain nulls, so they are unaffected.
+  const finite = values.filter((v): v is number => v !== null);
+  if (finite.length === 0) return null;
+  const sorted = [...finite].sort((a, b) => a - b);
   const n = sorted.length;
   const mean = sorted.reduce((acc, v) => acc + v, 0) / n;
   const median = quantile(sorted, 0.5);

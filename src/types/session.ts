@@ -124,45 +124,58 @@ export interface NightlyAggregate {
   readonly date: string;
 
   // AHI metrics (events/hour)
+  //
+  // RATE-VALIDITY CONTRACT: every per-hour index below is `number | null`.
+  // `null` means the recording was too short for a per-hour rate to be defined
+  // (usage hours < MIN_INDEX_USAGE_HOURS); see `analysis/uncertainty/rateIndex`.
+  // It is NOT zero. Consumers MUST skip nulls in means/medians/min/max/trends
+  // and render them as "insufficient recording time" (e.g. "—"), never coerce
+  // them to 0. Raw counts (`eventCount`, `eventsByType`) are always defined.
   /**
    * Apnea-Hypopnea Index: (obstructive + central + mixed + unclassified
    * apneas + hypopneas) per hour of usage. Per AASM 2012 / ICSD-3, AHI
    * EXCLUDES RERAs — those
    * belong to the RDI (see {@link rdi}). Computed over usage hours (mask-on
    * time), matching the residual-AHI convention CPAP machines report.
+   *
+   * `null` when usage hours are below the rate-validity floor — the rate is
+   * undefined, not zero.
    */
-  readonly ahi: number;
+  readonly ahi: number | null;
   /**
    * Respiratory Disturbance Index: AHI + RERA index (events/hour). RDI =
    * (apneas + hypopneas + RERAs) / usage hours. Always ≥ {@link ahi}. RERA
    * detection on CPAP is flow-based and approximate (no EEG arousal), so RDI
    * is a lower bound on the polysomnographic RDI. Equals `ahi` when no RERAs
-   * are scored.
+   * are scored. `null` when usage hours are below the rate-validity floor.
    *
    * Optional ONLY for backward compatibility with aggregates persisted before
    * this field existed (and hand-built test fixtures). `SessionBuilder` always
    * populates it; consumers that may read legacy records should fall back to
-   * `ahi + ahiRera`.
+   * `ahi + ahiRera` (treating a null component as undefined).
    */
-  readonly rdi?: number;
-  /** Obstructive apnea index. */
-  readonly ahiObstructive: number;
-  /** Central apnea index. */
-  readonly ahiCentral: number;
-  /** Mixed apnea index. */
-  readonly ahiMixed: number;
+  readonly rdi?: number | null;
+  /** Obstructive apnea index; `null` below the rate-validity floor. */
+  readonly ahiObstructive: number | null;
+  /** Central apnea index; `null` below the rate-validity floor. */
+  readonly ahiCentral: number | null;
+  /** Mixed apnea index; `null` below the rate-validity floor. */
+  readonly ahiMixed: number | null;
   /**
    * Unclassified apnea index (events/hour) — apneas the device confirmed but
    * could not resolve as obstructive or central (most often under high leak,
    * when the forced-oscillation measurement is unreliable). Counts toward AHI.
+   * `null` below the rate-validity floor.
+   *
    * Optional for backward compatibility with aggregates persisted before this
-   * field existed; treat a missing value as 0.
+   * field existed; treat a missing value as 0, but a present `null` as
+   * "undefined rate".
    */
-  readonly ahiUnclassified?: number;
-  /** Hypopnea index. */
-  readonly ahiHypopnea: number;
-  /** RERA index (events/hour). Part of RDI, NOT part of AHI. */
-  readonly ahiRera: number;
+  readonly ahiUnclassified?: number | null;
+  /** Hypopnea index; `null` below the rate-validity floor. */
+  readonly ahiHypopnea: number | null;
+  /** RERA index (events/hour). Part of RDI, NOT part of AHI. `null` below the rate-validity floor. */
+  readonly ahiRera: number | null;
 
   // Event counts
   /** Total event count. */
