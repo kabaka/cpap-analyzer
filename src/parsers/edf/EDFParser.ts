@@ -36,30 +36,49 @@ export interface ValidationIssue {
 const MIN_HEADER_BYTES = 256;
 
 /**
- * Maximum plausible duration (seconds) for a single EDF data record.
+ * Maximum plausible duration (seconds) for a single EDF data record: one full day.
  *
  * Security bound (memory-exhaustion DoS): `dataRecordDuration` is read straight
  * from an untrusted header and is later multiplied by `numDataRecords` to derive
- * the recording `duration`, which downstream sizes allocations against. ResMed
- * records are sub-second to a few seconds; legitimate EDF/EDF+ files never use
- * record durations of minutes. A generous 60 s/record ceiling rejects crafted or
- * corrupt headers (e.g. duration = 1e9) before they can inflate `duration` into
- * a multi-GB allocation, while leaving every real file untouched.
+ * the recording `duration`, which downstream sizes allocations against. The
+ * widest legitimate record this parser must accept is ResMed's STR.edf — the
+ * SD-card summary file — which stores exactly one daily-summary record per
+ * calendar day, so its `dataRecordDuration` is precisely 86400 s. No EDF data
+ * record can legitimately span more than a single day, so one day is the natural
+ * upper bound. Capping at 86400 s rejects crafted or corrupt headers (e.g.
+ * duration = 1e9) before they can inflate `duration` into a multi-GB allocation,
+ * while leaving every real file — including STR.edf — untouched.
  */
-const MAX_RECORD_DURATION_SECONDS = 60;
+const MAX_RECORD_DURATION_SECONDS = 86400;
 
 /**
- * Maximum plausible total recording duration (seconds) derived from a header.
+ * Maximum plausible total recording duration (seconds) derived from a header:
+ * 20 years.
  *
- * Security bound (memory-exhaustion DoS): even with each individual field in
- * range, `numDataRecords * dataRecordDuration` can be astronomically large for a
- * crafted header. A continuous EDF recording spanning more than ~1 year is not a
- * plausible single CPAP file (nightly files are hours; the largest realistic
- * full-night-plus is well under a day). 366 days is an intentionally generous
- * ceiling that still caps the derived `duration` far below anything that could
- * drive a runaway allocation.
+ * Soft sanity bound (NOT the memory-exhaustion guard): even with each individual
+ * field in range, `numDataRecords * dataRecordDuration` can be astronomically
+ * large for a crafted header (e.g. `duration = 1e9` s ≈ 31.7 years). This cap
+ * rejects such absurd/corrupt headers before the derived `duration` is handed to
+ * callers as metadata.
+ *
+ * Why 20 years (not the old 366-day cap): the 366-day ceiling implicitly assumed
+ * a single continuous recording session, which is FALSE for ResMed's STR.edf.
+ * STR.edf is the SD-card summary file and stores exactly one daily-summary record
+ * per calendar day across the device's entire service life, so its derived
+ * duration grows by 86400 s per day of ownership. A long-term user on one machine
+ * (e.g. 406 daily records ≈ 406 days, or many years) is entirely normal and was
+ * wrongly rejected by the 366-day bound. 20 years (`20 * 366` days) covers the
+ * full lifetime of any single device's STR history with ~2x headroom over the
+ * realistic ~10-year maximum, while still being finite and rejecting absurd
+ * headers.
+ *
+ * The TRUE memory-exhaustion guard is the on-disk buffer-size validation in
+ * `parse` (see the `DATA_TRUNCATED` check): every sample allocation is sized by
+ * `recordBytes * numDataRecords`, which cannot exceed the actual file's byte
+ * length. A 101 KB STR.edf therefore cannot exhaust memory no matter what
+ * duration it declares; `duration` is derived metadata, not an allocation driver.
  */
-const MAX_RECORDING_DURATION_SECONDS = 366 * 24 * 60 * 60;
+const MAX_RECORDING_DURATION_SECONDS = 20 * 366 * 24 * 60 * 60;
 
 /** EDF+ annotation signal label. */
 const ANNOTATION_LABEL = 'EDF Annotations';
@@ -177,10 +196,13 @@ export class EDFParser {
     const duration =
       header.dataRecordDuration > 0 ? header.numDataRecords * header.dataRecordDuration : 0;
 
-    // Security: the resolved duration (covers the numDataRecords = -1 path, where
-    // the real count is derived from file size) must still be within bounds. A
-    // file large enough to legitimately exceed this is not a plausible single
-    // CPAP recording, so fail it rather than hand a runaway duration downstream.
+    // Soft sanity bound on the resolved duration (covers the numDataRecords = -1
+    // path, where the real count is derived from file size). This is metadata
+    // validation, NOT the memory guard — actual allocations are bounded by the
+    // `DATA_TRUNCATED` on-disk size check above. STR.edf accrues one 86400 s
+    // record per calendar day over a device's whole service life, so multi-year
+    // durations are legitimate; the 20-year ceiling only rejects absurd/corrupt
+    // headers (e.g. 1e9 s).
     if (!Number.isFinite(duration) || duration > MAX_RECORDING_DURATION_SECONDS) {
       throw new EDFParseError(
         'INVALID_NUM_RECORDS',
@@ -371,11 +393,14 @@ export class EDFParser {
       );
     }
 
-    // Security: reject non-finite or implausibly large record durations. Both
-    // `parseFloatField` (NaN) and a crafted huge value would otherwise flow into
-    // the derived `duration = numDataRecords * dataRecordDuration` and from there
-    // into downstream allocation sizing — a memory-exhaustion DoS from a tiny
-    // file. A corrupt header must fail this file, not mis-scale a real night.
+    // Security: reject non-finite or implausibly large record durations. The
+    // ceiling is one full day (86400 s), the duration ResMed's STR.edf summary
+    // file legitimately uses (one daily-summary record per calendar day); no EDF
+    // data record can span more than a day. Both `parseFloatField` (NaN) and a
+    // crafted huge value would otherwise flow into the derived
+    // `duration = numDataRecords * dataRecordDuration` and from there into
+    // downstream allocation sizing — a memory-exhaustion DoS from a tiny file. A
+    // corrupt header must fail this file, not mis-scale a real night.
     if (!Number.isFinite(dataRecordDuration) || dataRecordDuration > MAX_RECORD_DURATION_SECONDS) {
       throw new EDFParseError(
         'INVALID_RECORD_DURATION',
@@ -384,12 +409,14 @@ export class EDFParser {
       );
     }
 
-    // Security: the derived recording duration (numDataRecords ×
-    // dataRecordDuration) must be finite and within a plausible bound. A negative
-    // numDataRecords other than the sentinel -1 (handled in `parse`) is invalid,
-    // and an astronomically large product would drive runaway allocation
-    // downstream. We skip the sentinel here; the real count is resolved in
-    // `parse` and bounded by the on-disk size, which cannot exceed this cap.
+    // Soft sanity bound on the derived recording duration (numDataRecords ×
+    // dataRecordDuration). A negative numDataRecords other than the sentinel -1
+    // (handled in `parse`) is invalid, and an absurd product (e.g. a crafted
+    // header declaring 1e9 s) is rejected here. This is NOT the memory guard:
+    // actual allocations are bounded by the on-disk buffer size in `parse`. The
+    // ceiling is 20 years because STR.edf's daily-summary records make multi-year
+    // derived durations legitimate. We skip the sentinel here; the real count is
+    // resolved in `parse` and bounded by the on-disk size.
     if (numDataRecords !== -1) {
       const derivedDuration = numDataRecords * dataRecordDuration;
       if (!Number.isFinite(derivedDuration) || derivedDuration > MAX_RECORDING_DURATION_SECONDS) {
