@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.0] — 2026-06-18
+
 ### Added
 
 - **App chrome redesign (Phase 1: sidebar, header, status bar).** The persistent application shell was refreshed end to end — no data, privacy, or analysis behaviour changed, only the UI shell. Navigation icons are now crisp **inline SVG** (replacing emoji), so they render consistently across platforms and follow the active theme. The **sidebar** gains a brand mark + wordmark, groups navigation into "Analysis" and "Data" sections, pins Help and Settings to a sidebar footer, and modernizes the active / hover / focus treatment. The **header** now shows the current section's title instead of repeating the app name. **Theme switching** is now a labeled Light / Dark / System menu — replacing the previous click-to-cycle button whose "System" state was invisible — and the System option indicates which theme it currently resolves to. The **status bar** now shows real information (session count, date coverage, last import, and storage usage with a quota meter) in place of placeholders. Accessibility: a **skip-to-content** link, improved mobile navigation-drawer focus handling (focus trap, Escape to close, focus restore on close), and larger touch targets on mobile. No new runtime dependencies.

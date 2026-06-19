@@ -1,6 +1,6 @@
 {
   "name": "cpap-analyzer",
-  "version": "0.0.0",
+  "version": "2026.06.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,7 +14,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
+    "release:version": "node scripts/release/compute-version.mjs",
+    "release:cut": "node scripts/release/cut-release.mjs",
     "prepare": "husky"
   },
   "dependencies": {

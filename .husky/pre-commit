@@ -12,9 +12,11 @@ echo "  → Formatting and linting staged files..."
   exit 1
 }
 
-# Type check (full project - fast enough to run on everything)
+# Type check (full project - fast enough to run on everything).
+# Checks BOTH tsconfigs: the src build and the scripts/release tooling
+# (tsconfig.scripts.json), matching `npm run typecheck` and CI.
 echo "  → Running type check..."
-./node_modules/.bin/tsc --noEmit || {
+./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/tsc --noEmit -p tsconfig.scripts.json || {
   echo "❌ Type check failed."
   exit 1
 }
