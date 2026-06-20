@@ -379,6 +379,40 @@ describe('hypnogramBands', () => {
     const rem = bands.find((b) => b.label === 'REM');
     expect(rem?.hatch).toBe(true);
   });
+
+  it('requests each colour as a `var(...)` expression (the resolver only resolves var(--x))', () => {
+    // Regression: the resolver wired in SignalViewer (resolveColor) ONLY resolves
+    // strings of the form `var(--x)`; a bare `--color-hypno-wake` falls through
+    // unchanged, becomes an invalid canvas fillStyle, and every band paints with
+    // the previously-set colour → the whole ribbon renders one solid colour.
+    const bands = hypnogramBands((v) => v); // identity resolver returns the request verbatim
+    for (const band of bands) {
+      expect(band.color).toMatch(/^var\(--color-hypno-[a-z]+\)$/);
+    }
+  });
+
+  it('resolves to four DISTINCT colours so the ribbon is genuinely colour-coded', () => {
+    // The actual bug was a SINGLE solid colour across all bands. Drive a realistic
+    // resolver (the var(--x) → value contract that resolveColor implements) and
+    // assert the four bands map to four different colours.
+    const palette: Record<string, string> = {
+      'var(--color-hypno-wake)': '#d97706',
+      'var(--color-hypno-rem)': '#8b5cf6',
+      'var(--color-hypno-light)': '#0ea5e9',
+      'var(--color-hypno-deep)': '#1e3a8a',
+    };
+    const resolve = (v: string): string => {
+      const value = palette[v];
+      // A bare (un-var-wrapped) request would miss the map — fail loudly rather
+      // than silently letting the invalid string through as it did in the bug.
+      expect(value, `unresolved colour request: ${v}`).toBeDefined();
+      return value as string;
+    };
+
+    const colors = hypnogramBands(resolve).map((b) => b.color);
+    expect(colors).toHaveLength(4);
+    expect(new Set(colors).size).toBe(4); // four distinct fills, not one solid colour
+  });
 });
 
 describe('sleepStageName', () => {
