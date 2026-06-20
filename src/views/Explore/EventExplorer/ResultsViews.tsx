@@ -27,6 +27,7 @@ import type { Event, EventType } from '@/types/events';
 import { clusterEventsFLGBridged, interEventIntervals, type FLGPreset } from '@/analysis/events';
 import { EVENT_TYPE_META, eventLabel } from '@/components/events/eventTypeMeta';
 import { binEvents, binValues } from './histogram';
+import { SleepStagesView } from './SleepStagesView';
 import type { ViewId } from './viewOptions';
 import styles from './ResultsViews.module.css';
 
@@ -555,6 +556,7 @@ export function ResultsViews({ view, events }: ResultsViewsProps) {
       {view === 'distributions' && <DistributionsView events={events} />}
       {view === 'intervals' && <IntervalsView events={events} />}
       {view === 'clusters' && <ClustersView events={events} />}
+      {view === 'sleepStages' && <SleepStagesView events={events} />}
       <SummaryStrip events={events} />
     </div>
   );

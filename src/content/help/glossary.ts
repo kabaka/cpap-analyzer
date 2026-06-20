@@ -58,7 +58,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       '\\text{AHI} = \\frac{\\text{Total Apneas} + \\text{Total Hypopneas}}{\\text{Total Sleep Time (hours)}}',
     uncertainty:
       'Three things dominate AHI uncertainty, in roughly this order. (1) Real night-to-night biology: your airway behaves differently with body position, sleep stage, alcohol, congestion, and overnight fluid shift — a single night misclassifies roughly 20% of people (Lechat et al. 2022), and reliability stabilises only after about two weeks of data. (2) Counting (Poisson) noise: relative precision improves only as 1/√N, so a short or low-event night gives a noisy rate. (3) Detection differences: the device scores from flow alone and divides by mask-on (not sleep) time, so device-AHI is not interchangeable with a polysomnography AHI. Read the multi-night trend, not last night, and treat a value sitting on a severity boundary (e.g. ≈ 5 or ≈ 15) as "could fall either side." This is descriptive, not a diagnosis — discuss patterns with your clinician.',
-    relatedTerms: ['apnea', 'hypopnea', 'residual-ahi', 'rdi', 'odi'],
+    relatedTerms: ['apnea', 'hypopnea', 'residual-ahi', 'rdi', 'odi', 'rem-predominant-osa'],
     references: [
       'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
       'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
@@ -696,7 +696,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'An arousal is a brief shift from deeper to lighter sleep or to wakefulness, lasting at least 3 seconds, preceded by at least 10 seconds of stable sleep. Arousals caused by breathing events (respiratory arousals) fragment sleep and prevent the restorative deep sleep stages. The arousal index (arousals per hour) correlates with daytime sleepiness.',
     detailed:
       "AASM definition: an abrupt shift in EEG frequency lasting ≥3 seconds, preceded by ≥10 seconds of stable sleep. In REM sleep, a concurrent increase in chin EMG is required. Arousals are the brain's defense mechanism against hypoxia — they restore airway muscle tone and terminate events. However, frequent arousals prevent progression through normal sleep architecture (N1→N2→N3→REM). Arousal index > 25/hr is associated with significant sleepiness. CPAP machines cannot directly measure arousals (requires EEG), but indirect markers include pressure oscillations from movement and sudden changes in flow pattern.",
-    relatedTerms: ['sleep-fragmentation', 'rera'],
+    relatedTerms: ['sleep-fragmentation', 'rera', 'sleep-stage', 'cvhr'],
   },
   {
     id: 'sleep-fragmentation',
@@ -708,7 +708,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Sleep fragmentation describes the breakdown of the normal sleep cycle — repeated arousals interrupt the progression through light sleep, deep sleep, and REM sleep. Even if total sleep time is adequate, fragmented sleep is less restorative. Sleep fragmentation is a major consequence of untreated sleep apnea and a primary cause of excessive daytime sleepiness.',
     detailed:
       'Normal sleep progresses through 90-minute cycles: N1 (light) → N2 (intermediate) → N3 (deep/slow-wave) → REM. Fragmentation prevents adequate time in N3 (restorative, growth hormone release) and REM (memory consolidation). Metrics: arousal index, sleep efficiency (time asleep / time in bed), number of stage transitions, WASO (wake after sleep onset). CPAP treatment reduces fragmentation by eliminating event-related arousals. Persistent fragmentation despite CPAP may indicate: suboptimal pressure, mask discomfort, nocturia, periodic limb movements, or primary insomnia.',
-    relatedTerms: ['arousal', 'sleep-apnea'],
+    relatedTerms: ['arousal', 'sleep-apnea', 'sleep-cycle', 'sleep-stage'],
   },
   {
     id: 'cheyne-stokes',
@@ -756,6 +756,100 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['rera', 'flow-limitation', 'osa'],
     references: [
       'Guilleminault, C., Stoohs, R., Clerk, A., Cetel, M., & Maistros, P. (1993). A cause of excessive daytime sleepiness: the upper airway resistance syndrome. Chest, 104(3), 781–787. DOI: 10.1378/chest.104.3.781.',
+    ],
+  },
+
+  {
+    id: 'sleep-stage',
+    term: 'Sleep Stage',
+    category: 'sleep-medicine',
+    aliases: ['Sleep Stages', 'Sleep Architecture', 'Hypnogram'],
+    quick:
+      'A category of sleep — Wake, REM, or non-REM (light N1/N2, deep N3) — assigned to each epoch of the night.',
+    standard:
+      'Sleep is not uniform: across the night the brain cycles through distinct stages, conventionally Wake, REM (rapid eye movement) sleep, and non-REM sleep, the latter split into light sleep (stages N1 and N2) and deep / slow-wave sleep (stage N3). The sequence of stages over the night, plotted as a step graph, is called a hypnogram. Stages differ physiologically in ways that matter for sleep apnea — REM sleep relaxes the airway-dilating muscles (REM atonia), so obstructive events are often longer and more frequent in REM, while deep N3 sleep tends to be the most stable. CPAP machines cannot stage sleep; the stages CPAP Analyzer displays come from an imported wearable (Fitbit / Google Health), which infers them from heart rate, movement, and respiration rather than from the EEG a sleep study uses.',
+    detailed:
+      "In the gold-standard polysomnography (PSG) staging of the AASM Manual (Berry et al. 2012), sleep is scored in 30-second epochs from the electroencephalogram (EEG), electrooculogram (EOG), and chin electromyogram (EMG) into Wake, N1, N2, N3, and REM. N1 is the lightest transitional sleep; N2 is the bulk of a normal night and is marked by sleep spindles and K-complexes; N3 (slow-wave / deep sleep) is dominated by high-amplitude delta activity and is the most restorative and arousal-resistant stage; REM is characterized by EEG desynchronization, rapid eye movements, dreaming, and near-complete skeletal-muscle atonia. CPAP Analyzer maps the wearable's categories onto a four-level ribbon — Wake, REM, Light (= N1 + N2 combined, because consumer wearables rarely separate N1 from N2), and Deep (= N3). Crucially, a consumer wearable does not measure the EEG: it estimates stages from photoplethysmographic heart rate, heart-rate variability, accelerometry, and sometimes respiration. Independent validation finds that such devices classify sleep-versus-wake reasonably but stage classification only moderately, with the largest errors in N1/N3 discrimination and degraded performance in people with sleep-disordered breathing. Treat the wearable hypnogram as an approximate context layer for locating events in the night, not as a clinical-grade staging. CPAP Analyzer reports stage-aligned analyses for information only and does not diagnose.",
+    uncertainty:
+      'Wearable sleep staging is a modeled inference, not a measurement. Without EEG/EOG/EMG the device cannot truly score N1/N2/N3/REM; it predicts them from heart rate, its variability, and motion. Epoch-by-epoch agreement with polysomnography is moderate at best and is worse for the deep (N3) and light-transition (N1) boundaries and in patients with OSA — the exact minutes in each stage, and the precise placement of stage boundaries, should be read loosely. The pattern (for example, "events cluster in the REM-labelled stretches near morning") is more trustworthy than any single epoch\'s label. Read stage-aligned numbers as hypothesis-generating and discuss findings with your clinician.',
+    relatedTerms: [
+      'rem-sleep',
+      'sleep-cycle',
+      'arousal',
+      'sleep-fragmentation',
+      'rem-predominant-osa',
+    ],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172. — AASM epoch-based stage definitions (Wake, N1, N2, N3, REM).',
+    ],
+  },
+  {
+    id: 'rem-sleep',
+    term: 'REM Sleep',
+    category: 'sleep-medicine',
+    aliases: ['Rapid Eye Movement Sleep', 'REM'],
+    quick:
+      'The dreaming stage of sleep, marked by rapid eye movements and muscle atonia, during which obstructive apneas are often worse.',
+    standard:
+      'REM (rapid eye movement) sleep is the stage of vivid dreaming, characterized by a desynchronized EEG, darting eye movements, and a near-complete loss of skeletal-muscle tone (REM atonia). That atonia extends to the muscles that hold the upper airway open, so obstructive apneas and hypopneas in REM tend to be longer and to cause deeper desaturations than in non-REM sleep. REM periods are short early in the night and lengthen toward morning, which is why a person whose events concentrate in REM often has the worst breathing in the second half of the night. When the apnea–hypopnea index is much higher in REM than in non-REM, the pattern is called REM-predominant (or REM-related) OSA.',
+    detailed:
+      'REM sleep recurs roughly every 90 minutes in the normal ultradian rhythm, with each successive REM episode generally longer than the last — so total REM is back-loaded into the final third of the night (Feinberg & Floyd 1979). Physiologically, REM combines suppressed upper-airway dilator-muscle activity, blunted ventilatory responses to hypoxia and hypercapnia, and irregular breathing; the supine posture common in late sleep compounds airway collapsibility (supine-REM is the classic "worst case" for OSA). REM-related event worsening is the basis for the AHI_REM / AHI_NREM comparison and for the literature definitions of REM-predominant OSA (Conwell 2012; Koo 2008; Mokhlesi & Punjabi 2012). In CPAP Analyzer, REM is one of the four wearable hypnogram levels (Wake / REM / Light / Deep); because the stage labels come from a consumer wearable rather than EEG, the REM boundaries are approximate — read the REM-vs-NREM contrast as a trend across nights, not a single-night verdict. CPAP Analyzer reports these analyses descriptively and does not diagnose.',
+    relatedTerms: ['sleep-stage', 'sleep-cycle', 'rem-predominant-osa', 'cvhr', 'ahi'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+      'Feinberg, I., & Floyd, T. C. (1979). Systematic trends across the night in human sleep cycles. Psychophysiology, 16(3), 283–291. DOI: 10.1111/j.1469-8986.1979.tb02991.x. — REM episodes lengthen across the night.',
+    ],
+  },
+  {
+    id: 'sleep-cycle',
+    term: 'Sleep Cycle (NREM–REM Ultradian Cycle)',
+    category: 'sleep-medicine',
+    aliases: ['NREM-REM Cycle', 'Ultradian Sleep Cycle'],
+    quick:
+      'One repetition of the non-REM → REM progression during sleep, lasting roughly 90 minutes, repeated four to six times per night.',
+    standard:
+      'A sleep cycle is one pass through the recurring non-REM → REM sequence: the night descends from light into deep non-REM sleep and then rises into a REM episode, after which the cycle repeats. The cycle length is an ultradian rhythm of roughly 90 minutes (commonly cited as 90–120 minutes), so a full night contains about four to six cycles. The structure changes across the night — deep N3 sleep dominates the early cycles, while REM episodes lengthen in the later ones (Feinberg & Floyd 1979). Because consumer wearables do not score true PSG cycles, CPAP Analyzer derives cycle boundaries heuristically from the imported hypnogram, using the ends of successive REM episodes as the cycle markers.',
+    detailed:
+      'How CPAP Analyzer derives cycles (heuristic, not PSG cycle scoring): from the wearable hypnogram it first identifies REM episodes as maximal runs of REM, merging runs separated by gaps of ≤ 15 minutes so that a brief interruption does not split one physiological REM period into two. A sleep cycle is then defined as the span from the end of one REM episode to the end of the next, following the classical convention that a cycle ends when a REM period ends; any non-REM sleep that trails after the final REM episode is reported as an incomplete final cycle rather than discarded. This reproduces the textbook ~90-minute NREM–REM cadence and the across-night trends (more deep sleep early, longer REM late) when the wearable staging is reasonable, but it is explicitly a heuristic over modeled stages: it inherits all the uncertainty of consumer-wearable staging, and a missed or spurious REM episode shifts the cycle boundaries. It is not a substitute for the cycle structure a sleep technologist would derive from polysomnography. CPAP Analyzer uses the derived cycles to show per-cycle event load and early- versus late-night distribution; it reports them for information and does not diagnose.',
+    relatedTerms: ['rem-sleep', 'sleep-stage', 'sleep-fragmentation', 'sleep-apnea'],
+    references: [
+      'Feinberg, I., & Floyd, T. C. (1979). Systematic trends across the night in human sleep cycles. Psychophysiology, 16(3), 283–291. DOI: 10.1111/j.1469-8986.1979.tb02991.x. — The ~90-minute NREM–REM cycle and its systematic across-night trends.',
+    ],
+  },
+  {
+    id: 'rem-predominant-osa',
+    term: 'REM-Predominant / REM-Related OSA',
+    category: 'sleep-medicine',
+    aliases: ['REM-Related OSA', 'REM-Predominant Obstructive Sleep Apnea', 'REM OSA'],
+    quick:
+      'Obstructive sleep apnea in which events are concentrated in REM sleep — formally, the REM apnea–hypopnea index is at least twice the non-REM index.',
+    standard:
+      'REM-related OSA describes obstructive sleep apnea whose events cluster in REM sleep, where airway-muscle atonia makes the airway most collapsible. The common literature definition is a ratio AHI_REM / AHI_NREM ≥ 2 with AHI_NREM > 0, where AHI_REM and AHI_NREM are the apnea–hypopnea indices computed within REM and within non-REM time respectively. A stricter "REM-predominant" definition adds floors to avoid labelling people on the strength of a tiny amount of REM: AHI_NREM < 15, at least 30 minutes of REM sleep, and at least 15 minutes of NREM sleep. The pattern matters because REM events are often longer and cause deeper desaturations, and REM lengthens toward morning, so the worst breathing can fall in the hours before waking.',
+    detailed:
+      'Definitions vary across the literature, which is itself a caveat. The widely used criterion is AHI_REM / AHI_NREM ≥ 2 (with AHI_NREM > 0); Conwell et al. (2012) and Koo et al. (2008) add the more conservative requirements AHI_NREM < 15/h, REM duration ≥ 30 min, and NREM duration ≥ 15 min so the ratio is not driven by a sliver of REM or by near-zero NREM denominators (Mokhlesi & Punjabi 2012 discuss why the denominator floors matter). CPAP Analyzer computes AHI_REM and AHI_NREM by partitioning machine-scored events into REM and non-REM time using the imported wearable hypnogram, reports the ratio, and flags whether the literature floors are met. It also offers an across-nights Wilcoxon signed-rank test of paired AHI_REM versus AHI_NREM to ask whether the REM excess is consistent rather than a one-night artifact. Two strong caveats apply: (1) the diagnostic literature is built on EEG-staged PSG, whereas these stages come from a consumer wearable, so the REM/NREM split is approximate; and (2) device AHI is flow-only and leak-sensitive. Read a REM-predominant pattern as a candidate finding to discuss with a clinician, not a diagnosis. CPAP Analyzer does not diagnose.',
+    uncertainty:
+      'The REM/NREM apnea split is doubly uncertain here: it multiplies the approximate nature of wearable sleep staging (no EEG; REM boundaries are inferred and worse in OSA patients) by the flow-only, leak-sensitive nature of device event scoring. A small misplacement of REM boundaries can move events between the REM and NREM buckets and swing the ratio across the 2.0 line, and short REM time makes AHI_REM noisy. Treat the ratio as a trend across several nights with adequate REM, weight low-leak nights, and confirm the literature floors before reading the label; bring a persistent pattern to your clinician.',
+    relatedTerms: ['rem-sleep', 'sleep-stage', 'ahi', 'osa', 'cvhr', 'wilcoxon-signed-rank'],
+    references: [
+      'Conwell, W., Patel, B., Doeing, D., et al. (2012). Prevalence, clinical features, and CPAP adherence in REM-related sleep-disordered breathing: a cross-sectional analysis of a large clinical population. Sleep and Breathing, 16(2), 519–526. DOI: 10.1007/s11325-011-0537-6.',
+      'Koo, B. B., Patel, S. R., Strohl, K., & Hoffstein, V. (2008). Rapid eye movement-related sleep-disordered breathing: influence of age and gender. Chest, 134(6), 1156–1161. DOI: 10.1378/chest.08-1311.',
+      'Mokhlesi, B., & Punjabi, N. M. (2012). "REM-related" obstructive sleep apnea: an epiphenomenon or a clinically important entity? Sleep, 35(1), 5–7. DOI: 10.5665/sleep.1570. — On denominator floors and the clinical significance of the REM/NREM ratio.',
+    ],
+  },
+  {
+    id: 'cvhr',
+    term: 'CVHR (Cyclic Variation of Heart Rate)',
+    category: 'sleep-medicine',
+    aliases: ['Cyclic Variation of Heart Rate'],
+    quick:
+      'The repetitive bradycardia-then-tachycardia swing in heart rate that accompanies each apnea/hypopnea cycle, driven by autonomic arousal.',
+    standard:
+      'Cyclic variation of heart rate (CVHR) is the characteristic heart-rate signature of sleep-disordered breathing first described by Guilleminault et al. (1984): during an apnea the heart rate tends to slow (bradycardia), then surges upward (tachycardia) at event termination as the arousal and resumption of breathing trigger a burst of sympathetic activity. Averaging the heart rate around many events (an event-triggered average) reveals this dip-then-surge pattern even when individual events are noisy. The size of the post-event tachycardia surge reflects the strength of the autonomic (sympathetic) arousal that each event provokes — larger surges indicate more cardiovascular stress per event.',
+    detailed:
+      'CVHR arises from the autonomic response to repetitive apneas: apnea-related hypoxia and the cessation of the inhibitory lung-stretch reflex favor vagal (parasympathetic) bradycardia during the event, and arousal with breathing resumption produces a sympathetic surge and tachycardia at termination. CPAP Analyzer estimates CVHR by computing an event-triggered average of the imported wearable intraday heart rate, aligning each respiratory event to a common time origin and averaging the heart-rate trace in a window around it; the resulting curve shows the typical peri-event bradycardia–tachycardia excursion and the magnitude of the surge. Because the heart rate comes from a wrist or ring photoplethysmographic (PPG) sensor sampled at roughly a 5-second cadence with smoothing and latency, the timing and amplitude of the surge are approximate — the pattern is informative, the exact beat-to-beat dynamics are not resolved as they would be from an ECG. CVHR has been studied as a screening signal for sleep apnea from heart rate alone; here it is a descriptive overlay on event analysis, reported for information. CPAP Analyzer does not diagnose.',
+    relatedTerms: ['arousal', 'rem-sleep', 'sleep-stage', 'ahi', 'desaturation'],
+    references: [
+      'Guilleminault, C., Connolly, S., Winkle, R., Melvin, K., & Tilkian, A. (1984). Cyclical variation of the heart rate in sleep apnoea syndrome. The Lancet, 1(8369), 126–131. DOI: 10.1016/S0140-6736(84)90062-X. — Original description of cyclic heart-rate variation in sleep apnea.',
     ],
   },
 
@@ -845,6 +939,40 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Spearman, C. (1904). The proof and measurement of association between two things. American Journal of Psychology, 15(1), 72–101. DOI: 10.2307/1412159.',
       'Cohen, J. (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.). Hillsdale, NJ: Lawrence Erlbaum. — Effect-size benchmarks (r: .1/.3/.5 = small/medium/large).',
       'Schober, P., Boer, C., & Schwarte, L. A. (2018). Correlation coefficients: appropriate use and interpretation. Anesthesia & Analgesia, 126(5), 1763–1768. DOI: 10.1213/ANE.0000000000002864. — Notes that correlation-strength cutoffs are inherently arbitrary.',
+    ],
+  },
+  {
+    id: 'chi-square-gof',
+    term: 'Chi-Square Goodness-of-Fit Test',
+    category: 'statistics',
+    aliases: ['Chi-Squared Goodness-of-Fit', 'χ² Goodness-of-Fit', 'Pearson Chi-Square'],
+    quick:
+      'A test of whether observed category counts differ from the counts expected under a baseline model — used to ask if events are unevenly distributed across sleep stages.',
+    standard:
+      'The chi-square (χ²) goodness-of-fit test compares a set of observed counts across categories with the counts you would expect if a null model were true. In sleep-stage analysis the categories are the sleep stages, the observed counts are the respiratory events scored in each stage, and the expected counts are proportional to the time spent in each stage — so the null hypothesis is "events occur at the same rate per hour in every stage." A large χ² statistic, and a correspondingly small p-value, indicates the event rate differs across stages by more than time-in-stage alone would predict (for example, an excess of events in REM). The test answers whether a difference exists; it does not say which stage drives it or how large the effect is.',
+    detailed:
+      "The statistic is χ² = Σ (Oᵢ − Eᵢ)² / Eᵢ, summed over the k categories, where Oᵢ is the observed count in category i and Eᵢ is its expected count under the null. For stage analysis, Eᵢ = N_total × (time in stage i / total staged time), so events are expected in proportion to time in each stage. Under the null the statistic follows a χ² distribution with df = k − 1 degrees of freedom (one fewer than the number of categories, because the totals are fixed). Reading the result: a larger χ² means observed counts depart further from expectation; the p-value is the probability of a χ² at least that large under the null, so p < 0.05 is the usual flag that the per-stage event rates genuinely differ. Cochran's rule is the key validity caveat: the χ² approximation is unreliable when expected counts are small — the common guideline is that all expected counts should be ≥ 5 (or at least no more than ~20% of cells below 5). A short night, or a stage with very little time, can therefore produce too few expected events for the test to be trustworthy; CPAP Analyzer flags this rather than reporting a spurious p-value. The test is also an omnibus test — it detects that some stage differs but not which one — and, like all the analyses here, it rests on wearable-derived stage labels, so a significant result is a lead to interpret with the hypnogram, not a diagnosis.",
+    formula: '\\chi^2 = \\sum_{i=1}^{k} \\frac{(O_i - E_i)^2}{E_i}, \\quad \\mathrm{df} = k - 1',
+    relatedTerms: ['p-value', 'sleep-stage', 'rem-predominant-osa', 'statistical-significance'],
+    references: [
+      'Pearson, K. (1900). On the criterion that a given system of deviations from the probable in the case of a correlated system of variables is such that it can be reasonably supposed to have arisen from random sampling. Philosophical Magazine, Series 5, 50(302), 157–175. DOI: 10.1080/14786440009463897. — Original chi-square goodness-of-fit statistic.',
+      'Cochran, W. G. (1954). Some methods for strengthening the common χ² tests. Biometrics, 10(4), 417–451. DOI: 10.2307/3001616. — The expected-count (≥ 5) rule for χ² validity.',
+    ],
+  },
+  {
+    id: 'wilcoxon-signed-rank',
+    term: 'Wilcoxon Signed-Rank Test',
+    category: 'statistics',
+    aliases: ['Wilcoxon Signed-Rank', 'Signed-Rank Test'],
+    quick:
+      'A non-parametric paired test of whether two matched measurements differ — used here to compare REM and non-REM AHI across nights.',
+    standard:
+      "The Wilcoxon signed-rank test is the rank-based (non-parametric) counterpart of the paired t-test. It asks whether the differences between two paired measurements are systematically positive or negative, without assuming the differences are normally distributed — which suits skewed quantities like AHI. In sleep-stage analysis it compares each night's AHI_REM with the same night's AHI_NREM (a natural pairing), testing whether the REM excess is consistent across nights rather than a one-night fluke. A small p-value indicates a reliable paired difference in the direction observed.",
+    detailed:
+      "The test ranks the absolute values of the paired differences dᵢ = xᵢ − yᵢ (dropping zeros), attaches the sign of each difference to its rank, and sums the positive-signed ranks to form the statistic W; under the null hypothesis of no systematic difference, positive and negative ranks balance and W has a known sampling distribution (a normal approximation with a continuity correction is used for larger n). It assumes only that the paired differences are symmetric about their median, making it robust to the right-skew and outliers common in nightly AHI data, where a paired t-test's normality assumption would be questionable. CPAP Analyzer uses it for the across-nights comparison of AHI_REM versus AHI_NREM that underpins the REM-predominant-OSA view; it requires enough paired nights (nights with both REM and NREM events scored) to be meaningful, and it reports a difference in central tendency, not its magnitude or clinical importance. As with every analysis built on wearable staging, a significant result is a candidate pattern to discuss with a clinician, not a diagnosis.",
+    relatedTerms: ['p-value', 'rem-predominant-osa', 'median', 'statistical-significance'],
+    references: [
+      'Wilcoxon, F. (1945). Individual comparisons by ranking methods. Biometrics Bulletin, 1(6), 80–83. DOI: 10.2307/3001968. — The signed-rank test for paired samples.',
     ],
   },
   {
