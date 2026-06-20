@@ -21,7 +21,15 @@
  */
 
 import { roundCoordinate } from '@/analysis/weather/coordinates';
-import { OPEN_METEO_HOSTS } from './OpenMeteoClient';
+import { OPEN_METEO_HOSTS, parseContentLength } from './OpenMeteoClient';
+
+/**
+ * Upper bound (bytes) on a geocoding response body we will parse. A city search
+ * returns at most ~10 compact matches, so this is small; its purpose is to stop
+ * a buggy or compromised (but allow-listed) host from forcing an unbounded
+ * allocation in `response.json()`. 1 MiB.
+ */
+export const MAX_GEOCODE_RESPONSE_BYTES = 1 * 1024 * 1024;
 
 /** One geocoding match (rounded coordinates; a human-readable label). */
 export interface GeocodeResult {
@@ -110,6 +118,17 @@ export async function geocode(
 
   if (!response.ok) {
     throw new Error(`Location search failed (HTTP ${String(response.status)}).`);
+  }
+
+  // Availability hardening: reject an over-large body BEFORE buffering it into
+  // memory via response.json(). We trust the advertised Content-Length only as a
+  // cheap pre-check. NOTE: a host that omits or lies about Content-Length can
+  // still stream a large body — we do not stream-count here to avoid
+  // over-engineering; that residual gap is accepted for a keyless GET against an
+  // allow-listed origin.
+  const advertised = parseContentLength(response.headers.get('Content-Length'));
+  if (advertised !== undefined && advertised > MAX_GEOCODE_RESPONSE_BYTES) {
+    throw new Error('Location search returned an unexpectedly large response.');
   }
 
   let body: RawGeocodeResponse;

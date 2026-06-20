@@ -1,10 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
-import { geocode } from '../geocoding';
+import { geocode, MAX_GEOCODE_RESPONSE_BYTES } from '../geocoding';
 
-function jsonResponse(body: unknown, ok = true, status = 200): Response {
+function jsonResponse(
+  body: unknown,
+  ok = true,
+  status = 200,
+  headers: Record<string, string> = {},
+): Response {
+  const headerMap = new Headers(headers);
   return {
     ok,
     status,
+    headers: headerMap,
     json: () => Promise.resolve(body),
   } as unknown as Response;
 }
@@ -56,5 +63,36 @@ describe('geocode', () => {
   it('throws a user-facing error on HTTP failure', async () => {
     const fetchFn = vi.fn().mockResolvedValue(jsonResponse({}, false, 503));
     await expect(geocode('X', 5, { fetchFn })).rejects.toThrow(/HTTP 503/);
+  });
+
+  it('rejects an oversize Content-Length without parsing the body', async () => {
+    let parsed = false;
+    const response = {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'Content-Length': String(MAX_GEOCODE_RESPONSE_BYTES + 1) }),
+      json: () => {
+        parsed = true;
+        return Promise.resolve({ results: [] });
+      },
+    } as unknown as Response;
+    const fetchFn = vi.fn().mockResolvedValue(response);
+
+    await expect(geocode('Berlin', 5, { fetchFn })).rejects.toThrow(/large/i);
+    expect(parsed).toBe(false);
+  });
+
+  it('parses normally when Content-Length is within the ceiling', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ results: [] }, true, 200, { 'Content-Length': String(1024) }),
+      );
+    expect(await geocode('Berlin', 5, { fetchFn })).toEqual([]);
+  });
+
+  it('parses normally when Content-Length is absent', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ results: [] }));
+    expect(await geocode('Berlin', 5, { fetchFn })).toEqual([]);
   });
 });

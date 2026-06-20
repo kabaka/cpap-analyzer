@@ -15,7 +15,12 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { OpenMeteoClient, WeatherFetchError, type WeatherRequest } from '../OpenMeteoClient';
+import {
+  MAX_WEATHER_RESPONSE_BYTES,
+  OpenMeteoClient,
+  WeatherFetchError,
+  type WeatherRequest,
+} from '../OpenMeteoClient';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -222,5 +227,122 @@ describe('OpenMeteoClient — error handling', () => {
     const client = makeClient(fetchFn);
 
     await expect(client.fetchWeather(BASE_REQUEST)).rejects.toMatchObject({ reason: 'parse' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Response-size cap (availability hardening)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a Response-like stub that advertises an arbitrary `Content-Length` and
+ * records whether `.json()` was invoked. We forge the header (a real `Response`
+ * recomputes it from the body) so the cap can be exercised without allocating a
+ * multi-megabyte payload.
+ */
+function sizedResponse(
+  contentLength: string | null,
+  body: unknown = { hourly: {} },
+): { response: Response; jsonCalled: () => boolean } {
+  let parsed = false;
+  const headers = new Headers();
+  if (contentLength !== null) headers.set('Content-Length', contentLength);
+  const response = {
+    ok: true,
+    status: 200,
+    headers,
+    json: () => {
+      parsed = true;
+      return Promise.resolve(body);
+    },
+  } as unknown as Response;
+  return { response, jsonCalled: () => parsed };
+}
+
+describe('OpenMeteoClient — response-size cap', () => {
+  it('rejects an oversize Content-Length with a too-large error and does not parse', async () => {
+    const { response, jsonCalled } = sizedResponse(String(MAX_WEATHER_RESPONSE_BYTES + 1));
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(response);
+    const client = makeClient(fetchFn);
+
+    await expect(client.fetchWeather(BASE_REQUEST)).rejects.toMatchObject({ reason: 'too-large' });
+    // The body must NOT have been buffered into memory.
+    expect(jsonCalled()).toBe(false);
+    // Non-retryable: a single attempt only.
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('parses a body at exactly the size ceiling (boundary is inclusive)', async () => {
+    const { response, jsonCalled } = sizedResponse(String(MAX_WEATHER_RESPONSE_BYTES), {
+      hourly: { time: [] },
+    });
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(response);
+    const client = makeClient(fetchFn);
+
+    const result = await client.fetchWeather(BASE_REQUEST);
+    expect(result).toEqual({ hourly: { time: [] } });
+    expect(jsonCalled()).toBe(true);
+  });
+
+  it('parses normally when Content-Length is absent (residual streaming gap accepted)', async () => {
+    const { response, jsonCalled } = sizedResponse(null, { hourly: { time: [] } });
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(response);
+    const client = makeClient(fetchFn);
+
+    const result = await client.fetchWeather(BASE_REQUEST);
+    expect(result).toEqual({ hourly: { time: [] } });
+    expect(jsonCalled()).toBe(true);
+  });
+
+  it('ignores a malformed Content-Length and still parses', async () => {
+    const { response, jsonCalled } = sizedResponse('not-a-number', { hourly: { time: [] } });
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(response);
+    const client = makeClient(fetchFn);
+
+    const result = await client.fetchWeather(BASE_REQUEST);
+    expect(result).toEqual({ hourly: { time: [] } });
+    expect(jsonCalled()).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Timezone validation (egress hardening)
+// ---------------------------------------------------------------------------
+
+describe('OpenMeteoClient — timezone validation', () => {
+  it('passes a valid IANA timezone through to the egress URL', async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ hourly: {} }));
+    const client = makeClient(fetchFn);
+
+    await client.fetchWeather({ ...BASE_REQUEST, timezone: 'Europe/London' });
+
+    const url = new URL(fetchFn.mock.calls[0]![0] as string);
+    expect(url.searchParams.get('timezone')).toBe('Europe/London');
+  });
+
+  it('falls back to "auto" for an unrecognized timezone', async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ hourly: {} }));
+    const client = makeClient(fetchFn);
+
+    await client.fetchWeather({ ...BASE_REQUEST, timezone: 'Mars/Olympus_Mons' });
+
+    const url = new URL(fetchFn.mock.calls[0]![0] as string);
+    expect(url.searchParams.get('timezone')).toBe('auto');
+  });
+
+  it('falls back to "auto" for an empty/whitespace timezone', async () => {
+    const fetchFn = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ hourly: {} }));
+    const client = makeClient(fetchFn);
+
+    await client.fetchWeather({ ...BASE_REQUEST, timezone: '   ' });
+
+    const url = new URL(fetchFn.mock.calls[0]![0] as string);
+    expect(url.searchParams.get('timezone')).toBe('auto');
+  });
+
+  it('passes "auto" through unchanged', () => {
+    const client = makeClient(vi.fn<typeof fetch>());
+    const url = new URL(client.buildWeatherUrl({ ...BASE_REQUEST, timezone: 'auto' }));
+    expect(url.searchParams.get('timezone')).toBe('auto');
   });
 });

@@ -81,6 +81,66 @@ export const AIR_QUALITY_HOURLY_VARIABLES = [
 ] as const;
 
 // ---------------------------------------------------------------------------
+// Defensive response-size ceiling (availability hardening)
+// ---------------------------------------------------------------------------
+
+/**
+ * Upper bound (bytes) on a weather / air-quality response body we are willing to
+ * parse. Multi-year hourly payloads are legitimately large, so this is generous;
+ * its purpose is to stop a buggy or compromised (but allow-listed) host from
+ * forcing an unbounded allocation in `response.json()`. 8 MiB.
+ */
+export const MAX_WEATHER_RESPONSE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Parse a `Content-Length` header into a non-negative integer byte count, or
+ * `undefined` when the header is absent or not a clean non-negative integer.
+ * Side-effect-free.
+ */
+export function parseContentLength(header: string | null): number | undefined {
+  if (header === null) return undefined;
+  const trimmed = header.trim();
+  if (!/^\d+$/.test(trimmed)) return undefined;
+  const value = Number.parseInt(trimmed, 10);
+  return Number.isSafeInteger(value) ? value : undefined;
+}
+
+/**
+ * Validate an IANA timezone string against the runtime's supported set and fall
+ * back to `'auto'` (accepted by Open-Meteo) for anything empty or unrecognized.
+ *
+ * `Intl.supportedValuesOf('timeZone')` is not exposed by every runtime, so the
+ * lookup is guarded; when it is unavailable we conservatively pass a non-empty
+ * value through unchanged (it is already `URLSearchParams`-encoded, so there is
+ * no injection risk) and only coerce empty/whitespace input to `'auto'`.
+ * Side-effect-free.
+ */
+export function sanitizeTimezone(timezone: string): string {
+  const trimmed = timezone.trim();
+  if (trimmed.length === 0) return 'auto';
+  if (trimmed === 'auto') return 'auto';
+
+  let supported: readonly string[] | undefined;
+  try {
+    const supportedValuesOf = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] })
+      .supportedValuesOf;
+    if (typeof supportedValuesOf === 'function') {
+      supported = supportedValuesOf('timeZone');
+    }
+  } catch {
+    // Runtime does not expose supportedValuesOf, or rejected the key — treat the
+    // supported set as unknown and fall through to the permissive branch.
+    supported = undefined;
+  }
+
+  if (supported === undefined) {
+    // Cannot enumerate zones on this runtime; keep the (already-encoded) value.
+    return trimmed;
+  }
+  return supported.includes(trimmed) ? trimmed : 'auto';
+}
+
+// ---------------------------------------------------------------------------
 // Typed errors
 // ---------------------------------------------------------------------------
 
@@ -94,8 +154,16 @@ export const AIR_QUALITY_HOURLY_VARIABLES = [
  * - `http`        — a non-2xx, non-429 HTTP status (after retries for 5xx).
  * - `timeout`     — the request exceeded the configured timeout and was aborted.
  * - `parse`       — the response body was not valid JSON.
+ * - `too-large`   — the response advertised a `Content-Length` above
+ *                   {@link MAX_WEATHER_RESPONSE_BYTES}; the body was NOT parsed.
  */
-export type WeatherFetchErrorReason = 'offline' | 'rate-limited' | 'http' | 'timeout' | 'parse';
+export type WeatherFetchErrorReason =
+  | 'offline'
+  | 'rate-limited'
+  | 'http'
+  | 'timeout'
+  | 'parse'
+  | 'too-large';
 
 /** A typed, discriminated error for every weather network failure mode. */
 export class WeatherFetchError extends Error {
@@ -334,7 +402,9 @@ export class OpenMeteoClient {
     // Rounded coordinates ONLY — never the raw inputs.
     params.set('latitude', String(lat));
     params.set('longitude', String(lon));
-    params.set('timezone', request.timezone);
+    // Validate the timezone at the egress boundary, falling back to 'auto'
+    // (which Open-Meteo accepts) for anything not a recognized IANA name.
+    params.set('timezone', sanitizeTimezone(request.timezone));
     for (const [key, value] of Object.entries(extra)) {
       params.set(key, value);
     }
@@ -387,8 +457,13 @@ export class OpenMeteoClient {
       } catch (err) {
         const fetchError = err instanceof WeatherFetchError ? err : this.classifyError(err);
 
-        // Non-retryable reasons surface immediately.
-        if (fetchError.reason === 'offline' || fetchError.reason === 'parse') {
+        // Non-retryable reasons surface immediately. A retry would just re-pull
+        // the same oversize / unparseable body, so `too-large` joins them.
+        if (
+          fetchError.reason === 'offline' ||
+          fetchError.reason === 'parse' ||
+          fetchError.reason === 'too-large'
+        ) {
           throw fetchError;
         }
         // 4xx other than 429 are not retryable (request is malformed/invalid).
@@ -456,6 +531,21 @@ export class OpenMeteoClient {
         {
           status: response.status,
         },
+      );
+    }
+
+    // Availability hardening: reject an over-large body BEFORE buffering it into
+    // memory via response.json(). We trust the advertised Content-Length only as
+    // a cheap pre-check. NOTE: a (buggy/compromised) host that omits or lies
+    // about Content-Length can still stream a large body — we do not stream-count
+    // here to avoid over-engineering; that residual gap is accepted for a keyless
+    // GET against an allow-listed origin.
+    const advertised = parseContentLength(response.headers.get('Content-Length'));
+    if (advertised !== undefined && advertised > MAX_WEATHER_RESPONSE_BYTES) {
+      throw new WeatherFetchError(
+        'too-large',
+        `Open-Meteo response too large (${String(advertised)} bytes > ${String(MAX_WEATHER_RESPONSE_BYTES)} limit)`,
+        { status: response.status },
       );
     }
 
