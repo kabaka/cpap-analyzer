@@ -9,7 +9,7 @@
  *   city Find + a one-time "Use current location" geolocation convenience with
  *   full error mapping; unit SegmentedControls; Core / Air quality domain
  *   checkboxes (no pollen); resolution SegmentedControl; a primary "Sync now";
- *   an auto-sync toggle (default off); and a "Last synced / N nights" status.
+ *   an auto-sync toggle (default off); and a "Last synced / N days" status.
  * - **On disable**: a prompt offering to also delete stored weather data, with
  *   Keep as the default/focused action (the locked decision).
  *
@@ -26,7 +26,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useSessionData } from '@/hooks/useSessionData';
 import { roundCoordinate } from '@/analysis/weather/coordinates';
 import { geocode } from '@/services/weather/geocoding';
-import { countWeatherNights, deleteAllWeatherData } from '@/services/weather/weatherDataService';
+import { countWeatherDays, deleteAllWeatherData } from '@/services/weather/weatherDataService';
 import type { WeatherLocation } from '@/types/weather';
 import { ConsentDialog } from './ConsentDialog';
 import { SyncSheet } from './SyncSheet';
@@ -104,18 +104,20 @@ export function WeatherIntegrationPanel(): JSX.Element {
   const [finding, setFinding] = useState(false);
   const latRef = useRef<HTMLInputElement>(null);
 
-  // Status: nights of stored weather data.
-  const [nightCount, setNightCount] = useState<number | null>(null);
-  const refreshNightCount = useCallback(() => {
-    void countWeatherNights()
-      .then(setNightCount)
-      .catch(() => setNightCount(null));
+  // Status: distinct civil days of stored weather data. Counted as days (not
+  // nights) because a midnight-spanning night stores a summary for two civil
+  // dates; see countWeatherDays for why this helper cannot collapse to nights.
+  const [dayCount, setDayCount] = useState<number | null>(null);
+  const refreshDayCount = useCallback(() => {
+    void countWeatherDays()
+      .then(setDayCount)
+      .catch(() => setDayCount(null));
   }, []);
 
   // Initial / on-enable count.
   useEffect(() => {
-    if (weather.enabled) refreshNightCount();
-  }, [weather.enabled, refreshNightCount]);
+    if (weather.enabled) refreshDayCount();
+  }, [weather.enabled, refreshDayCount]);
 
   // ── Two-gate consent ──
 
@@ -136,8 +138,8 @@ export function WeatherIntegrationPanel(): JSX.Element {
   const handleConsentEnable = useCallback(() => {
     updateIntegration('weather', { enabled: true, consentAt: new Date().toISOString() });
     setConsentOpen(false);
-    refreshNightCount();
-  }, [updateIntegration, refreshNightCount]);
+    refreshDayCount();
+  }, [updateIntegration, refreshDayCount]);
 
   const handleConsentCancel = useCallback(() => {
     // Revert: the switch was visually on; ensure settings stay disabled.
@@ -219,7 +221,7 @@ export function WeatherIntegrationPanel(): JSX.Element {
   const handleDeleteData = useCallback(() => {
     void deleteAllWeatherData()
       .then(() => {
-        setNightCount(0);
+        setDayCount(0);
       })
       .catch(() => {
         /* best-effort; the prompt closes regardless */
@@ -411,10 +413,10 @@ export function WeatherIntegrationPanel(): JSX.Element {
           <div className={styles.statusRow}>
             <span className={styles.statusText}>
               Last synced: {lastSyncedText}
-              {nightCount !== null && (
+              {dayCount !== null && (
                 <>
                   {' · '}
-                  {nightCount} {nightCount === 1 ? 'night' : 'nights'}
+                  {dayCount} {dayCount === 1 ? 'day' : 'days'} of weather data
                 </>
               )}
             </span>
@@ -456,13 +458,13 @@ export function WeatherIntegrationPanel(): JSX.Element {
         }}
         title="Weather integration disabled"
         description={
-          nightCount && nightCount > 0
-            ? `Also delete the ${nightCount} ${nightCount === 1 ? 'night' : 'nights'} of stored weather data?`
+          dayCount && dayCount > 0
+            ? `Also delete the ${dayCount} ${dayCount === 1 ? 'day' : 'days'} of stored weather data?`
             : 'No stored weather data to delete.'
         }
       >
         <div className={styles.dialogActions}>
-          {nightCount && nightCount > 0 ? (
+          {dayCount && dayCount > 0 ? (
             <>
               {/* Keep is the default/focused action per the locked decision. */}
               <Button variant="primary" onClick={handleKeepData} autoFocus>
@@ -493,7 +495,7 @@ export function WeatherIntegrationPanel(): JSX.Element {
         storeHourly={weather.resolution === 'daily+hourly'}
         onSynced={() => {
           updateIntegration('weather', { lastSyncAt: new Date().toISOString() });
-          refreshNightCount();
+          refreshDayCount();
         }}
       />
     </div>

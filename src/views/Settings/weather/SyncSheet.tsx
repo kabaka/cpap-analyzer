@@ -65,6 +65,8 @@ function reasonText(reason: string | undefined, message: string): string {
       return 'Server error';
     case 'parse':
       return 'Bad response';
+    case 'too-large':
+      return 'The weather service returned an unexpectedly large response. Please try again later.';
     default:
       return message;
   }

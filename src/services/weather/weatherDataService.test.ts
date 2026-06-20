@@ -22,7 +22,7 @@ vi.mock('@/services/storage/getDB', () => ({
   getDB: () => Promise.resolve(db),
 }));
 
-import { countWeatherNights, deleteAllWeatherData } from './weatherDataService';
+import { countWeatherDays, deleteAllWeatherData } from './weatherDataService';
 
 function makeDaily(overrides: Partial<IntegrationData> = {}): IntegrationData {
   return {
@@ -75,14 +75,24 @@ describe('weatherDataService', () => {
     await db.destroy();
   });
 
-  describe('countWeatherNights', () => {
-    it('counts distinct dates with a weather daily summary', async () => {
+  describe('countWeatherDays', () => {
+    it('counts distinct civil dates with a weather daily summary', async () => {
       await db.addIntegrationData(makeDaily({ date: '2026-01-10' }));
       await db.addIntegrationData(makeDaily({ date: '2026-01-10' }));
       await db.addIntegrationData(makeDaily({ date: '2026-01-11' }));
       await db.addIntegrationData(makeDaily({ source: 'fitbit', date: '2026-01-12' }));
 
-      expect(await countWeatherNights()).toBe(2);
+      expect(await countWeatherDays()).toBe(2);
+    });
+
+    it('counts both civil dates of a midnight-spanning night as two days', async () => {
+      // A single night crossing local midnight stores a daily summary for BOTH
+      // civil dates; this helper honestly reports 2 days (the Settings panel
+      // labels it "N days of weather data", not "N nights").
+      await db.addIntegrationData(makeDaily({ date: '2026-02-01' }));
+      await db.addIntegrationData(makeDaily({ date: '2026-02-02' }));
+
+      expect(await countWeatherDays()).toBe(2);
     });
   });
 

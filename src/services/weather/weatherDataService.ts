@@ -1,6 +1,6 @@
 /**
  * Read/maintenance helpers for stored weather integration data, used by the
- * Settings panel (the "N nights" status line and the on-disable delete prompt).
+ * Settings panel (the "N days" status line and the on-disable delete prompt).
  *
  * All fetching of weather data is done elsewhere (user-initiated, via
  * {@link WeatherSyncService}); this module only inspects and removes what is
@@ -23,8 +23,21 @@ import { getDB } from '@/services/storage/getDB';
 /** Weather integration source identifier. */
 const SOURCE = 'weather';
 
-/** Count of stored weather nights (distinct dates with a daily summary). */
-export async function countWeatherNights(): Promise<number> {
+/**
+ * Count distinct stored weather **days** — i.e. distinct civil dates that have a
+ * `weather_daily` summary.
+ *
+ * This intentionally counts civil *days*, not therapy *nights*: a single session
+ * crossing local midnight stores a daily summary for BOTH civil dates, so the
+ * distinct-date count can exceed the number of nights (e.g. one midnight-spanning
+ * night yields 2 stored days). Accurately collapsing those back to nights would
+ * require the original session windows, which this maintenance helper — reading
+ * only the stored daily summaries — does not have. The Settings panel therefore
+ * labels this value as "N days of weather data" rather than "N nights" so the
+ * status is honest about exactly what is counted, and never disagrees with the
+ * per-night counts shown by the sync coverage view / nightly dashboard hook.
+ */
+export async function countWeatherDays(): Promise<number> {
   const db = await getDB();
   const records = await db.getIntegrationDataBySource(SOURCE);
   const dates = new Set<string>();
