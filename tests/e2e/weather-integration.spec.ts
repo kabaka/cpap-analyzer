@@ -186,7 +186,7 @@ test.describe('Weather integration — configure and sync (mocked network)', () 
     expect(params.get('latitude')).toBe('40.71');
     expect(params.get('longitude')).toBe('-74.01');
     // Routed to the archive host for an 8-day-old night.
-    expect(mock.urls.some((u) => u.includes('archive-api.open-meteo.com'))).toBe(true);
+    expect(mock.urls.some((u) => new URL(u).hostname === 'archive-api.open-meteo.com')).toBe(true);
   });
 });
 
