@@ -12,8 +12,8 @@
  *     cycles. Psychophysiology. 1979 May;16(3):283-291. — defines NREM–REM
  *     cycles by NREM/REM onsets; modern cycle detectors adapt these criteria.
  *
- * Heuristic (all thresholds documented and configurable nowhere — fixed for
- * determinism; change requires code review):
+ * Heuristic (these thresholds are fixed, not user-configurable, for
+ * deterministic, reproducible results; changing them requires code review):
  *   1. SLEEP PERIOD — restrict to the span from the first non-wake segment
  *      (sleep onset) to the end of the last non-wake segment (final awakening).
  *      Interior `wake` and uncovered gaps are treated as interruptions that

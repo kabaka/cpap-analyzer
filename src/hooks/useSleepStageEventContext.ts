@@ -39,7 +39,7 @@ import { getDB } from '@/services/storage/getDB';
 import { localIsoToWallClockEpoch } from '@/utils/wallClock';
 import { formatDate } from '@/utils/formatDate';
 import type { HrSample, StageSegment } from '@/analysis/sleepStages';
-import type { FitbitHeartRateIntraday, FitbitSleepStages, IntegrationTimeseries } from '@/types';
+import type { FitbitHeartRateIntraday, FitbitSleepStages } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -67,8 +67,17 @@ export interface SleepStageContextState {
   readonly hrSamples: readonly HrSample[];
   /** True when at least one usable stage segment was loaded. */
   readonly hasStageData: boolean;
-  /** True when at least one HR sample was loaded. */
+  /** True when at least one VALID (finite) HR sample survived filtering. */
   readonly hasHrData: boolean;
+  /**
+   * True when the active range spans more intraday-HR nights than
+   * {@link MAX_HR_NIGHTS}, so HR was deliberately NOT loaded (`hrSamples` is `[]`
+   * and `hasHrData` is `false`). Distinct from "no HR data": the data exists but
+   * the range is too wide to load on the main thread without partial truncation,
+   * which would bias the event-triggered average. The UI prompts the user to
+   * narrow the range rather than showing a misleading result.
+   */
+  readonly hrRangeTooLarge: boolean;
   /** True while a fetch is in flight. */
   readonly loading: boolean;
   /** Error message if the fetch failed, else `null`. */
@@ -80,6 +89,15 @@ export interface SleepStageContextState {
 // ---------------------------------------------------------------------------
 
 const DAY_MS = 86_400_000;
+
+/**
+ * Maximum number of intraday-HR night records to flatten/sort on the main
+ * thread. Each night holds ~17k samples; flattening + sorting a multi-year range
+ * would build millions of objects and block the UI. Beyond this bound we refuse
+ * to load HR entirely (rather than partially) because truncating to the first N
+ * nights would bias the event-triggered heart-rate average toward those nights.
+ */
+const MAX_HR_NIGHTS = 60;
 
 /**
  * Shift a `YYYY-MM-DD` string by `deltaDays` whole days using {@link Date.UTC},
@@ -129,14 +147,27 @@ function buildNight(date: string, data: FitbitSleepStages): SleepNight | null {
   return { date, segments, startMs, endMs };
 }
 
-/** Convert one stored heart_rate_intraday record into absolute-time HR samples. */
+/**
+ * Convert one stored heart_rate_intraday record into absolute-time HR samples.
+ * Samples whose computed `timestampMs` or `bpm` is not finite are dropped (a
+ * garbage/NaN sample must not silently bias the event-triggered average),
+ * mirroring the defensive parsing in {@link buildNight}. `confidence` is kept
+ * only when finite, else omitted.
+ */
 function buildHrSamples(data: FitbitHeartRateIntraday): HrSample[] {
-  const base = data.baseTimestampMs;
-  return data.samples.map((s) => ({
-    timestampMs: base + s.offsetSec * 1000,
-    bpm: s.bpm,
-    confidence: s.confidence,
-  }));
+  const baseTimestampMs = data.baseTimestampMs;
+  const out: HrSample[] = [];
+  for (const s of data.samples) {
+    const timestampMs = baseTimestampMs + s.offsetSec * 1000;
+    const bpm = s.bpm;
+    if (!Number.isFinite(timestampMs) || !Number.isFinite(bpm)) continue;
+    out.push(
+      Number.isFinite(s.confidence)
+        ? { timestampMs, bpm, confidence: s.confidence }
+        : { timestampMs, bpm },
+    );
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +180,7 @@ const EMPTY: SleepStageContextState = {
   hrSamples: [],
   hasStageData: false,
   hasHrData: false,
+  hrRangeTooLarge: false,
   loading: false,
   error: null,
 };
@@ -187,18 +219,17 @@ export function useSleepStageEventContext(includeHr: boolean): SleepStageContext
         if (cancelled || requestId !== requestIdRef.current) return;
 
         const nights: SleepNight[] = [];
-        const hrSamples: HrSample[] = [];
+        // Collect HR records first so we can bound their total before flattening.
+        const hrRecords: FitbitHeartRateIntraday[] = [];
 
-        for (const record of records as IntegrationTimeseries[]) {
+        for (const record of records) {
           if (record.source !== 'fitbit') continue;
 
           if (record.dataType === 'sleep_stages') {
             const night = buildNight(record.date, record.data as FitbitSleepStages);
             if (night) nights.push(night);
           } else if (includeHr && record.dataType === 'heart_rate_intraday') {
-            for (const sample of buildHrSamples(record.data as FitbitHeartRateIntraday)) {
-              hrSamples.push(sample);
-            }
+            hrRecords.push(record.data as FitbitHeartRateIntraday);
           }
         }
 
@@ -208,7 +239,24 @@ export function useSleepStageEventContext(includeHr: boolean): SleepStageContext
           for (const seg of night.segments) allSegments.push(seg);
         }
         allSegments.sort((a, b) => a.startMs - b.startMs);
-        hrSamples.sort((a, b) => a.timestampMs - b.timestampMs);
+
+        // Bound HR loading: a multi-year range holds millions of samples whose
+        // flatten+sort would block the main thread. Refuse to load (rather than
+        // truncate, which would bias the event-triggered average) when too wide.
+        const hrSamples: HrSample[] = [];
+        let hasHrData = false;
+        let hrRangeTooLarge = false;
+        if (hrRecords.length > MAX_HR_NIGHTS) {
+          hrRangeTooLarge = true;
+        } else {
+          for (const data of hrRecords) {
+            for (const sample of buildHrSamples(data)) hrSamples.push(sample);
+          }
+          hrSamples.sort((a, b) => a.timestampMs - b.timestampMs);
+          // Derive availability AFTER filtering: a record full of NaN samples
+          // must report hasHrData=false, matching what the autonomic view shows.
+          hasHrData = hrSamples.length > 0;
+        }
 
         if (cancelled || requestId !== requestIdRef.current) return;
         setState({
@@ -216,7 +264,8 @@ export function useSleepStageEventContext(includeHr: boolean): SleepStageContext
           allSegments,
           hrSamples,
           hasStageData: allSegments.length > 0,
-          hasHrData: hrSamples.length > 0,
+          hasHrData,
+          hrRangeTooLarge,
           loading: false,
           error: null,
         });

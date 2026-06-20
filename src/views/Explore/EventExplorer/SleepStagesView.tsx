@@ -100,9 +100,9 @@ const CLASSIFICATION_LABEL: Record<RemOsaClassification, string> = {
   'insufficient-data': 'Insufficient data',
 };
 
-/** Assign matched events to a night by timestamp ∈ [startMs, endMs]. */
+/** Assign matched events to a night by timestamp ∈ [startMs, endMs). */
 function eventsForNight(events: readonly Event[], night: SleepNight): Event[] {
-  return events.filter((e) => e.timestamp >= night.startMs && e.timestamp <= night.endMs);
+  return events.filter((e) => e.timestamp >= night.startMs && e.timestamp < night.endMs);
 }
 
 // ── Help affordance ───────────────────────────────────────────────
@@ -161,14 +161,20 @@ function StageSubView({
     [tagged, durations],
   );
 
-  // Bar chart data in clinical stage order (deep→light→rem→wake).
+  // Per-stage rows in clinical stage order (deep→light→rem→wake). `ratePerHour`
+  // is kept as `number | null` so the table/value display can distinguish a true
+  // zero rate from "no time-in-stage denominator" (rendered as —); the bar chart
+  // separately coerces null → 0 to keep a plottable numeric value.
   const rateByStage = useMemo(() => {
     const map = new Map(rates.map((r) => [r.stage, r]));
     return STAGE_ORDER.map((stage) => {
       const r = map.get(stage);
+      const ratePerHour = r ? r.ratePerHour : null;
       return {
         label: STAGE_LABEL[stage],
-        rate: r && r.ratePerHour !== null ? Number(r.ratePerHour.toFixed(2)) : 0,
+        // Bar chart value: null (no denominator) plots as 0; finite plots as-is.
+        rate: ratePerHour !== null ? Number(ratePerHour.toFixed(2)) : 0,
+        ratePerHour,
         count: r ? r.count : 0,
       };
     });
@@ -177,7 +183,9 @@ function StageSubView({
   const tableData = useMemo(
     () => ({
       headers: ['Stage', 'AHI-type events', 'Rate (events/h)'],
-      rows: rateByStage.map((r) => [r.label, r.count, formatRate(r.rate)] as (string | number)[]),
+      rows: rateByStage.map(
+        (r) => [r.label, r.count, formatRate(r.ratePerHour)] as (string | number)[],
+      ),
     }),
     [rateByStage],
   );
@@ -504,7 +512,7 @@ function CycleSubView({
 // ── Autonomic sub-view ────────────────────────────────────────────
 
 function AutonomicSubView({ events }: { events: readonly Event[] }) {
-  const { hrSamples, hasHrData, loading, error } = useSleepStageEventContext(true);
+  const { hrSamples, hasHrData, hrRangeTooLarge, loading, error } = useSleepStageEventContext(true);
 
   const result = useMemo(() => {
     const ahi = events.filter((e) => isAhiEvent(e.type));
@@ -546,6 +554,16 @@ function AutonomicSubView({ events }: { events: readonly Event[] }) {
     return (
       <p className={shared.viewEmpty} role="alert">
         Could not load heart-rate data: {error}
+      </p>
+    );
+  }
+  if (hrRangeTooLarge) {
+    return (
+      <p className={shared.viewEmpty} role="note">
+        The selected date range is too wide to compute the heart-rate response without loading
+        millions of samples on the main thread. Loading only part of the range would bias the
+        event-triggered average, so it is not loaded. Narrow the global date range (to about two
+        months or fewer) to see the heart-rate response.
       </p>
     );
   }
