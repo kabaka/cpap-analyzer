@@ -40,6 +40,7 @@ import type {
   FitbitSnoringSegments,
 } from '@/types';
 import { getDB } from '@/services/storage/getDB';
+import { localIsoToWallClockEpoch } from '@/utils/wallClock';
 
 // ---------------------------------------------------------------------------
 // Public types — the frontend lane work builds against these.
@@ -155,31 +156,6 @@ function neighbourDates(date: string): string[] {
   // Anchor first so it remains the natural primary; order is otherwise
   // irrelevant because samples are merged and sorted by absolute timestamp.
   return [date, fmt(baseMs - DAY_MS), fmt(baseMs + DAY_MS)];
-}
-
-// ---------------------------------------------------------------------------
-// Time-base helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Parse a local-time ISO-like timestamp (`YYYY-MM-DDTHH:MM:SS[.sss]`, no TZ)
- * into a wall-clock-as-UTC epoch. Mirrors {@link parseFitbitLegacyDateTime} for
- * the ISO-string-bearing series (hrv_detail, sleep_stages, snoring_segments) so
- * every lane shares one time base. Returns `NaN` for unparseable input.
- */
-function localIsoToWallClockEpoch(iso: string): number {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?/.exec(iso.trim());
-  if (!m) return NaN;
-  const [, y, mo, d, h, mi, s, ms] = m;
-  return Date.UTC(
-    Number(y),
-    Number(mo) - 1,
-    Number(d),
-    Number(h),
-    Number(mi),
-    Number(s),
-    ms ? Number(ms.padEnd(3, '0')) : 0,
-  );
 }
 
 // ---------------------------------------------------------------------------

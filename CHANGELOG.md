@@ -7,7 +7,9 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **"Sleep stages & cycles" event analysis.** A new Event Explorer lens correlates machine-scored apnea/hypopnea events with imported wearable (Fitbit / Google Health) sleep-stage data and intraday heart rate, entirely client-side. It reports the per-stage event rate (Wake / REM / Light = N1–N2 / Deep = N3) with a χ² goodness-of-fit test against time-in-stage expectations (with a Cochran expected-count caveat); REM-predominant OSA via AHI_REM, AHI_NREM, and the AHI_REM/AHI_NREM ≥ 2 ratio (plus the stricter AHI_NREM < 15, ≥ 30 min REM, ≥ 15 min NREM floors) and an across-nights Wilcoxon signed-rank test; a per-cycle event load using sleep cycles derived heuristically from the wearable hypnogram (REM episodes as maximal REM runs merged across gaps ≤ 15 min, cycle boundaries at successive REM-episode ends, trailing NREM as an incomplete final cycle); and the cyclic variation of heart rate (CVHR) as an event-triggered average. New in-app help article ("Analysing Events by Sleep Stage & Cycle", slug `events-by-sleep-stage`) documents the methods, literature (Berry 2012 AASM, Feinberg & Floyd 1979, Guilleminault 1984, Conwell 2012, Koo 2008, Mokhlesi & Punjabi 2012, Pearson 1900, Cochran 1954, Wilcoxon 1945), and limitations, with the explicit non-diagnostic framing that consumer-wearable staging is approximate and findings should be discussed with a clinician. New glossary entries: Sleep Stage, REM Sleep, Sleep Cycle (NREM–REM ultradian cycle), REM-Predominant / REM-Related OSA, CVHR (Cyclic Variation of Heart Rate), Chi-Square Goodness-of-Fit Test, and Wilcoxon Signed-Rank Test, cross-linked with the existing AHI, arousal, and sleep-fragmentation terms.
 
 ## [2026.06.0] — 2026-06-18
 
