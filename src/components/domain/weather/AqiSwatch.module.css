@@ -1,0 +1,32 @@
+.swatchRow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+}
+
+.word {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  /* Word always in primary text colour — NOT the ramp colour — so low-rank
+     fills that fail 4.5:1 as text never carry the label. */
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+.value {
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.noData {
+  font-family: var(--font-family-mono);
+  color: var(--color-text-muted);
+}

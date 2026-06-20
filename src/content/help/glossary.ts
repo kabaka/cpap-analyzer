@@ -1188,6 +1188,160 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Steinarsson, S. (2013). Downsampling time series for visual representation (MSc thesis). University of Iceland.',
     ],
   },
+
+  // ─── WEATHER & ENVIRONMENT ──────────────────────────────────────────
+
+  {
+    id: 'barometric-pressure',
+    term: 'Barometric Pressure (Atmospheric Pressure)',
+    category: 'data',
+    aliases: ['Atmospheric Pressure', 'Air Pressure', 'Mean Sea-Level Pressure', 'MSLP'],
+    quick:
+      'The weight of the atmosphere pressing on a location, reported in hectopascals (hPa) or inches of mercury (inHg); its swings are the headline weather variable correlated against apnea and central events.',
+    standard:
+      'Barometric (atmospheric) pressure is the force per unit area exerted by the column of air above a point. The Weather & Environment integration reports it as mean sea-level pressure so values are comparable across elevations, in hectopascals (hPa; 1 hPa = 1 millibar) or inches of mercury (inHg) per your unit preference, with a typical sea-level value near 1013 hPa (29.92 inHg). For a recorded night it is summarized as the overnight mean over the [sleep start, sleep end) window. Pressure is treated as the headline environmental variable because changes in ambient pressure can plausibly modify sleep-disordered breathing — a passing weather system (a falling barometer) is a candidate driver of a worse night.',
+    detailed:
+      'Standard atmosphere is 1013.25 hPa = 29.92 inHg = 760 mmHg. Open-Meteo reports both surface pressure (at the station altitude) and mean sea-level pressure (MSLP, altitude-normalized); the integration uses MSLP as the headline series so day-to-day swings are not confounded by elevation. Conversion: 1 hPa = 0.02953 inHg; 1 inHg = 33.864 hPa. Why pressure may matter for sleep-disordered breathing: ambient pressure sets the partial pressures of the gases already in the lungs, and the respiratory control system regulates breathing against CO₂ and O₂ chemoreflexes whose behaviour (loop gain) is sensitive to those partial pressures and to how quickly they change. A drop in ambient pressure, like a passing low-pressure weather system or a gain in altitude, can shift the balance between obstructive and central events — most relevantly by raising loop gain and thereby the tendency toward central / periodic breathing. Because a weather system can change pressure a day before it changes your night, the effect is often best examined with lagged cross-correlation (comparing pressure on day t against events on day t or t+1) rather than a same-day correlation. This is an association to explore, not an established mechanism in any individual; CPAP Analyzer does not diagnose.',
+    relatedTerms: [
+      'dewpoint',
+      'relative-humidity',
+      'overnight-window',
+      'loop-gain',
+      'central-apnea',
+    ],
+    references: [
+      'World Meteorological Organization (2018). Guide to Instruments and Methods of Observation (WMO-No. 8), Volume I: Measurement of Meteorological Variables. — Definitions of station and mean-sea-level pressure and standard units.',
+      'White, D. P. (2005). Pathogenesis of obstructive and central sleep apnea. American Journal of Respiratory and Critical Care Medicine, 172(11), 1363–1370. DOI: 10.1164/rccm.200412-1631SO. — Loop gain and the chemoreflex control of breathing underlying the obstructive/central balance.',
+    ],
+  },
+  {
+    id: 'relative-humidity',
+    term: 'Relative Humidity',
+    category: 'data',
+    aliases: ['Humidity', 'RH'],
+    quick:
+      'The amount of water vapour in the air expressed as a percentage of the maximum the air can hold at its current temperature (0–100%).',
+    standard:
+      'Relative humidity (RH) is the ratio of the actual water-vapour content of the air to the saturation content at the same temperature, reported as a percentage from 0% (bone dry) to 100% (saturated, where dew or fog forms). Because the saturation capacity rises steeply with temperature, the same absolute amount of moisture gives a high RH on a cold night and a lower RH on a warm one — so RH alone can be misleading about how "moist" the air feels (see Dewpoint for a temperature-independent measure). The Weather & Environment integration reports RH as the overnight mean over the [sleep start, sleep end) window. Ambient humidity is offered as secondary context for nasal congestion and comfort; it is not a headline therapy driver.',
+    detailed:
+      "RH = (e / e_s(T)) × 100%, where e is the actual vapour pressure and e_s(T) is the saturation vapour pressure at air temperature T. Saturation vapour pressure follows the Clausius–Clapeyron relation, roughly doubling for every ~10 °C rise, which is why RH and dewpoint diverge: dewpoint tracks the absolute moisture content directly, whereas RH is that content normalized by a temperature-dependent ceiling. For interpreting therapy, dewpoint is usually the more stable companion variable because it is not confounded by overnight temperature swings. Note that ambient (room) humidity is distinct from the humidity your CPAP delivers, which is set by the machine's heated humidifier; the integration measures outdoor ambient conditions at your rounded coordinates, not the air at the mask. Read RH as comfort/context, not as a measured property of your delivered therapy.",
+    relatedTerms: ['dewpoint', 'barometric-pressure', 'overnight-window'],
+    references: [
+      'World Meteorological Organization (2018). Guide to Instruments and Methods of Observation (WMO-No. 8), Volume I. — Definitions of relative humidity and dewpoint.',
+      'Lawrence, M. G. (2005). The relationship between relative humidity and the dewpoint temperature in moist air: A simple conversion and applications. Bulletin of the American Meteorological Society, 86(2), 225–233. DOI: 10.1175/BAMS-86-2-225.',
+    ],
+  },
+  {
+    id: 'dewpoint',
+    term: 'Dewpoint',
+    category: 'data',
+    aliases: ['Dew Point', 'Dew-Point Temperature'],
+    quick:
+      'The temperature to which air must be cooled (at constant pressure) for its water vapour to saturate and condense; a temperature-independent measure of how moist the air actually is.',
+    standard:
+      'Dewpoint is the temperature at which the air, cooled at constant pressure, would reach 100% relative humidity and begin to condense. Unlike relative humidity, dewpoint reflects the absolute moisture content of the air directly and does not change as the air warms or cools through the night, which makes it a more stable companion variable for correlation. It is reported in °C or °F per your unit preference and, for a recorded night, summarized as the overnight mean over the [sleep start, sleep end) window. A higher dewpoint means muggier, more moisture-laden air; a low dewpoint means dry air. As a rule of thumb, dewpoints below ~10 °C feel dry, ~10–16 °C comfortable, and above ~18 °C distinctly humid.',
+    detailed:
+      'Dewpoint T_d is defined implicitly by e_s(T_d) = e, where e is the actual vapour pressure and e_s is the saturation vapour pressure; equivalently it is the temperature at which RH would equal 100%. Because e is a property of the air mass and changes only when moisture is added or removed, dewpoint is conserved as the air is heated or cooled — the reason it is preferred over RH when you want a single number for "how much water is in the air" across a night with swinging temperature. Dewpoint is always less than or equal to the air temperature; the gap between them (the dewpoint depression) is small when the air is near saturation and large when it is dry. The integration provides dewpoint as secondary, non-judgemental context (its dashboard trend is neutral — there is no universally "better" direction); it is offered for comfort and congestion correlation, not as a clinical metric.',
+    relatedTerms: ['relative-humidity', 'barometric-pressure', 'overnight-window'],
+    references: [
+      'Lawrence, M. G. (2005). The relationship between relative humidity and the dewpoint temperature in moist air: A simple conversion and applications. Bulletin of the American Meteorological Society, 86(2), 225–233. DOI: 10.1175/BAMS-86-2-225.',
+      'World Meteorological Organization (2018). Guide to Instruments and Methods of Observation (WMO-No. 8), Volume I. — Dewpoint definition and measurement.',
+    ],
+  },
+  {
+    id: 'aqi',
+    term: 'AQI (Air Quality Index)',
+    category: 'data',
+    aliases: ['Air Quality Index', 'US AQI', 'European AQI', 'EAQI'],
+    quick:
+      'A unitless 0-up index that compresses several pollutant concentrations into one ranked, plain-language air-quality category (e.g. Good, Moderate, Unhealthy); the app shows both the US and the European scheme.',
+    standard:
+      'The Air Quality Index (AQI) translates measured pollutant concentrations — PM2.5, PM10, ozone (O₃), nitrogen dioxide (NO₂) and others — into a single dimensionless number and a ranked category word, so that "the air today" can be read at a glance. The Weather & Environment integration surfaces two parallel schemes because they differ in scale and labels: the US AQI (a 0–500 scale with six categories, where the overall value is driven by whichever pollutant is worst) and the European AQI (EAQI, a six-band scheme from Good to Extremely Poor). Lower is better in both. Because AQI is the one environmental metric with a clear "good" direction, it is the only weather tile whose trend is shown as favourable/unfavourable rather than neutral, and its severity is always conveyed by the category word and the number and a hatch pattern — never colour alone.',
+    detailed:
+      'US AQI is a piecewise-linear transform: for each pollutant, the measured concentration is mapped onto a 0–500 index via published breakpoint tables, and the reported AQI is the maximum across pollutants (the "dominant pollutant" sets the value). Its six categories are Good (0–50), Moderate (51–100), Unhealthy for Sensitive Groups (101–150), Unhealthy (151–200), Very Unhealthy (201–300), and Hazardous (301–500). The European AQI is computed differently — each pollutant is binned into one of six bands (Good, Fair, Moderate, Poor, Very Poor, Extremely Poor) and the overall index is the worst band among the pollutants — so the same air can read as a different word under each scheme; that is expected, and the app labels which scheme a value belongs to. AQI is unitless by construction (it is an index, not a concentration). The integration computes the overnight AQI statistic from the provider\'s hourly values over the [sleep start, sleep end) window, and stores air quality only where the provider has data — air-quality history is shallow and region-dependent, so older or non-European nights may legitimately show "No data available" (a dash), distinct from an error. AQI is environmental context for exploration, not a clinical measurement of your airway or your therapy.',
+    relatedTerms: ['pm2-5', 'pm10', 'ozone', 'nitrogen-dioxide', 'overnight-window'],
+    references: [
+      'United States Environmental Protection Agency (2024). Technical Assistance Document for the Reporting of Daily Air Quality — the Air Quality Index (AQI). EPA-454/B-24-002. — US AQI breakpoints and categories.',
+      'European Environment Agency. European Air Quality Index. https://www.eea.europa.eu/themes/air/air-quality-index — EAQI bands and method.',
+    ],
+  },
+  {
+    id: 'pm2-5',
+    term: 'PM2.5 (Fine Particulate Matter)',
+    category: 'data',
+    aliases: ['PM2.5', 'Fine Particulate Matter', 'Fine Particles'],
+    quick:
+      'Airborne particles 2.5 micrometres in diameter or smaller, reported in micrograms per cubic metre (µg/m³); small enough to reach deep into the lungs.',
+    standard:
+      'PM2.5 is the mass concentration of airborne particulate matter with an aerodynamic diameter of 2.5 micrometres (µm) or less, reported in micrograms per cubic metre of air (µg/m³). These fine particles — from combustion, traffic, wildfire smoke, and secondary chemistry — are small enough to penetrate deep into the respiratory tract and are the pollutant most consistently linked to respiratory and cardiovascular health effects. PM2.5 is one of the primary inputs to the AQI. The integration summarizes it as the overnight statistic over the [sleep start, sleep end) window and offers it as environmental context to correlate against your therapy.',
+    detailed:
+      'PM2.5 is defined by a size-selective sampling convention (particles with a 50% cut-point at 2.5 µm aerodynamic diameter), reported as a mass concentration in µg/m³. For orientation, the WHO 2021 air-quality guideline sets the 24-hour PM2.5 limit at 15 µg/m³ and the annual limit at 5 µg/m³; values during wildfire smoke episodes can reach hundreds of µg/m³. Because PM2.5 deposits in the small airways and alveoli, it is the dominant driver of the health-protective AQI on many days. Within this tool PM2.5 is descriptive context drawn from a third-party model at your rounded coordinates — a regional estimate, not a measurement at your bedside — and is provided to support exploratory correlation, not clinical assessment. Its history in the air-quality archive is shallow and region-dependent, so older nights may have no value.',
+    relatedTerms: ['pm10', 'aqi', 'ozone', 'nitrogen-dioxide', 'overnight-window'],
+    references: [
+      'World Health Organization (2021). WHO global air quality guidelines: particulate matter (PM2.5 and PM10), ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — PM2.5 definition and guideline limits.',
+    ],
+  },
+  {
+    id: 'pm10',
+    term: 'PM10 (Coarse Particulate Matter)',
+    category: 'data',
+    aliases: ['PM10', 'Coarse Particulate Matter', 'Inhalable Particles'],
+    quick:
+      'Airborne particles 10 micrometres in diameter or smaller, reported in micrograms per cubic metre (µg/m³); inhalable, and includes dust and pollen fragments as well as the finer PM2.5.',
+    standard:
+      'PM10 is the mass concentration of airborne particulate matter with an aerodynamic diameter of 10 micrometres or less, in micrograms per cubic metre (µg/m³). It is the broader "inhalable" fraction: by definition it includes all of PM2.5 plus the coarser particles between 2.5 and 10 µm, such as wind-blown dust, road dust, and fragments of pollen and mould. PM10 is an AQI input and is summarized over the overnight [sleep start, sleep end) window. Like the other pollutants it is provided as environmental context, not a clinical measurement.',
+    detailed:
+      'PM10 uses a size-selective convention with a 50% cut-point at 10 µm aerodynamic diameter and is reported in µg/m³; it is a superset of PM2.5, so PM10 ≥ PM2.5 always. The coarse fraction (PM10 minus PM2.5, sometimes written PM10–2.5) deposits higher in the airways than fine particles. WHO 2021 guideline limits are 45 µg/m³ over 24 hours and 15 µg/m³ annually. Note that the coarse fraction can include pollen fragments, but PM10 is not a pollen count and the app does not surface pollen as a separate metric (pollen has no historical archive and is deferred). As with all air-quality variables here, PM10 is a regional model estimate at your rounded coordinates intended for exploratory correlation, with shallow, region-dependent history that may legitimately read "No data available" for older or non-European nights.',
+    relatedTerms: ['pm2-5', 'aqi', 'ozone', 'nitrogen-dioxide', 'overnight-window'],
+    references: [
+      'World Health Organization (2021). WHO global air quality guidelines: particulate matter (PM2.5 and PM10), ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — PM10 definition and guideline limits.',
+    ],
+  },
+  {
+    id: 'ozone',
+    term: 'Ozone (O₃)',
+    category: 'data',
+    aliases: ['O3', 'O₃', 'Ground-Level Ozone', 'Tropospheric Ozone'],
+    quick:
+      'A reactive gas (O₃) formed near the ground by sunlight acting on traffic and industrial emissions; a respiratory irritant, reported in micrograms per cubic metre (µg/m³).',
+    standard:
+      'Ozone (O₃) at ground level is a secondary pollutant: it is not emitted directly but forms when sunlight drives chemical reactions among nitrogen oxides and volatile organic compounds from traffic, industry, and solvents. (This tropospheric ozone is distinct from the protective stratospheric ozone layer high above.) It is a strong respiratory irritant that peaks on hot, sunny afternoons and is one of the pollutants feeding the AQI. The integration reports it in micrograms per cubic metre (µg/m³), summarized over the overnight [sleep start, sleep end) window, as environmental context.',
+    detailed:
+      'Ground-level O₃ is produced photochemically (NOₓ + VOCs + sunlight), so its concentration has a strong diurnal and seasonal cycle, typically highest in the afternoon and in warm months, and lowest overnight — which is worth bearing in mind when reading an overnight ozone summary, since the nocturnal window often captures ozone near its daily minimum. Open-Meteo reports O₃ as a mass concentration in µg/m³ (regulatory limits are sometimes expressed instead as a maximum daily 8-hour mean; the WHO 2021 guideline peak-season limit is 60 µg/m³ and the short-term 8-hour limit 100 µg/m³). As a respiratory irritant ozone is biologically plausible context for airway symptoms, but within this tool it is a regional model estimate for exploratory correlation only, not a clinical measurement, with shallow and region-dependent history.',
+    relatedTerms: ['nitrogen-dioxide', 'pm2-5', 'pm10', 'aqi', 'overnight-window'],
+    references: [
+      'World Health Organization (2021). WHO global air quality guidelines: particulate matter, ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — Ozone definition, formation, and guideline limits.',
+    ],
+  },
+  {
+    id: 'nitrogen-dioxide',
+    term: 'Nitrogen Dioxide (NO₂)',
+    category: 'data',
+    aliases: ['NO2', 'NO₂'],
+    quick:
+      'A reddish-brown gas (NO₂) from combustion — chiefly traffic — that irritates the airways and is a marker of urban/traffic pollution, reported in micrograms per cubic metre (µg/m³).',
+    standard:
+      'Nitrogen dioxide (NO₂) is a combustion by-product, emitted mainly by motor vehicles and other fuel burning, and is a useful marker of traffic-related air pollution. It is a respiratory irritant in its own right and also a precursor in the chemistry that forms ground-level ozone and fine particles. The integration reports NO₂ in micrograms per cubic metre (µg/m³), summarized over the overnight [sleep start, sleep end) window, and includes it as one of the AQI-driving pollutants offered as environmental context.',
+    detailed:
+      'NO₂ is one of the nitrogen oxides (NOₓ) produced when fuel burns at high temperature; concentrations are highest near busy roads and during traffic peaks, giving it a pronounced spatial gradient that a coarse, ~1.1 km-rounded coordinate can only partly resolve. It is reported here as a mass concentration in µg/m³; the WHO 2021 guideline sets a 24-hour limit of 25 µg/m³ and an annual limit of 10 µg/m³. NO₂ both irritates the airways directly and participates in the photochemistry that generates ozone and secondary particulate, so it tends to co-vary with those pollutants. As with every air-quality variable here, NO₂ is a third-party regional model estimate at your rounded coordinates, provided for exploratory correlation rather than clinical assessment, with shallow and region-dependent historical coverage.',
+    relatedTerms: ['ozone', 'pm2-5', 'pm10', 'aqi', 'overnight-window'],
+    references: [
+      'World Health Organization (2021). WHO global air quality guidelines: particulate matter, ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — NO₂ definition, sources, and guideline limits.',
+    ],
+  },
+  {
+    id: 'overnight-window',
+    term: 'Overnight Aggregation Window',
+    category: 'data',
+    aliases: ['Overnight Window', 'Overnight Aggregation', 'Sleep Window'],
+    quick:
+      'The half-open wall-clock interval [sleep start, sleep end) over which each environmental metric is reduced to one nightly number, shared identically across every weather surface.',
+    standard:
+      'The overnight aggregation window is the single, canonical time interval the Weather & Environment integration uses to turn a stream of hourly weather into one number per night. It runs from the start of the recorded night up to — but not including — its end: in interval notation [sleep start, sleep end). The interval is half-open so that the closing instant belongs to the next night\'s bucket and adjacent nights never double-count the boundary hour. The same window is used by the dashboard panel, the Signal-Viewer lanes, and the correlation surface, so a given night\'s weather reads identically everywhere rather than showing three different "last-night" values.',
+    detailed:
+      'Within the [sleep start, sleep end) window each metric is reduced by a per-metric statistic chosen to be the meaningful one for that variable, and the displayed tile names which statistic it shows: temperature is the overnight low (the minimum across the window); barometric pressure, relative humidity, and dewpoint are the overnight mean (the average across the window); wind is a representative overnight value; and air quality / AQI is the overnight statistic of the hourly index. "Wall-clock" means the interval is defined in the local civil time of the recorded night, aligned to the same local-date keying the app uses for CPAP sessions, so a weather night lines up with the correct CPAP night. A night that crosses midnight (two civil dates) is fetched for both dates and merged into one window. Knowing the exact window and statistic matters for interpretation: when you correlate "overnight pressure" against AHI, you are comparing two summaries computed over the same interval, and a value such as "temperature" is specifically the night\'s coldest point, not its average.',
+    relatedTerms: ['barometric-pressure', 'relative-humidity', 'dewpoint', 'aqi'],
+  },
 ] as const;
 
 /** Map of glossary entry id → entry for O(1) lookup */

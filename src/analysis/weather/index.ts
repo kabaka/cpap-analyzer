@@ -11,5 +11,6 @@
 
 export * from './aggregation';
 export * from './aqi';
+export * from './aqiRamp';
 export * from './coordinates';
 export * from './units';

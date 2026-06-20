@@ -143,6 +143,48 @@
   --signal-lane-name-shadow: rgba(255, 255, 255, 0.9);
   /* Hit-area target for the lane grip/hide controls (WCAG 2.5.8 ≥ 24×24px). */
   --signal-lane-control-size: 24px;
+  /* Compact single-row ribbon lane (weather conditions / AQI). */
+  --signal-lane-height-ribbon: 44px;
+
+  /* WEATHER LANE COLORS (Signal Viewer pressure/temperature dual line).
+     Cool cyan = pressure (headline), warm brown-orange = temperature. Kept off
+     the chart/wearable/hypno hues for mutual distinguishability. */
+  --color-weather-pressure: #0e7490;
+  --color-weather-temp: #92400e;
+
+  /* AIR QUALITY INDEX (AQI) RAMP — its own 6-step scale, deliberately distinct
+     from the clinical --color-status-* (AHI severity) scale. The rank (1–6)
+     drives fill + pattern; the WORD is provider-aware (US / European). Each
+     `-fg` is the on-fill text colour (verified ≥ 4.5:1 on its fill). Consuming
+     components (see AqiSwatch) render the rank WORD in --color-text-primary and
+     use the fill only as a swatch/band, so light ranks 1–3 (which fall below
+     4.5:1 as text on the surface) never rely on colour for legibility.
+     NOTE: light rank 1 is #2a7d4f (a slight darkening of the spec's #2e8b57) so
+     its on-fill white text reaches 5.07:1; see the contrast report. */
+  --color-aqi-1: #2a7d4f;
+  --color-aqi-1-fg: #ffffff;
+  --color-aqi-1-bg: rgba(42, 125, 79, 0.12);
+  --color-aqi-2: #9aa520;
+  --color-aqi-2-fg: #1a1a1a;
+  --color-aqi-2-bg: rgba(154, 165, 32, 0.12);
+  --color-aqi-3: #d97706;
+  --color-aqi-3-fg: #1a1a1a;
+  --color-aqi-3-bg: rgba(217, 119, 6, 0.12);
+  --color-aqi-4: #dc2626;
+  --color-aqi-4-fg: #ffffff;
+  --color-aqi-4-bg: rgba(220, 38, 38, 0.12);
+  --color-aqi-5: #8b1a8b;
+  --color-aqi-5-fg: #ffffff;
+  --color-aqi-5-bg: rgba(139, 26, 139, 0.12);
+  --color-aqi-6: #6b1f3a;
+  --color-aqi-6-fg: #ffffff;
+  --color-aqi-6-bg: rgba(107, 31, 58, 0.12);
+
+  /* NEUTRAL TREND (non-judgmental metrics: temp/humidity/pressure/dewpoint/wind).
+     Aliases of the existing secondary text / tertiary surface tokens so a neutral
+     trend chip carries no favourable/unfavourable colour signal. */
+  --color-trend-neutral: var(--color-text-secondary);
+  --color-trend-neutral-bg: var(--color-surface-tertiary);
 
   /* APP CHROME (sidebar / header / icons) */
   --color-surface-sidebar: #fbfbfb;
@@ -346,6 +388,37 @@
 
   /* SIGNAL VIEWER LANE METRICS — dark-mode lane-name halo */
   --signal-lane-name-shadow: rgba(0, 0, 0, 0.95);
+  --signal-lane-height-ribbon: 44px;
+
+  /* WEATHER LANE COLORS — brightened for dark surfaces. */
+  --color-weather-pressure: #22d3ee;
+  --color-weather-temp: #fdba74;
+
+  /* AIR QUALITY INDEX (AQI) RAMP — dark. Every `-fg` is #1a1a1a (dark text on a
+     bright fill); all six verified ≥ 5.0:1 on their fill, and every dark fill
+     clears 4.5:1 as text on the dark surface. */
+  --color-aqi-1: #34d399;
+  --color-aqi-1-fg: #1a1a1a;
+  --color-aqi-1-bg: rgba(52, 211, 153, 0.18);
+  --color-aqi-2: #bfd13a;
+  --color-aqi-2-fg: #1a1a1a;
+  --color-aqi-2-bg: rgba(191, 209, 58, 0.18);
+  --color-aqi-3: #fbbf24;
+  --color-aqi-3-fg: #1a1a1a;
+  --color-aqi-3-bg: rgba(251, 191, 36, 0.18);
+  --color-aqi-4: #f87171;
+  --color-aqi-4-fg: #1a1a1a;
+  --color-aqi-4-bg: rgba(248, 113, 113, 0.18);
+  --color-aqi-5: #d946ef;
+  --color-aqi-5-fg: #1a1a1a;
+  --color-aqi-5-bg: rgba(217, 70, 239, 0.18);
+  --color-aqi-6: #fb7185;
+  --color-aqi-6-fg: #1a1a1a;
+  --color-aqi-6-bg: rgba(251, 113, 133, 0.18);
+
+  /* NEUTRAL TREND (dark) — alias of secondary text / tertiary surface. */
+  --color-trend-neutral: var(--color-text-secondary);
+  --color-trend-neutral-bg: var(--color-surface-tertiary);
 
   /* APP CHROME (sidebar / header / icons) — dark */
   --color-surface-sidebar: #121212;

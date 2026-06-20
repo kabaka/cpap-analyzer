@@ -12,7 +12,7 @@
 
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Card } from '@/components/ui';
+import { Card, TrendIndicator } from '@/components/ui';
 import { useWearableDailySummaries } from '@/hooks/useWearableData';
 import type { WearableSummary } from '@/hooks/useWearableSummary';
 import type {
@@ -327,32 +327,3 @@ const WearableOverview = React.memo(function WearableOverview({ summary }: Weara
 });
 
 export default WearableOverview;
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-interface TrendIndicatorProps {
-  direction: TrendDirection;
-  favorable: boolean;
-}
-
-function TrendIndicator({ direction, favorable }: TrendIndicatorProps) {
-  if (direction === 'unchanged') {
-    return (
-      <span className={`${styles.trend} ${styles.trendUnchanged}`} aria-label="Trend unchanged">
-        &mdash;
-      </span>
-    );
-  }
-
-  const arrow = direction === 'up' ? '↑' : '↓';
-  const trendClass = favorable ? styles.trendUp : styles.trendDown;
-  const label = `Trend ${direction}${favorable ? ' (favorable)' : ' (unfavorable)'}`;
-
-  return (
-    <span className={`${styles.trend} ${trendClass}`} aria-label={label}>
-      {arrow}
-    </span>
-  );
-}

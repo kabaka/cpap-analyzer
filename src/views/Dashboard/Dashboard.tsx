@@ -26,6 +26,8 @@ import BreathingStabilityPanel from './panels/BreathingStabilityPanel';
 import MachineSettingsPanel from './panels/MachineSettingsPanel';
 import RecentSessions from './panels/RecentSessions';
 import WearableOverview from './panels/WearableOverview';
+import WeatherOverview from './panels/WeatherOverview';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import styles from './Dashboard.module.css';
 import type { MachineSettings } from '@/types';
 
@@ -35,6 +37,7 @@ export default function Dashboard() {
   const { stats, loading: statsLoading, error: statsError } = useSummaryStats(dateRange);
   const { aggregates, loading: aggLoading, error: aggError } = useNightlyAggregates(dateRange);
   const { summary: wearableSummary } = useWearableSummary();
+  const weatherEnabled = useSettingsStore((s) => s.integrations.weather.enabled);
 
   const error = sessionsError ?? statsError ?? aggError;
   const loading = statsLoading || sessionsLoading || aggLoading;
@@ -102,6 +105,13 @@ export default function Dashboard() {
       {wearableSummary?.hasData && (
         <div className={styles.wearableRow}>
           <WearableOverview summary={wearableSummary} />
+        </div>
+      )}
+
+      {/* Weather & Air Quality Overview (when the integration is enabled) */}
+      {weatherEnabled && (
+        <div className={styles.wearableRow}>
+          <WeatherOverview />
         </div>
       )}
 
