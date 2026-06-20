@@ -34,7 +34,7 @@ incidental config change.
 **What an external fetch leaks.** To retrieve historical weather for a night, the request
 must carry the user's **location (lat/lon) and the dates** of interest. Location + dates
 is sensitive: it reveals where the user was sleeping on specific nights. There is no way
-to fetch location-specific weather without disclosing location to *someone*. The design
+to fetch location-specific weather without disclosing location to _someone_. The design
 goal is to minimize that disclosure — both what is sent and who receives it — and to make
 the whole thing opt-in, transparent, and off by default.
 
@@ -43,7 +43,7 @@ the whole thing opt-in, transparent, and off by default.
 - Client-side only ([0001](0001-client-side-architecture.md)); no backend to proxy or
   anonymize requests, so the third party sees the browser's IP directly.
 - Zero telemetry ([0015](0015-zero-telemetry-analytics.md)) established the precedent that
-  network access is allowed *only* for explicit, user-permitted integrations, with a
+  network access is allowed _only_ for explicit, user-permitted integrations, with a
   whitelisted domain policy. This feature is the first concrete exercise of that carve-out.
 - CPAP analysis is **retrospective**: users import months or years of past data, so the
   weather provider must expose a real **historical archive**, not just a current-conditions
@@ -75,7 +75,7 @@ the whole thing opt-in, transparent, and off by default.
   fallback if Open-Meteo's terms or availability change.
 
 This decision relates to [0007](0007-plugin-architecture.md) (which named "weather APIs" as a
-future *integration plugin*), [0015](0015-zero-telemetry-analytics.md) (network policy and the
+future _integration plugin_), [0015](0015-zero-telemetry-analytics.md) (network policy and the
 opt-in carve-out), and [0005](0005-dual-storage-indexeddb-opfs.md) /
 [0016](0016-session-identity-non-unique-machine-date-index.md) (the integration storage schema).
 
@@ -122,8 +122,8 @@ the field now means a future "travel-aware" / per-night location feature can pop
 **without a schema migration**. This deliberately front-loads one nullable field to avoid a
 later migration on the integration stores.
 
-The privacy implication is recorded explicitly: location + dates discloses *where the user slept
-on which nights*. The single-location model keeps disclosure coarse (one home location) for v1;
+The privacy implication is recorded explicitly: location + dates discloses _where the user slept
+on which nights_. The single-location model keeps disclosure coarse (one home location) for v1;
 per-night location, when added, would increase resolution of that disclosure and must ship with
 its own consent review.
 
@@ -139,7 +139,7 @@ series enable a weather-ribbon overlay in the Signal Viewer aligned to actual re
 Open-Meteo returns both in a single response, so no extra request cost.
 
 **Implementation approach — first-party service module, not the runtime plugin registry.**
-Although [0007](0007-plugin-architecture.md) named weather as a future *integration plugin*, the
+Although [0007](0007-plugin-architecture.md) named weather as a future _integration plugin_, the
 runtime plugin registry remains **deferred** (the Phase-11 plugin evaluation; cf. the
 ADR-0007 follow-up). This feature is therefore built as a **first-party service module**, mirroring
 `src/services/import/googlehealth/GoogleHealthImportService.ts`: a framework-agnostic class with
@@ -201,7 +201,7 @@ that correlation math and re-export are unambiguous.
 
 ### Negative
 
-- **It crosses the never-crossed line.** This is the first feature that sends *any* data off the
+- **It crosses the never-crossed line.** This is the first feature that sends _any_ data off the
   device. Even minimized to coordinates + dates, location + dates is sensitive (it reveals where
   the user slept on given nights), and Open-Meteo necessarily sees the request's source IP. The
   zero-external-call invariant is now conditional on a user setting rather than absolute.
@@ -222,9 +222,9 @@ that correlation math and re-export are unambiguous.
 ### Neutral
 
 - **This sets the precedent for every future live integration** (LLM insights, others). The opt-in
-  + explicit-disclosure + minimal-CSP-whitelist + IndexedDB-cache pattern established here is the
-  template those features should follow; future ADRs should reference this one when relaxing
-  `connect-src` further.
+  - explicit-disclosure + minimal-CSP-whitelist + IndexedDB-cache pattern established here is the
+    template those features should follow; future ADRs should reference this one when relaxing
+    `connect-src` further.
 - **Geolocation is opt-in twice over** — once to enable weather, once to grant the browser
   permission to fill the location field — and is used only to populate a field, never to auto-send.
 - **The first-party-service vs. integration-plugin choice is revisitable.** When the plugin registry

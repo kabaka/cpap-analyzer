@@ -17,16 +17,16 @@ revocable, in service of Core Principle #1 (Privacy).
 
 ## 2. Product decisions (locked)
 
-| # | Decision | Choice |
-|---|----------|--------|
-| 1 | Provider | **Open-Meteo**, live API, **keyless / no account** |
-| 2 | Enablement | **Opt-in, off by default**; two-gate consent (toggle → disclosure) |
-| 3 | Location model | **Single configurable location** for v1; schema **forward-compatible** with per-night/travel-aware later (nullable per-record location field falling back to the global one) |
-| 4 | Data domains | **Core weather + air quality.** Pollen **deferred** (see §3) |
-| 5 | Resolution | **Daily summaries + hourly series** (hourly powers the Signal-Viewer ribbon) |
-| 6 | Coordinate precision | Round to **2 decimal places (~1.1 km)** *before every request*; never send GPS-precise coordinates |
-| 7 | On disable | **Keep** stored weather data; prompt with "Keep" defaulted (offer Delete) |
-| 8 | City names | **Allowed** via Open-Meteo geocoding, **explicitly disclosed** as an extra network call; coordinates remain the canonical stored value |
+| #   | Decision             | Choice                                                                                                                                                                       |
+| --- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Provider             | **Open-Meteo**, live API, **keyless / no account**                                                                                                                           |
+| 2   | Enablement           | **Opt-in, off by default**; two-gate consent (toggle → disclosure)                                                                                                           |
+| 3   | Location model       | **Single configurable location** for v1; schema **forward-compatible** with per-night/travel-aware later (nullable per-record location field falling back to the global one) |
+| 4   | Data domains         | **Core weather + air quality.** Pollen **deferred** (see §3)                                                                                                                 |
+| 5   | Resolution           | **Daily summaries + hourly series** (hourly powers the Signal-Viewer ribbon)                                                                                                 |
+| 6   | Coordinate precision | Round to **2 decimal places (~1.1 km)** _before every request_; never send GPS-precise coordinates                                                                           |
+| 7   | On disable           | **Keep** stored weather data; prompt with "Keep" defaulted (offer Delete)                                                                                                    |
+| 8   | City names           | **Allowed** via Open-Meteo geocoding, **explicitly disclosed** as an extra network call; coordinates remain the canonical stored value                                       |
 
 ## 3. Pollen is deferred (correctness, not an oversight)
 
@@ -46,6 +46,7 @@ parameter (use the session's IANA zone, or `auto`). Coordinates MUST be rounded 
 2 dp before the request.
 
 ### 4.1 Hosts to whitelist in CSP (`connect-src`) — and ONLY these
+
 - `https://archive-api.open-meteo.com` — historical weather (ERA5 reanalysis, back to **1940**). Endpoint `/v1/archive`. **Lags ~5 days** behind today.
 - `https://api.open-meteo.com` — forecast API with `past_days` (up to 92) for **recent** nights the archive has not yet covered. Endpoint `/v1/forecast`.
 - `https://air-quality-api.open-meteo.com` — air quality. Endpoint `/v1/air-quality`. Historical via CAMS reanalysis (Europe back to ~2013; global more recent, ~2022–23). Supports `start_date`/`end_date` and `past_days` (≤92).
@@ -76,7 +77,7 @@ overnight statistic; the AQ endpoint is hourly).
 calendar dates + (only on explicit Find) a typed city string. **What never
 leaves:** any therapy/health data, any identifier (there is none — no account, no
 key), precise GPS. Enabling requires an explicit consent dialog stating exactly
-this; a `consentAt` timestamp is persisted so a future change to *what is sent*
+this; a `consentAt` timestamp is persisted so a future change to _what is sent_
 can re-prompt. CSP is relaxed from `connect-src 'self'` to additionally allow the
 four hosts in §4.1 — never wildcards. Responses are cached in IndexedDB; "queried
 but empty" is stored distinctly from "not fetched" so surfaces show "—", never a
@@ -99,18 +100,31 @@ methods in `src/services/storage/IndexedDBService.ts` before writing.
   shows three different "last-night humidity" numbers.
 
 ### Settings shape (`src/types/settings.ts` → `IntegrationConfig.weather`)
+
 Replace the current `{ enabled, apiKey, location: string }` (drop `apiKey` — there
 is no key) with:
 
 ```ts
 weather: {
   enabled: boolean;
-  consentAt: string | null;            // ISO; two-gate consent acknowledgement
-  location: { label: string | null; latitude: number | null; longitude: number | null };
-  units: { temperature: 'C' | 'F'; pressure: 'hPa' | 'inHg'; wind: 'kmh' | 'mph' | 'ms'; precip: 'mm' | 'in' };
-  domains: { core: boolean; airQuality: boolean };  // pollen deferred
+  consentAt: string | null; // ISO; two-gate consent acknowledgement
+  location: {
+    label: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  }
+  units: {
+    temperature: 'C' | 'F';
+    pressure: 'hPa' | 'inHg';
+    wind: 'kmh' | 'mph' | 'ms';
+    precip: 'mm' | 'in';
+  }
+  domains: {
+    core: boolean;
+    airQuality: boolean;
+  } // pollen deferred
   resolution: 'daily' | 'daily+hourly';
-  autoSyncNewImports: boolean;         // default false
+  autoSyncNewImports: boolean; // default false
   lastSyncAt: string | null;
 }
 ```

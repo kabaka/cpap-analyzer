@@ -10,21 +10,21 @@
 ## 1. AQI color scale + required non-color encoding
 
 AQI gets its **own 6-step ramp**, deliberately distinct from the clinical
-`--color-status-*` scale (which means *AHI severity* and must not be confused
+`--color-status-*` scale (which means _AHI severity_ and must not be confused
 with air quality). US AQI and European AQI both map onto six ranked bins; the
 **rank (1–6)** drives color + pattern identically, the **word** is provider-aware.
 
 **NEW TOKEN set `--color-aqi-1`…`--color-aqi-6`** (+ `-bg` at 0.12 light / 0.18
 dark, + `-fg` on-fill text color), defined in `:root` and `[data-theme='dark']`:
 
-| Rank | US label | EAQI label | Light | Dark |
-|------|----------|-----------|-------|------|
-| 1 | Good | Good | `#2e8b57` | `#34d399` |
-| 2 | Moderate | Fair | `#9aa520` | `#bfd13a` |
-| 3 | Unhealthy for Sensitive Groups | Moderate | `#d97706` | `#fbbf24` |
-| 4 | Unhealthy | Poor | `#dc2626` | `#f87171` |
-| 5 | Very Unhealthy | Very Poor | `#8b1a8b` | `#d946ef` |
-| 6 | Hazardous | Extremely Poor | `#6b1f3a` | `#fb7185` |
+| Rank | US label                       | EAQI label     | Light     | Dark      |
+| ---- | ------------------------------ | -------------- | --------- | --------- |
+| 1    | Good                           | Good           | `#2e8b57` | `#34d399` |
+| 2    | Moderate                       | Fair           | `#9aa520` | `#bfd13a` |
+| 3    | Unhealthy for Sensitive Groups | Moderate       | `#d97706` | `#fbbf24` |
+| 4    | Unhealthy                      | Poor           | `#dc2626` | `#f87171` |
+| 5    | Very Unhealthy                 | Very Poor      | `#8b1a8b` | `#d946ef` |
+| 6    | Hazardous                      | Extremely Poor | `#6b1f3a` | `#fb7185` |
 
 Hue path green→olive→amber→red→purple→maroon (EPA mental model), shifted off the
 exact clinical green/yellow to avoid cross-scale confusion. **frontend must verify
@@ -35,14 +35,14 @@ each `-fg` on its fill ≥ 4.5:1, and each fill as text on `--color-surface-prim
 **Required non-color encoding — escalating hatch density (the one primitive the
 canvas renderer has, `fillDiagonalHatch`):**
 
-| Rank | Band pattern | Glyph | Always shown |
-|------|--------------|-------|--------------|
-| 1 | solid, no hatch | ● | word + value |
-| 2 | sparse hatch (10px pitch) | ◐ | word + value |
-| 3 | medium hatch (7px) | ◑ | word + value |
-| 4 | dense hatch (5px) | ▲ | word + value |
-| 5 | dense cross-hatch (±45°, 5px) | ▲▲ | word + value |
-| 6 | cross-hatch + 1px outline | ◆ | word + value |
+| Rank | Band pattern                  | Glyph | Always shown |
+| ---- | ----------------------------- | ----- | ------------ |
+| 1    | solid, no hatch               | ●     | word + value |
+| 2    | sparse hatch (10px pitch)     | ◐     | word + value |
+| 3    | medium hatch (7px)            | ◑     | word + value |
+| 4    | dense hatch (5px)             | ▲     | word + value |
+| 5    | dense cross-hatch (±45°, 5px) | ▲▲    | word + value |
+| 6    | cross-hatch + 1px outline     | ◆     | word + value |
 
 The rank→{word, color token, pattern, glyph} table is **one shared source of
 truth** in `src/analysis/weather/` (data-science owns it) so tile, inline readout,
@@ -66,14 +66,14 @@ Parallels `WearableOverview.tsx` (Card + `.statsGrid` + stat tiles + footer +
 loading/error/null states; reuse its CSS module). Grid `repeat(3,1fr)` desktop →
 2-col ≤1199px → 2-col ≤639px, gap `--space-3`.
 
-| # | Tile | Format | Unit (unit-aware) | Trend polarity |
-|---|------|--------|-------------------|----------------|
-| 1 | Overnight Low Temp | 1 dp | °C / °F | neutral |
-| 2 | Humidity | int | % | neutral |
-| 3 | **Barometric Pressure** (headline) | 1 dp | hPa / inHg | neutral |
-| 4 | Air Quality (AQI) | int + word (swatch) | US/EU AQI | polar — lower better |
-| 5 | Dew Point | 1 dp | °C / °F | neutral |
-| 6 | Wind | int | km/h · mph · m/s | neutral |
+| #   | Tile                               | Format              | Unit (unit-aware) | Trend polarity       |
+| --- | ---------------------------------- | ------------------- | ----------------- | -------------------- |
+| 1   | Overnight Low Temp                 | 1 dp                | °C / °F           | neutral              |
+| 2   | Humidity                           | int                 | %                 | neutral              |
+| 3   | **Barometric Pressure** (headline) | 1 dp                | hPa / inHg        | neutral              |
+| 4   | Air Quality (AQI)                  | int + word (swatch) | US/EU AQI         | polar — lower better |
+| 5   | Dew Point                          | 1 dp                | °C / °F           | neutral              |
+| 6   | Wind                               | int                 | km/h · mph · m/s  | neutral              |
 
 Numeric values: `--font-family-mono` + `tabular-nums`. Tile 3 gets a 2px left
 accent bar in `--color-chart-6` (cyan) via `data-headline="true"` — accent only,
@@ -86,6 +86,7 @@ mandatory — never imply "today"): `As of {date}` in `--font-size-xs`
 
 **TrendIndicator extension — `polarity: 'neutral' | 'favorable-low' |
 'favorable-high'`:**
+
 - **Neutral** (temp/humidity/pressure/dewpoint/wind): arrow `↑/↓/—` in
   `--color-text-secondary`, bg `--color-surface-tertiary`; `aria-label`
   `Rising/Falling/Steady` — **no favorable/unfavorable wording**. **NEW TOKEN
@@ -112,6 +113,7 @@ signal.
 
 **Consent dialog** (modal, 600px, focus-trap, Esc-cancels-and-reverts) — the
 privacy contract, designed for scannability:
+
 1. Title `Enable Weather & Air Quality`.
 2. One-line purpose (`--color-text-secondary`).
 3. **"What leaves your device"** block — `--color-info-bg`, 3px `--color-info` left
@@ -146,6 +148,7 @@ an extra call). Geolocation errors → `role="alert"` in `--color-error` within 
 location group + move focus to the manual lat/lon Input.
 
 Enabled-panel layout:
+
 ```
 [Location] Lat [ ] Lon [ ]   |  [City…][Find]  |  [⌖ Use current location]
 [Units]    segmented controls
@@ -194,12 +197,12 @@ only). The Missing vs No-provider-data distinction is a **correctness** requirem
 (the "queried but empty" state stores distinctly from "not fetched"; show "—",
 never a fabricated zero):
 
-| Status | Icon | Color | bg | Label | Actionable |
-|--------|------|-------|----|-------|-----------|
-| Synced | ✓ filled circle | `--color-success` | `--color-success-bg` | "Synced" | — |
-| Missing (not fetched) | ◷ hollow/dotted circle | `--color-text-muted` | `--color-surface-tertiary` | "Not synced" | Sync |
-| No provider data (queried, empty) | ⊘ circle-slash | `--color-text-secondary` | `--color-caveat-bg` | "No data available" | terminal |
-| Failed | ⚠ triangle | `--color-error` | `--color-error-bg` | "Sync failed" | Retry |
+| Status                            | Icon                   | Color                    | bg                         | Label               | Actionable |
+| --------------------------------- | ---------------------- | ------------------------ | -------------------------- | ------------------- | ---------- |
+| Synced                            | ✓ filled circle        | `--color-success`        | `--color-success-bg`       | "Synced"            | —          |
+| Missing (not fetched)             | ◷ hollow/dotted circle | `--color-text-muted`     | `--color-surface-tertiary` | "Not synced"        | Sync       |
+| No provider data (queried, empty) | ⊘ circle-slash         | `--color-text-secondary` | `--color-caveat-bg`        | "No data available" | terminal   |
+| Failed                            | ⚠ triangle             | `--color-error`          | `--color-error-bg`         | "Sync failed"       | Retry      |
 
 Date column `--font-family-mono`/tabular-nums; status badge = icon+word atom
 (`--font-size-xs`, `--radius-full`); trailing Sync/Retry ghost button on actionable
@@ -208,8 +211,8 @@ count chips, each carrying its status icon+color+count.
 
 ## 6. Consolidated new tokens / system additions
 
-1. `--color-aqi-1`…`-6` (+ `-bg`, `-fg`, light & dark) — **AA-verify**. *(most
-   important)*
+1. `--color-aqi-1`…`-6` (+ `-bg`, `-fg`, light & dark) — **AA-verify**. _(most
+   important)_
 2. `--color-weather-pressure`, `--color-weather-temp` (light & dark).
 3. `--signal-lane-height-ribbon: 44px`.
 4. `--color-trend-neutral` / `-bg` (aliases; optional).
