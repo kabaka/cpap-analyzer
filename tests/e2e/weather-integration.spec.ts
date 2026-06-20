@@ -170,10 +170,12 @@ test.describe('Weather integration — configure and sync (mocked network)', () 
     await sheet.getByRole('button', { name: /done/i }).click();
     await expect(sheet).not.toBeVisible();
 
-    // The panel status reflects stored weather days. A midnight-spanning night
-    // touches two civil dates, so the stored daily-summary count is ≥ 1 ("N
-    // nights"); the coverage view above already asserted exactly ONE Synced night.
-    await expect(page.getByText(/Last synced:.*\d+ nights?/)).toBeVisible();
+    // The panel status reports stored weather DAYS, not nights: a midnight-
+    // spanning night stores a daily summary for two civil dates, so the stored
+    // daily-summary count can exceed the night count. The label is therefore
+    // honest ("N days of weather data") and never contradicts the coverage view
+    // above, which asserted exactly ONE Synced night.
+    await expect(page.getByText(/Last synced:.*\d+ days? of weather data/)).toBeVisible();
 
     // ── Egress assertions (the privacy heart of this suite) ──
     expect(mock.urls.length, 'at least one Open-Meteo request was intercepted').toBeGreaterThan(0);

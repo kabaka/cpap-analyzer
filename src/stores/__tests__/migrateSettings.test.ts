@@ -6,6 +6,9 @@
  * - DROP `apiKey` entirely (Open-Meteo is keyless; a stale key is a privacy hazard);
  * - wrap the old free-text `location` string into the structured location object
  *   with null coordinates;
+ * - FORCE re-consent: reset `enabled` to false and `consentAt` to null regardless
+ *   of the legacy value, so a migrated user re-passes the consent gate before any
+ *   egress is possible;
  * - fill all new weather fields from defaults;
  * - preserve every other settings slice untouched;
  * - never throw on a malformed blob.
@@ -17,7 +20,7 @@ import { describe, it, expect } from 'vitest';
 import { migrateSettings } from '../useSettingsStore';
 
 describe('migrateSettings (v0 → v1)', () => {
-  it('drops apiKey and wraps the old location string into the structured shape', () => {
+  it('drops apiKey, wraps the old location string, and forces re-consent', () => {
     const legacy = {
       integrations: {
         fitbit: {
@@ -39,9 +42,9 @@ describe('migrateSettings (v0 → v1)', () => {
     expect(weather && 'apiKey' in weather).toBe(false);
     // The string location is wrapped; coordinates are null (cannot be inferred).
     expect(weather?.location).toEqual({ label: 'London, UK', latitude: null, longitude: null });
-    // enabled is carried over.
-    expect(weather?.enabled).toBe(true);
-    // New fields fall back to defaults.
+    // Re-consent is forced: the legacy `enabled: true` is discarded so the user
+    // must re-pass the consent gate before any egress is possible.
+    expect(weather?.enabled).toBe(false);
     expect(weather?.consentAt).toBeNull();
     expect(weather?.domains).toEqual({ core: true, airQuality: true });
     expect(weather?.units).toEqual({
@@ -53,6 +56,27 @@ describe('migrateSettings (v0 → v1)', () => {
     expect(weather?.resolution).toBe('daily+hourly');
     expect(weather?.autoSyncNewImports).toBe(false);
     expect(weather?.lastSyncAt).toBeNull();
+  });
+
+  it('forces a previously enabled (and consented) legacy weather config back off', () => {
+    const migrated = migrateSettings(
+      {
+        integrations: {
+          weather: {
+            enabled: true,
+            consentAt: '2025-01-01T00:00:00.000Z',
+            apiKey: 'k',
+            location: 'Berlin',
+          },
+        },
+      },
+      0,
+    );
+    const weather = migrated.integrations?.weather;
+    expect(weather?.enabled).toBe(false);
+    expect(weather?.consentAt).toBeNull();
+    // Location is still preserved so re-consent is low-friction.
+    expect(weather?.location).toEqual({ label: 'Berlin', latitude: null, longitude: null });
   });
 
   it('maps an empty/blank legacy location string to a null label', () => {

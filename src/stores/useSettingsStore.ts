@@ -157,6 +157,13 @@ interface LegacyWeatherIntegration {
  * - the old free-text `location` string is wrapped into the structured
  *   `{ label, latitude: null, longitude: null }` (we cannot infer coordinates
  *   from a bare string; the user re-confirms a location, gated by consent).
+ * - the integration is FORCED back through the consent gate: `enabled` is reset
+ *   to `false` and `consentAt` to `null` regardless of the legacy `enabled`
+ *   value. The v0 weather stub never made any network call, so disabling on
+ *   migration loses no functionality; it guarantees a migrated user must re-pass
+ *   the explicit consent gate before the new client can ever egress (Privacy is
+ *   the top core principle). Location label/coords are preserved so re-consent
+ *   is low-friction.
  * - all other new weather fields fall back to defaults.
  * - every other settings slice is preserved untouched.
  *
@@ -185,7 +192,11 @@ export function migrateSettings(persisted: unknown, version: number): Partial<Se
 
     const migratedWeather: WeatherIntegration = {
       ...structuredClone(defaultSettings.integrations.weather),
-      enabled: legacy.enabled ?? defaultSettings.integrations.weather.enabled,
+      // Force re-consent: a migrated user must re-pass the explicit consent gate
+      // before any egress is possible. The legacy `enabled` flag is intentionally
+      // discarded (the old stub never made network calls, so nothing is lost).
+      enabled: false,
+      consentAt: null,
       location: { label: legacyLabel, latitude: null, longitude: null },
     };
 

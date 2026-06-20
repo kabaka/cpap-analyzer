@@ -1,0 +1,24 @@
+# CodeQL configuration for the CPAP Analyzer advanced setup.
+#
+# `paths-ignore` excludes test code from the JavaScript/TypeScript analysis.
+# Test fixtures intentionally do things that CodeQL flags as vulnerabilities in
+# PRODUCTION code but which are deliberate, inert test scaffolding:
+#   - `tests/e2e/_support/weather.ts` seeds hardcoded mock coordinates into
+#     localStorage, tripping `js/clear-text-storage-of-sensitive-data` even
+#     though no real user data is involved (the values are canned fixtures).
+#   - URL-substring assertions and other test-only patterns produce further
+#     false positives.
+# Excluding `tests/**` and the per-file test patterns keeps the security signal
+# focused on shippable code. Production `src/**` is NOT ignored and remains
+# fully scanned.
+#
+# NOTE: `paths-ignore` affects only the path-based languages (here:
+# javascript-typescript). The `actions` analysis scans workflow YAML and is not
+# governed by these globs.
+name: 'CPAP Analyzer CodeQL config'
+
+paths-ignore:
+  - tests/**
+  - '**/*.spec.ts'
+  - '**/*.test.ts'
+  - '**/__tests__/**'

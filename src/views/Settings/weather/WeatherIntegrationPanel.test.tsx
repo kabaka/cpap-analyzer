@@ -7,7 +7,7 @@ vi.mock('@/hooks/useSessionData', () => ({
   useSessionData: () => ({ sessions: [], loading: false, error: null, refetch: vi.fn() }),
 }));
 vi.mock('@/services/weather/weatherDataService', () => ({
-  countWeatherNights: vi.fn().mockResolvedValue(0),
+  countWeatherDays: vi.fn().mockResolvedValue(0),
   deleteAllWeatherData: vi
     .fn()
     .mockResolvedValue({ dailyRemoved: 0, timeseriesRemoved: 0, importRecordsRemoved: 0 }),
