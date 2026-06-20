@@ -99,9 +99,9 @@
   --color-wearable-snore: #7c5cff;
 
   /* HYPNOGRAM (sleep stage) COLORS */
-  --color-hypno-wake: #f59e0b;
+  --color-hypno-wake: #d97706; /* amber-600: ≥3:1 graphical contrast on white */
   --color-hypno-rem: #8b5cf6;
-  --color-hypno-light: #38bdf8;
+  --color-hypno-light: #0ea5e9; /* sky-500: deeper than #38bdf8 for white-bg contrast */
   --color-hypno-deep: #1e3a8a;
   --color-hypno-unknown: var(--color-surface-tertiary);
 
@@ -345,7 +345,7 @@
   --color-hypno-wake: #fbbf24;
   --color-hypno-rem: #a78bfa;
   --color-hypno-light: #38bdf8;
-  --color-hypno-deep: #3b82f6;
+  --color-hypno-deep: #6366f1; /* indigo-500: hue-separated from cyan light (was #3b82f6, two near-identical blues) */
   --color-hypno-unknown: var(--color-surface-tertiary);
 
   /* DETECTION EPISODE COLORS (breathing-event detection overlay) */
