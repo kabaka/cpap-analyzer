@@ -79,10 +79,33 @@ describe('cspMetaPlugin', () => {
     for (const directive of [
       "default-src 'self'",
       "worker-src 'self' blob:",
-      "connect-src 'self'",
       "object-src 'none'",
     ]) {
       expect(CSP_VALUE).toContain(directive);
     }
+  });
+
+  it('allows only the four Open-Meteo hosts in connect-src (and keeps self)', () => {
+    // Isolate the connect-src directive from the assembled policy.
+    const directive = CSP_VALUE.split('; ').find((d) => d.startsWith('connect-src '));
+    expect(directive).toBeDefined();
+
+    const tokens = (directive as string).slice('connect-src '.length).trim().split(/\s+/);
+    expect(tokens).toEqual([
+      "'self'",
+      'https://archive-api.open-meteo.com',
+      'https://api.open-meteo.com',
+      'https://air-quality-api.open-meteo.com',
+      'https://geocoding-api.open-meteo.com',
+    ]);
+  });
+
+  it('never uses a wildcard source anywhere in the policy', () => {
+    // No bare wildcard, no scheme-wildcards, no host-wildcards (e.g. *.foo).
+    expect(CSP_VALUE).not.toContain('*');
+    // Defensive: the connect-src hosts must be exact origins, not subdomain
+    // wildcards or http:// origins that could broaden egress.
+    expect(CSP_VALUE).not.toContain('http://');
+    expect(CSP_VALUE).not.toMatch(/connect-src[^;]*\*/);
   });
 });

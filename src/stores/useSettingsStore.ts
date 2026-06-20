@@ -31,10 +31,33 @@ interface FitbitIntegration {
   recordCount: number;
 }
 
+interface WeatherLocationSetting {
+  label: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+interface WeatherUnitsSetting {
+  temperature: 'C' | 'F';
+  pressure: 'hPa' | 'inHg';
+  wind: 'kmh' | 'mph' | 'ms';
+  precip: 'mm' | 'in';
+}
+
+interface WeatherDomainsSetting {
+  core: boolean;
+  airQuality: boolean;
+}
+
 interface WeatherIntegration {
   enabled: boolean;
-  apiKey: string | null;
-  location: string;
+  consentAt: string | null;
+  location: WeatherLocationSetting;
+  units: WeatherUnitsSetting;
+  domains: WeatherDomainsSetting;
+  resolution: 'daily' | 'daily+hourly';
+  autoSyncNewImports: boolean;
+  lastSyncAt: string | null;
 }
 
 interface LLMIntegration {
@@ -101,10 +124,83 @@ const defaultSettings: Pick<SettingsState, 'analysisParams' | 'display' | 'integ
   },
   integrations: {
     fitbit: { enabled: false, visibleDataTypes: [], lastImportAt: null, recordCount: 0 },
-    weather: { enabled: false, apiKey: null, location: '' },
+    weather: {
+      enabled: false,
+      consentAt: null,
+      location: { label: null, latitude: null, longitude: null },
+      units: { temperature: 'C', pressure: 'hPa', wind: 'kmh', precip: 'mm' },
+      domains: { core: true, airQuality: true },
+      resolution: 'daily+hourly',
+      autoSyncNewImports: false,
+      lastSyncAt: null,
+    },
     llm: { enabled: false, provider: null, apiKey: null },
   },
 };
+
+/** The legacy (v0) persisted weather shape, retained only for migration. */
+interface LegacyWeatherIntegration {
+  enabled?: boolean;
+  apiKey?: string | null;
+  location?: string;
+}
+
+/**
+ * Persist migration for the settings store.
+ *
+ * Versioned migrations run when the persisted `version` is older than the
+ * store's current `version`. v0 persisted the weather integration as
+ * `{ enabled, apiKey, location: string }`. This maps it onto the current
+ * {@link WeatherIntegration} shape:
+ * - `apiKey` is DROPPED (Open-Meteo is keyless — there is no key to migrate, and
+ *   carrying a stale key forward would be a privacy hazard).
+ * - the old free-text `location` string is wrapped into the structured
+ *   `{ label, latitude: null, longitude: null }` (we cannot infer coordinates
+ *   from a bare string; the user re-confirms a location, gated by consent).
+ * - all other new weather fields fall back to defaults.
+ * - every other settings slice is preserved untouched.
+ *
+ * Unknown / unexpected persisted shapes fall back to the full defaults rather
+ * than throwing, so a corrupt blob can never wedge app startup.
+ */
+export function migrateSettings(persisted: unknown, version: number): Partial<SettingsState> {
+  // Anything we cannot interpret -> start clean.
+  if (typeof persisted !== 'object' || persisted === null) {
+    return structuredClone(defaultSettings);
+  }
+
+  const state = persisted as Partial<SettingsState> & {
+    integrations?: Partial<Integrations> & {
+      weather?: LegacyWeatherIntegration | WeatherIntegration;
+    };
+  };
+
+  // v0 -> v1: reshape the weather integration.
+  if (version < 1) {
+    const legacy = (state.integrations?.weather ?? {}) as LegacyWeatherIntegration;
+    const legacyLabel =
+      typeof legacy.location === 'string' && legacy.location.trim().length > 0
+        ? legacy.location
+        : null;
+
+    const migratedWeather: WeatherIntegration = {
+      ...structuredClone(defaultSettings.integrations.weather),
+      enabled: legacy.enabled ?? defaultSettings.integrations.weather.enabled,
+      location: { label: legacyLabel, latitude: null, longitude: null },
+    };
+
+    return {
+      ...state,
+      integrations: {
+        ...defaultSettings.integrations,
+        ...state.integrations,
+        weather: migratedWeather,
+      },
+    };
+  }
+
+  return state;
+}
 
 export const useSettingsStore = create<SettingsState>()(
   devtools(
@@ -150,7 +246,16 @@ export const useSettingsStore = create<SettingsState>()(
         // (analysisParams.*, integrations.*).
         resetToDefaults: () => set(structuredClone(defaultSettings), undefined, 'resetToDefaults'),
       }),
-      { name: 'cpap-settings' },
+      {
+        name: 'cpap-settings',
+        // v0 -> v1: the weather integration was reshaped from
+        // `{ enabled, apiKey, location: string }` to the richer config (no
+        // apiKey — Open-Meteo is keyless — plus structured location, units,
+        // domains, resolution, auto-sync, and timestamps). See the weather
+        // integration design reference §6.
+        version: 1,
+        migrate: migrateSettings,
+      },
     ),
     { name: 'SettingsStore', enabled: import.meta.env.DEV },
   ),

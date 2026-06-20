@@ -68,6 +68,14 @@ export interface SignalChannel {
   /** Override stroke width in CSS pixels. Defaults to the dense CPAP width. */
   readonly lineWidth?: number;
   /**
+   * Optional dash pattern (canvas `setLineDash` segments, CSS px) for `line`
+   * lanes — a grayscale-safe distinguisher when two single-line lanes are
+   * stacked (e.g. solid pressure vs. dashed temperature in the weather viewer,
+   * visual-spec §4.3). When omitted/empty the line is solid, byte-for-byte
+   * identical to before. Ignored by ribbon/step/envelope paths.
+   */
+  readonly dash?: readonly number[];
+  /**
    * Absolute timestamps (ms, session-relative, same base as the viewport) for
    * each sample. Required for sparse/step series so dots and gap detection land
    * on the real sample times rather than an assumed uniform cadence. When
@@ -128,6 +136,27 @@ export interface SignalChannel {
 }
 
 /**
+ * Non-colour overlay pattern for a ribbon band, used as a redundant (WCAG)
+ * encoding so severity/category never relies on colour alone — e.g. the weather
+ * AQI ribbon escalates hatch density with the air-quality rank.
+ *
+ * - `solid`              — fill only, no overlay.
+ * - `hatch-sparse`       — one diagonal hatch pass, ~10px pitch.
+ * - `hatch-med`          — one diagonal hatch pass, ~7px pitch (the legacy
+ *   {@link RibbonBand.hatch}`: true` REM treatment maps here).
+ * - `hatch-dense`        — one diagonal hatch pass, ~5px pitch.
+ * - `crosshatch`         — two dense hatch passes at opposite (±45°) slopes.
+ * - `crosshatch-outline` — crosshatch plus a 1px solid outline around the band.
+ */
+export type RibbonPattern =
+  | 'solid'
+  | 'hatch-sparse'
+  | 'hatch-med'
+  | 'hatch-dense'
+  | 'crosshatch'
+  | 'crosshatch-outline';
+
+/**
  * A categorical band definition for ribbon (hypnogram) lanes, ordered top→bottom.
  * The renderer maps each sample value to the matching band by `value` and fills
  * that band's sub-row.
@@ -139,8 +168,42 @@ export interface RibbonBand {
   readonly label: string;
   /** Resolved fill colour. */
   readonly color: string;
-  /** Draw a diagonal hatch overlay as a redundant non-colour cue (REM). */
+  /**
+   * Draw a diagonal hatch overlay as a redundant non-colour cue (REM).
+   *
+   * @deprecated Prefer {@link RibbonBand.pattern}. Retained for back-compat:
+   * when `pattern` is unset, `hatch: true` is treated as `'hatch-med'`. Setting
+   * `pattern` always wins over `hatch`.
+   */
   readonly hatch?: boolean;
+  /**
+   * Non-colour overlay pattern (escalating-density encoding). When omitted, the
+   * band falls back to {@link RibbonBand.hatch} (`true` → `'hatch-med'`,
+   * otherwise `'solid'`), so existing callers render byte-for-byte unchanged.
+   * See {@link resolveRibbonPattern}.
+   */
+  readonly pattern?: RibbonPattern;
+  /**
+   * Resolved colour for the pattern overlay (hatch strokes / outline). When
+   * omitted, a sensible contrast of the band colour is used. Ignored for
+   * `pattern: 'solid'`.
+   */
+  readonly patternColor?: string;
+}
+
+/**
+ * Resolve a band's effective overlay pattern, applying the
+ * {@link RibbonBand.hatch} back-compat mapping. Pure and exported so the
+ * selection logic is unit-testable independently of canvas pixel output.
+ *
+ * Precedence: an explicit {@link RibbonBand.pattern} always wins; otherwise
+ * `hatch: true` → `'hatch-med'` and everything else → `'solid'`. This keeps the
+ * hypnogram REM band (which sets `hatch: true` and no `pattern`) rendering a
+ * single medium-density hatch exactly as before.
+ */
+export function resolveRibbonPattern(band: Pick<RibbonBand, 'pattern' | 'hatch'>): RibbonPattern {
+  if (band.pattern !== undefined) return band.pattern;
+  return band.hatch ? 'hatch-med' : 'solid';
 }
 
 /** Current viewport time range and channel data to render. */
@@ -265,6 +328,22 @@ const DETECTION_BORDER_MIN = 1;
 const DETECTION_BORDER_MAX = 2;
 /** Detection hatch geometry. */
 const DETECTION_HATCH_PERIOD = 6;
+
+/**
+ * Hatch pitch (px) per ribbon pattern, per visual-spec §1.3/§4.4 (escalating
+ * density). `crosshatch[-outline]` uses the dense pitch for both passes.
+ */
+const RIBBON_HATCH_PERIOD: Readonly<Record<RibbonPattern, number>> = {
+  solid: 0,
+  'hatch-sparse': 10,
+  'hatch-med': 7,
+  'hatch-dense': 5,
+  crosshatch: 5,
+  'crosshatch-outline': 5,
+};
+
+/** Alpha for ribbon pattern overlays (matches the legacy REM hatch alpha). */
+const RIBBON_PATTERN_ALPHA = 0.45;
 
 /** Grid styling. */
 const GRID_DASH = [4, 4];
@@ -1136,6 +1215,12 @@ export class SignalRenderer {
     ctx.strokeStyle = ch.color;
     ctx.lineWidth = ch.lineWidth ?? DENSE_LINE_WIDTH;
     ctx.lineJoin = 'round';
+    // Optional dash for stacked single-line lanes (grayscale distinguisher).
+    // Solid by default → unchanged for every existing CPAP/wearable line lane.
+    // The dash state is scoped by the surrounding save()/restore().
+    if (ch.dash && ch.dash.length > 0) {
+      ctx.setLineDash(ch.dash as number[]);
+    }
     ctx.beginPath();
 
     // Hoist per-sample loop invariants: this is the densest loop in the renderer
@@ -1490,9 +1575,7 @@ export class SignalRenderer {
       ctx.fillStyle = band.color;
       ctx.fillRect(x1, rowTop, segW, rowH);
 
-      if (band.hatch) {
-        this.fillDiagonalHatch(x1, rowTop, segW, rowH, sep, 5, 0.45);
-      }
+      this.drawBandPattern(band, x1, rowTop, segW, rowH, sep);
 
       // 1px surface separator between band rows for crisp edges.
       ctx.fillStyle = sep;
@@ -1525,6 +1608,74 @@ export class SignalRenderer {
     }
 
     ctx.restore();
+  }
+
+  /**
+   * Draw a ribbon band's non-colour overlay pattern over its already-filled
+   * rectangle. Implements the escalating-density encoding from visual-spec
+   * §1.3/§4.4 (solid → sparse/med/dense hatch → crosshatch → crosshatch+outline)
+   * as a redundant WCAG cue so severity never relies on colour alone.
+   *
+   * BACK-COMPAT: a band that uses the legacy {@link RibbonBand.hatch}`: true`
+   * with no explicit `pattern`/`patternColor` (the hypnogram REM band) is drawn
+   * with the exact legacy call — separator-colour strokes, 5px pitch, 0.45 alpha
+   * — so existing ribbon output is byte-for-byte unchanged. New callers that set
+   * `pattern` get the spec geometry/colour below.
+   *
+   * @param sep - the surface separator colour, used as the legacy hatch stroke.
+   */
+  private drawBandPattern(
+    band: RibbonBand,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    sep: string,
+  ): void {
+    // Legacy path: `hatch: true` with no explicit pattern/colour → unchanged.
+    if (band.pattern === undefined && band.patternColor === undefined) {
+      if (band.hatch) {
+        this.fillDiagonalHatch(x, y, w, h, sep, 5, RIBBON_PATTERN_ALPHA);
+      }
+      return;
+    }
+
+    const pattern = resolveRibbonPattern(band);
+    if (pattern === 'solid') return;
+
+    // Pattern stroke colour: explicit `patternColor`, else a sensible contrast of
+    // the band colour (the legacy separator colour reads well over the AQI fills).
+    const strokeColor = band.patternColor ?? this.contrastInk(band.color, sep);
+    const period = RIBBON_HATCH_PERIOD[pattern];
+
+    const isCross = pattern === 'crosshatch' || pattern === 'crosshatch-outline';
+    this.fillDiagonalHatch(x, y, w, h, strokeColor, period, RIBBON_PATTERN_ALPHA, 'down');
+    if (isCross) {
+      // Second pass at the opposite slope → ±45° crosshatch.
+      this.fillDiagonalHatch(x, y, w, h, strokeColor, period, RIBBON_PATTERN_ALPHA, 'up');
+    }
+
+    if (pattern === 'crosshatch-outline') {
+      const ctx = this.activeCtx;
+      ctx.save();
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      // Inset by 0.5px so the 1px outline lands on whole pixels within the band.
+      ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Choose a pattern stroke colour when none is supplied: fall back to the
+   * surface separator colour, which contrasts well over the saturated AQI fills.
+   * Kept tiny and isolated so a future luminance-aware choice can slot in here
+   * without touching the draw path. (`band` colour is accepted for that future
+   * use; today the separator is the safe default.)
+   */
+  private contrastInk(_bandColor: string, sep: string): string {
+    return sep;
   }
 
   /**
@@ -1582,7 +1733,14 @@ export class SignalRenderer {
     }
   }
 
-  /** Fill a 45° diagonal hatch within a rectangle (used by ribbon REM + detections). */
+  /**
+   * Fill a 45° diagonal hatch within a rectangle (used by ribbon patterns +
+   * detections). `slope` selects the diagonal direction so a crosshatch is two
+   * passes at opposite slopes:
+   * - `'down'` (default): top-left → bottom-right (the legacy direction; keeps
+   *   the REM/detection hatch byte-for-byte identical).
+   * - `'up'`: bottom-left → top-right.
+   */
   private fillDiagonalHatch(
     x: number,
     y: number,
@@ -1591,6 +1749,7 @@ export class SignalRenderer {
     color: string,
     period: number,
     alpha: number,
+    slope: 'down' | 'up' = 'down',
   ): void {
     const ctx = this.activeCtx;
     ctx.save();
@@ -1603,8 +1762,13 @@ export class SignalRenderer {
     ctx.setLineDash([]);
     ctx.beginPath();
     for (let d = -h; d < w + h; d += period) {
-      ctx.moveTo(x + d, y);
-      ctx.lineTo(x + d + h, y + h);
+      if (slope === 'down') {
+        ctx.moveTo(x + d, y);
+        ctx.lineTo(x + d + h, y + h);
+      } else {
+        ctx.moveTo(x + d, y + h);
+        ctx.lineTo(x + d + h, y);
+      }
     }
     ctx.stroke();
     ctx.restore();

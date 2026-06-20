@@ -333,23 +333,17 @@ function IntegrationsSection() {
                 Coming soon — Integration will be available in a future release
               </span>
               <Input
-                label="API key"
-                type="password"
-                placeholder="Enter weather API key"
-                value={integrations.weather.apiKey ?? ''}
+                label="Location"
+                placeholder="City name"
+                value={integrations.weather.location.label ?? ''}
                 onChange={(e) =>
                   updateIntegration('weather', {
-                    apiKey: e.target.value || null,
+                    location: {
+                      ...integrations.weather.location,
+                      label: e.target.value || null,
+                    },
                   })
                 }
-                disabled
-                hint="Configuration will be available when integration launches"
-              />
-              <Input
-                label="Location"
-                placeholder="City name or coordinates"
-                value={integrations.weather.location}
-                onChange={(e) => updateIntegration('weather', { location: e.target.value })}
                 disabled
                 hint="Configuration will be available when integration launches"
               />

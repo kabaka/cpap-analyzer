@@ -41,12 +41,21 @@ const CSP_DIRECTIVES = [
   // data: needed because Vite may inline small font files (e.g. KaTeX woff2)
   // as data: URIs even with assetsInlineLimit: 0 in edge cases.
   "font-src 'self' data:",
-  // No live external network calls exist yet — Fitbit/weather/LLM integrations
-  // are scaffolded in settings but unimplemented ("coming soon"). When they
-  // ship, add their hosts here:
-  //   https://api.fitbit.com, https://api.openweathermap.org,
-  //   https://api.openai.com, https://api.anthropic.com
-  "connect-src 'self'",
+  // The Weather & Environmental Data integration (opt-in, off by default) is
+  // the first feature that makes an outbound network request. It calls the
+  // keyless Open-Meteo API and ONLY these four hosts — explicit, minimal, and
+  // auditable (no wildcards; nothing but exact host origins). Per the weather
+  // integration design reference §4.1 and the privacy contract §5, only rounded
+  // coordinates and calendar dates leave the device; no identifiers are sent.
+  // Future Fitbit/LLM integrations would add their own hosts here.
+  'connect-src ' +
+    [
+      "'self'",
+      'https://archive-api.open-meteo.com',
+      'https://api.open-meteo.com',
+      'https://air-quality-api.open-meteo.com',
+      'https://geocoding-api.open-meteo.com',
+    ].join(' '),
   // Module workers via new Worker(new URL(...), { type: 'module' }) — edfParser,
   // downsample, analysis workers. blob: is a safe fallback for bundled workers.
   "worker-src 'self' blob:",
