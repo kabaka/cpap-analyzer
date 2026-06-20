@@ -7,16 +7,18 @@
  * @module services/storage/getDB
  */
 
+import { BREATHING_ALGO_VERSION } from '@/analysis/breathing';
 import { IndexedDBService } from './IndexedDBService';
 import {
   MigrationService,
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_NONUNIQUE_MACHINE_DATE,
   MIGRATION_003_INTEGRATION_STORES,
+  MIGRATION_004_BREATHING_DETECTIONS,
 } from './MigrationService';
 
 /** Current target schema version. Must match `DB_VERSION` in IndexedDBService. */
-const TARGET_SCHEMA_VERSION = 3;
+const TARGET_SCHEMA_VERSION = 4;
 
 let instance: IndexedDBService | null = null;
 let openPromise: Promise<IndexedDBService> | null = null;
@@ -36,6 +38,7 @@ function buildMigrationService(): MigrationService {
     MIGRATION_001_INITIAL_SCHEMA,
     MIGRATION_002_NONUNIQUE_MACHINE_DATE,
     MIGRATION_003_INTEGRATION_STORES,
+    MIGRATION_004_BREATHING_DETECTIONS,
   ]);
   return service;
 }
@@ -55,6 +58,12 @@ export async function getDB(): Promise<IndexedDBService> {
       // Maintain the migration ledger. Schema/index changes already happened in
       // onupgradeneeded; this records the version history and verifies it.
       await buildMigrationService().run(db.getRawDatabase(), TARGET_SCHEMA_VERSION);
+      // Version-eviction sweep: reclaim breathing-detection rows left behind by a
+      // superseded algorithm version. Bounded (≤1 stale row per session per old
+      // version) and idempotent; runs once per open after the ledger so a fresh
+      // open never serves — nor accumulates — stale cached detections. See
+      // docs/analysis/breathing-detection-cache-storage.md §4.3.
+      await db.deleteBreathingDetectionsByAlgoVersionNotMatching(BREATHING_ALGO_VERSION);
       instance = db;
       return db;
     })();

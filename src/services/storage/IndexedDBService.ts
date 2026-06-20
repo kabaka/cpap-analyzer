@@ -12,6 +12,7 @@ import {
   ErrorCategory,
   ErrorSeverity,
   type AnalysisResult,
+  type BreathingDetectionRecord,
   type CPAPError,
   type Event,
   type ImportRecord,
@@ -37,6 +38,9 @@ export type StoredAnalysisResult = AnalysisResult;
 /** ImportRecord stored in IndexedDB with storage indexes. */
 export type StoredImportRecord = ImportRecord;
 
+/** BreathingDetectionRecord stored in IndexedDB (cache-identity compound key). */
+export type StoredBreathingDetection = BreathingDetectionRecord;
+
 /** A settings entry as persisted in IndexedDB (includes updatedAt). */
 export interface StoredSetting {
   readonly key: string;
@@ -57,7 +61,8 @@ type StoreName =
   | 'import_history'
   | 'integration_data'
   | 'integration_timeseries'
-  | 'integration_import_history';
+  | 'integration_import_history'
+  | 'breathing_detections'; // v4
 
 // ---------------------------------------------------------------------------
 // Error helper
@@ -134,8 +139,12 @@ const DB_NAME = 'cpap-analyzer';
  * - v3: add `integration_timeseries` and `integration_import_history` stores;
  *   add `dataType` and `source_dataType_date` indexes to `integration_data`;
  *   remove legacy `source_date` unique index from `integration_data`.
+ * - v4: add the `breathing_detections` per-night PB/CSR detection cache store
+ *   (keyPath `id`, indexes `sessionId`, `date`, `algoVersion`, `computedAt`).
+ *   Additive only; touches no existing data. See
+ *   docs/analysis/breathing-detection-cache-storage.md.
  */
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
@@ -348,7 +357,12 @@ export class IndexedDBService {
    */
   async deleteSessionCascade(sessionId: string): Promise<void> {
     try {
-      const tx = this.createWriteTransaction('sessions', 'nightly_aggregates', 'events');
+      const tx = this.createWriteTransaction(
+        'sessions',
+        'nightly_aggregates',
+        'events',
+        'breathing_detections', // v4
+      );
 
       // Session row (keyed by id).
       tx.objectStore('sessions').delete(sessionId);
@@ -358,6 +372,13 @@ export class IndexedDBService {
 
       // Therapy events for this session — looked up via the sessionId index.
       await this.deleteByIndexCursor(tx.objectStore('events'), 'sessionId', sessionId);
+
+      // v4: remove every cached detection (all versions) for this session.
+      await this.deleteByIndexCursor(
+        tx.objectStore('breathing_detections'),
+        'sessionId',
+        sessionId,
+      );
 
       // Await transaction completion so any failed delete rolls back the batch.
       await this.awaitTransaction(tx);
@@ -785,6 +806,225 @@ export class IndexedDBService {
         'delete analysis results before date',
         'analysis_results',
         beforeDate,
+        error,
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Breathing Detections
+  // -----------------------------------------------------------------------
+
+  /**
+   * Insert or update a breathing-detection record (upsert by composite id).
+   *
+   * Uses `put`, not `add`: re-detecting the same
+   * `(sessionId, algoVersion, paramHash)` overwrites the row in place, keeping
+   * the cache self-cleaning (no dangling duplicate). The caller decides the
+   * quota-degrade policy — a `QuotaExceededError` here is best-effort-recoverable
+   * (the cache is an accelerator, not source of truth), so the read-through layer
+   * wraps this call in its own try/catch rather than this method swallowing it.
+   */
+  async putBreathingDetection(record: StoredBreathingDetection): Promise<void> {
+    try {
+      const store = this.writeStore('breathing_detections');
+      await this.wrapRequest(store.put(record));
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        'put breathing detection',
+        'breathing_detections',
+        record.id,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Retrieve a breathing-detection record by composite id, or `null`.
+   *
+   * This is the cache-validity check: callers build `id` from the current
+   * `algoVersion` + `paramHash`, so a hit is always structurally valid.
+   */
+  async getBreathingDetectionById(id: string): Promise<StoredBreathingDetection | null> {
+    try {
+      const store = this.readStore('breathing_detections');
+      const result: StoredBreathingDetection | undefined = await this.wrapRequest(store.get(id));
+      return result ?? null;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get breathing detection',
+        'breathing_detections',
+        id,
+        error,
+      );
+    }
+  }
+
+  /** Retrieve all breathing-detection records for a session (all versions). */
+  async getBreathingDetectionsBySessionId(sessionId: string): Promise<StoredBreathingDetection[]> {
+    try {
+      return await this.cursorQuery<StoredBreathingDetection>(
+        'breathing_detections',
+        'sessionId',
+        IDBKeyRange.only(sessionId),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get breathing detections by sessionId',
+        'breathing_detections',
+        sessionId,
+        error,
+      );
+    }
+  }
+
+  /** Retrieve breathing-detection records within a date range (inclusive, YYYY-MM-DD). */
+  async getBreathingDetectionsByDateRange(
+    start: string,
+    end: string,
+  ): Promise<StoredBreathingDetection[]> {
+    try {
+      return await this.cursorQuery<StoredBreathingDetection>(
+        'breathing_detections',
+        'date',
+        IDBKeyRange.bound(start, end),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get breathing detections by date range',
+        'breathing_detections',
+        undefined,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Bulk fetch breathing-detection records for a set of composite ids in ONE
+   * read transaction. Returns a Map keyed by `sessionId` for O(1) join in the
+   * catalog. Misses (no row for an id) are simply absent from the map.
+   *
+   * Callers pass current-version ids (built from the current `algoVersion` +
+   * `paramHash`), so every hit is a current-version record and no client-side
+   * version filtering is needed. All `get`s are issued on the same transaction
+   * without awaiting between them, so the transaction stays continuously active
+   * and cannot auto-commit early (same discipline as
+   * {@link deleteIntegrationDataBySource}).
+   */
+  async getBreathingDetectionsByIds(
+    ids: readonly string[],
+  ): Promise<Map<string, StoredBreathingDetection>> {
+    const result = new Map<string, StoredBreathingDetection>();
+    if (ids.length === 0) return result;
+    try {
+      const tx = this.createReadTransaction('breathing_detections');
+      const store = tx.objectStore('breathing_detections');
+
+      // Issue every get up front on the one transaction — do NOT await between
+      // requests, so the transaction never goes idle and cannot auto-commit
+      // before all reads are queued.
+      const requests = ids.map((id) =>
+        this.wrapRequest<StoredBreathingDetection | undefined>(store.get(id)),
+      );
+
+      const records = await Promise.all(requests);
+      await this.awaitTransaction(tx);
+
+      for (const record of records) {
+        if (record) {
+          result.set(record.sessionId, record);
+        }
+      }
+      return result;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get breathing detections by ids',
+        'breathing_detections',
+        undefined,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Evict every breathing-detection row whose `algoVersion !== current`. One
+   * cursor pass over the `algoVersion` index across the full range; deletes any
+   * record at a stale version and returns the count removed. Idempotent.
+   *
+   * A single key range cannot express "not equal", so the cursor iterates the
+   * whole index and skips matching rows. The row count is bounded by the session
+   * count (at most one stale row per session per superseded version), so this is
+   * a cheap one-shot sweep — run on DB open after the migration ledger
+   * (see getDB). Mirrors {@link deleteAnalysisResultsBefore}'s cursor-delete shape.
+   */
+  async deleteBreathingDetectionsByAlgoVersionNotMatching(
+    currentAlgoVersion: number,
+  ): Promise<number> {
+    try {
+      const db = this.getDB();
+      const tx = db.transaction('breathing_detections', 'readwrite');
+      const store = tx.objectStore('breathing_detections');
+      const index = store.index('algoVersion');
+      let deleted = 0;
+
+      await new Promise<void>((resolve, reject) => {
+        const request = index.openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (cursor) {
+            const record = cursor.value as StoredBreathingDetection;
+            if (record.algoVersion !== currentAlgoVersion) {
+              cursor.delete();
+              deleted++;
+            }
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
+
+      await this.wrapTransaction(tx);
+      return deleted;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_DELETE_FAILED',
+        'delete breathing detections by algoVersion not matching',
+        'breathing_detections',
+        String(currentAlgoVersion),
+        error,
+      );
+    }
+  }
+
+  /**
+   * Delete all breathing-detection records for a session (all versions).
+   *
+   * Standalone (non-cascade) counterpart for re-import "recompute this night"
+   * flows that are not full session deletes. Returns the count removed.
+   */
+  async deleteBreathingDetectionsBySessionId(sessionId: string): Promise<number> {
+    try {
+      const tx = this.createWriteTransaction('breathing_detections');
+      const store = tx.objectStore('breathing_detections');
+      const deleted = await this.deleteByIndexRangeCounting(
+        store.index('sessionId'),
+        IDBKeyRange.only(sessionId),
+      );
+      await this.awaitTransaction(tx);
+      return deleted;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_DELETE_FAILED',
+        'delete breathing detections by sessionId',
+        'breathing_detections',
+        sessionId,
         error,
       );
     }
@@ -1553,6 +1793,11 @@ export class IndexedDBService {
     if (oldVersion < 3) {
       this.migrateV2ToV3(db, tx);
     }
+
+    // v3 -> v4: add the breathing_detections per-night detection cache store.
+    if (oldVersion < 4) {
+      this.migrateV3ToV4(db);
+    }
   }
 
   /**
@@ -1605,6 +1850,19 @@ export class IndexedDBService {
       store.createIndex('dataType', 'dataType', { unique: false });
       store.createIndex('source_dataType_date', ['source', 'dataType', 'date'], { unique: true });
     }
+  }
+
+  /**
+   * v3 -> v4 migration: add the `breathing_detections` per-night PB/CSR detection
+   * cache store. Additive only — creates one new object store with four indexes;
+   * touches no existing data. See docs/analysis/breathing-detection-cache-storage.md.
+   */
+  private migrateV3ToV4(db: IDBDatabase): void {
+    const store = db.createObjectStore('breathing_detections', { keyPath: 'id' });
+    store.createIndex('sessionId', 'sessionId', { unique: false });
+    store.createIndex('date', 'date', { unique: false });
+    store.createIndex('algoVersion', 'algoVersion', { unique: false });
+    store.createIndex('computedAt', 'computedAt', { unique: false });
   }
 
   private createSchema(db: IDBDatabase): void {
@@ -1670,6 +1928,13 @@ export class IndexedDBService {
     });
     integrationImports.createIndex('source', 'source', { unique: false });
     integrationImports.createIndex('importedAt', 'importedAt', { unique: false });
+
+    // breathing_detections (v4) — per-night PB/CSR detection cache.
+    const breathing = db.createObjectStore('breathing_detections', { keyPath: 'id' });
+    breathing.createIndex('sessionId', 'sessionId', { unique: false });
+    breathing.createIndex('date', 'date', { unique: false });
+    breathing.createIndex('algoVersion', 'algoVersion', { unique: false });
+    breathing.createIndex('computedAt', 'computedAt', { unique: false });
   }
 
   // -----------------------------------------------------------------------

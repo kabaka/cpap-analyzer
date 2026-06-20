@@ -93,6 +93,7 @@ export type {
 
 // Storage types
 export type {
+  BreathingDetectionRecord,
   DataProvider,
   ImportError,
   ImportRecord,
