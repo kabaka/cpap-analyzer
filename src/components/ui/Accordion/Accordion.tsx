@@ -5,7 +5,7 @@ import styles from './Accordion.module.css';
 
 interface AccordionItem {
   value: string;
-  trigger: string;
+  trigger: ReactNode;
   content: ReactNode;
 }
 

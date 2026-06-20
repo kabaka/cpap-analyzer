@@ -7,9 +7,25 @@ interface SelectOption {
   label: string;
 }
 
+/** A labelled group of options, rendered as a Radix `Group` with a heading. */
+interface SelectOptionGroup {
+  /** Group heading shown above its options (e.g. "Weather & Environment"). */
+  label: string;
+  options: SelectOption[];
+}
+
 interface SelectProps {
   label?: string;
-  options: SelectOption[];
+  /**
+   * Flat list of options. Mutually exclusive with {@link SelectProps.groups};
+   * when both are provided, `groups` takes precedence.
+   */
+  options?: SelectOption[];
+  /**
+   * Grouped options, each with its own heading. Used for the cross-source
+   * "Compare against" selector (Wearable / Weather & Environment optgroups).
+   */
+  groups?: SelectOptionGroup[];
   value?: string;
   onValueChange?: (value: string) => void;
   placeholder?: string;
@@ -20,6 +36,7 @@ interface SelectProps {
 export function Select({
   label,
   options,
+  groups,
   value,
   onValueChange,
   placeholder = 'Select…',
@@ -55,18 +72,16 @@ export function Select({
         <SelectPrimitive.Portal>
           <SelectPrimitive.Content className={styles.content} position="popper" sideOffset={4}>
             <SelectPrimitive.Viewport className={styles.viewport}>
-              {options.map((option) => (
-                <SelectPrimitive.Item
-                  key={option.value}
-                  value={option.value}
-                  className={styles.item}
-                >
-                  <SelectPrimitive.ItemIndicator className={styles.itemIndicator}>
-                    <CheckIcon />
-                  </SelectPrimitive.ItemIndicator>
-                  <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
-                </SelectPrimitive.Item>
-              ))}
+              {groups
+                ? groups.map((group) => (
+                    <SelectPrimitive.Group key={group.label}>
+                      <SelectPrimitive.Label className={styles.groupLabel}>
+                        {group.label}
+                      </SelectPrimitive.Label>
+                      {group.options.map((option) => renderItem(option))}
+                    </SelectPrimitive.Group>
+                  ))
+                : (options ?? []).map((option) => renderItem(option))}
             </SelectPrimitive.Viewport>
           </SelectPrimitive.Content>
         </SelectPrimitive.Portal>
@@ -77,6 +92,17 @@ export function Select({
         </span>
       )}
     </div>
+  );
+}
+
+function renderItem(option: SelectOption) {
+  return (
+    <SelectPrimitive.Item key={option.value} value={option.value} className={styles.item}>
+      <SelectPrimitive.ItemIndicator className={styles.itemIndicator}>
+        <CheckIcon />
+      </SelectPrimitive.ItemIndicator>
+      <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+    </SelectPrimitive.Item>
   );
 }
 

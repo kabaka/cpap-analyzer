@@ -1,0 +1,25 @@
+.trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.good {
+  color: var(--color-status-normal);
+  background: var(--color-status-normal-bg);
+}
+
+.bad {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+}
+
+.neutral {
+  color: var(--color-trend-neutral);
+  background: var(--color-trend-neutral-bg);
+}

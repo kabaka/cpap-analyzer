@@ -25,7 +25,16 @@ const defaultDisplay = {
 
 const defaultIntegrations = {
   fitbit: { enabled: false, visibleDataTypes: [], lastImportAt: null, recordCount: 0 },
-  weather: { enabled: false, apiKey: null, location: '' },
+  weather: {
+    enabled: false,
+    consentAt: null,
+    location: { label: null, latitude: null, longitude: null },
+    units: { temperature: 'C', pressure: 'hPa', wind: 'kmh', precip: 'mm' },
+    domains: { core: true, airQuality: true },
+    resolution: 'daily+hourly',
+    autoSyncNewImports: false,
+    lastSyncAt: null,
+  },
   llm: { enabled: false, provider: null, apiKey: null },
 };
 
@@ -140,8 +149,12 @@ describe('useSettingsStore', () => {
       });
       const weather = useSettingsStore.getState().integrations.weather;
       expect(weather.enabled).toBe(true);
-      expect(weather.apiKey).toBeNull();
-      expect(weather.location).toBe('');
+      // No apiKey field — Open-Meteo is keyless.
+      expect('apiKey' in weather).toBe(false);
+      expect(weather.consentAt).toBeNull();
+      expect(weather.location).toEqual({ label: null, latitude: null, longitude: null });
+      expect(weather.domains).toEqual({ core: true, airQuality: true });
+      expect(weather.autoSyncNewImports).toBe(false);
     });
 
     it('should update LLM integration', () => {

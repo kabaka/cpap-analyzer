@@ -14,6 +14,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { Accordion, Button, Card, Dialog, Input, Select, Switch, Tabs } from '@/components/ui';
 import { clearAllUserData } from '@/services/storage/clearAllUserData';
 import { formatBytes } from '@/utils/formatBytes';
+import { WeatherIntegrationPanel } from './weather/WeatherIntegrationPanel';
 import styles from './Settings.module.css';
 
 // ─── Option Constants ─────────────────────────────────────────────────────
@@ -312,49 +313,22 @@ function IntegrationsSection() {
     },
     {
       value: 'weather',
-      trigger: `Weather — ${integrations.weather.enabled ? 'Enabled' : 'Disabled'}`,
+      trigger: (
+        <span className={styles.integrationTrigger}>
+          <span className={styles.integrationTriggerIcon} aria-hidden="true">
+            🌐
+          </span>
+          <span>
+            Weather &amp; Air Quality — {integrations.weather.enabled ? 'Enabled' : 'Disabled'}
+          </span>
+          {integrations.weather.enabled && (
+            <span className={styles.onlinePill}>Connects online</span>
+          )}
+        </span>
+      ),
       content: (
         <div className={styles.integrationPanel}>
-          <div className={styles.switchRow}>
-            <div className={styles.switchInfo}>
-              <span className={styles.switchLabel}>Enable Weather integration</span>
-              <span className={styles.switchDescription}>
-                Correlate therapy data with local weather conditions.
-              </span>
-            </div>
-            <Switch
-              checked={integrations.weather.enabled}
-              onCheckedChange={(checked) => updateIntegration('weather', { enabled: checked })}
-            />
-          </div>
-          {integrations.weather.enabled && (
-            <>
-              <span className={styles.comingSoon}>
-                Coming soon — Integration will be available in a future release
-              </span>
-              <Input
-                label="API key"
-                type="password"
-                placeholder="Enter weather API key"
-                value={integrations.weather.apiKey ?? ''}
-                onChange={(e) =>
-                  updateIntegration('weather', {
-                    apiKey: e.target.value || null,
-                  })
-                }
-                disabled
-                hint="Configuration will be available when integration launches"
-              />
-              <Input
-                label="Location"
-                placeholder="City name or coordinates"
-                value={integrations.weather.location}
-                onChange={(e) => updateIntegration('weather', { location: e.target.value })}
-                disabled
-                hint="Configuration will be available when integration launches"
-              />
-            </>
-          )}
+          <WeatherIntegrationPanel />
         </div>
       ),
     },

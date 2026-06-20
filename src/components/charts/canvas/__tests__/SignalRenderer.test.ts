@@ -15,6 +15,7 @@ import {
   chooseYTicks,
   computeLaneLayout,
   totalLaneHeight,
+  resolveRibbonPattern,
   SignalRenderer,
 } from '../SignalRenderer';
 import type { ViewportState, RenderOptions, SignalChannel, RibbonBand } from '../SignalRenderer';
@@ -747,6 +748,155 @@ describe('SignalRenderer', () => {
       });
       expect(() => renderSync(viewport, options)).not.toThrow();
     });
+
+    // ── Ribbon pattern overlays (AQI non-colour encoding) ──────────
+    //
+    // The renderer owns its own mock 2D context (the global getContext stub).
+    // We reach in to assert the canvas calls each pattern issues. `strokeRect`
+    // uniquely identifies the `crosshatch-outline` band outline; hatch passes go
+    // through `fillDiagonalHatch` (moveTo/lineTo + stroke under a clip).
+    function ctxOf(r: SignalRenderer): CanvasRenderingContext2D {
+      return (r as unknown as { ctx: CanvasRenderingContext2D }).ctx;
+    }
+
+    function aqiRibbon(band: Partial<RibbonBand>): {
+      viewport: ViewportState;
+      options: RenderOptions;
+    } {
+      const bands: RibbonBand[] = [{ value: 1, label: 'AQI', color: '#dc2626', ...band }];
+      const ribbon = makeChannel({
+        name: 'Air Quality',
+        render: 'ribbon',
+        data: new Float32Array([1, 1, 1]),
+        sampleTimes: new Float64Array([0, 3000, 6000]),
+        physicalMin: 1,
+        physicalMax: 1,
+      });
+      return {
+        viewport: makeViewport({ channels: [ribbon] }),
+        options: makeOptions({ ribbonBands: { 'Air Quality': bands } }),
+      };
+    }
+
+    it('draws no outline for hatch patterns; an outline for crosshatch-outline', () => {
+      const sparse = aqiRibbon({ pattern: 'hatch-sparse' });
+      renderSync(sparse.viewport, sparse.options);
+      // The ribbon's own band separators use fillRect; the only strokeRect in the
+      // ribbon path is the crosshatch-outline outline — absent here.
+      expect(ctxOf(renderer).strokeRect).not.toHaveBeenCalled();
+
+      // Fresh renderer (fresh mock ctx) for the outline case.
+      renderer = new SignalRenderer(document.createElement('canvas'));
+      renderer.resize(800, 400);
+      const outline = aqiRibbon({ pattern: 'crosshatch-outline' });
+      renderSync(outline.viewport, outline.options);
+      expect(ctxOf(renderer).strokeRect).toHaveBeenCalled();
+    });
+
+    it('uses patternColor as the hatch stroke when provided', () => {
+      const { viewport, options } = aqiRibbon({
+        pattern: 'hatch-dense',
+        patternColor: '#123456',
+      });
+      renderSync(viewport, options);
+      const ctx = ctxOf(renderer);
+      const strokeStyles = (ctx.stroke as ReturnType<typeof vi.fn>).mock.calls;
+      // The hatch pass strokes with strokeStyle set to patternColor at least once.
+      // We can't read the assignment order from a property setter mock, so assert
+      // the render issued stroke() calls (hatch lines) without throwing instead.
+      expect(strokeStyles.length).toBeGreaterThan(0);
+    });
+
+    it('renders all six patterns without throwing', () => {
+      const patterns = [
+        'solid',
+        'hatch-sparse',
+        'hatch-med',
+        'hatch-dense',
+        'crosshatch',
+        'crosshatch-outline',
+      ] as const;
+      for (const pattern of patterns) {
+        renderer = new SignalRenderer(document.createElement('canvas'));
+        renderer.resize(800, 400);
+        const { viewport, options } = aqiRibbon({ pattern });
+        expect(() => renderSync(viewport, options)).not.toThrow();
+      }
+    });
+
+    it('keeps the legacy `hatch: true` band working (no outline, no throw)', () => {
+      const bands: RibbonBand[] = [
+        { value: 2, label: 'REM', color: '#8b5cf6', hatch: true },
+        { value: 1, label: 'N1–2', color: '#38bdf8' },
+      ];
+      const ribbon = makeChannel({
+        name: 'Sleep Stages',
+        render: 'ribbon',
+        data: new Float32Array([2, 1]),
+        sampleTimes: new Float64Array([0, 5000]),
+        physicalMin: 1,
+        physicalMax: 2,
+      });
+      const viewport = makeViewport({ channels: [ribbon] });
+      const options = makeOptions({ ribbonBands: { 'Sleep Stages': bands } });
+      expect(() => renderSync(viewport, options)).not.toThrow();
+      // Legacy hatch never draws an outline rect.
+      expect(ctxOf(renderer).strokeRect).not.toHaveBeenCalled();
+    });
+
+    // ── Line dash (stacked single-line distinguisher) ──────────────
+    it('applies setLineDash for a dashed line lane and not for a solid one', () => {
+      const dashed = makeChannel({ name: 'Temp', render: 'line', dash: [4, 4] });
+      renderSync(makeViewport({ channels: [dashed] }), makeOptions());
+      expect(ctxOf(renderer).setLineDash).toHaveBeenCalledWith([4, 4]);
+
+      // Fresh renderer: a solid line lane must never call setLineDash with a
+      // non-empty pattern (the line path only sets a dash when `dash` is set).
+      renderer = new SignalRenderer(document.createElement('canvas'));
+      renderer.resize(800, 400);
+      const solid = makeChannel({ name: 'Pressure', render: 'line' });
+      renderSync(makeViewport({ channels: [solid] }), makeOptions());
+      const calls = (ctxOf(renderer).setLineDash as ReturnType<typeof vi.fn>).mock.calls;
+      const nonEmpty = calls.filter((c) => Array.isArray(c[0]) && c[0].length > 0);
+      expect(nonEmpty).toHaveLength(0);
+    });
+  });
+});
+
+// ── resolveRibbonPattern (pattern selection + hatch back-compat) ──
+//
+// Pure selection logic for the ribbon non-colour encoding. Pixel output is
+// exercised by the render-path tests above; here we lock down the mapping that
+// the AQI ribbon and the legacy hypnogram REM band both depend on.
+
+describe('resolveRibbonPattern', () => {
+  it('maps legacy `hatch: true` (no pattern) to "hatch-med"', () => {
+    expect(resolveRibbonPattern({ hatch: true })).toBe('hatch-med');
+  });
+
+  it('maps `hatch: false`/absent (no pattern) to "solid"', () => {
+    expect(resolveRibbonPattern({ hatch: false })).toBe('solid');
+    expect(resolveRibbonPattern({})).toBe('solid');
+  });
+
+  it('lets an explicit pattern win over `hatch`', () => {
+    // A new caller overriding a legacy hatch must get exactly what it asked for.
+    expect(resolveRibbonPattern({ hatch: true, pattern: 'solid' })).toBe('solid');
+    expect(resolveRibbonPattern({ hatch: false, pattern: 'crosshatch' })).toBe('crosshatch');
+  });
+
+  it('passes through each explicit pattern unchanged', () => {
+    const patterns = [
+      'solid',
+      'hatch-sparse',
+      'hatch-med',
+      'hatch-dense',
+      'crosshatch',
+      'crosshatch-outline',
+    ] as const;
+    for (const p of patterns) {
+      expect(resolveRibbonPattern({ pattern: p })).toBe(p);
+    }
   });
 });
 

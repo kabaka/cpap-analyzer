@@ -39,10 +39,10 @@ import {
 // ---------------------------------------------------------------------------
 
 /** Logical grouping for the lanes drawer + legend. */
-export type LaneGroup = 'cpap' | 'wearable' | 'sleep';
+export type LaneGroup = 'cpap' | 'wearable' | 'sleep' | 'weather';
 
 /** Lane-kind pill shown on each header (also a non-colour redundancy cue). */
-export type LaneKindPill = 'CPAP' | 'WEAR' | 'SLEEP';
+export type LaneKindPill = 'CPAP' | 'WEAR' | 'SLEEP' | 'WX';
 
 /**
  * A lane descriptor: the persistent identity + presentation metadata for one row

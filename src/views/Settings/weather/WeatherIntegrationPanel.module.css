@@ -1,0 +1,367 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ── Enable toggle row ── */
+
+.switchRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.switchInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.switchLabel {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.switchDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  max-width: 60ch;
+}
+
+/* ── Config area ── */
+
+.config {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin: 0;
+}
+
+.groupLegend {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+  color: var(--color-text-muted);
+  padding: 0 var(--space-1);
+}
+
+.coordRow,
+.cityRow {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.coordRow > * {
+  flex: 1 1 0;
+}
+
+.cityRow > :first-child {
+  flex: 1 1 auto;
+}
+
+.unitRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.unitLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.checkRow input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
+}
+
+.fieldError {
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+  margin: 0;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.statusText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* ── Consent dialog ── */
+
+.consentBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.egressBlock,
+.retainedBlock {
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.egressBlock {
+  background: var(--color-info-bg);
+  border-left: 3px solid var(--color-info);
+}
+
+.retainedBlock {
+  background: var(--color-success-bg);
+  border-left: 3px solid var(--color-success);
+}
+
+.contractTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.contractList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.contractRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.egressGlyph {
+  color: var(--color-info);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.4;
+}
+
+.lockGlyph {
+  line-height: 1.3;
+}
+
+.consentFootnote {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.consentAck {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.consentAck input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--color-primary);
+}
+
+/* ── Dialog actions (shared) ── */
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+/* ── Sync sheet ── */
+
+.syncBody {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-3);
+}
+
+.syncScope,
+.syncProgress,
+.syncDone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.syncEgressReminder {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-info-bg);
+  border-left: 3px solid var(--color-info);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin: 0;
+}
+
+.syncEmpty {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.progressBar {
+  height: 8px;
+  background: var(--color-surface-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width var(--transition-base);
+}
+
+.syncStats {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.syncWarn {
+  font-size: var(--font-size-sm);
+  color: var(--color-warning);
+  margin: 0;
+}
+
+/* Visually-hidden live region (screen-reader-only). */
+.srLive {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Coverage view ── */
+
+.coverage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.coverageSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.countChip,
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.coverageList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.coverageRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.coverageDate {
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  min-width: 10ch;
+}
+
+.coverageReason {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.coverageDash {
+  font-family: var(--font-family-mono);
+  color: var(--color-text-muted);
+  margin-left: auto;
+}
+
+/* Status colours (background + foreground reinforce the icon shape + word). */
+.badgeSynced {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+.badgeMissing {
+  color: var(--color-text-muted);
+  background: var(--color-surface-tertiary);
+}
+
+.badgeNoData {
+  color: var(--color-text-secondary);
+  background: var(--color-caveat-bg);
+}
+
+.badgeFailed {
+  color: var(--color-error);
+  background: var(--color-error-bg);
+}

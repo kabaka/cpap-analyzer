@@ -162,6 +162,29 @@
   padding-top: var(--space-2);
 }
 
+/* Accordion trigger with an integration icon + "connects online" pill. */
+.integrationTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.integrationTriggerIcon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.onlinePill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-2);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
 .comingSoon {
   display: inline-flex;
   align-items: center;

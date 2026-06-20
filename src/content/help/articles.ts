@@ -1047,6 +1047,100 @@ export const helpArticles: readonly HelpArticle[] = [
     ],
   },
 
+  // ─── WEATHER & ENVIRONMENT ────────────────────────────────────────
+  {
+    slug: 'weather-environment',
+    title: 'Weather & Environment',
+    summary:
+      'The opt-in Open-Meteo weather and air-quality integration — what it correlates and why, exactly what leaves your device, how to enable/disable/delete it, how historical backfill and the ~5-day archive lag work, and how to read the dashboard panel, the Signal-Viewer weather lanes, and the cross-source correlations.',
+    icon: 'integrations',
+    sections: [
+      {
+        heading: 'What this feature does, and why',
+        paragraphs: [
+          'Weather & Environment is an optional integration that fetches local weather and air-quality data for the nights you have recorded and lets you correlate that environmental context against your CPAP therapy metrics. The motivating observation is that some patients show seasonal or weather-dependent variation in their therapy: a stretch of bad nights that lines up with a cold front, a humid spell, or a polluted week rather than with anything about the machine or the mask. Without environmental context that pattern is invisible; with it, you can put a number on the association.',
+          'The headline hypothesis is barometric (atmospheric) pressure versus apnea and central events. Ambient pressure changes alter the gas already in the lungs and the way the respiratory control loop responds to it, and shifts in pressure have been linked to changes in apnea and especially central-event frequency. A falling barometer — a passing weather system — is therefore a plausible modifier of a bad night, and because such a shift can precede the night it affects, this feature treats pressure as the variable of primary interest (see "Reading the cross-source correlations" below for why lagged correlation is the apt tool). Humidity, dewpoint, temperature, wind, and air quality are provided alongside it as additional, secondary context.',
+          'This is an exploratory, hypothesis-generating tool. It can surface that your therapy and the weather tend to move together; it cannot establish that one causes the other, and it does not diagnose anything. Treat every association it shows as a question to investigate, not an answer.',
+        ],
+      },
+      {
+        heading: 'The privacy contract — exactly what is and is not sent',
+        paragraphs: [
+          'This is the first feature in CPAP Analyzer that makes an outbound network request. Every other part of the app — including the Fitbit / Google Health integration, which is a local file import — runs entirely in your browser and contacts no server. Because this feature must ask a remote service "what was the weather at this place on these nights," it necessarily discloses a place and some dates to that service. The whole design is built to make that disclosure minimal, explicit, and reversible, and it stays off until you turn it on.',
+          'What leaves your device, per sync: (1) your configured coordinates, rounded to two decimal places (roughly 1.1 km, i.e. neighbourhood-level, never GPS-precise) before every request; (2) the calendar dates of the nights you are syncing; and (3) only if you use the optional "Find" city search, the city name you type. Nothing else. The requests go only to Open-Meteo (the named provider), over four specific Open-Meteo hosts that the app whitelists — never to a wildcard, never anywhere else.',
+          'What never leaves your device: any therapy or health data (your AHI, leak, pressures, events, signals — none of it is ever transmitted), any identifier (there is none — Open-Meteo needs no account and no API key, so a request carries no credential tying it to you), and your precise GPS location (only the rounded coordinates are ever sent). The browser sends weather requests directly to Open-Meteo, so Open-Meteo necessarily sees your network IP address, as any website you visit does; the app cannot hide that, which is one more reason the feature is opt-in and the disclosure is shown up front.',
+          'Enabling the feature requires you to pass through an explicit consent dialog that states this contract in plain language — a blue "what leaves your device" block and a green "what stays on your device" block — before any request is ever made. The app records the moment you consented (a timestamp). If a future version ever changes what is sent off-device, that recorded consent is used to re-ask you rather than silently carrying your old consent forward.',
+        ],
+      },
+      {
+        heading: 'Enabling, disabling, and deleting your weather data',
+        paragraphs: [
+          'To enable: open Settings → Integrations and expand the Weather & Air Quality item (it carries a "Connects online" pill to distinguish it from the local-file Fitbit import, which sends nothing). Toggling it on opens the consent dialog described above; you must read and accept it. You then set a single location — type latitude and longitude directly, search for a city with "Find," or use the one-time "Use current location" button (which asks your browser for permission and only fills in the field; it never auto-sends anything). Choose your display units (temperature °C/°F, pressure hPa/inHg, wind, precipitation), which domains to fetch (Core weather and/or Air quality), and the resolution (Daily, or Daily + Hourly — the hourly series is what powers the Signal-Viewer lanes). Then press "Sync now."',
+          'Nothing is fetched automatically. Every request is either started by you pressing "Sync now," or — only if you separately opt in to the "Auto-sync newly imported nights" checkbox, which is off by default — triggered when you import new CPAP nights. With auto-sync off (the default), the integration never reaches the network unless you press Sync.',
+          'To disable: toggle the integration off in Settings → Integrations. This immediately stops all requests. By default your already-fetched weather data is kept (so re-enabling does not re-fetch nights you already have, and your past correlations still work); the disable prompt offers a "Keep" option (selected by default) and a "Delete" option. Choosing Delete removes the stored weather and air-quality records from your browser. You can also remove everything at any time via the app-wide "delete all data" control, which clears weather alongside your CPAP and wearable data. Weather data lives in the same local IndexedDB as everything else and, like everything else, never leaves your device once fetched.',
+        ],
+      },
+      {
+        heading: 'How historical backfill works (and why some nights show "No data available")',
+        paragraphs: [
+          "CPAP analysis is retrospective — you may have months or years of nights — so the integration is built to backfill weather for past nights, not just report current conditions. When you sync, the app looks up each night's local calendar date and fetches the matching weather and air-quality summary for your configured location, caching each result so a given night is fetched at most once. A night that spans two calendar dates fetches both and merges them, the same way the wearable lanes handle a night that crosses midnight.",
+          'Open-Meteo serves historical weather from two places, and the app routes between them automatically. Settled history comes from a reanalysis archive that reaches back decades but lags roughly five days behind today — the most recent few days are not yet in the archive. For those recent nights the app instead uses the forecast API\'s "recent past" window, so there is no gap at the boundary; you do not need to think about which source is used. Because of the lag, the dashboard panel always stamps its values with the date they are "as of" and never implies "today."',
+          'Air-quality history is shallower and region-dependent. The air-quality archive reaches back several years for Europe but only to more recent years for the rest of the world, so for older nights, or for nights outside the better-covered regions, the provider may simply have no air-quality record. This is normal and expected — not a failure.',
+          'It is important to read "No data available" correctly. The app deliberately stores "we asked and the provider had nothing" as a state distinct from "we have not asked yet" and from "the request failed." A night with no provider data shows a dash ("—"), never a fabricated zero, and is marked as a terminal "No data available" state in the coverage view — re-syncing it will not conjure data that does not exist on the provider\'s side. This is separate from a genuine error (offline, rate-limited, or an HTTP failure), which is marked "Sync failed" and is worth retrying. The coverage view distinguishes four states with separate icons, words, and colours: Synced (have data), Not synced (not yet fetched — actionable), No data available (queried, provider had none — terminal), and Sync failed (an error — retry). So if recent nights, or non-European nights, show "No data available" for air quality, that is the archive\'s coverage limit, not a bug.',
+        ],
+      },
+      {
+        heading: 'The overnight window — what each displayed number means',
+        paragraphs: [
+          'Every weather number you see is summarized over one canonical "overnight" window, shared identically by the dashboard panel, the Signal-Viewer lanes, and the correlation surface — so a given night\'s "humidity" is the same number everywhere, never three different values. The window is the half-open wall-clock interval from the start of the recorded night up to (but not including) its end: in interval notation, [sleep start, sleep end). Half-open means the closing instant belongs to the next bucket, so adjacent nights never double-count the boundary hour.',
+          'Within that window, each metric is reduced to one statistic chosen to be the clinically meaningful one for that variable, and the displayed tile names the statistic so there is no ambiguity. Temperature is shown as the overnight low (the minimum across the window — the coldest point of the night), because the low is what is physiologically relevant overnight. Barometric pressure, relative humidity, and dewpoint are shown as the overnight mean (the average across the window), because for these a representative central value over the night is what matters. Wind is shown as a representative overnight value, and air quality is summarized as the overnight statistic of the hourly AQI. Whenever you compare a weather value against a therapy metric, you are comparing two nightly summaries computed over the same window.',
+        ],
+      },
+      {
+        heading: 'Reading the dashboard panel',
+        paragraphs: [
+          'When the integration is enabled and at least one night is synced, a Weather Overview panel appears on the Dashboard with six headline tiles: overnight-low temperature, relative humidity, barometric pressure (the headline tile, marked with a subtle accent), air quality (AQI), dewpoint, and wind. Each tile shows the current value in your chosen units alongside a seven-day trend indicator, and the panel carries an "As of {date}" caption — because the provider archive lags about five days, the panel always tells you which night the numbers describe rather than implying they are live. When the most recent synced night is more than about five days old, the caption notes that the provider data lags ~5 days, so a slightly stale date is expected and not a problem.',
+          'The trend indicators are deliberately non-judgemental for most metrics. Temperature, humidity, pressure, dewpoint, and wind use a neutral trend: the arrow tells you the direction of change (rising, falling, steady) without colouring it good or bad, because there is no universally "better" direction for, say, barometric pressure. Air quality is the one exception that is treated as directional: lower AQI is better, so a falling AQI is shown favourably and a rising AQI unfavourably. The AQI tile also shows a category word (e.g. "Good," "Moderate") next to the number and a small ranked swatch, and the severity is always conveyed by the word and number and a pattern, never by colour alone — so the meaning survives colour-blindness and greyscale.',
+          'If the integration is enabled but you have not synced yet, the panel shows a prompt to sync rather than empty tiles. If it is disabled, the panel does not appear at all. A footer links you to the cross-source correlations and reports how many nights of weather data you have.',
+        ],
+      },
+      {
+        heading: 'Reading the Signal-Viewer weather lanes',
+        paragraphs: [
+          'If you fetch at the "Daily + Hourly" resolution, the per-session Signal Viewer gains an optional weather lane group (a "WX" pill) that overlays the night\'s hourly weather on the same wall-clock time axis as your CPAP signals, aligned to the actual recording hours. There are three lanes you can toggle on or off: a conditions ribbon (one segment per run of weather — clear, cloud, rain, etc. — with a small weather glyph), a pressure-and-temperature line lane (barometric pressure drawn solid and heavier because it is the headline variable, temperature drawn dashed so the two are distinguishable without relying on colour), and an air-quality ribbon (coloured by AQI rank, with an escalating hatch pattern so the severity reads without colour). The lane group hides itself automatically when there is no hourly weather for the night. An "Environment focus" lane preset brings up flow alongside the weather lanes for quick inspection.',
+          'As with all Signal-Viewer lanes, the keyboard data cursor announces the weather values at the cursor — temperature, pressure, dewpoint, wind, the condition word, and "Air quality: {word}, AQI {value}" (always the word and the number, never a bare value) — so the weather context is fully available to screen-reader and keyboard-only users, not just visually. Weather lanes are aligned by wall-clock time exactly like the wearable lanes; if you recorded a night in a different time zone from your configured location, the same alignment caveats described in the Intraday Health Signals & Overlays article apply.',
+        ],
+      },
+      {
+        heading: 'Reading the cross-source correlations',
+        paragraphs: [
+          'In Explore → Correlations (the Cross-Source tab), Weather & Environment appears as a second source you can compare your CPAP and wearable metrics against, through a grouped "Compare against" selector (Wearable / Weather & Environment). The same machinery documented in the Cross-Source Analysis article applies unchanged: Pearson and Spearman correlation with confidence intervals and p-values, the correlation matrix, Bland–Altman agreement, and lagged cross-correlation. An availability statistic reports how many nights have weather data, so you can see how much overlap your estimate rests on.',
+          'Lagged cross-correlation deserves emphasis here because it is especially apt for weather. Environmental effects can precede a bad night: a barometric-pressure drop on day t may be associated with worse AHI or more central events on day t (the same night) or on day t+1 (the following night), as a weather system moves through. A same-day-only (lag-0) correlation would miss that delayed relationship entirely. The lagged analysis shifts one series relative to the other across a range of day-offsets and reports the correlation at each lag, highlighting the strongest — so "does a falling barometer tonight predict a worse night tomorrow?" is a question you can actually pose. As always, testing many lags inflates the chance of a spurious "best" lag, so treat the optimal lag as a hypothesis to confirm with more data and domain knowledge, not as an established lead-time.',
+          'All of the usual cross-source caveats apply with full force: correlation is not causation; season is a powerful confounder that can drive weather, sleep, and activity simultaneously; small overlapping samples give wide, unstable estimates (aim for tens of nights, more for lagged analyses); and these analyses are designed to help you frame a question for your clinician — for example, "my central events seem to rise after pressure drops" — not to reach a clinical conclusion on your own.',
+        ],
+      },
+      {
+        heading: 'Scope and limitations',
+        paragraphs: [
+          'Pollen is not included in this version. Open-Meteo\'s pollen data is forecast-only (a few days ahead), Europe-only, and has no historical archive, so it could never be backfilled for any past night. Surfacing it would risk the opposite of helpful: it would show a permanent "no data" for your history and could mislead you into concluding pollen does not affect your therapy when in truth the data simply never existed. Because correctness outranks adding features, pollen is deliberately deferred until a historical-capable source is available.',
+          'A single location is supported per profile in this version. If you travelled, the weather shown is for your configured home location, not wherever you actually slept — so read travel nights with that in mind. Per-night / travel-aware location is a planned future capability.',
+          'Weather and air-quality data come from a third party (Open-Meteo) and depend on its modelled reanalysis and continued availability; like any model, it is an estimate of conditions at your rounded coordinates, not a measurement at your bedside. Missing weather never blocks your CPAP analysis — a night with no weather simply shows a dash, and the rest of the app is unaffected.',
+          'CPAP Analyzer is not a medical device and is not certified for diagnosis. Weather & Environment is an exploratory analysis aid: it informs and helps you frame questions; it does not diagnose, and it does not recommend any change to your therapy. Bring anything new, sustained, or trending — especially a rising central-event pattern — to a qualified clinician, who can place it in the context of your full history.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Open-Meteo. Open-Meteo Weather, Historical (ERA5 reanalysis archive), and Air Quality APIs. https://open-meteo.com/ — Keyless, no-account weather, historical-archive, and air-quality data sources used by this integration; the historical weather archive lags roughly five days behind the present.',
+          'World Health Organization (2021). WHO global air quality guidelines: particulate matter (PM2.5 and PM10), ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — Health basis and recommended limits for the air-quality pollutants surfaced here.',
+          'United States Environmental Protection Agency (2024). Technical Assistance Document for the Reporting of Daily Air Quality — the Air Quality Index (AQI). EPA-454/B-24-002. — Definition and category bands of the US Air Quality Index.',
+          'European Environment Agency. European Air Quality Index (EAQI). https://www.eea.europa.eu/themes/air/air-quality-index — Definition and category bands of the European AQI.',
+          'Mason, R. H., Ryan, C. M., et al. (2010). Changes in sleep-disordered breathing at altitude and with ambient pressure. — On ambient/barometric pressure as a modifier of respiratory events and the loop-gain mechanisms by which pressure change can shift the obstructive/central balance. (Illustrative of the pressure-vs-events hypothesis; not a claim specific to your data.)',
+        ],
+      },
+    ],
+  },
+
   // ─── UNDERSTANDING MEASUREMENT UNCERTAINTY ────────────────────────
   {
     slug: 'understanding-measurement-uncertainty',

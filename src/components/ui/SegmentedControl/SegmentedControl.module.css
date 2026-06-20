@@ -1,0 +1,60 @@
+.group {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 2px;
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  min-height: 36px;
+}
+
+.disabled {
+  opacity: 0.5;
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  padding: 0 var(--space-3);
+  border: none;
+  /* 2px transparent bottom border reserves space so selection never shifts
+     layout; the selected segment fills it with --color-primary. */
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.segment:hover:not(.selected):not(:disabled) {
+  color: var(--color-text-primary);
+  background: var(--color-surface-tertiary);
+}
+
+.segment.selected {
+  /* Non-colour selected cue: a 2px primary bottom border + elevated surface +
+     shadow. The border survives grayscale / high-contrast modes. */
+  color: var(--color-text-primary);
+  background: var(--color-surface-elevated);
+  border-bottom-color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.segment:disabled {
+  cursor: not-allowed;
+}
