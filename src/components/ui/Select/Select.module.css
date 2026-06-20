@@ -92,6 +92,16 @@
   pointer-events: none;
 }
 
+.groupLabel {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .itemIndicator {
   display: inline-flex;
   align-items: center;

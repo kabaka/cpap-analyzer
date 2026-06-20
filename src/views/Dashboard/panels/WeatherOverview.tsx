@@ -8,21 +8,16 @@
  * lower-better for AQI). An "as of {date}" caption is mandatory (provider data
  * lags ~5 days; the panel must never imply "today").
  *
- * Data sources:
- * - Core weather tiles aggregate stored `weather_hourly` over a canonical
- *   overnight window (see {@link overnightWindowFor}); humidity / pressure /
- *   dew point exist only in the hourly series, so the panel reads hourly.
- * - AQI reads the stored `air_quality_daily` overnight aggregate (already true
- *   overnight, derived by the sync service).
+ * Data source: the ONE shared canonical nightly record from
+ * {@link useWeatherNightly}. The panel and the cross-source correlation surface
+ * read the identical {@link WeatherNightly} per night, so "last night's"
+ * humidity / pressure / dewpoint / AQI is a single number everywhere (the
+ * overnight window is session-derived when a session exists for the night, else
+ * the documented default civil night — see `analysis/weather/nightly`). All
+ * unit-aware display conversions flow through `analysis/weather/units`.
  *
  * States: loading skeleton · error · disabled → `null` · enabled-but-unsynced →
  * CTA card · synced → tiles + footer link to the cross-source correlations.
- *
- * NOTE (flagged for the correlation/signal tasks): the overnight window used
- * here is a panel-local canonical window. It should be unified with the
- * session-derived window the correlation surface uses so a metric never shows
- * two different "last-night" numbers. This is intentionally NOT wired to
- * per-session windows to stay out of those tasks' files.
  *
  * @module views/Dashboard/panels/WeatherOverview
  */
@@ -33,30 +28,20 @@ import { Button, Card, TrendIndicator } from '@/components/ui';
 import type { TrendDirection, TrendPolarity } from '@/components/ui';
 import { AqiSwatch } from '@/components/domain/weather';
 import {
-  aggregateWeatherNight,
-  selectOvernightSamples,
   subtractDaysIso,
   convertTemperature,
   convertPressure,
   convertWind,
-  type OvernightWindow,
+  type WeatherNightly,
 } from '@/analysis/weather';
-import { useWeatherDailySummaries, useWeatherTimeseries } from '@/hooks/useWeatherData';
+import { useWeatherNightly } from '@/hooks/useWeatherNightly';
 import { useSettingsStore } from '@/stores/useSettingsStore';
-import type { AirQualityDaily, WeatherHourly, WeatherHourlySample } from '@/types/weather';
-import type { IntegrationDailySummary, IntegrationTimeseries } from '@/types';
 import styles from './WeatherOverview.module.css';
 
 const TREND_WINDOW_DAYS = 7;
 const TREND_THRESHOLD = 0.02;
 /** How many days of context to load (current night + trend window + lag buffer). */
 const LOOKBACK_DAYS = 14;
-
-/** Canonical overnight window for the night that ENDS on `date`. */
-function overnightWindowFor(date: string): OvernightWindow {
-  const prev = subtractDaysIso(date, 1);
-  return { start: `${prev}T22:00`, end: `${date}T10:00` };
-}
 
 /** A resolved tile value with its trend. */
 interface NumericTile {
@@ -100,47 +85,6 @@ function fmtInt(value: number | null): string {
   return Math.round(value).toString();
 }
 
-interface OvernightCore {
-  readonly date: string;
-  readonly temperatureLow: number | null;
-  readonly humidityMean: number | null;
-  readonly pressureMslMean: number | null;
-  readonly dewpointMean: number | null;
-  readonly windMean: number | null;
-}
-
-/** Group hourly weather records by date and aggregate each night. */
-function aggregateCore(records: readonly IntegrationTimeseries[]): OvernightCore[] {
-  // Collect all samples keyed by their date and also globally (so a night that
-  // spans two civil dates can pull from both).
-  const all: WeatherHourlySample[] = [];
-  const dates = new Set<string>();
-  for (const rec of records) {
-    const payload = rec.data as unknown as WeatherHourly;
-    if (payload && Array.isArray(payload.samples)) {
-      all.push(...payload.samples);
-    }
-    dates.add(rec.date);
-  }
-
-  const out: OvernightCore[] = [];
-  for (const date of [...dates].sort()) {
-    const window = overnightWindowFor(date);
-    const inWindow = selectOvernightSamples(all, window);
-    if (inWindow.length === 0) continue;
-    const agg = aggregateWeatherNight(inWindow, window);
-    out.push({
-      date,
-      temperatureLow: agg.temperatureLow,
-      humidityMean: agg.humidityMean,
-      pressureMslMean: agg.pressureMslMean,
-      dewpointMean: agg.dewpointMean,
-      windMean: agg.windMean,
-    });
-  }
-  return out;
-}
-
 interface WeatherOverviewProps {
   /** Render even without a stored sync (used to force the unsynced CTA in tests). */
   readonly forceVisible?: boolean;
@@ -159,39 +103,16 @@ const WeatherOverview = React.memo(function WeatherOverview({
 
   const enabled = weather.enabled || forceVisible === true;
 
-  const {
-    data: hourly,
-    loading: hourlyLoading,
-    error: hourlyError,
-  } = useWeatherTimeseries(enabled ? 'weather_hourly' : null, enabled ? dateRange : null);
+  const { data, latest, loading, error } = useWeatherNightly(enabled ? dateRange : null);
 
-  const {
-    airQualityDaily,
-    loading: aqLoading,
-    error: aqError,
-  } = useWeatherDailySummaries(enabled ? dateRange : null);
-
-  const core = useMemo(() => aggregateCore(hourly), [hourly]);
-
-  const aqByDate = useMemo(() => {
-    const map = new Map<string, AirQualityDaily>();
-    for (const rec of airQualityDaily as readonly IntegrationDailySummary[]) {
-      map.set(rec.date, rec.data as unknown as AirQualityDaily);
-    }
-    return map;
-  }, [airQualityDaily]);
-
-  const loading = hourlyLoading || aqLoading;
-  const error = hourlyError ?? aqError;
-
-  // The most recent night with any core data.
-  const latest = core.length > 0 ? core[core.length - 1] : null;
-  const prior = core.slice(0, -1).slice(-TREND_WINDOW_DAYS);
+  // The 7 nights preceding the headline night drive each tile's trend.
+  const prior: readonly WeatherNightly[] = useMemo(
+    () => data.slice(0, -1).slice(-TREND_WINDOW_DAYS),
+    [data],
+  );
 
   const tiles: Tile[] = useMemo(() => {
     if (!latest) return [];
-    const priorAq = prior.map((c) => aqByDate.get(c.date)?.usAqiMean ?? null);
-    const latestAq = aqByDate.get(latest.date)?.usAqiMean ?? null;
 
     return [
       {
@@ -231,8 +152,11 @@ const WeatherOverview = React.memo(function WeatherOverview({
       {
         kind: 'aqi',
         label: 'Air Quality',
-        value: latestAq,
-        direction: trendOf(latestAq, priorAq),
+        value: latest.usAqiMean,
+        direction: trendOf(
+          latest.usAqiMean,
+          prior.map((c) => c.usAqiMean),
+        ),
       },
       {
         kind: 'numeric',
@@ -257,7 +181,7 @@ const WeatherOverview = React.memo(function WeatherOverview({
         polarity: 'neutral',
       },
     ];
-  }, [latest, prior, aqByDate, units]);
+  }, [latest, prior, units]);
 
   // ── Disabled → render nothing ──
   if (!enabled) return null;
@@ -351,7 +275,7 @@ const WeatherOverview = React.memo(function WeatherOverview({
 
       <div className={styles.footer}>
         <span className={styles.footerDays}>
-          {core.length} {core.length === 1 ? 'night' : 'nights'} of weather data
+          {data.length} {data.length === 1 ? 'night' : 'nights'} of weather data
         </span>
         <Link to="/explore/correlations?tab=cross-source" className={styles.exploreLink}>
           Explore correlations &rarr;
