@@ -8,7 +8,9 @@ vi.mock('@/hooks/useSessionData', () => ({
 }));
 vi.mock('@/services/weather/weatherDataService', () => ({
   countWeatherNights: vi.fn().mockResolvedValue(0),
-  deleteAllWeatherData: vi.fn().mockResolvedValue({ dailyRemoved: 0, timeseriesRemaining: 0 }),
+  deleteAllWeatherData: vi
+    .fn()
+    .mockResolvedValue({ dailyRemoved: 0, timeseriesRemoved: 0, importRecordsRemoved: 0 }),
 }));
 
 import { WeatherIntegrationPanel } from './WeatherIntegrationPanel';

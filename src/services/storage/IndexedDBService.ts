@@ -18,6 +18,7 @@ import {
   type IntegrationDailySummary,
   type IntegrationData,
   type IntegrationImportRecord,
+  type IntegrationSource,
   type IntegrationTimeseries,
   type NightlyAggregate,
   type Session,
@@ -1366,6 +1367,85 @@ export class IndexedDBService {
   // -----------------------------------------------------------------------
 
   /**
+   * Atomically delete EVERY record for a given integration `source` across all
+   * three integration stores: daily summaries (`integration_data`), intra-night
+   * timeseries (`integration_timeseries`), and import history
+   * (`integration_import_history`). All three stores expose a non-unique
+   * `source` index, so each deletion is a cursor sweep over `source = source`.
+   *
+   * The three sweeps share ONE multi-store readwrite transaction, so the purge
+   * either fully succeeds or fully rolls back — a disconnect→Delete can never
+   * leave a partial residue (e.g. orphaned hourly series or import provenance)
+   * for a source the user asked to forget. This is the total-wipe primitive that
+   * {@link import('@/services/weather/weatherDataService') deleteAllWeatherData}
+   * builds on.
+   *
+   * @param source - Integration source to purge (e.g. `'weather'`, `'fitbit'`).
+   * @returns Per-store counts of records actually removed.
+   */
+  async deleteIntegrationDataBySource(
+    source: IntegrationSource,
+  ): Promise<{ dailyDeleted: number; timeseriesDeleted: number; importRecordsDeleted: number }> {
+    try {
+      const tx = this.createWriteTransaction(
+        'integration_data',
+        'integration_timeseries',
+        'integration_import_history',
+      );
+
+      // Resolve all three store handles synchronously up front. The three
+      // cursor sweeps below run back-to-back on this one transaction; grabbing
+      // the handles before the first `await` keeps the transaction continuously
+      // active so it cannot auto-commit at a microtask boundary between sweeps.
+      const dailyStore = tx.objectStore('integration_data');
+      const timeseriesStore = tx.objectStore('integration_timeseries');
+      const importStore = tx.objectStore('integration_import_history');
+
+      // Kick off all three cursor sweeps without awaiting between them: each
+      // opens a request immediately, so the transaction stays continuously busy
+      // and cannot auto-commit before every sweep has been issued. Then await
+      // their counts together and finally the transaction itself.
+      //
+      // `integration_data` and `integration_import_history` carry a dedicated
+      // non-unique `source` index. `integration_timeseries` has no standalone
+      // `source` index — only the compound `source_dataType_date` index — so we
+      // sweep it via a prefix-bounded range on that index, which selects every
+      // entry whose first key component is `source` regardless of dataType/date.
+      const dailyPromise = this.deleteByIndexRangeCounting(
+        dailyStore.index('source'),
+        IDBKeyRange.only(source),
+      );
+      const timeseriesPromise = this.deleteByIndexRangeCounting(
+        timeseriesStore.index('source_dataType_date'),
+        IDBKeyRange.bound([source], [source, []], false, false),
+      );
+      const importPromise = this.deleteByIndexRangeCounting(
+        importStore.index('source'),
+        IDBKeyRange.only(source),
+      );
+
+      const [dailyDeleted, timeseriesDeleted, importRecordsDeleted] = await Promise.all([
+        dailyPromise,
+        timeseriesPromise,
+        importPromise,
+      ]);
+
+      // Await transaction completion so any failed delete rolls back the batch.
+      await this.awaitTransaction(tx);
+
+      return { dailyDeleted, timeseriesDeleted, importRecordsDeleted };
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_DELETE_FAILED',
+        'delete integration data by source',
+        'integration_data',
+        source,
+        error,
+      );
+    }
+  }
+
+  /**
    * Check whether any integration data exists for a given source.
    *
    * Opens a cursor on the `source` index of `integration_data` and returns
@@ -1683,6 +1763,34 @@ export class IndexedDBService {
           cursor.continue();
         } else {
           resolve();
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Delete every record reachable through `index` within `range`, returning the
+   * number of records deleted. The index MUST belong to a store in an active
+   * readwrite transaction; deletions are enqueued on that transaction and are
+   * not committed until the caller awaits the transaction itself.
+   *
+   * Accepting an already-resolved index (rather than a store + index name) lets
+   * callers select the index synchronously up front, keeping a multi-store
+   * transaction continuously busy across concurrent sweeps.
+   */
+  private deleteByIndexRangeCounting(index: IDBIndex, range: IDBKeyRange): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      let deleted = 0;
+      const request = index.openCursor(range);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          cursor.delete();
+          deleted++;
+          cursor.continue();
+        } else {
+          resolve(deleted);
         }
       };
       request.onerror = () => reject(request.error);

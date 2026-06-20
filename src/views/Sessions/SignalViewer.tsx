@@ -50,6 +50,10 @@ import { confidenceTier, confidenceTierLabel, type BreathingEpisode } from '@/an
 import { useBreathingEpisodes } from '@/hooks/useBreathingEpisodes';
 import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
 import { useWearableLanes, type WearableSeries } from '@/hooks/useWearableLanes';
+import { useWeatherTimeseries } from '@/hooks/useWeatherData';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import type { AqiScale } from '@/analysis/weather/aqiRamp';
+import type { WeatherHourly, AirQualityHourly } from '@/types/weather';
 import type { SignalManifest, ChannelDescriptor } from '@/services/storage/OPFSService';
 import { OPFSService } from '@/services/storage/OPFSService';
 import { lttbInto, lttbOutLength, columnEnvelopeInto } from '@/services/workers/downsample.worker';
@@ -94,6 +98,24 @@ import {
   type LaneDescriptor,
   type LaneGroup,
 } from './signalLanes';
+import {
+  aqiBands,
+  aqiSeriesHasData,
+  buildWeatherChannel,
+  conditionBands,
+  conditionsHaveData,
+  mergeAirQualityPoints,
+  mergeWeatherPoints,
+  pickAqiScale,
+  pressureHasData,
+  temperatureHasData,
+  weatherCursorReadout,
+  weatherLaneDescriptor,
+  WEATHER_LANE_SPECS,
+  type AirQualityPoint,
+  type WeatherPoint,
+  type WeatherReadoutUnits,
+} from './weatherLanes';
 import styles from './SignalViewer.module.css';
 
 // ── Constants ────────────────────────────────────────────────────
@@ -215,6 +237,11 @@ const LANE_PRESETS: readonly LanePreset[] = [
     id: 'sleep',
     label: 'Sleep architecture',
     match: (l) => l.group === 'sleep' || l.id === 'wear:heart_rate_intraday',
+  },
+  {
+    id: 'environment',
+    label: 'Environment focus',
+    match: (l) => l.id === 'cpap:flow' || l.group === 'weather',
   },
   {
     id: 'everything',
@@ -628,6 +655,9 @@ export default function SignalViewer() {
   /** Whether the "no wearable data connected" hint has been dismissed this view. */
   const [hintDismissed, setHintDismissed] = useState(false);
 
+  /** Whether the "no weather for this night" hint has been dismissed this view. */
+  const [weatherHintDismissed, setWeatherHintDismissed] = useState(false);
+
   /**
    * Whether app-computed breathing-detection overlays (PB/CSR candidates) are
    * shown. Persisted in lane prefs alongside other toggles. Defaults to `true`
@@ -778,6 +808,83 @@ export default function SignalViewer() {
     [wearableLoading, wearableSeries],
   );
 
+  // ── Weather data (independent, read-only — never fetches network) ──
+  //
+  // The weather integration stores hourly weather/air-quality per civil date. A
+  // night can span two civil dates, so we query the anchor date ± 1 day and merge
+  // BOTH dates' hourly records (mergeWeather/AirQualityPoints) into one ascending
+  // series before aligning to wall-clock. The hook is read-only (no egress).
+
+  const weatherEnabled = useSettingsStore((s) => s.integrations.weather.enabled);
+  const weatherUnitsSetting = useSettingsStore((s) => s.integrations.weather.units);
+
+  /** Date range (anchor ± 1 day) covering a midnight-spanning night either way. */
+  const weatherDateRange = useMemo(() => {
+    if (!weatherEnabled || !wearableDate) return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(wearableDate);
+    if (!m) return null;
+    const base = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const DAY = 86_400_000;
+    const fmtDate = (ms: number): string => {
+      const d = new Date(ms);
+      const y = d.getUTCFullYear();
+      const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${y}-${mo}-${day}`;
+    };
+    return { start: fmtDate(base - DAY), end: fmtDate(base + DAY) };
+  }, [weatherEnabled, wearableDate]);
+
+  const { data: weatherTimeseries, loading: weatherLoading } = useWeatherTimeseries(
+    weatherEnabled ? ['weather_hourly', 'air_quality_hourly'] : null,
+    weatherDateRange,
+  );
+
+  /** Merged, ascending, session-relative-ready weather points (both civil dates). */
+  const weatherPoints = useMemo<WeatherPoint[]>(() => {
+    const records = weatherTimeseries
+      .filter((r) => (r.dataType as string) === 'weather_hourly')
+      .map((r) => r.data as unknown as WeatherHourly);
+    return mergeWeatherPoints(...records);
+  }, [weatherTimeseries]);
+
+  /** Merged, ascending air-quality points (both civil dates). */
+  const aqiPoints = useMemo<AirQualityPoint[]>(() => {
+    const records = weatherTimeseries
+      .filter((r) => (r.dataType as string) === 'air_quality_hourly')
+      .map((r) => r.data as unknown as AirQualityHourly);
+    return mergeAirQualityPoints(...records);
+  }, [weatherTimeseries]);
+
+  /** AQI scale to display (US preferred, European fallback). */
+  const aqiScale = useMemo<AqiScale>(() => pickAqiScale(aqiPoints), [aqiPoints]);
+
+  /** Display-unit prefs for the cursor readout (storage stays SI/metric). */
+  const weatherReadoutUnits = useMemo<WeatherReadoutUnits>(
+    () => ({
+      temperature: weatherUnitsSetting.temperature,
+      pressure: weatherUnitsSetting.pressure,
+      wind: weatherUnitsSetting.wind,
+    }),
+    [weatherUnitsSetting],
+  );
+
+  /** Whether any weather/AQI lane has data this night. */
+  const anyWeatherData = useMemo(
+    () =>
+      conditionsHaveData(weatherPoints) ||
+      temperatureHasData(weatherPoints) ||
+      pressureHasData(weatherPoints) ||
+      aqiSeriesHasData(aqiPoints, aqiScale),
+    [weatherPoints, aqiPoints, aqiScale],
+  );
+
+  /** Weather enabled in Settings but nothing synced for this night yet. */
+  const weatherEnabledButEmpty = useMemo(
+    () => weatherEnabled && !weatherLoading && !anyWeatherData,
+    [weatherEnabled, weatherLoading, anyWeatherData],
+  );
+
   // ── Lane catalogue (CPAP + available wearable lanes) ─────────
 
   const cpapLanes = useMemo<LaneDescriptor[]>(() => {
@@ -812,10 +919,22 @@ export default function SignalViewer() {
     });
   }, [wearableSeries]);
 
+  const weatherLanes = useMemo<LaneDescriptor[]>(() => {
+    const has: Record<string, boolean> = {
+      conditions: conditionsHaveData(weatherPoints),
+      pressure: pressureHasData(weatherPoints),
+      temperature: temperatureHasData(weatherPoints),
+      aqi: aqiSeriesHasData(aqiPoints, aqiScale),
+    };
+    return WEATHER_LANE_SPECS.map((spec) =>
+      weatherLaneDescriptor(spec.key, has[spec.key] ?? false),
+    );
+  }, [weatherPoints, aqiPoints, aqiScale]);
+
   /** Full catalogue in catalogue order. */
   const allLanes = useMemo<LaneDescriptor[]>(
-    () => [...cpapLanes, ...wearableLanes],
-    [cpapLanes, wearableLanes],
+    () => [...cpapLanes, ...wearableLanes, ...weatherLanes],
+    [cpapLanes, wearableLanes, weatherLanes],
   );
 
   /** Lane ids in their effective (persisted) order. */
@@ -1421,20 +1540,74 @@ export default function SignalViewer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wearableSeries, wallClockEpoch, resolvedTheme, wrapperWidth, totalDurationMs]);
 
+  // ── Memoized base WEATHER channels (viewport-independent) ────
+  //
+  // Like the wearable lanes, weather lanes are projected onto the session-relative
+  // axis once (their hourly samples don't change with pan/zoom). Each weather lane
+  // (conditions ribbon, pressure line, temperature dashed line, AQI ribbon) is
+  // built keyed by its stable lane id. Ribbon bands (conditions glyphs, AQI rank
+  // fill + pattern) are derived here and merged into the renderer's `ribbonBands`.
+  const baseWeatherChannels = useMemo(() => {
+    const map = new Map<string, BaseWearableEntry>();
+    if (!Number.isFinite(wallClockEpoch)) return map;
+
+    const container = containerRef.current;
+    const pressureLineWidth = resolveLengthPx(container, '--signal-hero-line-width', 1.6);
+    const temperatureLineWidth = resolveLengthPx(container, '--signal-secondary-line-width', 1.2);
+    const resolveCol = (cssVar: string): string => resolveColor(container, cssVar);
+
+    const ctx = {
+      weatherPoints,
+      aqiPoints,
+      aqiScale,
+      wallClockEpoch,
+    } as const;
+    const presentation = {
+      resolveColor: resolveCol,
+      resolveHeight: (token: string): number => resolveLengthPx(container, token, CHANNEL_HEIGHT),
+      pressureLineWidth,
+      temperatureLineWidth,
+    } as const;
+
+    for (const spec of WEATHER_LANE_SPECS) {
+      const channel = buildWeatherChannel(spec.key, ctx, presentation);
+      if (!channel) continue;
+
+      let ribbonBands: readonly RibbonBand[] | undefined;
+      if (spec.key === 'conditions') {
+        const bands = conditionBands(weatherPoints, resolveCol);
+        if (bands.length > 0) ribbonBands = bands;
+      } else if (spec.key === 'aqi') {
+        const bands = aqiBands(aqiPoints, aqiScale, resolveCol);
+        if (bands.length > 0) ribbonBands = bands;
+      }
+
+      const { height: _height, ...base } = channel;
+      void _height;
+      map.set(spec.id, ribbonBands ? { channel: base, ribbonBands } : { channel: base });
+    }
+    return map;
+    // wrapperWidth + resolvedTheme drive re-resolution of getComputedStyle reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weatherPoints, aqiPoints, aqiScale, wallClockEpoch, resolvedTheme, wrapperWidth]);
+
   // ── Build the full ordered channel list + render ─────────────
 
   /**
-   * Ribbon bands (e.g. hypnogram) keyed by channel name, derived once from the
-   * viewport-independent wearable base channels. Passing the full set is safe —
-   * the renderer only consults bands for channels actually present in a frame.
+   * Ribbon bands (hypnogram + weather conditions/AQI) keyed by channel name,
+   * derived once from the viewport-independent base channels. Passing the full
+   * set is safe — the renderer only consults bands for channels in a frame.
    */
   const wearableRibbonBands = useMemo(() => {
     const bands: Record<string, readonly RibbonBand[]> = {};
     for (const entry of baseWearableChannels.values()) {
       if (entry.ribbonBands) bands[entry.channel.name] = entry.ribbonBands;
     }
+    for (const entry of baseWeatherChannels.values()) {
+      if (entry.ribbonBands) bands[entry.channel.name] = entry.ribbonBands;
+    }
     return bands;
-  }, [baseWearableChannels]);
+  }, [baseWearableChannels, baseWeatherChannels]);
 
   /**
    * Assemble the renderer's {@link ViewportState} (CPAP channels re-sliced &
@@ -1457,6 +1630,13 @@ export default function SignalViewer() {
 
         if (lane.group === 'cpap') {
           channel = buildCpapChannel(lane.name, targetPoints, plotWidth, range);
+        } else if (lane.group === 'weather') {
+          // Weather lane — look up the memoized, viewport-independent base.
+          const base = baseWeatherChannels.get(lane.id);
+          if (base) {
+            channels.push({ ...base.channel, height });
+          }
+          continue;
         } else {
           // Wearable / sleep lane — look up the memoized, viewport-independent base.
           const base = baseWearableChannels.get(lane.id);
@@ -1474,7 +1654,14 @@ export default function SignalViewer() {
 
       return { startTime: range.startTime, endTime: range.endTime, channels };
     },
-    [manifest, canvasSize.width, renderLanes, buildCpapChannel, baseWearableChannels],
+    [
+      manifest,
+      canvasSize.width,
+      renderLanes,
+      buildCpapChannel,
+      baseWearableChannels,
+      baseWeatherChannels,
+    ],
   );
 
   // ── Memoized viewport-independent render overlays ────────────
@@ -2245,9 +2432,35 @@ export default function SignalViewer() {
         const elapsedSec = Math.round(timeMs / 1000);
         lead = `At ${elapsedSec}s: ${parts.join('; ') || 'no data'}`;
       }
+
+      // Append the weather/AQI clause — the required NON-VISUAL path for the
+      // colour-encoded weather lanes (temp, pressure, dew point, wind, condition
+      // word, and "Air quality: {word}, AQI {value}" — word + number, never a
+      // bare value). Computed from the merged hourly samples at the cursor's
+      // wall-clock time, since dew point / wind / condition aren't their own
+      // lanes. Only spoken when a sample is near the cursor and a wall clock exists.
+      if (useWallClock) {
+        const weatherClause = weatherCursorReadout(
+          wallClockEpoch + timeMs,
+          weatherPoints,
+          aqiPoints,
+          aqiScale,
+          weatherReadoutUnits,
+        );
+        if (weatherClause) regionParts.push(weatherClause);
+      }
+
       setCursorReadout(regionParts.length > 0 ? `${lead} — ${regionParts.join('; ')}` : lead);
     },
-    [canvasSize.width, findHoveredRegion, wallClockEpoch],
+    [
+      canvasSize.width,
+      findHoveredRegion,
+      wallClockEpoch,
+      weatherPoints,
+      aqiPoints,
+      aqiScale,
+      weatherReadoutUnits,
+    ],
   );
 
   const handleCanvasKeyDown = useCallback(
@@ -2595,6 +2808,26 @@ export default function SignalViewer() {
         </div>
       )}
 
+      {/* ── No-weather-for-this-night hint (enabled-but-empty) ── */}
+      {weatherEnabledButEmpty && !weatherHintDismissed && (
+        <div className={styles.hintBar} role="note">
+          <span>No weather for this night. Sync in Settings → Integrations</span>
+          <div className={styles.hintActions}>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
+              Open Settings
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setWeatherHintDismissed(true)}
+              aria-label="Dismiss"
+            >
+              ✕
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* ── Legend bar (quick toggles, grouped) ───────────────── */}
       <div className={styles.legendBar}>
         {eventTypesInSession.length > 0 && (
@@ -2856,10 +3089,17 @@ export default function SignalViewer() {
             </div>
           </div>
 
-          {(['cpap', 'wearable', 'sleep'] as const).map((group) => {
+          {(['cpap', 'wearable', 'sleep', 'weather'] as const).map((group) => {
             const groupLanes = allLanes.filter((l) => l.group === group);
             if (groupLanes.length === 0) return null;
-            const heading = group === 'cpap' ? 'CPAP' : group === 'wearable' ? 'Wearable' : 'Sleep';
+            const heading =
+              group === 'cpap'
+                ? 'CPAP'
+                : group === 'wearable'
+                  ? 'Wearable'
+                  : group === 'sleep'
+                    ? 'Sleep'
+                    : 'Weather & Environment';
             return (
               <div key={group} className={styles.drawerGroup}>
                 <span className={styles.drawerHeading}>{heading}</span>

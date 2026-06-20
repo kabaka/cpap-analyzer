@@ -239,6 +239,11 @@
   border-color: var(--color-hypno-rem);
 }
 
+.lanePill[data-kind='WX'] {
+  color: var(--color-weather-pressure);
+  border-color: var(--color-weather-pressure);
+}
+
 /* ── Canvas area ──────────────────────────────────────────────── */
 
 .canvasWrapper {
