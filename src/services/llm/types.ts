@@ -112,6 +112,32 @@ export interface GenerateOptions {
    * it; it is advisory, not a correctness control.
    */
   readonly maxOutputTokens?: number;
+  /**
+   * Optional coarse progress callback for on-device backends (WebLLM) that must
+   * perform a one-time, multi-hundred-MB model-weights download/warm-up before
+   * the first generation. Cloud and already-provisioned backends never invoke
+   * it. Added minimally for the provider wave (ADR 0024 provider layer): the
+   * stream's {@link StreamChunk}s carry only generated narration, so a
+   * download/warm-up phase that precedes any token has no other channel to
+   * report through. The callback is best-effort and may be omitted by the
+   * caller; providers must not depend on it being present.
+   */
+  readonly onProgress?: (progress: ModelLoadProgress) => void;
+}
+
+/**
+ * Coarse progress for a one-time on-device model load (download + warm-up),
+ * surfaced via {@link GenerateOptions.onProgress}. Phases are deliberately
+ * minimal — the UX (design reference §3.4) announces coarse milestones, not
+ * every frame.
+ */
+export interface ModelLoadProgress {
+  /** Which phase of the one-time provision this update describes. */
+  readonly phase: 'downloading' | 'loading';
+  /** Fractional completion in `[0, 1]`, or `null` when not determinable. */
+  readonly fraction: number | null;
+  /** App-presentable status text (e.g. "Downloading model… 42%"). */
+  readonly text: string;
 }
 
 /** One streamed chunk of generated output. */
