@@ -85,7 +85,7 @@ describe('cspMetaPlugin', () => {
     }
   });
 
-  it('allows only the four Open-Meteo hosts in connect-src (and keeps self)', () => {
+  it('allows exactly the expected connect-src hosts (weather + AI Insights), and keeps self', () => {
     // Isolate the connect-src directive from the assembled policy.
     const directive = CSP_VALUE.split('; ').find((d) => d.startsWith('connect-src '));
     expect(directive).toBeDefined();
@@ -93,19 +93,46 @@ describe('cspMetaPlugin', () => {
     const tokens = (directive as string).slice('connect-src '.length).trim().split(/\s+/);
     expect(tokens).toEqual([
       "'self'",
+      // Weather (Open-Meteo, keyless)
       'https://archive-api.open-meteo.com',
       'https://api.open-meteo.com',
       'https://air-quality-api.open-meteo.com',
       'https://geocoding-api.open-meteo.com',
+      // AI Insights cloud backends (ADR 0024)
+      'https://api.anthropic.com',
+      'https://api.openai.com',
+      // AI Insights loopback (local OpenAI-compatible servers)
+      'http://localhost',
+      'http://127.0.0.1',
     ]);
+  });
+
+  it('includes the AI Insights cloud hosts in connect-src', () => {
+    const directive = CSP_VALUE.split('; ').find((d) => d.startsWith('connect-src '));
+    expect(directive).toContain('https://api.anthropic.com');
+    expect(directive).toContain('https://api.openai.com');
+    expect(directive).toContain('http://localhost');
+    expect(directive).toContain('http://127.0.0.1');
   });
 
   it('never uses a wildcard source anywhere in the policy', () => {
     // No bare wildcard, no scheme-wildcards, no host-wildcards (e.g. *.foo).
+    // This is the load-bearing privacy guard: an arbitrary user-typed remote
+    // OpenAI-compatible host is intentionally NOT supported rather than allowed
+    // via a wildcard (ADR 0024 §4).
     expect(CSP_VALUE).not.toContain('*');
-    // Defensive: the connect-src hosts must be exact origins, not subdomain
-    // wildcards or http:// origins that could broaden egress.
-    expect(CSP_VALUE).not.toContain('http://');
     expect(CSP_VALUE).not.toMatch(/connect-src[^;]*\*/);
+  });
+
+  it('restricts http:// origins in connect-src to loopback only (no remote http hosts)', () => {
+    const directive = CSP_VALUE.split('; ').find((d) => d.startsWith('connect-src ')) ?? '';
+    const httpTokens = directive
+      .slice('connect-src '.length)
+      .trim()
+      .split(/\s+/)
+      .filter((t) => t.startsWith('http://'));
+    // Only loopback http origins are permitted; any other http:// origin would
+    // broaden the cleartext egress surface.
+    expect(httpTokens).toEqual(['http://localhost', 'http://127.0.0.1']);
   });
 });

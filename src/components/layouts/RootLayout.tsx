@@ -11,6 +11,7 @@ import { NavLink, Outlet, useLocation, useMatch } from 'react-router-dom';
 import { useThemeEffect } from '@/hooks/useTheme';
 import { useURLStateSync } from '@/hooks/useURLState';
 import { RouteErrorBoundary } from '@/components/errors';
+import { InsightDrawer } from '@/components/insights';
 import { Tooltip, TooltipProvider, Icon, type IconName } from '@/components/ui';
 import { useAppStore } from '@/stores/useAppStore';
 import { StatusBar } from './StatusBar';
@@ -468,6 +469,10 @@ export default function RootLayout() {
           </main>
           <StatusBar />
         </div>
+
+        {/* AI Insights drawer — non-modal, app-level surface. Renders nothing
+            unless an insight is open (and is gated to enabled triggers). */}
+        <InsightDrawer />
       </div>
     </TooltipProvider>
   );

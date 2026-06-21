@@ -60,10 +60,20 @@ interface WeatherIntegration {
   lastSyncAt: string | null;
 }
 
+type LLMBackendId = 'webllm' | 'chrome-ai' | 'anthropic' | 'openai-compatible';
+type LLMAnthropicModel = 'claude-opus-4-8' | 'claude-sonnet-4-6' | 'claude-haiku-4-5';
+
 interface LLMIntegration {
   enabled: boolean;
-  provider: 'openai' | 'anthropic' | null;
-  apiKey: string | null;
+  /** Active backend; `null` until explicitly chosen. Never auto-set to cloud. */
+  backend: LLMBackendId | null;
+  /** ISO 8601 timestamp of cloud-egress consent, or `null`. */
+  consentAt: string | null;
+  /** EGRESS_CONTRACT_VERSION in force when consent was granted, or `null`. */
+  consentContractVersion: number | null;
+  webllm: { modelId: string | null };
+  anthropic: { model: LLMAnthropicModel };
+  openaiCompatible: { baseUrl: string | null; model: string | null };
 }
 
 interface Integrations {
@@ -134,7 +144,18 @@ const defaultSettings: Pick<SettingsState, 'analysisParams' | 'display' | 'integ
       autoSyncNewImports: false,
       lastSyncAt: null,
     },
-    llm: { enabled: false, provider: null, apiKey: null },
+    // AI Insights (ADR 0024): off by default, no backend chosen, no consent.
+    // API keys are NEVER stored here — they live in the session-scoped
+    // useLLMCredentialStore (XSS-exfiltration mitigation, ADR 0024 §4).
+    llm: {
+      enabled: false,
+      backend: null,
+      consentAt: null,
+      consentContractVersion: null,
+      webllm: { modelId: null },
+      anthropic: { model: 'claude-opus-4-8' },
+      openaiCompatible: { baseUrl: null, model: null },
+    },
   },
 };
 
@@ -145,13 +166,25 @@ interface LegacyWeatherIntegration {
   location?: string;
 }
 
+/** The legacy (v1) persisted llm stub, retained only for the v1 → v2 migration. */
+interface LegacyLLMIntegration {
+  enabled?: boolean;
+  provider?: 'openai' | 'anthropic' | null;
+  apiKey?: string | null;
+}
+
 /**
  * Persist migration for the settings store.
  *
  * Versioned migrations run when the persisted `version` is older than the
- * store's current `version`. v0 persisted the weather integration as
- * `{ enabled, apiKey, location: string }`. This maps it onto the current
- * {@link WeatherIntegration} shape:
+ * store's current `version`. They are applied **cumulatively**: a v0 blob runs
+ * the v0→v1 step and then the v1→v2 step, so the returned state always matches
+ * the current shape regardless of how old the persisted blob is.
+ *
+ * ### v0 → v1: weather integration reshape
+ *
+ * v0 persisted the weather integration as `{ enabled, apiKey, location: string }`.
+ * This maps it onto the current {@link WeatherIntegration} shape:
  * - `apiKey` is DROPPED (Open-Meteo is keyless — there is no key to migrate, and
  *   carrying a stale key forward would be a privacy hazard).
  * - the old free-text `location` string is wrapped into the structured
@@ -165,10 +198,26 @@ interface LegacyWeatherIntegration {
  *   the top core principle). Location label/coords are preserved so re-consent
  *   is low-friction.
  * - all other new weather fields fall back to defaults.
- * - every other settings slice is preserved untouched.
  *
- * Unknown / unexpected persisted shapes fall back to the full defaults rather
- * than throwing, so a corrupt blob can never wedge app startup.
+ * ### v1 → v2: AI Insights (llm) reshape (ADR 0024)
+ *
+ * v1 persisted the llm stub as `{ enabled, provider, apiKey }`. This maps it
+ * onto the new {@link LLMIntegration} shape, applying the same privacy posture
+ * as the weather v0→v1 precedent:
+ * - `provider:'anthropic' → backend:'anthropic'`, `'openai' → 'openai-compatible'`;
+ *   an unknown/`null` provider becomes `backend:null` (never auto-select cloud).
+ * - the persisted `apiKey` is DROPPED. Keys are never carried into the new store
+ *   — they belong only in the session-scoped useLLMCredentialStore (ADR 0024 §4).
+ * - the feature is FORCED back through the consent gate: `enabled:false`,
+ *   `consentAt:null`, `consentContractVersion:null`, regardless of the legacy
+ *   `enabled` value (the v1 stub never made any network call, so nothing is
+ *   lost). A migrated user must re-enable, re-pick a backend, and (for cloud)
+ *   re-consent before any egress is possible.
+ * - all other new llm sub-configs fall back to defaults.
+ *
+ * Every settings slice not named in a step is preserved untouched. Unknown /
+ * unexpected persisted shapes fall back to the full defaults rather than
+ * throwing, so a corrupt blob can never wedge app startup.
  */
 export function migrateSettings(persisted: unknown, version: number): Partial<SettingsState> {
   // Anything we cannot interpret -> start clean.
@@ -176,9 +225,10 @@ export function migrateSettings(persisted: unknown, version: number): Partial<Se
     return structuredClone(defaultSettings);
   }
 
-  const state = persisted as Partial<SettingsState> & {
+  let state = persisted as Partial<SettingsState> & {
     integrations?: Partial<Integrations> & {
       weather?: LegacyWeatherIntegration | WeatherIntegration;
+      llm?: LegacyLLMIntegration | LLMIntegration;
     };
   };
 
@@ -200,12 +250,45 @@ export function migrateSettings(persisted: unknown, version: number): Partial<Se
       location: { label: legacyLabel, latitude: null, longitude: null },
     };
 
-    return {
+    state = {
       ...state,
       integrations: {
         ...defaultSettings.integrations,
         ...state.integrations,
         weather: migratedWeather,
+      },
+    };
+  }
+
+  // v1 -> v2: reshape the llm stub into the AI Insights config (ADR 0024).
+  if (version < 2) {
+    const legacy = (state.integrations?.llm ?? {}) as LegacyLLMIntegration;
+    const migratedBackend: LLMBackendId | null =
+      legacy.provider === 'anthropic'
+        ? 'anthropic'
+        : legacy.provider === 'openai'
+          ? 'openai-compatible'
+          : null;
+
+    const migratedLLM: LLMIntegration = {
+      ...structuredClone(defaultSettings.integrations.llm),
+      backend: migratedBackend,
+      // Force re-consent and re-enable: the v1 stub never egressed, so forcing
+      // the feature off loses nothing and guarantees the new client cannot
+      // egress until the user explicitly re-enables, re-picks a backend, and
+      // (for cloud) re-consents. The persisted apiKey is dropped entirely —
+      // keys never enter persisted settings (ADR 0024 §4).
+      enabled: false,
+      consentAt: null,
+      consentContractVersion: null,
+    };
+
+    state = {
+      ...state,
+      integrations: {
+        ...defaultSettings.integrations,
+        ...state.integrations,
+        llm: migratedLLM,
       },
     };
   }
@@ -264,7 +347,12 @@ export const useSettingsStore = create<SettingsState>()(
         // apiKey — Open-Meteo is keyless — plus structured location, units,
         // domains, resolution, auto-sync, and timestamps). See the weather
         // integration design reference §6.
-        version: 1,
+        // v1 -> v2: the llm stub `{ enabled, provider, apiKey }` was reshaped
+        // into the AI Insights config (backend selector, two-gate cloud consent,
+        // per-backend sub-configs); the persisted apiKey is dropped (keys live
+        // in the session-scoped useLLMCredentialStore, not localStorage). See
+        // ADR 0024.
+        version: 2,
         migrate: migrateSettings,
       },
     ),

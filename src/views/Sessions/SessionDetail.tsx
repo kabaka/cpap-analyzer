@@ -26,6 +26,15 @@ import {
 import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
 import { formatMetric } from '@/analysis/uncertainty';
 import { classifyAhiSeverity } from '@/analysis/clinical';
+import {
+  InsightTrigger,
+  buildClinicalContextInput,
+  buildGroundingCommon,
+  buildSingleNightInput,
+  machineClassOf,
+  nightScopeLabel,
+} from '@/components/insights';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { EventTypeSwatch } from '@/components/events/EventTypeSwatch';
 import { eventLabel } from '@/components/events/eventTypeMeta';
 import { formatClockTime } from './hoverReadout';
@@ -832,6 +841,40 @@ export default function SessionDetail() {
   } = useSessionDetail(sessionId);
   const { events, loading: eventsLoading, error: eventsError } = useEventData(sessionId);
 
+  const ahiThresholds = useSettingsStore((s) => s.analysisParams.ahi);
+  const displayPrefs = useSettingsStore((s) => s.display);
+
+  // Build the single-night / clinical-context insight requests from this night's
+  // aggregate. Lazy (assembled on trigger activation). Both reuse one resolved
+  // GroundingCommonInput (active thresholds + display prefs + coarse class).
+  const buildNightRequest = useCallback(() => {
+    if (aggregate === null || session === null) {
+      throw new Error('No aggregate to summarize');
+    }
+    const common = buildGroundingCommon(
+      { ahi: ahiThresholds, display: displayPrefs },
+      machineClassOf(session.machineType),
+    );
+    return {
+      input: buildSingleNightInput(aggregate, common),
+      scopeLabel: nightScopeLabel(aggregate.date),
+    };
+  }, [aggregate, session, ahiThresholds, displayPrefs]);
+
+  const buildClinicalRequest = useCallback(() => {
+    if (aggregate === null || session === null) {
+      throw new Error('No aggregate for clinical context');
+    }
+    const common = buildGroundingCommon(
+      { ahi: ahiThresholds, display: displayPrefs },
+      machineClassOf(session.machineType),
+    );
+    return {
+      input: buildClinicalContextInput(aggregate, common),
+      scopeLabel: nightScopeLabel(aggregate.date),
+    };
+  }, [aggregate, session, ahiThresholds, displayPrefs]);
+
   const sessionStartMs = useMemo(
     () => (session ? new Date(session.startTime).getTime() : 0),
     [session],
@@ -898,6 +941,21 @@ export default function SessionDetail() {
           </div>
         </div>
         <div className={styles.headerActions}>
+          {aggregate && (
+            <>
+              <InsightTrigger
+                label="Summarize this night"
+                ariaLabel="Summarize this night with AI"
+                buildRequest={buildNightRequest}
+              />
+              <InsightTrigger
+                label="Clinical context"
+                ariaLabel="Explain this night's compliance and severity context with AI"
+                appearance="subtle"
+                buildRequest={buildClinicalRequest}
+              />
+            </>
+          )}
           <Button variant="primary" onClick={() => navigate(`/sessions/${session.id}/signals`)}>
             View Signals
           </Button>

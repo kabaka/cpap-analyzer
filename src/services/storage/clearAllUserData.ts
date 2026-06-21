@@ -28,6 +28,7 @@
 
 import { clearBreathingDetectionMemoryCache } from '@/hooks/breathingDetectionCache';
 import { useDataStore } from '@/stores/useDataStore';
+import { useLLMCredentialStore } from '@/stores/useLLMCredentialStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { getDB, resetDB } from './getDB';
 import { OPFSService } from './OPFSService';
@@ -134,6 +135,13 @@ export async function clearAllUserData(): Promise<void> {
   //     lifetime; without this it would survive the wipe and be re-served from
   //     memory on a later mount.
   clearBreathingDetectionMemoryCache();
+
+  // 5c. In-memory LLM credential store (privacy-critical). BYO provider API keys
+  //     live in memory by default and are NOT covered by the localStorage sweep;
+  //     without this a key entered this session would survive the wipe. forgetAll
+  //     also removes any sessionStorage mirror (the "remember on this device"
+  //     opt-in writes to sessionStorage only — never localStorage).
+  useLLMCredentialStore.getState().forgetAll();
 
   // 6. Persisted settings store — reset to defaults. (The `cpap-settings`
   //    localStorage entry was already removed in step 3; this resets the

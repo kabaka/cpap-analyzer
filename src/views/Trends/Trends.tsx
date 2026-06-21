@@ -10,8 +10,17 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
+import {
+  InsightTrigger,
+  buildDateRangeInput,
+  buildGroundingCommon,
+  machineClassOf,
+  rangeScopeLabel,
+} from '@/components/insights';
+import { formatDate } from '@/utils/formatDate';
 import { SyncedChartProvider } from './context/SyncedChartContext';
 import { detectSettingsChanges } from './utils/detectSettingsChanges';
 import AHITrendChart from './charts/AHITrendChart';
@@ -32,6 +41,8 @@ export default function Trends() {
   const navigate = useNavigate();
   const dateRange = useAppStore((s) => s.dateRange);
   const { aggregates, loading, error } = useNightlyAggregates(dateRange);
+  const ahiThresholds = useSettingsStore((s) => s.analysisParams.ahi);
+  const displayPrefs = useSettingsStore((s) => s.display);
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -40,6 +51,21 @@ export default function Trends() {
     () => [...aggregates].sort((a, b) => a.date.localeCompare(b.date)),
     [aggregates],
   );
+
+  // Build the "Summarize range" insight request from the loaded aggregates and
+  // the active thresholds/display prefs. Machine class is coarse 'unknown' here
+  // (the Trends view does not load the per-session therapy mode); the snapshot's
+  // machineClass is optional metadata.
+  const buildRangeRequest = useCallback(() => {
+    const common = buildGroundingCommon(
+      { ahi: ahiThresholds, display: displayPrefs },
+      machineClassOf(null),
+    );
+    return {
+      input: buildDateRangeInput(sortedAggregates, common),
+      scopeLabel: rangeScopeLabel(formatDate(dateRange.start), formatDate(dateRange.end)),
+    };
+  }, [sortedAggregates, ahiThresholds, displayPrefs, dateRange]);
 
   // Detect settings changes for vertical marker lines
   const settingsChanges = useMemo(
@@ -118,6 +144,11 @@ export default function Trends() {
           <h1 className={styles.title}>Trends</h1>
         </div>
         <div className={styles.headerRight}>
+          <InsightTrigger
+            label="Summarize range"
+            ariaLabel="Summarize the selected date range with AI"
+            buildRequest={buildRangeRequest}
+          />
           <DateRangeSelector />
           <button
             className={styles.sidebarToggle}

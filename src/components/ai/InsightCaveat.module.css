@@ -1,0 +1,33 @@
+/* InsightCaveat — the inseparable, non-dismissible AI caveat banner (visual
+   spec §3.7). AI-tinted via --color-ai*, NOT error/warning-colored (it is the
+   AI's own disclaimer, not a failure). Color is reinforcement; the ✨/AI marker
+   + the literal text carry the signal (WCAG 1.4.1). */
+
+.caveat {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  background: var(--color-ai-bg);
+  border-left: 3px solid var(--color-ai);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.marker {
+  /* The leading ✨ AI marker; keep it from shrinking against the text. */
+  flex-shrink: 0;
+}
+
+.text {
+  line-height: var(--line-height-normal);
+}
+
+/* The fuller medical disclaimer (UX §7.8) — quiet, muted, informational. */
+.disclaimer {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  line-height: var(--line-height-normal);
+}
