@@ -21,6 +21,7 @@ describe('querySerialization', () => {
       spo2: { min: null, max: 88 },
       timeOfNight: { startMinute: 22 * 60, endMinute: 6 * 60 },
       dateRange: { start: 1_700_000_000_000, end: 1_700_100_000_000 },
+      sessionIds: null,
     };
     const result = roundTrip(query);
     expect([...result.types].sort()).toEqual(['Hypopnea', 'ObstructiveApnea']);
@@ -63,6 +64,71 @@ describe('querySerialization', () => {
   });
 });
 
+describe('querySerialization · session scope', () => {
+  it('emits a comma-separated session param for a multi-id scope', () => {
+    const query: EventQuery = {
+      ...emptyQuery(),
+      sessionIds: new Set(['a', 'b']),
+    };
+    expect(queryToSearchParams(query).sessions).toBe('a,b');
+  });
+
+  it('uses the plural `sessions` key (not the global `session` key)', () => {
+    // The singular `session` URL param is owned by the global useURLStateSync
+    // hook (app-wide selected session). The Explorer scope must use a distinct
+    // key so the two do not clobber each other on navigation.
+    const query: EventQuery = { ...emptyQuery(), sessionIds: new Set(['a']) };
+    const params = queryToSearchParams(query);
+    expect(params.session).toBeUndefined();
+    expect(params.sessions).toBe('a');
+  });
+
+  it('omits the session param when the scope is null', () => {
+    expect(queryToSearchParams(emptyQuery()).sessions).toBeUndefined();
+  });
+
+  it('omits the session param when the scope is an empty set', () => {
+    const query: EventQuery = { ...emptyQuery(), sessionIds: new Set<string>() };
+    expect(queryToSearchParams(query).sessions).toBeUndefined();
+  });
+
+  it('parses a comma-separated session param into a Set', () => {
+    const q = searchParamsToQuery(new URLSearchParams({ sessions: 'a,b' }));
+    expect(q.sessionIds).not.toBeNull();
+    expect([...(q.sessionIds ?? [])].sort()).toEqual(['a', 'b']);
+  });
+
+  it('ignores the singular `session` param (owned by the global URL sync)', () => {
+    expect(searchParamsToQuery(new URLSearchParams({ session: 'a,b' })).sessionIds).toBeNull();
+  });
+
+  it('drops empty entries in the session param', () => {
+    const q = searchParamsToQuery(new URLSearchParams({ sessions: 'a,,b' }));
+    expect([...(q.sessionIds ?? [])].sort()).toEqual(['a', 'b']);
+  });
+
+  it('yields a null scope when the session param is absent', () => {
+    expect(searchParamsToQuery(new URLSearchParams()).sessionIds).toBeNull();
+  });
+
+  it('yields a null scope when the session param is empty/only delimiters', () => {
+    expect(searchParamsToQuery(new URLSearchParams({ sessions: '' })).sessionIds).toBeNull();
+    expect(searchParamsToQuery(new URLSearchParams({ sessions: ',,' })).sessionIds).toBeNull();
+  });
+
+  it('round-trips a query that includes a session scope', () => {
+    const query: EventQuery = {
+      ...emptyQuery(),
+      types: new Set(['Hypopnea']),
+      sessionIds: new Set(['sess-1', 'sess-2']),
+    };
+    const result = roundTrip(query);
+    expect(result.sessionIds).not.toBeNull();
+    expect([...(result.sessionIds ?? [])].sort()).toEqual(['sess-1', 'sess-2']);
+    expect([...result.types]).toEqual(['Hypopnea']);
+  });
+});
+
 describe('queriesEqual', () => {
   it('returns true for two empty queries', () => {
     expect(queriesEqual(emptyQuery(), emptyQuery())).toBe(true);
@@ -99,5 +165,26 @@ describe('queriesEqual', () => {
     const a: EventQuery = { ...emptyQuery(), dateRange: { start: 1000, end: 2000 } };
     const b: EventQuery = { ...emptyQuery(), dateRange: { start: 1000, end: 3000 } };
     expect(queriesEqual(a, b)).toBe(false);
+  });
+
+  it('detects session-scope-only differences', () => {
+    const scoped: EventQuery = { ...emptyQuery(), sessionIds: new Set(['sess-1']) };
+    expect(queriesEqual(scoped, emptyQuery())).toBe(false);
+
+    const a: EventQuery = { ...emptyQuery(), sessionIds: new Set(['sess-1']) };
+    const b: EventQuery = { ...emptyQuery(), sessionIds: new Set(['sess-2']) };
+    expect(queriesEqual(a, b)).toBe(false);
+  });
+
+  it('treats session-set insertion order as semantically equivalent', () => {
+    const a: EventQuery = {
+      ...emptyQuery(),
+      sessionIds: new Set(['sess-1', 'sess-2']),
+    };
+    const b: EventQuery = {
+      ...emptyQuery(),
+      sessionIds: new Set(['sess-2', 'sess-1']),
+    };
+    expect(queriesEqual(a, b)).toBe(true);
   });
 });

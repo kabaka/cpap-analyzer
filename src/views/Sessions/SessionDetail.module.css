@@ -315,6 +315,181 @@
   background-color: var(--dot-color);
 }
 
+/* ── Events List ──────────────────────────────────────────────── */
+
+.eventsSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/*
+ * Accessible clickable grid (mirrors EventExplorer/EventTable). A shared column
+ * template keeps the header row and every event row aligned: fixed Time,
+ * flexible Type, auto Duration, then the chevron affordance. Real
+ * columnheader/gridcell roles give the column headers genuine per-column cells.
+ */
+.eventGrid {
+  display: block;
+}
+
+.eventHeaderRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border-default);
+  background-color: var(--color-surface-secondary);
+}
+
+.eventHeaderCell {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+/*
+ * Each event is one activatable row (one Tab stop per grid via roving tabindex).
+ * Transparent background lets the surrounding Card surface and the row-hover
+ * highlight read cleanly; the focus ring is the visible keyboard affordance.
+ */
+.eventRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.eventRow:last-child {
+  border-bottom: none;
+}
+
+.eventRow:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.eventRow:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Time column — monospace for stable column alignment. */
+.eventTimeCell {
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+/* Type column — swatch + label; grows to fill available width. */
+.eventTypeCell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.eventTypeLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Duration column — right-aligned, monospace. */
+.eventDurationCell {
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* Chevron affordance — hidden until row hover/focus. */
+.eventChevronCell {
+  color: var(--color-text-muted);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.eventRow:hover .eventChevronCell,
+.eventRow:focus-visible .eventChevronCell {
+  opacity: 1;
+}
+
+/* Right-align the Duration column to match its header. */
+.eventCellNumeric {
+  text-align: right;
+  justify-content: flex-end;
+}
+
+/* Footer caption + "view all" link below the events table. */
+.eventsFooter {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.eventsViewAllLink {
+  color: var(--color-text-link);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-fast);
+}
+
+.eventsViewAllLink:hover {
+  color: var(--color-text-link-hover);
+}
+
+/* Positive empty state for sessions with zero scored events. */
+.eventsEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+}
+
+.eventsEmptyIcon {
+  font-size: 2rem;
+  color: var(--color-status-normal);
+  line-height: 1;
+}
+
+.eventsEmptyTitle {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.eventsEmptyBody {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  margin: 0;
+  max-width: 420px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eventChevronCell {
+    transition: none;
+  }
+}
+
 /* ── Loading / Error States ───────────────────────────────────── */
 
 .loadingContainer {

@@ -30,6 +30,8 @@ export interface QueryBuilderProps {
   onChange: (next: EventQuery) => void;
   /** All loaded events (for computing extents and present types). */
   events: readonly Event[];
+  /** sessionId → session `startTime` (ISO), for labelling session-scope chips. */
+  sessionStartTimes: ReadonlyMap<string, string>;
   availability: FieldAvailability;
   /** Persisted user queries. */
   savedQueries: readonly SavedQuery[];
@@ -82,10 +84,27 @@ function endOfLocalDay(epochMs: number): number {
   return d.getTime();
 }
 
+/**
+ * Human-readable calendar date for a session-scope chip, derived from the
+ * session `startTime` (ISO). Returns `null` when the start is missing or
+ * unparseable so callers can fall back to a non-UUID label.
+ */
+function fmtSessionDate(startIso: string | undefined): string | null {
+  if (startIso === undefined) return null;
+  const d = new Date(startIso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 export function QueryBuilder({
   query,
   onChange,
   events,
+  sessionStartTimes,
   availability,
   savedQueries,
   onSaveQuery,
@@ -128,6 +147,18 @@ export function QueryBuilder({
     onChange({ ...query, timeOfNight: next });
   };
 
+  // ── Session scope ───────────────────────────────────────────
+  // A non-null `sessionIds` pre-scopes the Explorer to specific sessions
+  // (e.g. linked from Session Detail). Removing the last id clears the scope
+  // back to `null` (no constraint).
+  const scopeIds = query.sessionIds === null ? [] : [...query.sessionIds];
+  const removeSessionScope = (id: string): void => {
+    if (query.sessionIds === null) return;
+    const next = new Set(query.sessionIds);
+    next.delete(id);
+    onChange({ ...query, sessionIds: next.size > 0 ? next : null });
+  };
+
   // ── Date range ──────────────────────────────────────────────
   // Defaults reflect the *global* app date range — the same window that
   // determines which events were loaded into the explorer. The explorer's
@@ -151,6 +182,40 @@ export function QueryBuilder({
           Reset
         </button>
       </div>
+
+      {/* Session scope (only when the Explorer is pre-scoped to sessions) */}
+      {scopeIds.length > 0 ? (
+        <section className={styles.section} aria-labelledby="qb-scope">
+          <h3 id="qb-scope" className={styles.sectionTitle}>
+            Session scope
+          </h3>
+          <div className={styles.chips} role="group" aria-label="Session scope filter">
+            {scopeIds.map((id) => {
+              const dateLabel = fmtSessionDate(sessionStartTimes.get(id));
+              const chipText = dateLabel === null ? 'Session' : `Session: ${dateLabel}`;
+              const removeLabel =
+                dateLabel === null ? 'Remove session scope' : `Remove session scope ${dateLabel}`;
+              return (
+                <span key={id} className={`${styles.chip} ${styles.chipSelected}`}>
+                  <span>{chipText}</span>
+                  <button
+                    type="button"
+                    className={styles.chipRemove}
+                    aria-label={removeLabel}
+                    onClick={() => removeSessionScope(id)}
+                  >
+                    ×
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+          <p className={styles.hint}>
+            Scoped to specific sessions. Events load regardless of the global date range while a
+            scope is active.
+          </p>
+        </section>
+      ) : null}
 
       {/* Event types */}
       <section className={styles.section} aria-labelledby="qb-types">
