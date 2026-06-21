@@ -294,6 +294,11 @@
   --z-dropdown: 100;
   --z-sticky: 200;
   --z-overlay: 300;
+  /* Non-modal drawers (e.g. the AI Insights rail) sit above sticky page chrome
+     such as the layout header/StatusBar so their controls — notably the close
+     button — remain pointer-clickable, while staying below true modal dialogs
+     and toasts. */
+  --z-drawer: 350;
   --z-modal: 400;
   --z-tooltip: 500;
   --z-toast: 600;

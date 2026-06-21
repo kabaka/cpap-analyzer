@@ -9,7 +9,9 @@
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: var(--z-drawer, 60);
+  /* Non-modal: above sticky page chrome (header/StatusBar at --z-sticky) so the
+     close control is pointer-clickable, but below modals/toasts (UX §4.1). */
+  z-index: var(--z-drawer);
   width: min(420px, 100vw);
   display: flex;
   flex-direction: column;

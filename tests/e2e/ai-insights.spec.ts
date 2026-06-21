@@ -449,17 +449,18 @@ test.describe('AI Insights — Accessibility smoke', () => {
       name: /summarize the selected date range/i,
     });
 
-    // Close via the explicit close control. The drawer is a NON-modal side rail
-    // that overlaps page chrome (e.g. the header theme control) at this viewport,
-    // so we activate the close button by keyboard (focus + Enter) — which both
-    // avoids pointer hit-testing against the underlying header and exercises the
-    // control's keyboard operability (UX §8.1).
+    // Close via the explicit close control with a REAL pointer click. The drawer
+    // is a NON-modal side rail whose top-right "×" overlaps page chrome (e.g. the
+    // header theme control) at this viewport. The close button must therefore sit
+    // ABOVE that chrome in the stacking order so a real pointer click lands on it
+    // rather than being intercepted by the header. Playwright's click performs
+    // actionability + hit-testing, so this assertion FAILS if the overlap
+    // regresses (pointer intercepted), guarding the stacking-context fix.
     await openTrigger.click();
     const drawer = page.getByRole('complementary', { name: /ai insight/i });
     await expect(drawer).toBeVisible();
     const closeButton = drawer.getByRole('button', { name: /close ai insight/i });
-    await closeButton.focus();
-    await page.keyboard.press('Enter');
+    await closeButton.click();
     await expect(page.getByRole('complementary', { name: /ai insight/i })).toHaveCount(0);
 
     // Re-open and close via Escape.
