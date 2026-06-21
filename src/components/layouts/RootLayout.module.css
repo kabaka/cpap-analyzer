@@ -53,13 +53,18 @@
   top: 0;
   left: 0;
   bottom: 0;
-  width: 240px;
+  width: var(--sidebar-width-expanded);
   background-color: var(--color-surface-sidebar);
   border-right: 1px solid var(--color-border-default);
   display: flex;
   flex-direction: column;
   z-index: var(--z-sticky);
-  transition: transform var(--transition-base);
+  /* `transform` drives the mobile slide; `width` drives the desktop rail
+     collapse/expand. Both go through --transition-base, which reduced-motion
+     zeroes globally (no hardcoded durations). */
+  transition:
+    transform var(--transition-base),
+    width var(--transition-base);
 }
 
 .brandArea {
@@ -219,12 +224,13 @@
 /* ── Content wrapper ── */
 
 .content {
-  margin-left: 240px;
+  margin-left: var(--sidebar-width-expanded);
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   min-width: 0;
+  transition: margin-left var(--transition-base);
 }
 
 /* ── Header bar ── */
@@ -299,6 +305,138 @@
 
 .overlay {
   display: none;
+}
+
+/* ── Rail toggle (desktop-only, pinned in the sidebar footer) ──
+   Reuses the .menuToggle visual language but renders as a full-width row in
+   expanded mode (icon + "Collapse" label, like a navLink) and a centered
+   square in rail mode. Hidden below 768px so it never coexists with the
+   mobile hamburger. */
+
+.railToggle {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .railToggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: auto;
+    /* ≥36px desktop floor */
+    height: 40px;
+    margin: 0 var(--space-2);
+    padding: 0 var(--space-3);
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    text-align: left;
+    transition: background-color var(--transition-fast);
+  }
+
+  .railToggle:hover {
+    background-color: var(--color-surface-tertiary);
+  }
+
+  .railToggle:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .railToggleIcon {
+    flex-shrink: 0;
+  }
+}
+
+/* ── Rail (collapsed) state ──
+   Driven by `.sidebarRail` on the <aside> and `.contentRail` on the content
+   wrapper. ALL rail rules are scoped to ≥768px so the mobile off-canvas drawer
+   is never affected by the collapsed preference. Label visibility is hard-cut
+   (display:none) — never transitioned. */
+
+@media (min-width: 768px) {
+  .sidebarRail {
+    width: var(--sidebar-width-rail);
+  }
+
+  .contentRail {
+    margin-left: var(--sidebar-width-rail);
+  }
+
+  /* Brand: hide the wordmark, center the mark. */
+  .sidebarRail .brandArea {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .sidebarRail .wordmark {
+    display: none;
+  }
+
+  /* Nav + footer links become centered 48px squares, icon-only. */
+  .sidebarRail .navLink {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+
+  .sidebarRail .navLabel {
+    display: none;
+  }
+
+  /* Active accent bar hugs the rail's left edge for centered icons. */
+  .sidebarRail .navLinkActive::before {
+    left: calc(-1 * var(--space-2));
+    top: 50%;
+    transform: translateY(-50%);
+    height: 24px;
+    width: 3px;
+  }
+
+  /* Group labels disappear; preserve visual group separation with a short
+     centered divider between consecutive groups, and tighten the group gap. */
+  .sidebarRail .navGroupLabel {
+    display: none;
+  }
+
+  .sidebarRail .navGroups {
+    gap: var(--space-2);
+  }
+
+  .sidebarRail .navGroup + .navGroup {
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    /* Short centered ~32px divider (the uppercase labels are hidden in rail). */
+    background-image: linear-gradient(
+      to right,
+      var(--color-border-subtle),
+      var(--color-border-subtle)
+    );
+    background-repeat: no-repeat;
+    background-position: top center;
+    background-size: 32px 1px;
+  }
+
+  /* Rail toggle: centered icon-only square, hide its text label. */
+  .sidebarRail .railToggle {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+
+  .sidebarRail .railToggleLabel {
+    display: none;
+  }
 }
 
 /* ── Responsive: < 768px ── */

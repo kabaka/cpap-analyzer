@@ -63,6 +63,7 @@ import type { Event as TherapyEvent } from '@/types';
 import { isMeaningfulSample } from '@/parsers/validation/physiologicalRanges';
 import { evaluateDeepLink, formatOffsetLabel } from './deepLinkGuard';
 import { createFramePaintScheduler, type FramePaintScheduler } from './framePaintScheduler';
+import { createResizeCoalescer, type ResizeCoalescer } from './resizeCoalescer';
 import {
   detectionReadoutText,
   EMPTY_HOVERED_REGION,
@@ -451,6 +452,13 @@ export default function SignalViewer() {
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<HybridSignalRenderer | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
+  // rAF-coalescing applier for wrapper-width changes. Records the latest
+  // observed width and applies it at most once per frame, and — crucially —
+  // suppresses applies entirely while the sidebar collapse/expand transition is
+  // animating (document.body.dataset.sidebarAnimating === 'true'), performing a
+  // single authoritative trailing apply once the flag clears. See
+  // resizeCoalescer.ts. Created lazily on observe, torn down with the renderer.
+  const resizeCoalescerRef = useRef<ResizeCoalescer | null>(null);
   const opfsRef = useRef<OPFSService | null>(null);
 
   /** Full CPAP session signal data preloaded into memory. */
@@ -1111,15 +1119,27 @@ export default function SignalViewer() {
     if (!wrapper) return;
 
     if (!observerRef.current) {
+      // rAF-coalesce every observed resize, and suppress applies while the
+      // sidebar transition animates (a single authoritative trailing apply runs
+      // once it ends). setWrapperWidth is a stable useState setter, so the
+      // coalescer can be created once here. See resizeCoalescer.ts.
+      const coalescer = createResizeCoalescer(
+        (width) => setWrapperWidth(width),
+        () => document.body.dataset.sidebarAnimating === 'true',
+      );
+      resizeCoalescerRef.current = coalescer;
+
       const observer = new ResizeObserver((entries) => {
+        // Record only the latest width; the coalescer decides when to apply.
         for (const entry of entries) {
-          const { width } = entry.contentRect;
-          if (width > 0) setWrapperWidth(width);
+          coalescer.record(entry.contentRect.width);
         }
       });
       observerRef.current = observer;
       observer.observe(wrapper);
 
+      // Initial mount is never animating, so set the first-paint width
+      // synchronously (bypassing the coalescer) for correct first paint.
       const rect = wrapper.getBoundingClientRect();
       if (rect.width > 0) setWrapperWidth(rect.width);
     }
@@ -1129,6 +1149,12 @@ export default function SignalViewer() {
     if (observerRef.current) {
       observerRef.current.disconnect();
       observerRef.current = null;
+    }
+    // Cancel any pending apply frame AND the post-animation poll so no rAF
+    // leaks and no apply fires after teardown/unmount (even mid-animation).
+    if (resizeCoalescerRef.current) {
+      resizeCoalescerRef.current.cancel();
+      resizeCoalescerRef.current = null;
     }
     if (rendererRef.current) {
       rendererRef.current.dispose();

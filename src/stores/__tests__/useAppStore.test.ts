@@ -15,6 +15,7 @@ describe('useAppStore', () => {
       selectedSessionId: null,
       theme: 'system',
       resolvedTheme: 'light',
+      sidebarCollapsed: false,
       importStatus: 'idle',
       importProgress: { current: 0, total: 0 },
     });
@@ -43,6 +44,80 @@ describe('useAppStore', () => {
     it('should have resolvedTheme as "light" when matchMedia is false', () => {
       // jsdom matchMedia returns matches: false by default
       expect(useAppStore.getState().resolvedTheme).toBe('light');
+    });
+
+    it('should have sidebarCollapsed default to false (expanded)', () => {
+      expect(useAppStore.getState().sidebarCollapsed).toBe(false);
+    });
+  });
+
+  describe('sidebar collapse', () => {
+    it('setSidebarCollapsed(true) collapses the sidebar', () => {
+      useAppStore.getState().setSidebarCollapsed(true);
+      expect(useAppStore.getState().sidebarCollapsed).toBe(true);
+    });
+
+    it('setSidebarCollapsed(false) expands the sidebar', () => {
+      useAppStore.getState().setSidebarCollapsed(true);
+      useAppStore.getState().setSidebarCollapsed(false);
+      expect(useAppStore.getState().sidebarCollapsed).toBe(false);
+    });
+
+    it('toggleSidebarCollapsed flips the state from its current value', () => {
+      expect(useAppStore.getState().sidebarCollapsed).toBe(false);
+      useAppStore.getState().toggleSidebarCollapsed();
+      expect(useAppStore.getState().sidebarCollapsed).toBe(true);
+      useAppStore.getState().toggleSidebarCollapsed();
+      expect(useAppStore.getState().sidebarCollapsed).toBe(false);
+    });
+
+    it('persists sidebarCollapsed alongside theme in the localStorage payload', () => {
+      useAppStore.getState().setSidebarCollapsed(true);
+      const stored = localStorage.getItem('cpap-theme');
+      expect(stored).toBeTruthy();
+      const parsed: unknown = JSON.parse(stored!);
+      // partialize persists { theme, sidebarCollapsed } under the state key.
+      expect(parsed).toHaveProperty('state.sidebarCollapsed', true);
+    });
+
+    it('does not persist sidebarCollapsed=true when expanded (writes false)', () => {
+      // Start collapsed (persisted true), then expand and confirm the payload
+      // reflects the new value rather than leaving a stale true.
+      useAppStore.getState().setSidebarCollapsed(true);
+      useAppStore.getState().setSidebarCollapsed(false);
+      const stored = localStorage.getItem('cpap-theme');
+      const parsed: unknown = JSON.parse(stored!);
+      expect(parsed).toHaveProperty('state.sidebarCollapsed', false);
+    });
+  });
+
+  describe('persistence backward compatibility', () => {
+    it('merges a theme-only payload (no sidebarCollapsed) to sidebarCollapsed=false', () => {
+      // Simulate an older persisted payload that predates the sidebar feature.
+      // zustand's persist `merge` should default the missing key to false.
+      const legacyPayload = JSON.stringify({ state: { theme: 'dark' }, version: 0 });
+      localStorage.setItem('cpap-theme', legacyPayload);
+
+      // Re-run hydration from the stored value through the store's own merge fn.
+      useAppStore.persist.rehydrate();
+
+      const state = useAppStore.getState();
+      expect(state.theme).toBe('dark');
+      expect(state.sidebarCollapsed).toBe(false);
+    });
+
+    it('restores a persisted sidebarCollapsed=true on rehydrate', () => {
+      const payload = JSON.stringify({
+        state: { theme: 'light', sidebarCollapsed: true },
+        version: 0,
+      });
+      localStorage.setItem('cpap-theme', payload);
+
+      useAppStore.persist.rehydrate();
+
+      const state = useAppStore.getState();
+      expect(state.theme).toBe('light');
+      expect(state.sidebarCollapsed).toBe(true);
     });
   });
 

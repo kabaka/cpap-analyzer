@@ -66,6 +66,13 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
       },
       {
+        heading: 'Finding your way around',
+        paragraphs: [
+          'The left sidebar is the primary navigation. It groups the views into an "Analysis" section (Dashboard, Sessions, Trends, Explore, and Reports) and a "Data" section (Data, where you import and manage your records), with Help and Settings pinned to the footer.',
+          'On a wide screen you can collapse the sidebar to a narrow, icon-only "rail" to reclaim horizontal space for charts and the signal viewer — useful when inspecting whole-night waveforms. Use the toggle button pinned in the sidebar footer (labelled "Collapse sidebar" when expanded, "Expand sidebar" when collapsed), or press the `[` key. In the collapsed rail, each item shows only its icon; hover or move keyboard focus to an icon to reveal a tooltip with its label, and the view you are currently on stays marked by an accent bar. Your choice is remembered the next time you open the app — like every preference, it is stored locally in your browser and never leaves your device. The `[` shortcut is desktop-only and is ignored while you are typing in a text field. On narrow (mobile) screens the sidebar instead appears as a slide-in drawer opened from the menu button.',
+        ],
+      },
+      {
         heading: 'Privacy guarantee',
         paragraphs: [
           "CPAP Analyzer is architecturally incapable of transmitting your data. It runs entirely in your browser using client-side JavaScript. There are no server endpoints, no analytics services, no tracking pixels, and no external API calls. Your data is stored in your browser's local storage (IndexedDB and OPFS) and never leaves your device.",
