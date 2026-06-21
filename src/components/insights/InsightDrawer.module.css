@@ -1,0 +1,396 @@
+/* InsightDrawer — the non-modal right-side drawer for AI Insights (visual spec
+   §3). Six states share the scope header, the ✨ AI pill, and the source panel.
+   Non-modal: the user can still see and tab back to their data while reading
+   (UX §4.1, §8.1; HAX G11). Color is never the sole signal — every AI cue
+   carries text. */
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-drawer, 60);
+  width: min(420px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-elevated);
+  border-left: 1px solid var(--color-border-default);
+  box-shadow: var(--shadow-lg);
+  /* Internal scroll for long narratives; header/actions stay anchored. */
+  overflow: hidden;
+}
+
+/* Mobile (< 1024px): full-width bottom-anchored sheet rather than a side rail. */
+@media (max-width: 1023px) {
+  .drawer {
+    width: 100vw;
+    top: auto;
+    height: 85vh;
+    border-left: none;
+    border-top: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+}
+
+.scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.headerText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.headerTitleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* The scope heading is programmatically focusable on open (focus-on-open). */
+.title:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.scope {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.closeButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* ≥44×44 touch target (UX §8.5). */
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--font-size-lg);
+  line-height: 1;
+}
+
+.closeButton:hover {
+  color: var(--color-text-primary);
+  background: var(--color-surface-secondary);
+}
+
+.closeButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Per-output egress reminder (cloud backends only) ────────────────────── */
+
+.egressReminder {
+  background: var(--color-info-bg);
+  border-left: 3px solid var(--color-info);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+/* ── Idle state ──────────────────────────────────────────────────────────── */
+
+.primaryAction {
+  align-self: flex-start;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family-sans);
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.chip:hover {
+  border-color: var(--color-ai);
+  background: var(--color-ai-subtle-bg);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.chipGlyph {
+  color: var(--color-ai);
+  flex-shrink: 0;
+}
+
+/* ── Generating / streaming ──────────────────────────────────────────────── */
+
+.statusLine {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.prose {
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-relaxed);
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+}
+
+/* The blinking streaming caret (visual spec §3.2). Reduced-motion: static. */
+.caret {
+  color: var(--color-ai);
+  font-weight: var(--font-weight-bold);
+  animation: ai-caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes ai-caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+  }
+}
+
+.progress {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.partialNotice {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* ── Action row (complete state) ─────────────────────────────────────────── */
+
+.actionRow {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.actionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 44px;
+  min-width: 44px;
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.actionButton:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-emphasis);
+}
+
+.actionButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.actionButtonActive {
+  border-color: var(--color-ai);
+  color: var(--color-ai);
+}
+
+.provenance {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-family: var(--font-family-mono);
+}
+
+.fallbackNotice {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* ── Error state ─────────────────────────────────────────────────────────── */
+
+.error {
+  background: var(--color-error-bg);
+  border-left: 3px solid var(--color-error);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.errorTitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-error);
+}
+
+.errorMessage {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+
+.empty {
+  background: var(--color-surface-secondary);
+  border: 1px dashed var(--color-border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.emptyIcon {
+  font-size: var(--font-size-xl);
+  color: var(--color-text-muted);
+}
+
+.emptyMessage {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* ── "Show your work" source panel ───────────────────────────────────────── */
+
+.sourcePanel {
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.sourceSummary {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.sourceSummary::-webkit-details-marker {
+  display: none;
+}
+
+.sourceSummary:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.sourceList {
+  margin: var(--space-3) 0 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.sourceTerm {
+  color: var(--color-text-secondary);
+  grid-column: 1;
+  margin: 0;
+}
+
+.sourceValue {
+  grid-column: 2;
+  text-align: right;
+  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.sourceQualifier {
+  color: var(--color-text-muted);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-xs);
+}
+
+.sourceEmpty {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+/* Visually-hidden live region for coarse screen-reader streaming announcements
+   (UX §8.3): present in the DOM and announced, but not shown (sighted users see
+   the .prose region instead). */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
