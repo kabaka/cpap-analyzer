@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.5] — 2026-06-21
+
 ### Added
 
 - **Session Detail now lists each respiratory event with its wall-clock time.** The Session Detail page gains an **Events** list that enumerates the night's individual respiratory events — each row shows the event's wall-clock time (the recording device's then-current local clock), its type (obstructive / central / mixed / unclassified apnea, hypopnea, RERA, large leak, …), and its duration — so you can see exactly _when_ each event occurred during the night rather than only its nightly count or rate. Each row deep-links into the Signal Viewer framed on that event. The list shows the first 50 events earliest-first, with a link to the full Event Explorer (`/explore/events`) for nights that have more, and shows a positive "clean night — no events were recorded" message when the night had none.
