@@ -1,0 +1,69 @@
+/**
+ * Determinate progress bar. Extracted from the inline pattern in
+ * ImportWizard.tsx so multiple surfaces share one accessible, themed primitive.
+ *
+ * The fill width is driven by a ref-applied inline style (no per-frame React
+ * re-render) and animates via a width transition that is disabled under
+ * `prefers-reduced-motion` — the information lives in the value, not the motion.
+ */
+
+.wrapper {
+  width: 100%;
+}
+
+.bar {
+  width: 100%;
+  height: 8px;
+  background-color: var(--color-surface-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  background-color: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-base);
+  width: 0;
+}
+
+/* Indeterminate (no known total) — a sweeping shimmer. */
+.indeterminate {
+  width: 40%;
+  animation: progressbar-indeterminate 1.5s ease-in-out infinite;
+}
+
+/*
+ * Paused state (e.g. a cancelled run): a hatch overlay so the bar reads as
+ * "stopped, not complete" without relying on colour alone (WCAG 1.4.1).
+ */
+.paused {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 4px,
+    var(--color-surface-primary) 4px,
+    var(--color-surface-primary) 8px
+  );
+  opacity: 0.85;
+}
+
+@keyframes progressbar-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+
+  .indeterminate {
+    animation: none;
+    width: 100%;
+  }
+}

@@ -26,6 +26,7 @@
  * @module services/storage/clearAllUserData
  */
 
+import { clearBreathingDetectionMemoryCache } from '@/hooks/breathingDetectionCache';
 import { useDataStore } from '@/stores/useDataStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { getDB, resetDB } from './getDB';
@@ -127,6 +128,12 @@ export async function clearAllUserData(): Promise<void> {
 
   // 5. In-memory analysis/session cache held in the data store.
   useDataStore.getState().clearCache();
+
+  // 5b. In-memory PB/CSR breathing-detection cache (privacy-critical). The L1
+  //     Map holds derived health data (PeriodicBreathingResult) for the tab's
+  //     lifetime; without this it would survive the wipe and be re-served from
+  //     memory on a later mount.
+  clearBreathingDetectionMemoryCache();
 
   // 6. Persisted settings store — reset to defaults. (The `cpap-settings`
   //    localStorage entry was already removed in step 3; this resets the

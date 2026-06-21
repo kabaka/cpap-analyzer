@@ -6,6 +6,7 @@
  * storage backends (IndexedDB + OPFS).
  */
 
+import type { PeriodicBreathingResult } from '@/analysis/breathing';
 import type { NightlyAggregate, Session } from './session';
 import type { Event } from './events';
 import type {
@@ -128,6 +129,69 @@ export interface IntegrationImportRecord {
   readonly errors: readonly ImportError[];
   readonly durationSeconds: number;
   readonly fileHashes: readonly string[];
+}
+
+/**
+ * Persisted per-night periodic-breathing / Cheyne–Stokes detection result.
+ *
+ * One record per (sessionId, algoVersion, paramHash): the full
+ * {@link PeriodicBreathingResult} the detector produced for that session under a
+ * specific detector version + parameter set. Read cheaply across a date range by
+ * the Breathing-Patterns catalog (no OPFS I/O on a hit); recomputed from OPFS
+ * only on a miss or when the version/param hash no longer matches current.
+ *
+ * Cache, not source of truth: OPFS signals remain canonical (ADR 0005). A
+ * stale/cold record is simply never read and is reclaimed by version eviction.
+ */
+export interface BreathingDetectionRecord {
+  /**
+   * Primary key. Composite string `${sessionId}::${algoVersion}::${paramHash}`.
+   * Encodes the full cache identity so a `get(id)` is an exact validity check
+   * and a re-detect under the same version overwrites in place (idempotent put).
+   * `::` is a safe separator — sessionId is a UUID v4, algoVersion an integer,
+   * paramHash a hex/base36 digest, none of which contain `::`.
+   */
+  readonly id: string;
+
+  /** Foreign key to `sessions.id`. Indexed; drives cascade delete + bulk get. */
+  readonly sessionId: string;
+
+  /**
+   * Night date (YYYY-MM-DD), denormalised from the session for range reads.
+   * Matches `Session.date` / `NightlyAggregate.date` (local calendar date).
+   * Indexed for the catalog's date-range query.
+   */
+  readonly date: string;
+
+  /**
+   * Detector algorithm version (integer). Bumped whenever
+   * `detectPeriodicBreathing` changes in a result-affecting way. Part of the
+   * cache identity; see docs/analysis/breathing-detection-cache-storage.md §4.
+   */
+  readonly algoVersion: number;
+
+  /**
+   * Stable hash of the EFFECTIVE `PeriodicBreathingParams` actually applied
+   * (defaults merged with any overrides). Part of the cache identity; see §4.
+   */
+  readonly paramHash: string;
+
+  /** Detected candidate episodes (the result's `episodes`, frozen at compute). */
+  readonly episodes: PeriodicBreathingResult['episodes'];
+
+  /** Total analyzed record length in hours (the result's `recordHours`). */
+  readonly recordHours: number;
+
+  /** Session-level CSR ≥5/h-over-≥2 h gate outcome (the result's flag). */
+  readonly sessionCriterionMet: boolean;
+
+  /**
+   * ISO 8601 timestamp when this detection was computed and cached. Used for
+   * provenance, debugging, and (optionally) age-based eviction. Indexed so a
+   * future "purge cache older than X" sweep mirrors
+   * `deleteAnalysisResultsBefore`.
+   */
+  readonly computedAt: string;
 }
 
 /** Date range for data queries (ISO date strings). */
