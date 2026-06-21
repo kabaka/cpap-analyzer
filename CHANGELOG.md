@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.4] — 2026-06-21
+
 ### Fixed
 
 - **Collapsed navigation sidebar icons now keep their colour, vertical alignment, and centring, and the expanded collapse/expand toggle is fully clickable.** When the desktop sidebar (shipped in 2026.06.3) was collapsed to the icon-only rail, its navigation icons regressed in three ways: they changed colour, jumped upward and lost the vertical alignment they had when expanded, and hugged the left edge of the rail instead of being centred. Separately, the collapse/expand toggle button's expanded (full-width) form was not clickable across its whole row, unlike the other navigation items. All four are now fixed: in the collapsed rail the icons keep the same colour and vertical position as in the expanded sidebar and are horizontally centred, and the expanded toggle's entire row is clickable like every other navigation item. Presentation/navigation-only; no data or behaviour changed.
