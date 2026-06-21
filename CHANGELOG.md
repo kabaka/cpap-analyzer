@@ -7,7 +7,9 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Collapsible navigation sidebar (desktop).** The left navigation sidebar can now be collapsed from its full 240px width to a narrow, icon-only "rail" and expanded back, reclaiming horizontal space for the analysis and signal views on wide screens. A toggle button is pinned in the sidebar footer (below Help and Settings); its accessible name reflects state — "Collapse sidebar" when expanded, "Expand sidebar" when collapsed — and you can also toggle it from the keyboard with the `[` shortcut (desktop only; ignored while you are typing in a text field, so the bracket key still types normally). In the collapsed rail, navigation items show only their icons, and hovering or keyboard-focusing an icon reveals a tooltip with its label; the active item remains marked by an accent bar, so it is identifiable without relying on colour alone (WCAG AA). Your collapsed/expanded choice is remembered across reloads, stored locally in your browser alongside the theme preference — consistent with the app's privacy-first, no-server design; nothing about this preference leaves your device. Mobile (< 768px) continues to use the existing slide-in navigation drawer, which is unchanged.
 
 ## [2026.06.2] — 2026-06-21
 

@@ -187,6 +187,10 @@
   --color-trend-neutral-bg: var(--color-surface-tertiary);
 
   /* APP CHROME (sidebar / header / icons) */
+  /* Sidebar geometry — theme-invariant. Expanded is the default desktop width;
+     rail is the collapsed icon-only width (desktop ≥768px only). */
+  --sidebar-width-expanded: 240px;
+  --sidebar-width-rail: 64px;
   --color-surface-sidebar: #fbfbfb;
   --color-nav-active-bg: rgba(37, 99, 235, 0.08);
   --color-nav-active-fg: #1d4ed8;

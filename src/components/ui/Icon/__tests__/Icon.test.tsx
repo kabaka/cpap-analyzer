@@ -22,6 +22,8 @@ describe('Icon', () => {
     'theme-system',
     'menu',
     'close',
+    'chevron-left',
+    'chevron-right',
     'storage',
     'calendar',
     'clock',

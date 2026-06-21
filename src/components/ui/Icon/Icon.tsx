@@ -21,6 +21,8 @@ export type IconName =
   | 'theme-system'
   | 'menu'
   | 'close'
+  | 'chevron-left'
+  | 'chevron-right'
   | 'storage'
   | 'calendar'
   | 'clock'
@@ -136,6 +138,8 @@ const PATHS: Record<IconName, JSX.Element> = {
       <line x1="18" y1="6" x2="6" y2="18" />
     </>
   ),
+  'chevron-left': <polyline points="15 5 8 12 15 19" />,
+  'chevron-right': <polyline points="9 5 16 12 9 19" />,
   storage: (
     <>
       <ellipse cx="12" cy="5.5" rx="7" ry="2.5" />
