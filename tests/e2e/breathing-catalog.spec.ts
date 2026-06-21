@@ -411,19 +411,14 @@ test.describe('Episode catalog — requires OPFS (skipped where unsupported)', (
       }
       await expect(statusLine(page)).toHaveAttribute('data-phase', 'cancelled');
 
-      // Resume appears and is itself keyboard-focusable + activatable.
+      // UX spec §6.5 / §11 acceptance: pressing Cancel must MOVE focus to the new
+      // Resume control so a keyboard/SR user is never dropped onto <body>. The
+      // view captures focus intent at the moment Cancel is pressed (a one-shot
+      // ref), then moves focus once the phase parks at `cancelled` — robust to the
+      // activating button unmounting and focus transiently falling to <body>.
       const resume = page.getByRole('button', { name: /Resume breathing analysis/ });
       await expect(resume).toBeVisible();
-      await resume.focus();
       await expect(resume).toBeFocused();
-
-      // NOTE (DEFECT, see report): UX spec §6.5 requires focus to MOVE to Resume
-      // automatically when Cancel is pressed. It does not — when the focused Cancel
-      // button unmounts, focus falls to <body> before the focus-management effect
-      // runs, so its `within` guard skips the move. We assert keyboard-operability
-      // here (the WCAG-critical guarantee) and report the auto-focus-move gap
-      // rather than asserting the broken behaviour. Do not "fix" by relaxing the
-      // spec — this is a real implementation bug for `frontend` to address.
     });
   });
 
@@ -470,12 +465,19 @@ test.describe('Episode catalog — OPFS unsupported state', () => {
     test.skip(supported, 'Browser supports OPFS — covered by the main matrix.');
 
     await page.goto(ROUTE);
-    // The hook surfaces its OPFS-unsupported error; the status line is in the
-    // terminal `error` phase. (Implementation note: the rendered string is the
-    // hook's terse message, not the richer §9 canonical copy — see report.)
+    // The hook detects the OPFS capability gate; the status line is in the
+    // terminal `error` phase. The view presents the canonical §9 copy (mapping the
+    // hook's terse technical string to the patient-facing message), not the raw
+    // hook string — see §8.2/§9 of the streaming-UX spec.
     await expect(statusLine(page)).toHaveAttribute('data-phase', 'error', { timeout: 15_000 });
-    // The visible error paragraph (the polite live region also carries the text).
-    await expect(page.getByText(/OPFS is not supported in this browser/i).last()).toBeVisible();
+    // The visible error paragraph carries the canonical §9 copy (the polite live
+    // region also carries the same text).
+    await expect(
+      page.getByText(/Breathing analysis isn't available in this browser/i).last(),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Origin Private File System \(OPFS\) to read your full-resolution/i).last(),
+    ).toBeVisible();
     // No progress bar / Cancel in the capability-failure state (§8.2).
     await expect(page.getByRole('progressbar')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Cancel breathing analysis' })).toHaveCount(0);

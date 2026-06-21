@@ -64,6 +64,10 @@
   margin: 0;
 }
 
+.errorIcon {
+  color: var(--color-error);
+}
+
 /* TECSA card */
 .tecsaCard {
   display: flex;

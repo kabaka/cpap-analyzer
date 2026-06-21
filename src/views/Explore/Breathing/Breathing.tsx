@@ -24,7 +24,7 @@
  * @module views/Explore/Breathing/Breathing
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { TecsaClass, TecsaClassification, TecsaNightFlag } from '@/analysis/breathing';
@@ -246,6 +246,27 @@ function plural(n: number): string {
   return n === 1 ? '' : 's';
 }
 
+/**
+ * Canonical OPFS-unsupported copy (UX spec §9 copy table, verbatim). The hook
+ * emits a terse technical string for this capability gate; the view presents the
+ * richer, patient-facing message instead — matching how the rest of the app
+ * surfaces capability-unsupported states (e.g. the Signal Viewer's "not available
+ * in this browser" notice) and keeping the engineering detail out of the UI.
+ */
+const OPFS_UNSUPPORTED_COPY =
+  "Breathing analysis isn't available in this browser. It needs the Origin Private File System " +
+  '(OPFS) to read your full-resolution airflow signals. Try a recent Chrome, Edge, or Safari, or ' +
+  'see the browser-support guide.';
+
+/**
+ * Map a fatal hook error to user-facing copy. The OPFS-unsupported gate is a
+ * known capability failure with canonical §8.2/§9 copy; any other fatal error is
+ * surfaced as-is (already plain-language from the hook, per §8.5).
+ */
+function friendlyCatalogError(error: string): string {
+  return /OPFS is not supported/i.test(error) ? OPFS_UNSUPPORTED_COPY : error;
+}
+
 interface EpisodeCatalogProps {
   readonly rows: readonly CatalogEpisode[];
   readonly phase: CatalogPhase;
@@ -379,7 +400,7 @@ function EpisodeCatalog({
         )} not yet analyzed.`,
       );
     } else if (phase === 'error') {
-      setLiveText(error ?? 'Could not load the episode catalog.');
+      setLiveText(error ? friendlyCatalogError(error) : 'Could not load the episode catalog.');
     }
   }, [
     phase,
@@ -394,23 +415,60 @@ function EpisodeCatalog({
   ]);
 
   // ── Focus management (UX §6.5): Cancel↔Resume↔status ──────────────────
+  // We capture the user's focus *intent* at the moment they press Cancel/Resume,
+  // rather than inferring it from `document.activeElement` after the transition.
+  // The activating button unmounts as the phase flips, so by the time the effect
+  // runs focus has already fallen to <body> — an `activeElement`-based guard then
+  // wrongly concludes focus is outside the catalog and skips the move (the
+  // reported WCAG defect). A one-shot intent ref, set only on a deliberate press,
+  // is the cleanest fix: focus moves on user-driven transitions and never on an
+  // unrelated re-render (the ref is null unless a button was just pressed).
   const cancelRef = useRef<HTMLButtonElement>(null);
   const resumeRef = useRef<HTMLButtonElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
   const prevPhaseRef = useRef<CatalogPhase>('idle');
+  const focusIntentRef = useRef<'cancel' | 'resume' | null>(null);
+
+  const handleCancel = useCallback(() => {
+    // After cancel, Cancel is replaced by Resume in the same row → land on Resume.
+    focusIntentRef.current = 'cancel';
+    onCancel();
+  }, [onCancel]);
+
+  const handleResume = useCallback(() => {
+    // After resume, Resume is replaced by Cancel again → land back on Cancel.
+    focusIntentRef.current = 'resume';
+    onResume();
+  }, [onResume]);
 
   useEffect(() => {
     const prev = prevPhaseRef.current;
     prevPhaseRef.current = phase;
     if (prev === phase) return;
-    // Only move focus on user-driven transitions, and only if focus is within
-    // the catalog (avoid stealing focus from elsewhere on the page).
-    const active = document.activeElement;
-    const within = active instanceof Node && statusRef.current?.parentElement?.contains(active);
-    if (phase === 'cancelled' && resumeRef.current && within) {
+
+    const intent = focusIntentRef.current;
+    focusIntentRef.current = null;
+
+    // Cancel pressed → run parks at `cancelled`; move focus to the new Resume.
+    if (intent === 'cancel' && phase === 'cancelled' && resumeRef.current) {
       resumeRef.current.focus();
-    } else if (phase === 'computing' && prev === 'cancelled' && cancelRef.current && within) {
+      return;
+    }
+    // Resume pressed → run re-enters reading-cache/computing; focus the new Cancel.
+    if (
+      intent === 'resume' &&
+      (phase === 'computing' || phase === 'reading-cache') &&
+      cancelRef.current
+    ) {
       cancelRef.current.focus();
+      return;
+    }
+    // Resume that immediately completes (nothing left to compute): Cancel never
+    // reappears, so land on the table region if it exists, else the status line —
+    // never drop the user on <body> (UX §6.5).
+    if (intent === 'resume' && phase === 'complete') {
+      (tableRef.current ?? statusRef.current)?.focus();
     }
   }, [phase]);
 
@@ -488,7 +546,7 @@ function EpisodeCatalog({
                 variant="secondary"
                 size="sm"
                 aria-label="Cancel breathing analysis"
-                onClick={onCancel}
+                onClick={handleCancel}
               >
                 Cancel
               </Button>
@@ -500,7 +558,7 @@ function EpisodeCatalog({
                 variant="secondary"
                 size="sm"
                 aria-label={`Resume breathing analysis for the remaining ${nightsRemaining} nights`}
-                onClick={onResume}
+                onClick={handleResume}
               >
                 Resume analysis
               </Button>
@@ -526,7 +584,14 @@ function EpisodeCatalog({
         <FailureDisclosure failures={failures} nightsFailed={nightsFailed} />
       )}
 
-      {error && <p className={styles.errorText}>{error}</p>}
+      {error && (
+        <p className={styles.errorText} role="alert">
+          <span className={styles.errorIcon} aria-hidden="true">
+            ⚠
+          </span>{' '}
+          {friendlyCatalogError(error)}
+        </p>
+      )}
 
       {phase === 'reading-cache' && rows.length === 0 && (
         <div className={styles.skeletonRows} aria-hidden="true">
@@ -537,7 +602,13 @@ function EpisodeCatalog({
       )}
 
       {!error && sorted.length > 0 && (
-        <div className={styles.tableScroll}>
+        <div
+          ref={tableRef}
+          className={styles.tableScroll}
+          tabIndex={-1}
+          role="region"
+          aria-label="Episode catalog results"
+        >
           <table className={styles.catalogTable}>
             <thead>
               <tr>
