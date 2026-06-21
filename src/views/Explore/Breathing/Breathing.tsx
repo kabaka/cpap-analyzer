@@ -24,18 +24,20 @@
  * @module views/Explore/Breathing/Breathing
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { TecsaClass, TecsaClassification, TecsaNightFlag } from '@/analysis/breathing';
 import { tecsaPresentation, TECSA_PRESENTATION_ORDER } from '@/analysis/breathing';
 import { ConfidenceBar, DetectionDisclaimer, TecsaClassBadge } from '@/components/domain/Breathing';
 import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
-import { Card, Select, Slider } from '@/components/ui';
+import { Button, Card, Popover, ProgressBar, Select, Skeleton, Slider } from '@/components/ui';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import {
   useBreathingEpisodeCatalog,
   type CatalogEpisode,
+  type CatalogFailure,
+  type CatalogPhase,
 } from '@/hooks/useBreathingEpisodeCatalog';
 import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
@@ -239,30 +241,72 @@ function CaiSparkline({
 type EpisodeFilter = 'all' | 'PeriodicBreathing' | 'CheyneStokes';
 type EpisodeSort = 'confidence' | 'date' | 'cycleLength' | 'duration';
 
+/** Pluralisation helper — "" for 1, "s" otherwise (UX spec §9 `{plural}`). */
+function plural(n: number): string {
+  return n === 1 ? '' : 's';
+}
+
 interface EpisodeCatalogProps {
   readonly rows: readonly CatalogEpisode[];
-  readonly nightsComputed: number;
+  readonly phase: CatalogPhase;
   readonly nightsTotal: number;
-  readonly capped: boolean;
-  readonly loading: boolean;
+  readonly nightsCached: number;
+  readonly nightsComputed: number;
+  readonly nightsFailed: number;
+  readonly failures: readonly CatalogFailure[];
   readonly error: string | null;
+  readonly onCancel: () => void;
+  readonly onResume: () => void;
   readonly onSelect: (row: CatalogEpisode) => void;
   readonly selectedKey: string | null;
 }
 
+/**
+ * The catalog status copy (UX spec §9), `aria-valuetext` for the progress bar,
+ * and the throttled live-region text are all derived from the same phase +
+ * counts so the visible line and the screen-reader announcement agree.
+ */
+function buildProgressValueText(
+  phase: CatalogPhase,
+  nightsTotal: number,
+  nightsCached: number,
+  nightsDone: number,
+): string {
+  switch (phase) {
+    case 'reading-cache':
+      return `Reading saved analysis: ${nightsCached} of ${nightsTotal} nights.`;
+    case 'cancelled':
+      return `Analysis cancelled at ${nightsDone} of ${nightsTotal} nights.`;
+    case 'complete':
+      return `Analysis complete: ${nightsDone} of ${nightsTotal} nights.`;
+    case 'computing':
+    default:
+      return `Analyzing: ${nightsDone} of ${nightsTotal} nights done, ${nightsCached} from cache.`;
+  }
+}
+
 function EpisodeCatalog({
   rows,
-  nightsComputed,
+  phase,
   nightsTotal,
-  capped,
-  loading,
+  nightsCached,
+  nightsComputed,
+  nightsFailed,
+  failures,
   error,
+  onCancel,
+  onResume,
   onSelect,
   selectedKey,
 }: EpisodeCatalogProps): JSX.Element {
   const [typeFilter, setTypeFilter] = useState<EpisodeFilter>('all');
   const [confidenceMin, setConfidenceMin] = useState(0);
   const [sortBy, setSortBy] = useState<EpisodeSort>('confidence');
+
+  const nightsDone = nightsCached + nightsComputed;
+  const nightsAnalyzed = nightsDone - nightsFailed;
+  const nightsRemaining = Math.max(0, nightsTotal - nightsDone - nightsFailed);
+  const running = phase === 'reading-cache' || phase === 'computing';
 
   const filtered = useMemo(() => {
     const minPct = confidenceMin / 100;
@@ -290,6 +334,87 @@ function EpisodeCatalog({
     });
     return copy;
   }, [filtered, sortBy]);
+
+  // ── Throttled live-region text (UX §6.2) ──────────────────────────────
+  // Update the announced text only on phase transitions and ~10% milestones,
+  // never on every streamed night. The visible counts update every render.
+  const [liveText, setLiveText] = useState('');
+  const lastMilestoneRef = useRef(-1);
+  const lastPhaseRef = useRef<CatalogPhase>('idle');
+
+  useEffect(() => {
+    const milestone = nightsTotal > 0 ? Math.floor((nightsDone / nightsTotal) * 10) : 0;
+    const phaseChanged = lastPhaseRef.current !== phase;
+    const milestoneChanged = milestone !== lastMilestoneRef.current;
+    const terminal = phase === 'complete' || phase === 'cancelled' || phase === 'error';
+
+    if (!phaseChanged && !milestoneChanged && !terminal) return;
+    lastPhaseRef.current = phase;
+    lastMilestoneRef.current = milestone;
+
+    if (phase === 'reading-cache') {
+      setLiveText(
+        `Reading saved analysis. ${nightsCached} of ${nightsTotal} night${plural(nightsTotal)}.`,
+      );
+    } else if (phase === 'computing') {
+      setLiveText(
+        `Analyzing ${nightsRemaining} new night${plural(nightsRemaining)}. ${nightsDone} of ${nightsTotal} done, ${nightsCached} from cache.`,
+      );
+    } else if (phase === 'complete') {
+      setLiveText(
+        nightsFailed > 0
+          ? `Analysis complete. ${sorted.length} episode${plural(
+              sorted.length,
+            )} from ${nightsAnalyzed} night${plural(nightsAnalyzed)}. ${nightsFailed} night${plural(
+              nightsFailed,
+            )} could not be analyzed.`
+          : `Analysis complete. ${sorted.length} episode${plural(
+              sorted.length,
+            )} from ${nightsAnalyzed} of ${nightsTotal} night${plural(nightsTotal)}.`,
+      );
+    } else if (phase === 'cancelled') {
+      setLiveText(
+        `Analysis cancelled. Showing ${nightsDone} of ${nightsTotal} nights. ${nightsRemaining} night${plural(
+          nightsRemaining,
+        )} not yet analyzed.`,
+      );
+    } else if (phase === 'error') {
+      setLiveText(error ?? 'Could not load the episode catalog.');
+    }
+  }, [
+    phase,
+    nightsTotal,
+    nightsCached,
+    nightsDone,
+    nightsRemaining,
+    nightsFailed,
+    nightsAnalyzed,
+    sorted.length,
+    error,
+  ]);
+
+  // ── Focus management (UX §6.5): Cancel↔Resume↔status ──────────────────
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const resumeRef = useRef<HTMLButtonElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  const prevPhaseRef = useRef<CatalogPhase>('idle');
+
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+    if (prev === phase) return;
+    // Only move focus on user-driven transitions, and only if focus is within
+    // the catalog (avoid stealing focus from elsewhere on the page).
+    const active = document.activeElement;
+    const within = active instanceof Node && statusRef.current?.parentElement?.contains(active);
+    if (phase === 'cancelled' && resumeRef.current && within) {
+      resumeRef.current.focus();
+    } else if (phase === 'computing' && prev === 'cancelled' && cancelRef.current && within) {
+      cancelRef.current.focus();
+    }
+  }, [phase]);
+
+  const valueText = buildProgressValueText(phase, nightsTotal, nightsCached, nightsDone);
 
   return (
     <Card className={styles.catalogCard} aria-labelledby="catalog-heading">
@@ -340,30 +465,78 @@ function EpisodeCatalog({
         </label>
       </div>
 
-      <div className={styles.catalogStatus} aria-live="polite">
-        {loading ? (
-          <span>
-            Detecting… {nightsComputed} of {nightsTotal} night{nightsTotal === 1 ? '' : 's'}{' '}
-            analysed.
-          </span>
-        ) : (
-          <span>
-            Showing {sorted.length} episode{sorted.length === 1 ? '' : 's'} from {nightsComputed} of{' '}
-            {nightsTotal} night{nightsTotal === 1 ? '' : 's'}
-            {capped ? ' (truncated to keep the page responsive)' : ''}.
-          </span>
-        )}
+      {/* Throttled polite live region — announces phase + milestones only. */}
+      <div className={styles.visuallyHidden} aria-live="polite" role="status">
+        {liveText}
       </div>
+
+      {phase !== 'error' && nightsTotal > 0 && (
+        <div className={styles.catalogProgress}>
+          <div className={styles.catalogProgressRow}>
+            <ProgressBar
+              className={styles.catalogProgressBar}
+              value={nightsDone}
+              max={nightsTotal}
+              paused={phase === 'cancelled'}
+              label="Breathing analysis progress"
+              valueText={valueText}
+            />
+            {running && (
+              <Button
+                ref={cancelRef}
+                className={styles.catalogProgressAction}
+                variant="secondary"
+                size="sm"
+                aria-label="Cancel breathing analysis"
+                onClick={onCancel}
+              >
+                Cancel
+              </Button>
+            )}
+            {phase === 'cancelled' && (
+              <Button
+                ref={resumeRef}
+                className={styles.catalogProgressAction}
+                variant="secondary"
+                size="sm"
+                aria-label={`Resume breathing analysis for the remaining ${nightsRemaining} nights`}
+                onClick={onResume}
+              >
+                Resume analysis
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div ref={statusRef} className={styles.catalogStatusLine} tabIndex={-1} data-phase={phase}>
+        <CatalogStatusCopy
+          phase={phase}
+          filteredCount={sorted.length}
+          totalEpisodes={rows.length}
+          nightsTotal={nightsTotal}
+          nightsCached={nightsCached}
+          nightsDone={nightsDone}
+          nightsRemaining={nightsRemaining}
+          nightsAnalyzed={nightsAnalyzed}
+        />
+      </div>
+
+      {nightsFailed > 0 && (phase === 'complete' || phase === 'cancelled') && (
+        <FailureDisclosure failures={failures} nightsFailed={nightsFailed} />
+      )}
 
       {error && <p className={styles.errorText}>{error}</p>}
 
-      {!error && !loading && sorted.length === 0 && (
-        <p className={styles.muted}>
-          No candidate periodic-breathing or Cheyne-Stokes episodes matched the current filters.
-        </p>
+      {phase === 'reading-cache' && rows.length === 0 && (
+        <div className={styles.skeletonRows} aria-hidden="true">
+          <Skeleton height={28} />
+          <Skeleton height={28} />
+          <Skeleton height={28} />
+        </div>
       )}
 
-      {sorted.length > 0 && (
+      {!error && sorted.length > 0 && (
         <div className={styles.tableScroll}>
           <table className={styles.catalogTable}>
             <thead>
@@ -430,6 +603,154 @@ function EpisodeCatalog({
         </div>
       )}
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Catalog status copy + failure disclosure
+// ---------------------------------------------------------------------------
+
+interface CatalogStatusCopyProps {
+  readonly phase: CatalogPhase;
+  readonly filteredCount: number;
+  readonly totalEpisodes: number;
+  readonly nightsTotal: number;
+  readonly nightsCached: number;
+  readonly nightsDone: number;
+  readonly nightsRemaining: number;
+  readonly nightsAnalyzed: number;
+}
+
+/**
+ * The visible catalog status line — the canonical copy set from UX spec §9,
+ * including the dual-count "showing X of Y · analyzing Z of N" phrasing during
+ * a run and the four distinct empty states.
+ */
+function CatalogStatusCopy({
+  phase,
+  filteredCount,
+  totalEpisodes,
+  nightsTotal,
+  nightsCached,
+  nightsDone,
+  nightsRemaining,
+  nightsAnalyzed,
+}: CatalogStatusCopyProps): JSX.Element {
+  if (phase === 'idle') {
+    return <span className={styles.muted}>Preparing the episode catalog…</span>;
+  }
+
+  if (nightsTotal === 0) {
+    return (
+      <span>
+        No sessions in the selected date range. Adjust the date range to analyze your therapy
+        nights.
+      </span>
+    );
+  }
+
+  if (phase === 'reading-cache') {
+    return (
+      <span className={styles.catalogCount}>
+        Reading saved analysis… {nightsCached} of {nightsTotal} night{plural(nightsTotal)}.
+      </span>
+    );
+  }
+
+  if (phase === 'computing') {
+    if (filteredCount === 0) {
+      return (
+        <span>
+          No matching episodes yet — still analyzing {nightsRemaining} night
+          {plural(nightsRemaining)}.
+        </span>
+      );
+    }
+    return (
+      <span className={styles.catalogCount}>
+        Showing {filteredCount} of {totalEpisodes} episode{plural(totalEpisodes)} · analyzing{' '}
+        {nightsDone} of {nightsTotal} night{plural(nightsTotal)}.
+      </span>
+    );
+  }
+
+  if (phase === 'cancelled') {
+    return (
+      <span className={styles.catalogCount}>
+        <span className={styles.cancelledTag}>
+          <span aria-hidden="true">⏸</span> Analysis cancelled.
+        </span>{' '}
+        Showing {nightsDone} of {nightsTotal} nights ({totalEpisodes} episode
+        {plural(totalEpisodes)}). {nightsRemaining} night{plural(nightsRemaining)} not yet analyzed.
+      </span>
+    );
+  }
+
+  // complete
+  if (totalEpisodes === 0) {
+    return (
+      <span>
+        No candidate periodic-breathing or Cheyne-Stokes episodes were detected across{' '}
+        {nightsAnalyzed} analyzed night{plural(nightsAnalyzed)}.
+      </span>
+    );
+  }
+  if (filteredCount === 0) {
+    return (
+      <span>
+        No episodes match the current filters. {totalEpisodes} episode{plural(totalEpisodes)}{' '}
+        detected across the range — lower the minimum confidence or change the pattern filter to see
+        them.
+      </span>
+    );
+  }
+  return (
+    <span className={styles.catalogCount}>
+      Showing {filteredCount} of {totalEpisodes} episode{plural(totalEpisodes)} from{' '}
+      {nightsAnalyzed} of {nightsTotal} night{plural(nightsTotal)}.
+    </span>
+  );
+}
+
+/**
+ * Per-night failure disclosure (UX §8.3): a calm icon+text clause with a
+ * "Details" popover listing the failed nights and their short reasons. Icon +
+ * text, never colour alone.
+ */
+function FailureDisclosure({
+  failures,
+  nightsFailed,
+}: {
+  readonly failures: readonly CatalogFailure[];
+  readonly nightsFailed: number;
+}): JSX.Element {
+  return (
+    <div className={styles.failureNotice}>
+      <span className={styles.failureIcon} aria-hidden="true">
+        ⚠
+      </span>
+      <span>
+        {nightsFailed} night{plural(nightsFailed)} could not be analyzed.
+      </span>
+      <Popover
+        trigger={
+          <button type="button" className={styles.failureDetailsButton}>
+            Details
+          </button>
+        }
+        side="bottom"
+        align="start"
+      >
+        <ul className={styles.failureList} aria-label="Nights that could not be analyzed">
+          {failures.map((f, i) => (
+            <li key={`${f.date}-${i}`} className={styles.failureListItem}>
+              <span className={styles.failureListDate}>{f.date}</span>
+              <span className={styles.failureListReason}>{f.reason}</span>
+            </li>
+          ))}
+        </ul>
+      </Popover>
+    </div>
   );
 }
 
@@ -604,11 +925,15 @@ export function Breathing(): JSX.Element {
 
       <EpisodeCatalog
         rows={catalog.episodes}
-        nightsComputed={catalog.nightsComputed}
+        phase={catalog.phase}
         nightsTotal={catalog.nightsTotal}
-        capped={catalog.capped}
-        loading={catalog.loading}
+        nightsCached={catalog.nightsCached}
+        nightsComputed={catalog.nightsComputed}
+        nightsFailed={catalog.nightsFailed}
+        failures={catalog.failures}
         error={catalog.error}
+        onCancel={catalog.cancel}
+        onResume={catalog.resume}
         onSelect={(row) => setSelectedKey(`${row.sessionId}-${row.episode.id}`)}
         selectedKey={selectedKey}
       />

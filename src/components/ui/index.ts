@@ -8,6 +8,8 @@ export { Icon } from './Icon';
 export type { IconName, IconSize } from './Icon';
 export { Input } from './Input';
 export { Popover } from './Popover';
+export { ProgressBar } from './ProgressBar';
+export type { ProgressBarProps } from './ProgressBar';
 export { SegmentedControl } from './SegmentedControl';
 export type { SegmentedControlProps, SegmentedControlOption } from './SegmentedControl';
 export { Select } from './Select';
