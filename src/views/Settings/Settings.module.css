@@ -185,6 +185,13 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* Green "retained-on-device" variant of the online pill (visual spec §2.4).
+   Color is never the sole signal — the pill always carries the word "On-device". */
+.onDevicePill {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
 .comingSoon {
   display: inline-flex;
   align-items: center;

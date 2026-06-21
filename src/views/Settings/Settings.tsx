@@ -15,6 +15,8 @@ import { Accordion, Button, Card, Dialog, Input, Select, Switch, Tabs } from '@/
 import { clearAllUserData } from '@/services/storage/clearAllUserData';
 import { formatBytes } from '@/utils/formatBytes';
 import { WeatherIntegrationPanel } from './weather/WeatherIntegrationPanel';
+import { AiInsightsPanel } from './ai/AiInsightsPanel';
+import { backendById } from './ai/backends';
 import styles from './Settings.module.css';
 
 // ─── Option Constants ─────────────────────────────────────────────────────
@@ -256,6 +258,14 @@ function IntegrationsSection() {
     return 'Google Health (Fitbit) — Enabled';
   })();
 
+  // AI Insights accordion trigger (visual spec §2.4): off = "Disabled"; on +
+  // local backend = green "On-device" pill; on + cloud backend = blue
+  // "Connects online" pill. Color is never the sole signal — each pill carries
+  // its word and the leading "✨ AI Insights" label is always present.
+  const llmBackend = integrations.llm.backend;
+  const llmIsCloud = llmBackend === 'anthropic' || llmBackend === 'openai-compatible';
+  const llmBackendLabel = llmBackend !== null ? backendById(llmBackend).label : null;
+
   const accordionItems = [
     {
       value: 'fitbit',
@@ -328,32 +338,34 @@ function IntegrationsSection() {
       ),
     },
     {
-      // FOUNDATION-WAVE STUB: the full AI Insights panel (backend selector,
-      // consent dialog, per-backend config) is built in the UI wave against
-      // `docs/design/ai-insights-ux.md`. This minimal stub keeps the settings
-      // shape compiling and exposes only the enable toggle until then.
+      // AI Insights sits after Weather (UX §2.1): it is the most
+      // privacy-sensitive integration, so it reads last after the weather
+      // two-gate precedent.
       value: 'llm',
-      trigger: `AI Insights — ${integrations.llm.enabled ? 'Enabled' : 'Disabled'}`,
-      content: (
-        <div className={styles.integrationPanel}>
-          <div className={styles.switchRow}>
-            <div className={styles.switchInfo}>
-              <span className={styles.switchLabel}>Enable AI Insights</span>
-              <span className={styles.switchDescription}>
-                Turn computed metrics into plain-language summaries. The app does all the math; the
-                AI only puts your existing numbers into words. Off by default.
-              </span>
-            </div>
-            <Switch
-              checked={integrations.llm.enabled}
-              onCheckedChange={(checked) => updateIntegration('llm', { enabled: checked })}
-            />
-          </div>
+      trigger: (
+        <span className={styles.integrationTrigger}>
           {integrations.llm.enabled && (
-            <span className={styles.comingSoon}>
-              Coming soon — backend selection and configuration arrive in a future release.
+            <span className={styles.integrationTriggerIcon} aria-hidden="true">
+              ✨
             </span>
           )}
+          <span>
+            AI Insights —{' '}
+            {integrations.llm.enabled
+              ? `On${llmBackendLabel ? ` · ${llmBackendLabel}` : ''}`
+              : 'Disabled'}
+          </span>
+          {integrations.llm.enabled &&
+            (llmIsCloud ? (
+              <span className={styles.onlinePill}>Connects online</span>
+            ) : (
+              <span className={`${styles.onlinePill} ${styles.onDevicePill}`}>On-device</span>
+            ))}
+        </span>
+      ),
+      content: (
+        <div className={styles.integrationPanel}>
+          <AiInsightsPanel />
         </div>
       ),
     },
