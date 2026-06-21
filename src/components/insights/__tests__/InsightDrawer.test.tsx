@@ -21,6 +21,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
+// Spy on router navigation so error-recovery deep-links can be asserted without
+// a real route tree. `useNavigate` is the only export the drawer needs mocked;
+// everything else (MemoryRouter) is preserved via the actual module.
+const navigateSpy = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => navigateSpy };
+});
+
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import type { GroundedContext } from '@/services/llm/context/types';
 import type { InsightInput } from '@/services/llm/runInsight';
@@ -132,7 +141,21 @@ function openDrawer(): void {
 
 // ─── Setup / teardown ────────────────────────────────────────────────────────
 
+/**
+ * Stub `navigator.clipboard.writeText` so the Copy path can be asserted without a
+ * real clipboard (jsdom has none). Resolves so the drawer flips to its "Copied"
+ * affordance — exercising the success branch of `handleCopy`.
+ */
+const writeTextSpy = vi.fn<(text: string) => Promise<void>>(() => Promise.resolve());
+
 beforeEach(() => {
+  navigateSpy.mockReset();
+  writeTextSpy.mockReset();
+  writeTextSpy.mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: writeTextSpy },
+  });
   useInsightDrawerStore.getState().close();
   useSettingsStore.setState((s) => ({
     integrations: {
@@ -323,5 +346,166 @@ describe('InsightDrawer needs-consent', () => {
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /finish setup in settings/i })).toBeInTheDocument();
+  });
+});
+
+// ─── InsightDrawer — non-consent error states (UX §6 taxonomy) ───────────────
+
+describe('InsightDrawer non-consent error states', () => {
+  it('renders the mapped message and routes a missing-key error to AI Insights settings', () => {
+    useSettingsStore.setState((s) => ({
+      integrations: {
+        ...s.integrations,
+        llm: { ...s.integrations.llm, enabled: true, backend: 'anthropic' },
+      },
+    }));
+    openDrawer();
+    const insight = makeInsight({
+      state: 'error',
+      // needsConsent is null: this is a true config error, not the consent gate.
+      needsConsent: null,
+      error: {
+        kind: 'missing-key',
+        message: 'Add your Claude API key in settings to use this.',
+        primaryAction: 'open-settings-key',
+        retryable: false,
+        cause: { kind: 'missing-key' } as never,
+      },
+    });
+    renderDrawer(insight);
+
+    // The generic error heading (not the consent-specific one) is shown.
+    expect(screen.getByText(/AI Insights couldn’t run/i)).toBeInTheDocument();
+    // The mapped, plain-language message is rendered verbatim (no raw provider text).
+    expect(
+      screen.getByText(/Add your Claude API key in settings to use this\./i),
+    ).toBeInTheDocument();
+
+    // The primary recovery action deep-links to the AI Insights settings panel.
+    const action = screen.getByRole('button', { name: /finish setup in settings/i });
+    fireEvent.click(action);
+    expect(navigateSpy).toHaveBeenCalledWith('/settings#ai-insights');
+    // A config error must NOT silently regenerate.
+    expect(insight.regenerate).not.toHaveBeenCalled();
+  });
+
+  it('renders a retry action for a retryable network-blocked error and calls regenerate', () => {
+    useSettingsStore.setState((s) => ({
+      integrations: {
+        ...s.integrations,
+        llm: { ...s.integrations.llm, enabled: true, backend: 'anthropic' },
+      },
+    }));
+    openDrawer();
+    const insight = makeInsight({
+      state: 'error',
+      needsConsent: null,
+      error: {
+        kind: 'network-blocked',
+        message:
+          "Couldn't reach Claude. Your browser blocked the connection or you're offline. On-device backends don't need a connection.",
+        // A retryable kind maps to 'switch-on-device', whose button label is "Retry".
+        primaryAction: 'switch-on-device',
+        retryable: true,
+        cause: { kind: 'network-blocked' } as never,
+      },
+    });
+    renderDrawer(insight);
+
+    expect(screen.getByText(/Couldn't reach Claude/i)).toBeInTheDocument();
+
+    // The recovery action is a retry, NOT a settings deep-link.
+    const action = screen.getByRole('button', { name: /^retry$/i });
+    fireEvent.click(action);
+    expect(insight.regenerate).toHaveBeenCalledTimes(1);
+    expect(navigateSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ─── InsightDrawer — deterministic fallback notice (UX §4.4 / design §5) ─────
+
+describe('InsightDrawer fallback notice', () => {
+  it('shows the plain-template notice on a usedFallback complete result, with prose + caveat', () => {
+    openDrawer();
+    renderDrawer(
+      makeInsight({
+        state: 'complete',
+        usedFallback: true,
+        text: 'Your AHI was 4.2 events/h, within the normal range.',
+        sourceContext: FAKE_CONTEXT,
+      }),
+    );
+
+    // The fallback banner explains a plain template was substituted.
+    expect(screen.getByText(/a plain template summary is shown instead/i)).toBeInTheDocument();
+    // The normal narrative still renders.
+    expect(screen.getByText(/within the normal range/i)).toBeInTheDocument();
+    // The inseparable caveat is still present (never naked prose).
+    expect(screen.getByRole('note', { name: /AI disclaimer/i })).toBeInTheDocument();
+  });
+
+  it('does not show the fallback notice when usedFallback is false', () => {
+    openDrawer();
+    renderDrawer(
+      makeInsight({
+        state: 'complete',
+        usedFallback: false,
+        text: 'Your AHI was 4.2 events/h, within the normal range.',
+        sourceContext: FAKE_CONTEXT,
+      }),
+    );
+
+    expect(screen.queryByText(/a plain template summary is shown instead/i)).toBeNull();
+  });
+});
+
+// ─── InsightDrawer — Stop during generation (UX §5.2) ────────────────────────
+
+describe('InsightDrawer stop control', () => {
+  it('calls the hook stop() when the Stop button is clicked while generating', () => {
+    openDrawer();
+    const insight = makeInsight({
+      state: 'generating',
+      isGenerating: true,
+      phase: 'generating',
+      text: 'Your AHI was 4.2',
+      sourceContext: FAKE_CONTEXT,
+    });
+    renderDrawer(insight);
+
+    const stop = screen.getByRole('button', { name: /^stop$/i });
+    fireEvent.click(stop);
+    expect(insight.stop).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── InsightDrawer — Copy carries the caveat footer (UX §7.3) ────────────────
+
+describe('InsightDrawer copy carries the caveat', () => {
+  it('writes the narrative WITH the not-medical-advice caveat footer to the clipboard', async () => {
+    openDrawer();
+    const narrative = 'Your AHI was 4.2 events/h, within the normal range.';
+    renderDrawer(
+      makeInsight({
+        state: 'complete',
+        text: narrative,
+        sourceContext: FAKE_CONTEXT,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^copy$/i }));
+
+    // The clipboard payload is never naked prose: it must carry the caveat footer.
+    expect(writeTextSpy).toHaveBeenCalledTimes(1);
+    const payload = writeTextSpy.mock.calls[0]?.[0] as string;
+    expect(payload).toContain(narrative);
+    // Key guarantee (UX §7.3): the safety caveat travels with copied text.
+    expect(payload).toContain('May be inaccurate; verify against your data.');
+    expect(payload).toContain('Not medical advice.');
+    // The generated-on date from the grounded context is stamped in.
+    expect(payload).toContain('2026-06-20');
+
+    // The button flips to its copied affordance once the write resolves.
+    expect(await screen.findByRole('button', { name: /^copied$/i })).toBeInTheDocument();
   });
 });
