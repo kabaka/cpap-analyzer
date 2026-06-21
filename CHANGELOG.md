@@ -9,7 +9,7 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ### Added
 
-- **The Event Explorer can now be scoped to a single session.** A `session` URL parameter (`/explore/events?session=<id>`) restricts the Explorer's matched set to one night's events, and the Session Detail Events list's "View all in Event Explorer" link now pre-scopes the Explorer to that night rather than opening it across your whole history. When a scope is active, a removable **Session scope** chip (labelled with the session's date) appears in the filter panel; clearing it returns the Explorer to its global, cross-session set. A scoped session loads even when its date falls outside the Explorer's current global date-range selection, so following the link from an out-of-range night always works. The scope is part of the serialized URL state, so it is bookmarkable and survives back/forward navigation.
+- **The Event Explorer can now be scoped to a single session.** A `sessions` URL parameter (`/explore/events?sessions=<id>`) restricts the Explorer's matched set to one night's events, and the Session Detail Events list's "View all in Event Explorer" link now pre-scopes the Explorer to that night rather than opening it across your whole history. When a scope is active, a removable **Session scope** chip (labelled with the session's date) appears in the filter panel; clearing it returns the Explorer to its global, cross-session set. A scoped session loads even when its date falls outside the Explorer's current global date-range selection, so following the link from an out-of-range night always works. The scope is part of the serialized URL state, so it is bookmarkable and survives back/forward navigation.
 
 ### Changed
 

@@ -70,26 +70,40 @@ describe('querySerialization · session scope', () => {
       ...emptyQuery(),
       sessionIds: new Set(['a', 'b']),
     };
-    expect(queryToSearchParams(query).session).toBe('a,b');
+    expect(queryToSearchParams(query).sessions).toBe('a,b');
+  });
+
+  it('uses the plural `sessions` key (not the global `session` key)', () => {
+    // The singular `session` URL param is owned by the global useURLStateSync
+    // hook (app-wide selected session). The Explorer scope must use a distinct
+    // key so the two do not clobber each other on navigation.
+    const query: EventQuery = { ...emptyQuery(), sessionIds: new Set(['a']) };
+    const params = queryToSearchParams(query);
+    expect(params.session).toBeUndefined();
+    expect(params.sessions).toBe('a');
   });
 
   it('omits the session param when the scope is null', () => {
-    expect(queryToSearchParams(emptyQuery()).session).toBeUndefined();
+    expect(queryToSearchParams(emptyQuery()).sessions).toBeUndefined();
   });
 
   it('omits the session param when the scope is an empty set', () => {
     const query: EventQuery = { ...emptyQuery(), sessionIds: new Set<string>() };
-    expect(queryToSearchParams(query).session).toBeUndefined();
+    expect(queryToSearchParams(query).sessions).toBeUndefined();
   });
 
   it('parses a comma-separated session param into a Set', () => {
-    const q = searchParamsToQuery(new URLSearchParams({ session: 'a,b' }));
+    const q = searchParamsToQuery(new URLSearchParams({ sessions: 'a,b' }));
     expect(q.sessionIds).not.toBeNull();
     expect([...(q.sessionIds ?? [])].sort()).toEqual(['a', 'b']);
   });
 
+  it('ignores the singular `session` param (owned by the global URL sync)', () => {
+    expect(searchParamsToQuery(new URLSearchParams({ session: 'a,b' })).sessionIds).toBeNull();
+  });
+
   it('drops empty entries in the session param', () => {
-    const q = searchParamsToQuery(new URLSearchParams({ session: 'a,,b' }));
+    const q = searchParamsToQuery(new URLSearchParams({ sessions: 'a,,b' }));
     expect([...(q.sessionIds ?? [])].sort()).toEqual(['a', 'b']);
   });
 
@@ -98,8 +112,8 @@ describe('querySerialization · session scope', () => {
   });
 
   it('yields a null scope when the session param is empty/only delimiters', () => {
-    expect(searchParamsToQuery(new URLSearchParams({ session: '' })).sessionIds).toBeNull();
-    expect(searchParamsToQuery(new URLSearchParams({ session: ',,' })).sessionIds).toBeNull();
+    expect(searchParamsToQuery(new URLSearchParams({ sessions: '' })).sessionIds).toBeNull();
+    expect(searchParamsToQuery(new URLSearchParams({ sessions: ',,' })).sessionIds).toBeNull();
   });
 
   it('round-trips a query that includes a session scope', () => {

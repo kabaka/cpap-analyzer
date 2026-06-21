@@ -6,7 +6,7 @@ import { test, expect, type Page } from '@playwright/test';
  * Covers the session-scoping behaviour wired between Session Detail and the
  * Event Explorer:
  *
- *  1. Scope via URL param: `/explore/events?session=<id>` loads ONLY that
+ *  1. Scope via URL param: `/explore/events?sessions=<id>` loads ONLY that
  *     session's events and shows a "Session scope" chip with its calendar date.
  *  2. Out-of-range session still resolves: a session whose date falls OUTSIDE
  *     the app's default global date range still loads its events when scoped by
@@ -14,7 +14,7 @@ import { test, expect, type Page } from '@playwright/test';
  *  3. Remove scope chip: clicking the chip's × clears the scope, drops the
  *     `session` URL param, and hides the chip.
  *  4. End-to-end from Session Detail: the over-cap "View all in Event Explorer"
- *     link navigates to `/explore/events?session=<id>` and lands scoped.
+ *     link navigates to `/explore/events?sessions=<id>` and lands scoped.
  *  5. Wall-clock time: the event grid's Time cell shows the seeded event's
  *     wall-clock time (computed timezone-independently to match EventTable).
  *
@@ -344,7 +344,7 @@ test.describe('Event Explorer — scope via URL param', () => {
       page,
       [sessionA, sessionB],
       [aggA, aggB],
-      `/explore/events?session=${sessionA.id}`,
+      `/explore/events?sessions=${sessionA.id}`,
       allEvents,
     );
 
@@ -401,7 +401,7 @@ test.describe('Event Explorer — out-of-range scoped session still resolves', (
     });
 
     // Now deep-link scoped to that same out-of-range session: its events appear.
-    await page.goto(`/explore/events?session=${sessionA.id}`);
+    await page.goto(`/explore/events?sessions=${sessionA.id}`);
     await expect(page.getByRole('heading', { name: /^event explorer$/i })).toBeVisible({
       timeout: 10_000,
     });
@@ -424,7 +424,7 @@ test.describe('Event Explorer — remove scope chip', () => {
       page,
       [sessionA, sessionB],
       [aggA, aggB],
-      `/explore/events?session=${sessionA.id}`,
+      `/explore/events?sessions=${sessionA.id}`,
       allEvents,
     );
 
@@ -435,7 +435,7 @@ test.describe('Event Explorer — remove scope chip', () => {
     // Precondition: scoped (chip present, URL carries the session param).
     const scopeChip = page.getByRole('group', { name: 'Session scope filter' });
     await expect(scopeChip).toBeVisible();
-    await expect(page).toHaveURL(new RegExp(`[?&]session=${sessionA.id}(&|$)`));
+    await expect(page).toHaveURL(new RegExp(`[?&]sessions=${sessionA.id}(&|$)`));
 
     // Remove the scope via the chip's × control (labelled with the session date).
     const removeBtn = page.getByRole('button', {
@@ -445,7 +445,7 @@ test.describe('Event Explorer — remove scope chip', () => {
     await removeBtn.click();
 
     // The session param is dropped from the URL and the chip disappears.
-    await expect(page).not.toHaveURL(/[?&]session=/);
+    await expect(page).not.toHaveURL(/[?&]sessions=/);
     await expect(scopeChip).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Session scope' })).toHaveCount(0);
 
@@ -481,23 +481,31 @@ test.describe('Event Explorer — end-to-end from Session Detail', () => {
     // The over-cap "View all in Event Explorer" link points at the scoped URL.
     const viewAll = page.getByRole('link', { name: /View all in Event Explorer/ });
     await expect(viewAll).toBeVisible({ timeout: 10_000 });
-    await expect(viewAll).toHaveAttribute('href', /\/explore\/events\?session=detail-sess$/);
+    await expect(viewAll).toHaveAttribute('href', /\/explore\/events\?sessions=detail-sess$/);
 
     // Follow the link.
     await viewAll.click();
 
-    // We land on the Event Explorer, scoped to this session.
-    await expect(page).toHaveURL(/\/explore\/events\?session=detail-sess(&|$)/);
+    // We land on the Event Explorer, scoped to this session. The global
+    // useURLStateSync hook may append its own `start`/`end` (and singular
+    // `session`) params, so assert the scope param is present rather than that
+    // it is the sole/leading param.
+    await expect(page).toHaveURL(/[?&]sessions=detail-sess(&|$)/);
     await expect(page.getByRole('heading', { name: /^event explorer$/i })).toBeVisible({
       timeout: 10_000,
     });
+
+    // Wait for the scoped by-id load to finish before inspecting the filter rail:
+    // while `loading` is true the Explorer renders a skeleton and the QueryBuilder
+    // (and its scope chip) is not yet mounted. The grid's first data row only
+    // appears once loading completes, so this gates the assertions below and
+    // avoids racing the (slower on Firefox/WebKit) IndexedDB by-id load.
+    await expect(eventGridDataRows(page).first()).toBeVisible({ timeout: 10_000 });
+
+    // The scope chip is present, carrying this session's calendar date.
     await expect(page.getByRole('group', { name: 'Session scope filter' })).toContainText(
       expectedChipDate(session.startTime),
     );
-
-    // The grid loaded this session's events (capped table renders rows; just
-    // assert at least one and that every visible row belongs to the session).
-    await expect(eventGridDataRows(page).first()).toBeVisible();
   });
 });
 
@@ -514,7 +522,7 @@ test.describe('Event Explorer — wall-clock time column', () => {
     const ts = start + 90 * 60 * 1000 + 7 * 1000;
     const event = makeEvent('clock-evt', 'clock-sess', ts, 'ObstructiveApnea', 18);
 
-    await setupWithData(page, [session], [aggregate], `/explore/events?session=${session.id}`, [
+    await setupWithData(page, [session], [aggregate], `/explore/events?sessions=${session.id}`, [
       event,
     ]);
 

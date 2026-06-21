@@ -14,8 +14,11 @@
  * - `ton`     time-of-night `HHMM-HHMM` (local clock), may wrap midnight
  * - `from`    inclusive date-range start, epoch ms
  * - `to`      inclusive date-range end, epoch ms
- * - `session` comma-separated session id list to scope the Explorer to, e.g.
- *             `session=<uuid>` (links from Session Detail pre-scope to one id)
+ * - `sessions` comma-separated session id list to scope the Explorer to, e.g.
+ *             `sessions=<uuid>` (links from Session Detail pre-scope to one id).
+ *             NOTE: the key is `sessions` (plural) — the singular `session` key
+ *             is owned by the global `useURLStateSync` hook (the app-wide
+ *             selected session), so the Explorer scope must not reuse it.
  * - `view`    active results view id (handled by the view component, not here)
  *
  * @module views/Explore/EventExplorer/querySerialization
@@ -126,7 +129,7 @@ function serializeForCompare(query: EventQuery): string {
   return keys
     .map((k) => {
       const v = params[k];
-      if ((k === 'types' || k === 'session') && v) {
+      if ((k === 'types' || k === 'sessions') && v) {
         // Sort the list so set membership, not insertion order, drives equality.
         return `${k}=${v.split(',').sort().join(',')}`;
       }
@@ -156,7 +159,7 @@ export function queryToSearchParams(query: EventQuery): Record<string, string> {
     params.to = String(query.dateRange.end);
   }
   if (query.sessionIds && query.sessionIds.size > 0) {
-    params.session = [...query.sessionIds].join(',');
+    params.sessions = [...query.sessionIds].join(',');
   }
 
   return params;
@@ -180,7 +183,7 @@ export function searchParamsToQuery(params: URLSearchParams): EventQuery {
   const to = toRaw === null ? null : toFiniteOrNull(toRaw);
   const dateRange = from !== null && to !== null ? { start: from, end: to } : null;
 
-  const sessionRaw = params.get('session');
+  const sessionRaw = params.get('sessions');
   let sessionIds: Set<string> | null = null;
   if (sessionRaw) {
     const ids = new Set<string>();

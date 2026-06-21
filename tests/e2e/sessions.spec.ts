@@ -885,12 +885,12 @@ test.describe('Session Detail — Events list', () => {
     await expect(page.getByText(`Showing the first 50 of ${TOTAL} events.`)).toBeVisible();
 
     // "View all in Event Explorer" link points at the Event Explorer, pre-scoped
-    // to this session via the `?session=<id>` param.
+    // to this session via the `?sessions=<id>` param.
     const viewAll = page.getByRole('link', { name: /View all in Event Explorer/ });
     await expect(viewAll).toBeVisible();
     await expect(viewAll).toHaveAttribute(
       'href',
-      new RegExp(`/explore/events\\?session=${EVENT_SESSION_ID}$`),
+      new RegExp(`/explore/events\\?sessions=${EVENT_SESSION_ID}$`),
     );
   });
 });
