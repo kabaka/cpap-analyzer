@@ -31,7 +31,7 @@ This decision is architecturally significant for the same reason [0022](0022-wea
 principle #1) and **Correctness** (core principle #2) — and, for some backends, it
 crosses the network boundary that the project guards most carefully.
 
-**The Correctness tension.** An LLM that is allowed to *compute* clinical values is a
+**The Correctness tension.** An LLM that is allowed to _compute_ clinical values is a
 liability. Small models have weak numeric reasoning, and **all** models hallucinate; a
 model asked "what was the AHI?" may confidently invent a number, miscompute an average,
 or misstate a threshold. In a tool that informs health decisions, a fabricated clinical
@@ -44,13 +44,13 @@ established the template — opt-in, off by default, explicit two-gate consent n
 exactly what is sent and to whom, a minimal non-wildcard `connect-src` whitelist in
 `src/buildtime/csp.ts`, and IndexedDB caching. LLM insights must honor
 [0001](0001-client-side-architecture.md) (client-side only, no backend to proxy or hide
-behind) and [0015](0015-zero-telemetry-analytics.md) (network access permitted *only*
+behind) and [0015](0015-zero-telemetry-analytics.md) (network access permitted _only_
 for explicit, user-configured integrations). But unlike weather — where every backend is
 a remote fetch — LLM inference can also run **fully on-device**, which means we can offer
-a privacy posture *stronger* than weather's: zero egress.
+a privacy posture _stronger_ than weather's: zero egress.
 
 **The plugin question, settled.** [0007](0007-plugin-architecture.md) named "LLM
-insights" as a future *integration plugin*. That runtime plugin registry was
+insights" as a future _integration plugin_. That runtime plugin registry was
 **deferred/abandoned** in the Phase 11 evaluation (`docs/analysis/phase-11-plugin-evaluation.md`):
 the project is built entirely by AI agents, there are no third-party plugin authors, and
 a registry adds indirection and an API-stability trap for zero external consumers. The
@@ -86,13 +86,13 @@ privacy/quality curve and the rest of the app is agnostic to which one is active
 the bar here: a model can easily drift into diagnostic phrasing ("you have central sleep
 apnea"), false reassurance, or sycophantic agreement. The relevant practical frame is the
 FDA's Clinical-Decision-Support / "general wellness" distinction — software that
-*informs* and keeps a human in the loop, with transparent, non-directive language, sits
+_informs_ and keeps a human in the loop, with transparent, non-directive language, sits
 on the wellness side. This is **not legal advice and not a certification claim**; it is a
 design constraint on wording and disclosure.
 
 This decision relates to [0001](0001-client-side-architecture.md) (which named LLM
 integration as a server re-evaluation trigger — this ADR keeps it client-side and so does
-*not* trip that trigger), [0007](0007-plugin-architecture.md) /
+_not_ trip that trigger), [0007](0007-plugin-architecture.md) /
 `docs/analysis/phase-11-plugin-evaluation.md` (plugins deferred — service-module pattern),
 [0015](0015-zero-telemetry-analytics.md) (network policy, opt-in carve-out), and
 [0022](0022-weather-environmental-data-integration.md) (the opt-in + two-gate consent +
@@ -105,10 +105,10 @@ implicitly, two scope tiers. Both axes were evaluated.
 
 **Integration approach:**
 
-- **(1) Remote MCP server.** Expose CPAP data as MCP tools that the user's *external* LLM
+- **(1) Remote MCP server.** Expose CPAP data as MCP tools that the user's _external_ LLM
   client (Claude Desktop, ChatGPT, etc.) calls. **Rejected for now.** It requires either a
   hosted MCP server (a backend — violates [0001](0001-client-side-architecture.md)) or
-  pushing the user's data *out* to a separate app, which inverts the privacy model: the
+  pushing the user's data _out_ to a separate app, which inverts the privacy model: the
   data leaves our sandboxed, CSP-pinned origin entirely and lands somewhere we cannot
   constrain. It is also a tool-calling/agentic pattern, which belongs to the deferred
   conversational tier (below).
@@ -128,26 +128,26 @@ consented upgrade.
 **Scope tier:**
 
 - **(A) On-demand grounded insights.** The user is viewing data; they press "Explain";
-  the app sends a *fixed, pre-computed* snapshot of already-computed metrics; the model
+  the app sends a _fixed, pre-computed_ snapshot of already-computed metrics; the model
   returns prose. No tools, no data access, one request, one response. **Chosen.**
-- **(B) Conversational tool-calling analyst.** A chat where the model can *call* analysis
+- **(B) Conversational tool-calling analyst.** A chat where the model can _call_ analysis
   functions, query stores, and iterate. Far more powerful, far larger surface: tool
   permissions, prompt-injection-driven tool execution, multi-turn cost/latency, and a much
-  harder Correctness story (the model decides *which* computed values to surface). **Deferred
+  harder Correctness story (the model decides _which_ computed values to surface). **Deferred
   to a future ADR.** It is a strict superset of (A) and should be designed on top of the
   grounded foundation this ADR establishes, with its own privacy and safety review.
 
 ## Decision
 
 Build **AI Insights** as an **optional, opt-in, off-by-default, additive** feature that
-produces natural-language summaries and explanations of the user's *already-computed*
+produces natural-language summaries and explanations of the user's _already-computed_
 therapy data, implemented as a **first-party service module** (`src/services/llm/`) plus
 UI, behind a **single `LLMProvider` interface** with four interchangeable backends. Six
 sub-decisions.
 
 **1. Compute-then-narrate (grounding) is mandatory — the model never computes a clinical value.**
 The deterministic analysis pipeline computes **all** clinical and statistical values, as it
-already does. The LLM is handed a **structured snapshot** of those *finished* numbers
+already does. The LLM is handed a **structured snapshot** of those _finished_ numbers
 (metric name, value, unit, the user's relevant baseline/average, the date range, and
 plain-language thresholds) and is instructed to **phrase and explain only what is in the
 snapshot** — it may not compute, average, infer, or introduce any clinical figure. Where
@@ -189,8 +189,8 @@ The feature ships **disabled**. Enabling it and choosing a backend is explicit u
 
 - **Local backends (WebLLM, Chrome built-in, loopback OpenAI-compatible) send nothing
   off-device** and therefore require no network consent — they preserve the
-  zero-external-call guarantee for the data itself. (WebLLM's *one-time model-weights
-  download* is a fetch from a model host and is disclosed as such, but **no user data** is
+  zero-external-call guarantee for the data itself. (WebLLM's _one-time model-weights
+  download_ is a fetch from a model host and is disclosed as such, but **no user data** is
   in that request.)
 - **Cloud backends (Claude, remote OpenAI-compatible)** require the **same two-gate,
   explicit, weather-style consent** as [0022](0022-weather-environmental-data-integration.md):
@@ -206,8 +206,8 @@ exfiltration**; the mitigations are the existing **strict CSP** and the **no-thi
 posture ([0015](0015-zero-telemetry-analytics.md)) that make script injection hard. Given
 that, the **recommendation is to keep keys in `sessionStorage` / in-memory by default**
 (cleared when the tab closes, smaller exposure window) with an **explicit opt-in to persist**
-in IndexedDB/localStorage for convenience — i.e. *persistence is the user's deliberate choice,
-not the default*. Keys are never logged and never placed in the grounded snapshot.
+in IndexedDB/localStorage for convenience — i.e. _persistence is the user's deliberate choice,
+not the default_. Keys are never logged and never placed in the grounded snapshot.
 
 **CSP.** `connect-src` in `src/buildtime/csp.ts` is extended **per enabled cloud backend**
 to the **specific provider hosts only**, never a wildcard — e.g. `api.anthropic.com` for
@@ -219,7 +219,7 @@ wildcard `connect-src` is unacceptable — it would re-open the exfiltration sur
 closed. **Resolution:** (a) ship a curated allowlist of named presets (Anthropic, OpenAI,
 OpenRouter, Together) that are covered by the static CSP; (b) explicitly allow
 **localhost / loopback** so local servers (Ollama, LM Studio) work out of the box; and
-(c) for a truly arbitrary user-typed *remote* host, **document the limitation** — it cannot
+(c) for a truly arbitrary user-typed _remote_ host, **document the limitation** — it cannot
 be reached under the meta-tag CSP without a wildcard, so it is **not supported in this phase**
 rather than weakening the policy. The runtime `network-policy.ts` allowlist
 ([0015](0015-zero-telemetry-analytics.md)) is updated in lockstep with the same hosts.
@@ -232,8 +232,8 @@ The system prompt and UI enforce a **wellness / descriptive** frame, not a diagn
 - **Claims anchored to visible numbers.** Output references the figures the user can see on
   screen; the snapshot is the single source of truth.
 - **No diagnosis, no directives.** Descriptive ("your central index rose 40% over three
-  months") and, at most, a non-directive "*this may be worth discussing with your sleep
-  physician*" — never "you have…" / "you should…".
+  months") and, at most, a non-directive "_this may be worth discussing with your sleep
+  physician_" — never "you have…" / "you should…".
 - **Avoid sycophancy and anthropomorphism.** Neutral, factual register; the model does not
   agree-to-please or present itself as a clinician.
 - **Prefer categorical over numeric confidence.** "consistent with your usual pattern"
@@ -251,7 +251,7 @@ data access to hijack**: the worst outcome is mis-phrased prose the user can com
 the visible numbers. Mitigations: the snapshot is **structured and escaped** (values are
 fielded data, not free-form prose handed to the model as instructions), the system prompt is
 fixed and instructs the model to treat snapshot content as data, and **no tool execution
-occurs in this phase**. Tool-calling — where injection *would* matter — is the deferred tier
+occurs in this phase**. Tool-calling — where injection _would_ matter — is the deferred tier
 and must carry its own injection review.
 
 **Conversational tool-calling analyst is explicitly deferred** to a future ADR, built on the
@@ -265,11 +265,11 @@ grounded foundation here.
   value — it only narrates a finished, deterministic snapshot — the worst hallucination
   failure mode (a fabricated AHI / threshold) is designed out, not merely discouraged.
 - **A privacy posture stronger than weather is possible.** The default backends (WebLLM,
-  Chrome built-in) are **zero-egress**: a user can get AI insights with *no* data leaving
+  Chrome built-in) are **zero-egress**: a user can get AI insights with _no_ data leaving
   the device at all — something the weather feature could never offer.
 - **User-chosen privacy/quality tradeoff.** One interface, four backends: privacy-maximalists
   stay fully local; quality-maximalists opt into Claude/OpenAI with explicit, minimal,
-  disclosed egress. Local servers (Ollama/LM Studio) give a high-quality *and* local option.
+  disclosed egress. Local servers (Ollama/LM Studio) give a high-quality _and_ local option.
 - **Reuses the proven weather template.** Opt-in, off by default, two-gate consent naming
   exactly what is sent and to whom, minimal non-wildcard CSP whitelist, runtime network
   policy in lockstep — all established by [0022](0022-weather-environmental-data-integration.md).

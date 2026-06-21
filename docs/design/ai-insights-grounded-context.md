@@ -38,7 +38,7 @@ generative analogue of a chart that displays false precision, and is a
 **Correctness** (priority 2) failure, which outranks the feature itself
 (priority 5).
 
-Privacy (priority 1) governs §3: the snapshot is the *only* thing that can
+Privacy (priority 1) governs §3: the snapshot is the _only_ thing that can
 leave the browser, and only when the user has explicitly enabled the opt-in LLM
 integration (`IntegrationConfig.llm.enabled`) and consented to egress. The
 redaction rules in §3 are therefore a hard contract, not a guideline.
@@ -63,7 +63,7 @@ so the model never reads a null as a number.
 Four insight types are defined. Each lists the precise fields, with their source
 module, that populate the context. All numeric fields are pre-formatted to their
 D9 display precision (`analysis/uncertainty/formatMetric`) **and** carried in
-full precision is *forbidden* — the snapshot ships the rounded display value
+full precision is _forbidden_ — the snapshot ships the rounded display value
 only (see §3, R8), so the model cannot "find" extra digits.
 
 ### (a) Single-night summary
@@ -72,27 +72,27 @@ Narrates one night. Source: the `NightlyAggregate` for that `sessionId`
 (`src/types/session.ts`) plus the reliability assessment per metric
 (`reliabilityTier(metricId, ctx)`).
 
-| Field (context) | Source | Unit | Reliability metricId |
-| --- | --- | --- | --- |
-| `date` | `NightlyAggregate.date` | ISO `YYYY-MM-DD` | — |
-| `ahi` | `ahi` | events/h | `ahi` |
-| `ahiObstructive` / `ahiCentral` / `ahiHypopnea` / `ahiUnclassified` | `ahi*` | events/h | `apneaCount` / `centralFraction` / `hypopneaIndex` |
-| `rdi` | `rdi` | events/h | `ahi` |
-| `ahiRera` | `ahiRera` | events/h | `rera` |
-| `severityBand` | `classifyAhiSeverity(ahi, userThresholds)` | enum | — |
-| `eventCounts` | `eventsByType.*` | count | `apneaCount` |
-| `usageHours` | `usageHours` | h | `usage` |
-| `maskOnMinutes` | `maskOnTimeMinutes` | min | `maskOnTime` |
-| `complianceStatus` | `complianceStatus` | enum | `compliance` |
-| `pressureMedian` / `pressureP95` / `pressureMax` | `pressure*` | cmH₂O | `pressureMedian` / `pressureP95` |
-| `epapMedian` / `ipapMedian` / `pressureSupport` | `epapMedian` etc. | cmH₂O | `epap` / `ipap` |
-| `leakMedian` / `leakP95` / `leakMax` | `leak*` | L/min | `leakBelow` |
-| `leakMinutesOver24` | `leakDurationMinutes` | min | `leakBelow` |
-| `spo2Mean` / `spo2Median` / `spo2Min` | `spo2*` | % | `wearableSpo2` |
-| `t90Percent` | `spo2Below90Percent` | % of valid SpO₂ time | `wearableSpo2` |
-| `spo2CoveragePercent` | `spo2CoveragePercent` | % of session | `wearableSpo2` |
-| `odi` | `oxygenDesaturationIndex` | events/h | `wearableSpo2` |
-| `tidalVolumeMedian` / `minuteVentMean` / `respRateMedian` | resp. fields | mL / L/min / breaths/min | `tidalVolume` / `minuteVentilation` / `respiratoryRate` |
+| Field (context)                                                     | Source                                     | Unit                     | Reliability metricId                                    |
+| ------------------------------------------------------------------- | ------------------------------------------ | ------------------------ | ------------------------------------------------------- |
+| `date`                                                              | `NightlyAggregate.date`                    | ISO `YYYY-MM-DD`         | —                                                       |
+| `ahi`                                                               | `ahi`                                      | events/h                 | `ahi`                                                   |
+| `ahiObstructive` / `ahiCentral` / `ahiHypopnea` / `ahiUnclassified` | `ahi*`                                     | events/h                 | `apneaCount` / `centralFraction` / `hypopneaIndex`      |
+| `rdi`                                                               | `rdi`                                      | events/h                 | `ahi`                                                   |
+| `ahiRera`                                                           | `ahiRera`                                  | events/h                 | `rera`                                                  |
+| `severityBand`                                                      | `classifyAhiSeverity(ahi, userThresholds)` | enum                     | —                                                       |
+| `eventCounts`                                                       | `eventsByType.*`                           | count                    | `apneaCount`                                            |
+| `usageHours`                                                        | `usageHours`                               | h                        | `usage`                                                 |
+| `maskOnMinutes`                                                     | `maskOnTimeMinutes`                        | min                      | `maskOnTime`                                            |
+| `complianceStatus`                                                  | `complianceStatus`                         | enum                     | `compliance`                                            |
+| `pressureMedian` / `pressureP95` / `pressureMax`                    | `pressure*`                                | cmH₂O                    | `pressureMedian` / `pressureP95`                        |
+| `epapMedian` / `ipapMedian` / `pressureSupport`                     | `epapMedian` etc.                          | cmH₂O                    | `epap` / `ipap`                                         |
+| `leakMedian` / `leakP95` / `leakMax`                                | `leak*`                                    | L/min                    | `leakBelow`                                             |
+| `leakMinutesOver24`                                                 | `leakDurationMinutes`                      | min                      | `leakBelow`                                             |
+| `spo2Mean` / `spo2Median` / `spo2Min`                               | `spo2*`                                    | %                        | `wearableSpo2`                                          |
+| `t90Percent`                                                        | `spo2Below90Percent`                       | % of valid SpO₂ time     | `wearableSpo2`                                          |
+| `spo2CoveragePercent`                                               | `spo2CoveragePercent`                      | % of session             | `wearableSpo2`                                          |
+| `odi`                                                               | `oxygenDesaturationIndex`                  | events/h                 | `wearableSpo2`                                          |
+| `tidalVolumeMedian` / `minuteVentMean` / `respRateMedian`           | resp. fields                               | mL / L/min / breaths/min | `tidalVolume` / `minuteVentilation` / `respiratoryRate` |
 
 Reliability context (`ReliabilityContext`) for the per-night assessment is built
 from this same aggregate: `medianLeak = leakMedian`, `maskOnHours =
@@ -106,19 +106,19 @@ time-series and descriptive modules over the selected aggregates — the LLM
 receives the computed trend objects, never the raw nightly arrays to "trend"
 itself.
 
-| Field (context) | Source (`src/analysis/...`) | What it carries |
-| --- | --- | --- |
-| `rangeStart` / `rangeEnd` | aggregate dates | ISO dates |
-| `nightCount` / `nightsAnalyzed` | count (excludes null-rate nights) | int |
-| `ahiTrend` | `timeseries.linearTrend(dates, ahiValues)` | `slope` (events/h per day), `trendDirection`, `trendStrength`, `pValue`, `rSquared` |
-| `ahiRollingMedian` | `timeseries.rollingMedian` (window = user `rollingWindow`) | last median + IQR band P25–P75 ("typical nightly range", ADR 0018 D3) |
-| `ahiChangePoints` | `timeseries.detectChangePoints` | date + magnitude of each detected regime shift |
-| `usageTrend` | `linearTrend(dates, usageHours)` | slope (h/day) + qualifiers |
-| `leakTrend` | `linearTrend(dates, leakMedian)` | slope (L/min/day) + qualifiers |
-| `complianceRate` | fraction of nights `compliant` | % + numerator/denominator |
-| `compliancePercentOfDays` | nights ≥ `CMS_COMPLIANCE_HOURS` / total | % |
-| `descriptive` (per metric) | `descriptive` module | median, IQR, P5/P95, n, outlier count |
-| `centralTrendFlag` | rising central index (ADR 0018 D6 safety rule) | boolean + "discuss with clinician" copy slot |
+| Field (context)                 | Source (`src/analysis/...`)                                | What it carries                                                                     |
+| ------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `rangeStart` / `rangeEnd`       | aggregate dates                                            | ISO dates                                                                           |
+| `nightCount` / `nightsAnalyzed` | count (excludes null-rate nights)                          | int                                                                                 |
+| `ahiTrend`                      | `timeseries.linearTrend(dates, ahiValues)`                 | `slope` (events/h per day), `trendDirection`, `trendStrength`, `pValue`, `rSquared` |
+| `ahiRollingMedian`              | `timeseries.rollingMedian` (window = user `rollingWindow`) | last median + IQR band P25–P75 ("typical nightly range", ADR 0018 D3)               |
+| `ahiChangePoints`               | `timeseries.detectChangePoints`                            | date + magnitude of each detected regime shift                                      |
+| `usageTrend`                    | `linearTrend(dates, usageHours)`                           | slope (h/day) + qualifiers                                                          |
+| `leakTrend`                     | `linearTrend(dates, leakMedian)`                           | slope (L/min/day) + qualifiers                                                      |
+| `complianceRate`                | fraction of nights `compliant`                             | % + numerator/denominator                                                           |
+| `compliancePercentOfDays`       | nights ≥ `CMS_COMPLIANCE_HOURS` / total                    | %                                                                                   |
+| `descriptive` (per metric)      | `descriptive` module                                       | median, IQR, P5/P95, n, outlier count                                               |
+| `centralTrendFlag`              | rising central index (ADR 0018 D6 safety rule)             | boolean + "discuss with clinician" copy slot                                        |
 
 Every trend object ships its **statistical qualifiers** alongside the headline
 number (§2): a slope with no `pValue`/`trendStrength` is forbidden in the
@@ -128,13 +128,13 @@ contract, because a bare slope invites the model to narrate noise as a finding.
 
 Narrates **one** metric or one chart the user is looking at. Source: whatever
 the chart/tile already rendered, plus its glossary entry. This is the most
-constrained type: the context contains *only* the data backing that one view.
+constrained type: the context contains _only_ the data backing that one view.
 
 - For a single KPI: the `MetricSnapshot` (§2) for that metric id, plus its
   glossary definition text and the `uncertainty` framing string already attached
   to soft metrics (ADR 0018 D11).
 - For a chart: the **series the chart plotted** as `{ date, value, availability,
-  reliabilityTier }[]` at display precision, the axis units, any reference lines
+reliabilityTier }[]` at display precision, the axis units, any reference lines
   the chart drew (e.g. the `CMS_COMPLIANCE_HOURS` line, the AHI severity band
   cutoffs), and the chart's own caption/legend text. No higher-resolution data
   than the chart itself showed may be included (§3, R2).
@@ -149,14 +149,14 @@ e.g. "usage vs the CMS 4-hour adherence floor," or "AHI band per your configured
 thresholds." Source: the clinical module (`analysis/clinical`) and the user's
 configured thresholds.
 
-| Field (context) | Source | Notes |
-| --- | --- | --- |
-| `ahiThresholds` | `AnalysisParams.ahi` (user) → falls back to `AHI_SEVERITY_THRESHOLDS` | the **active** mild/moderate/severe cutoffs |
-| `severityBand` | `classifyAhiSeverity(value, ahiThresholds)` | computed app-side |
-| `cmsComplianceHours` | `CMS_COMPLIANCE_HOURS` (4) | labelled "CMS / US Medicare adherence floor" |
-| `recommendedUsageHours` | `RECOMMENDED_USAGE_HOURS` (6) | labelled "common good-adherence target, not a regulatory floor" |
-| `complianceDefinition` | text | "compliant = mask-on ≥ {cmsComplianceHours} h" |
-| `referenceProvenance` | text | which numbers are AASM/ICSD-3 vs device convention vs CMS policy |
+| Field (context)         | Source                                                                | Notes                                                            |
+| ----------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `ahiThresholds`         | `AnalysisParams.ahi` (user) → falls back to `AHI_SEVERITY_THRESHOLDS` | the **active** mild/moderate/severe cutoffs                      |
+| `severityBand`          | `classifyAhiSeverity(value, ahiThresholds)`                           | computed app-side                                                |
+| `cmsComplianceHours`    | `CMS_COMPLIANCE_HOURS` (4)                                            | labelled "CMS / US Medicare adherence floor"                     |
+| `recommendedUsageHours` | `RECOMMENDED_USAGE_HOURS` (6)                                         | labelled "common good-adherence target, not a regulatory floor"  |
+| `complianceDefinition`  | text                                                                  | "compliant = mask-on ≥ {cmsComplianceHours} h"                   |
+| `referenceProvenance`   | text                                                                  | which numbers are AASM/ICSD-3 vs device convention vs CMS policy |
 
 The clinical-context note exists so the model uses **the user's configured
 thresholds**, not whatever cutoffs are in its training data. If the user has
@@ -169,7 +169,7 @@ pre-computed `severityBand`.
 ## 2. The grounded-context JSON schema (TypeScript-interface form)
 
 This is the object literally serialized and sent. It is the **only** payload the
-narration layer may reference. Every numeric value is a *string* at display
+narration layer may reference. Every numeric value is a _string_ at display
 precision (so the model cannot read extra digits), paired with a machine field
 for the unit, reliability, and availability. Raw numbers are deliberately not
 sent (§3, R8).
@@ -243,7 +243,11 @@ interface SeriesPoint {
 /** The active, user-configured clinical references. */
 interface ClinicalReferences {
   /** The ACTIVE AHI severity cutoffs (user override or AASM/ICSD-3 default). */
-  readonly ahiThresholds: { readonly mild: number; readonly moderate: number; readonly severe: number };
+  readonly ahiThresholds: {
+    readonly mild: number;
+    readonly moderate: number;
+    readonly severe: number;
+  };
   readonly ahiThresholdsSource: 'user-configured' | 'aasm-icsd3-default';
   /** CMS adherence floor in hours (4). */
   readonly cmsComplianceHours: number;
@@ -284,8 +288,8 @@ interface GroundedContext {
 
   /** Date scope. Calendar dates only — no clock times. */
   readonly scope: {
-    readonly startDate: string;      // ISO YYYY-MM-DD
-    readonly endDate: string;        // ISO YYYY-MM-DD
+    readonly startDate: string; // ISO YYYY-MM-DD
+    readonly endDate: string; // ISO YYYY-MM-DD
     readonly nightCount: number;
     readonly nightsWithDefinedRate: number; // excludes undefined-rate nights
   };
@@ -302,7 +306,11 @@ interface GroundedContext {
     readonly yUnit: string;
     readonly points: ReadonlyArray<SeriesPoint>;
     /** Reference lines the chart drew, e.g. CMS 4h, AHI band cutoffs. */
-    readonly referenceLines: ReadonlyArray<{ readonly label: string; readonly value: string; readonly unit: string }>;
+    readonly referenceLines: ReadonlyArray<{
+      readonly label: string;
+      readonly value: string;
+      readonly unit: string;
+    }>;
     readonly caption: string;
   };
 
@@ -352,7 +360,7 @@ exist.
 - **R2 — Within-night event timestamps and sub-night resolution.** No
   `Event.timestamp` (epoch ms), no event-level start/end clock times, no
   per-event `pressure`/`leak`/`spo2` context samples, no intraday series beyond
-  what a *currently displayed* chart already shows at its own (coarse)
+  what a _currently displayed_ chart already shows at its own (coarse)
   resolution. Counts and per-night indices only. Clustering positions and
   cluster member timestamps are out.
 - **R3 — Exact clock times of any kind.** Recording `startTime`/`endTime`,
@@ -395,7 +403,7 @@ exist.
 > When you ask for an AI insight, the app sends a small summary of
 > **already-calculated numbers** — your nightly AHI, usage hours, leak,
 > pressure, and similar metrics, at the same precision shown on screen, labelled
-> with calendar dates and your machine *type* (CPAP/BiPAP/etc.). It does **not**
+> with calendar dates and your machine _type_ (CPAP/BiPAP/etc.). It does **not**
 > send your raw breathing signals, exact event times, bedtime clock times, your
 > machine's serial number, your notes or tags, your location, or any account
 > identifier. You can review the exact payload before it is sent.
@@ -408,7 +416,7 @@ transparency posture and giving `security` a concrete artifact to audit.
 
 ## 4. Anti-fabrication rules for the prompt layer
 
-The contract the *prompt layer* must enforce on top of the data contract.
+The contract the _prompt layer_ must enforce on top of the data contract.
 
 ### System-prompt invariants (must all be present)
 
@@ -441,14 +449,14 @@ The contract the *prompt layer* must enforce on top of the data contract.
 - **Cloud backends (the configured `anthropic` / `openai` providers).** Use the
   provider's structured-output / tool-use mode and require the model to return a
   typed object: `{ narrative: string, citedMetricIds: string[],
-  citedNumbers: string[] }`. Constraining `citedNumbers` to a returned array
+citedNumbers: string[] }`. Constraining `citedNumbers` to a returned array
   (a) makes the §5 validation trivial (compare `citedNumbers` ⊆
   `numericAllowList`) and (b) discourages free-floating figures because the model
   must declare what it cited. The prose still lives in `narrative`, but the
   declared-citations channel is the contract surface.
-  - *Anthropic note:* prefer a tool-use / structured-output schema over relying
+  - _Anthropic note:_ prefer a tool-use / structured-output schema over relying
     on prose-only JSON; keep the system prompt's closed-world rule as the primary
-    guard since structured output constrains *shape*, not *factuality*.
+    guard since structured output constrains _shape_, not _factuality_.
 - **Small / local models (future, privacy-maximal path).** Many local models do
   not honour JSON-mode reliably. Degrade as follows: (1) keep the same system
   prompt invariants; (2) drop the requirement for a structured citations object
@@ -524,7 +532,7 @@ and the prompt/validator never treat it as `0`. Provide these vectors to
 
 - **`resmed-specialist`:** confirm the compliance definition wording and that
   `machineClass` is the correct coarse granularity (ASV/AirMini narration
-  differences). Confirm that the leak thresholds remain *device conventions*
+  differences). Confirm that the leak thresholds remain _device conventions_
   in any clinical-context copy (ADR 0018 D7/D10).
 - **`security`:** audit the `buildGroundedContext` serializer against the §3
   blocklist; confirm the API key never enters the payload; sign off the

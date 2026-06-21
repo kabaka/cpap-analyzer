@@ -1470,6 +1470,139 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Within the [sleep start, sleep end) window each metric is reduced by a per-metric statistic chosen to be the meaningful one for that variable, and the displayed tile names which statistic it shows: temperature is the overnight low (the minimum across the window); barometric pressure, relative humidity, and dewpoint are the overnight mean (the average across the window); wind is a representative overnight value; and air quality / AQI is the overnight statistic of the hourly index. "Wall-clock" means the interval is defined in the local civil time of the recorded night, aligned to the same local-date keying the app uses for CPAP sessions, so a weather night lines up with the correct CPAP night. A night that crosses midnight (two civil dates) is fetched for both dates and merged into one window. Knowing the exact window and statistic matters for interpretation: when you correlate "overnight pressure" against AHI, you are comparing two summaries computed over the same interval, and a value such as "temperature" is specifically the night\'s coldest point, not its average.',
     relatedTerms: ['barometric-pressure', 'relative-humidity', 'dewpoint', 'aqi'],
   },
+
+  // ─── AI INSIGHTS ───────────────────────────────────────────────────
+
+  {
+    id: 'ai-insights',
+    term: 'AI Insights',
+    category: 'data',
+    aliases: ['AI Summaries', 'AI narration'],
+    quick:
+      "The opt-in, off-by-default feature that uses a language model to phrase the app's already-computed metrics into plain-language summaries — it never computes or diagnoses.",
+    standard:
+      'AI Insights is an optional CPAP Analyzer feature that turns metrics the app has already calculated into a few sentences of plain-language context (a night summary, a range/trend summary, or an explanation of one metric or chart). It is built on compute-then-narrate: the deterministic analysis pipeline does all the math, and the model only puts the finished numbers into words. It is off by default, runs on one of four user-chosen backends (two fully on-device, two bring-your-own-key cloud), and never diagnoses or recommends changing therapy.',
+    detailed:
+      'AI Insights is the realisation of ADR 0024. Its load-bearing constraint is that the language model is a narrator, not a calculator: it receives a frozen, aggregate snapshot of already-computed figures and may only select among them, phrase them, and attach the app-authored caveats — it may not compute, average, re-derive, round, extrapolate, classify a severity band, or introduce any number, date, or threshold not present in the snapshot. The feature ships disabled and, while disabled, renders no UI anywhere. When enabled, the user picks a backend along a privacy/quality curve: in-browser WebLLM and Chrome built-in AI run entirely on-device (zero egress), while Claude (Anthropic) browser-direct and any OpenAI-compatible endpoint are bring-your-own-key cloud backends gated by an explicit two-gate egress consent. Correctness is protected by grounding plus a deterministic numeral-validation backstop that rejects any output containing a number the app did not compute, falling back to a templated summary. Every output carries an inseparable "AI-generated — verify against the numbers" caveat and is framed as descriptive, non-diagnostic wellness context. CPAP Analyzer is not a medical device and AI Insights does not diagnose or give medical advice.',
+    relatedTerms: [
+      'grounding',
+      'llm',
+      'on-device-llm',
+      'hallucination',
+      'webllm',
+      'chrome-built-in-ai',
+      'ai-cloud-backend',
+    ],
+    references: [
+      'CPAP Analyzer ADR 0024 — Grounded, Opt-In AI Insights via a Multi-Backend Provider Abstraction. — Defines compute-then-narrate grounding, the four-backend provider abstraction, two-gate cloud consent, and the non-diagnostic framing.',
+    ],
+  },
+  {
+    id: 'grounding',
+    term: 'Grounding (compute-then-narrate)',
+    category: 'data',
+    aliases: ['Compute-then-narrate', 'Grounded generation'],
+    quick:
+      'The design rule that the app computes every number deterministically and the language model is only allowed to phrase those finished numbers — never to calculate or invent one.',
+    standard:
+      'Grounding is the practice of constraining a language model to a fixed, already-computed set of facts rather than letting it produce numbers from its own reasoning. In CPAP Analyzer this takes the compute-then-narrate form: the deterministic analysis pipeline calculates all clinical and statistical values, hands the model a structured snapshot of those finished figures, and instructs it to reference only what is in the snapshot — quoting each value and unit exactly and never computing, converting, or introducing a number. Grounding is the accepted mitigation for two well-established weaknesses of language models: weak numeric reasoning (especially in small models) and the tendency of all models to hallucinate.',
+    detailed:
+      "Grounding works on two layers. First, the input is structured and closed-world: numeric values are sent as their rounded display strings paired with their unit, reliability tier, and availability, and the system prompt forbids the model from computing, summing, averaging, ratioing, rounding, or introducing any figure not literally present — if a needed number is absent, the model must say the information is unavailable rather than fabricate one. Second, a deterministic post-generation validator extracts every numeral from the model's prose and requires each to match an allow-list assembled mechanically from the snapshot; any unmatched number (or a value quoted with the wrong unit, or a severity/compliance verdict that disagrees with the app's own) causes a regeneration and, failing that, a fall back to a plain templated summary. The result is that fabricated figures are designed out: every number a user reads in an AI summary is, by construction, a number the app itself computed. Grounding is what lets a generative surface satisfy the project's non-negotiable Correctness principle.",
+    relatedTerms: ['ai-insights', 'llm', 'hallucination'],
+    references: [
+      'CPAP Analyzer ADR 0024 — Grounded, Opt-In AI Insights via a Multi-Backend Provider Abstraction. — The compute-then-narrate grounding decision and its rationale (LLM numeric weakness and hallucination).',
+    ],
+  },
+  {
+    id: 'llm',
+    term: 'Large Language Model (LLM)',
+    category: 'data',
+    aliases: ['LLM', 'Language model'],
+    quick:
+      'A neural-network model trained on large text corpora to generate fluent natural language; in CPAP Analyzer it only phrases your already-computed numbers, never calculates them.',
+    standard:
+      'A large language model (LLM) is a machine-learning model — typically a transformer neural network with millions to hundreds of billions of parameters — trained to predict and generate natural-language text. LLMs are good at fluent phrasing and summarisation but are not reliable calculators: they have weak numeric reasoning (more so the smaller they are) and can produce confident but false statements (hallucinations). CPAP Analyzer therefore uses an LLM strictly as a narrator of metrics the app has already computed, behind the grounding and validation guardrails that prevent it from being the source of any number.',
+    detailed:
+      "LLMs generate text by repeatedly predicting the next token given the preceding context, having learned statistical patterns of language from large corpora. Their fluency makes them well suited to turning a table of numbers into readable prose, but two properties make them unsafe as a source of clinical figures: (1) numeric/arithmetic reasoning is unreliable and degrades in smaller models, and (2) all LLMs hallucinate — they can state plausible-sounding but unfounded facts. CPAP Analyzer mitigates both by never asking the model to compute anything: the model receives finished, rounded values and is constrained — by a closed-world system prompt and a deterministic numeral-validation backstop — to restate only those values. The app can run the model in four ways: two on-device (in-browser WebLLM via WebGPU, and Chrome's built-in Gemini Nano) and two bring-your-own-key cloud APIs (Anthropic's Claude, and any OpenAI-compatible endpoint). The choice of backend trades privacy against phrasing quality; the grounding guarantee is identical across all of them.",
+    relatedTerms: ['ai-insights', 'grounding', 'on-device-llm', 'hallucination'],
+    references: [
+      'Vaswani, A., Shazeer, N., Parmar, N., et al. (2017). Attention Is All You Need. Advances in Neural Information Processing Systems 30 (NeurIPS). — The transformer architecture underlying modern large language models.',
+    ],
+  },
+  {
+    id: 'on-device-llm',
+    term: 'On-device LLM / WebGPU',
+    category: 'data',
+    aliases: ['On-device inference', 'WebGPU', 'Local LLM'],
+    quick:
+      'Running a language model entirely inside your own browser/device (often on the GPU via WebGPU) so that no data — and not even the request — leaves the device.',
+    standard:
+      "An on-device LLM runs the model on your own hardware rather than on a remote server, so generating a summary involves no network request and zero data egress. In the browser this is commonly done with WebGPU, a modern web API that gives JavaScript access to the GPU for the heavy matrix computation an LLM needs. CPAP Analyzer offers two on-device backends: in-browser WebLLM (which downloads model weights once and runs them on the GPU via WebGPU) and Chrome's built-in AI (which uses a small model that ships with the browser). Both keep everything — your metrics and the request itself — on your device, which is the strongest privacy posture in the app.",
+    detailed:
+      "WebGPU is the successor to WebGL for general-purpose GPU compute in the browser; it is what makes practical in-browser LLM inference possible, because transformer inference is dominated by large matrix multiplications that are far faster on a GPU than on the CPU. The WebLLM backend downloads a quantised open model once (a multi-gigabyte file, stored in the browser and counted against the app's storage budget) and then runs it locally; after that one-time, data-free download, inference is zero-egress. The Chrome built-in backend instead uses Gemini Nano, a small model provisioned by the browser, so there is no app-side download. The privacy advantage is categorical: unlike a cloud backend, an on-device backend sends nothing off the device, so there is no consent dialog and no per-request egress reminder — there is genuinely nothing to disclose. The tradeoffs are capability (small local models phrase less fluently than frontier cloud models), hardware requirements (WebGPU support and adequate GPU memory), and, for WebLLM, the large initial download. A local server such as Ollama or LM Studio addressed over a loopback URL is treated the same way — on-device, no egress — even though it is technically a separate process rather than in-page inference.",
+    relatedTerms: ['ai-insights', 'llm', 'webllm', 'chrome-built-in-ai'],
+    references: [
+      'W3C. WebGPU. https://www.w3.org/TR/webgpu/ — The browser API providing GPU access used for in-browser model inference.',
+    ],
+  },
+  {
+    id: 'hallucination',
+    term: 'Hallucination',
+    category: 'data',
+    aliases: ['LLM hallucination', 'Confabulation'],
+    quick:
+      'When a language model states plausible-sounding but false or unfounded information — including invented numbers — as if it were fact.',
+    standard:
+      "A hallucination is output from a language model that is fluent and confident but not actually supported by the input or by reality — for example, inventing a number, misstating a threshold, or asserting a relationship that does not exist. All language models hallucinate to some degree; it is an inherent property of how they generate text, not a fixable bug in a particular model. In a health tool a hallucinated clinical value is the worst possible failure, which is why CPAP Analyzer never lets the model compute or originate a figure and validates every number in its output against the app's own computations before showing it.",
+    detailed:
+      'Because an LLM generates text by predicting likely continuations rather than by retrieving verified facts, it can produce statements that are syntactically and stylistically convincing yet factually wrong — including fabricated figures and spurious precision. The risk is highest exactly where it is most dangerous for a clinical tool: numbers. CPAP Analyzer addresses hallucination structurally rather than hoping the model behaves. Grounding (compute-then-narrate) removes any need for the model to produce a number — it is handed the finished, rounded values and told to restate only those. A deterministic numeral-extraction validator then checks the generated prose against an allow-list of the exact tokens the app computed and rejects any output containing a number that is not on it (or a value carrying the wrong unit, or a severity verdict that conflicts with the app\'s own), regenerating once and otherwise falling back to a non-generative templated summary. The inseparable "AI-generated — may be inaccurate; verify against the numbers" caveat and the "Based on these numbers" source panel let the reader check the prose against the data regardless. Even fully grounded, generated text can still mislead by implying causation or sounding overconfident, which is why the framing stays descriptive and non-diagnostic and defers to a clinician.',
+    relatedTerms: ['ai-insights', 'llm', 'grounding'],
+    references: [
+      'Ji, Z., Lee, N., Frieske, R., et al. (2023). Survey of Hallucination in Natural Language Generation. ACM Computing Surveys, 55(12), 1–38. DOI: 10.1145/3571730. — A survey of why language models hallucinate and how grounding mitigates it.',
+    ],
+  },
+  {
+    id: 'webllm',
+    term: 'WebLLM (in-browser backend)',
+    category: 'data',
+    aliases: ['WebLLM'],
+    quick:
+      'The on-device AI Insights backend that downloads an open model once and runs it entirely in your browser on the GPU (WebGPU), with zero data egress afterwards.',
+    standard:
+      "WebLLM is CPAP Analyzer's privacy-default AI Insights backend. It downloads a quantised open language model once (a multi-gigabyte file stored in your browser) and then runs it locally on your GPU through WebGPU, so generating a summary involves no network request. After the one-time, data-free model download, it is fully zero-egress: none of your data — and not even the inference request — leaves your device. It requires WebGPU support and adequate GPU memory, and the on-disk model size is disclosed before download and can be removed at any time.",
+    detailed:
+      'WebLLM brings transformer inference into the browser by compiling and running a quantised open model against WebGPU. The first time you select a model, its weights are fetched from a model host — a download that carries none of your data, just the model — and cached locally (in OPFS/browser cache, counting against the same storage budget shown in Privacy & Storage). Every subsequent generation runs entirely on-device with zero egress, which is why this backend needs no consent dialog. The first generation after a download may include a one-time model load/warm-up, shown as a "Loading model…" state. Practical considerations: it needs a browser and device with WebGPU and enough GPU memory (a larger model gives richer prose but downloads more and may not fit on low-memory devices, surfaced as a graceful "couldn\'t load — try a smaller model" error), and small local models phrase less fluently than frontier cloud models. The grounding and numeral-validation guarantees are identical to every other backend, so the prose is just as constrained to the app\'s computed numbers.',
+    relatedTerms: ['ai-insights', 'on-device-llm', 'llm', 'chrome-built-in-ai'],
+  },
+  {
+    id: 'chrome-built-in-ai',
+    term: 'Chrome built-in AI (Gemini Nano)',
+    category: 'data',
+    aliases: ['Chrome built-in AI', 'Gemini Nano', 'Prompt API', 'Summarizer API'],
+    quick:
+      'The on-device AI Insights backend that uses the small Gemini Nano model bundled with recent Chrome browsers, with no app-side download and zero data egress.',
+    standard:
+      "Chrome built-in AI is an on-device AI Insights backend that uses Gemini Nano, a small language model that ships inside recent versions of Chrome and is exposed through the browser's Summarizer and Prompt APIs. Because the model is provided by the browser, there is nothing for the app to download, and inference runs entirely on your device with zero data egress. It is available only on supporting browsers, and some states require a one-time on-device model provisioning that the browser handles; when it is unavailable, the app steers you to WebLLM or a cloud backend.",
+    detailed:
+      "Chrome built-in AI is a progressive-enhancement backend: where the browser exposes an on-device model API (the Summarizer / Prompt APIs backed by Gemini Nano), CPAP Analyzer can generate insights with the lightest possible footprint — no multi-gigabyte download, since the model ships with the browser — and zero egress, since inference is local. Availability is gated on browser support and, in some states, a one-time on-device model provisioning that the browser performs (surfaced with the same progress affordance as a WebLLM download). The capability is still maturing and browser coverage is growing, so the app feature-detects it on selection and renders a clear inline explanation rather than a raw API error when it is unavailable, pointing the user to the in-browser WebLLM option or a cloud option. As with every backend, the compute-then-narrate grounding and the numeral-validation backstop apply unchanged, so the model only ever restates the app's own computed numbers.",
+    relatedTerms: ['ai-insights', 'on-device-llm', 'llm', 'webllm'],
+  },
+  {
+    id: 'ai-cloud-backend',
+    term: 'Cloud AI backend (Claude / OpenAI-compatible)',
+    category: 'data',
+    aliases: ['BYO-key cloud backend', 'Claude browser-direct', 'OpenAI-compatible endpoint'],
+    quick:
+      'A bring-your-own-key AI Insights backend that sends a small, aggregate metric snapshot to a remote provider (Anthropic Claude or any OpenAI-compatible endpoint) for higher-quality wording, gated by explicit consent.',
+    standard:
+      "A cloud AI backend produces summaries by calling a remote provider's API directly from your browser using your own API key. CPAP Analyzer offers two: Claude (Anthropic) browser-direct, and any OpenAI-compatible endpoint (OpenAI, OpenRouter, Together, or a local Ollama/LM Studio server via a base URL). Cloud backends send a small, aggregate metric snapshot off the device, so they are gated by an explicit two-gate consent that names exactly what is and is not sent. They trade some privacy for more fluent prose; there is no shared key and no app account — each request uses your own key, on your own provider account, and incurs that provider's cost.",
+    detailed:
+      "Because CPAP Analyzer has no backend server, a cloud AI request originates from your browser with your own API key and is sent directly to the provider — which means the provider necessarily sees the request and your network IP, exactly as any website you visit does; the app cannot proxy or hide that, which is why cloud backends are opt-in and consent-gated. The only thing that egresses is the grounded metric snapshot: aggregate, already-computed numbers at display precision (AHI, leak, usage, pressure, event counts, trend direction), the calendar dates you asked about, and your machine type — never the raw signals, exact times, serial number, notes, location, or any identifier. The Claude backend uses Anthropic's SDK browser-direct access with a model you choose (Opus / Sonnet / Haiku, trading quality, speed, and cost); the OpenAI-compatible backend targets any endpoint speaking the OpenAI API shape and, via a user-supplied base URL, spans both remote providers (treated as cloud, consent required) and local loopback servers like Ollama (treated as on-device, no egress). Cloud origins must be in the app's strict CSP allowlist — the curated presets (Anthropic, OpenAI, and similar) and loopback are permitted, but an arbitrary user-typed remote host is not supported in this phase, because allowing it would require a wildcard that would re-open the network-exfiltration surface the policy exists to close. API keys are held in session-scoped memory, never persisted to disk by default, never placed in the snapshot, and never logged.",
+    relatedTerms: ['ai-insights', 'llm', 'grounding', 'on-device-llm'],
+    references: [
+      'CPAP Analyzer ADR 0024 — Grounded, Opt-In AI Insights via a Multi-Backend Provider Abstraction. — The cloud-backend egress contract, two-gate consent, CSP allowlist, and the no-arbitrary-remote-host limitation.',
+    ],
+  },
 ] as const;
 
 /** Map of glossary entry id → entry for O(1) lookup */

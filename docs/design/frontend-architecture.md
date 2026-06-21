@@ -209,7 +209,15 @@ interface SettingsState {
   integrations: {
     fitbit: { enabled: boolean; accessToken: string | null };
     weather: { enabled: boolean; apiKey: string | null; location: string };
-    llm: { enabled: boolean; provider: 'openai' | 'anthropic' | null; apiKey: string | null };
+    // AI Insights (opt-in, off by default). See `src/types/settings.ts` for the
+    // authoritative `LLMIntegrationConfig`; ADR 0024 is the source of truth.
+    // A single backend selector (`webllm` | `chrome-ai` | `anthropic` |
+    // `openai-compatible`) plus two-gate consent fields (`consentAt`,
+    // `consentContractVersion`) for the cloud backends. Backend-specific
+    // sub-configs (`webllm`, `anthropic`, `openaiCompatible`) carry model
+    // choice and endpoint. API keys are NOT stored here — they live in the
+    // session-scoped `useLLMCredentialStore` and never persist to disk.
+    llm: LLMIntegrationConfig;
   };
   updateIntegration: (key: string, config: Partial<unknown>) => void;
 }
@@ -715,10 +723,16 @@ cpap-analyzer/
 │   │   │   ├── clustering.ts
 │   │   │   └── ...
 │   │   │
-│   │   └── integrations/           # External service integrations
-│   │       ├── FitbitService.ts
-│   │       ├── WeatherService.ts
-│   │       └── LLMService.ts
+│   │   ├── integrations/           # External service integrations
+│   │   │   ├── FitbitService.ts
+│   │   │   └── WeatherService.ts
+│   │   │
+│   │   └── llm/                     # AI Insights (compute-then-narrate; ADR 0024)
+│   │       ├── types.ts            # Backend-agnostic LLMProvider interface
+│   │       ├── runInsight.ts       # Orchestrates build → prompt → generate → validate
+│   │       ├── context/            # buildGroundedContext + redaction serializer
+│   │       ├── grounding/          # Prompt assembler + numeral-extraction validator
+│   │       └── providers/          # webllm, chrome-ai, anthropic, openai-compatible
 │   │
 │   ├── stores/                     # Zustand stores
 │   │   ├── useAppStore.ts
@@ -3112,8 +3126,12 @@ const Chart = React.lazy(() => import('@/components/charts/LineChart'));
 // Lazy-load PDF generator when creating report
 const PDFGenerator = React.lazy(() => import('@/services/reports/PDFGenerator'));
 
-// Lazy-load LLM service when user enables it
-const LLMService = React.lazy(() => import('@/services/integrations/LLMService'));
+// Lazy-load the AI Insights entry point and provider SDKs only when the user
+// enables the feature and triggers a generation (ADR 0024). The runInsight
+// orchestrator lives at `@/services/llm/runInsight`; each backend's SDK
+// (WebLLM, Anthropic, etc.) is dynamically imported inside its provider so the
+// weight is paid only for the chosen backend.
+const runInsight = () => import('@/services/llm/runInsight');
 ```
 
 ### 13.2 Lazy Loading

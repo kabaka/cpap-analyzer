@@ -24,13 +24,13 @@
 The palette already assigns strong semantic ownership to several hue families.
 The AI marker must not collide with any of them:
 
-| Existing scale | Hue | Owns the meaning |
-| --- | --- | --- |
-| `--color-status-*`, `--color-error`, `--color-warning` | red / orange / amber / green | **Clinical severity** (AHI etc.) and error/warning |
-| `--color-success` / `-bg` | green | **Retained-on-device** privacy convention (weather) |
-| `--color-info` / `-bg` (= `--color-primary` blue) | blue | **Egress / connects-online** privacy convention (weather) + interactive primary |
-| `--color-reliability-*`, `--color-detection-*`, `--color-tecsa-*` | **violet** | **"inferred / derived / measurement-uncertain"** metadata |
-| `--color-aqi-*` | green→maroon ramp | air quality |
+| Existing scale                                                    | Hue                          | Owns the meaning                                                                |
+| ----------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------- |
+| `--color-status-*`, `--color-error`, `--color-warning`            | red / orange / amber / green | **Clinical severity** (AHI etc.) and error/warning                              |
+| `--color-success` / `-bg`                                         | green                        | **Retained-on-device** privacy convention (weather)                             |
+| `--color-info` / `-bg` (= `--color-primary` blue)                 | blue                         | **Egress / connects-online** privacy convention (weather) + interactive primary |
+| `--color-reliability-*`, `--color-detection-*`, `--color-tecsa-*` | **violet**                   | **"inferred / derived / measurement-uncertain"** metadata                       |
+| `--color-aqi-*`                                                   | green→maroon ramp            | air quality                                                                     |
 
 Violet is tempting for AI (generated text _is_ inferred), but it is already
 owned by the reliability/detection axis and an "AI" pill in violet would read as
@@ -58,17 +58,17 @@ visually and behaviorally distinct (UX §4.2, §8.5; Apple HIG disclosure).
 
 A small pill: `[✨] AI`.
 
-| Property | Value |
-| --- | --- |
-| Container | `display: inline-flex; align-items: center; gap: var(--space-1);` |
-| Shape | `border-radius: var(--radius-full)` (fully rounded — distinct from the square-ish `(?)` help button) |
-| Padding | `1px var(--space-2)` (matches `.onlinePill` / `Badge.sm`) |
-| Background | `var(--color-ai-bg)` **NEW** |
-| Text color | `var(--color-ai)` **NEW** |
-| Font | `var(--font-size-xs)`, `var(--font-weight-semibold)`, `var(--font-family-sans)`, `line-height: var(--line-height-tight)` |
-| Label text | literal `AI` (uppercase, never abbreviated to color alone) |
-| Glyph | ✨ sparkle, `14px`, `aria-hidden="true"`, `flex-shrink: 0`, sits left of the label |
-| Whitespace | `white-space: nowrap` |
+| Property   | Value                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Container  | `display: inline-flex; align-items: center; gap: var(--space-1);`                                                        |
+| Shape      | `border-radius: var(--radius-full)` (fully rounded — distinct from the square-ish `(?)` help button)                     |
+| Padding    | `1px var(--space-2)` (matches `.onlinePill` / `Badge.sm`)                                                                |
+| Background | `var(--color-ai-bg)` **NEW**                                                                                             |
+| Text color | `var(--color-ai)` **NEW**                                                                                                |
+| Font       | `var(--font-size-xs)`, `var(--font-weight-semibold)`, `var(--font-family-sans)`, `line-height: var(--line-height-tight)` |
+| Label text | literal `AI` (uppercase, never abbreviated to color alone)                                                               |
+| Glyph      | ✨ sparkle, `14px`, `aria-hidden="true"`, `flex-shrink: 0`, sits left of the label                                       |
+| Whitespace | `white-space: nowrap`                                                                                                    |
 
 Accessible name: the host element carries the meaning in text ("AI", or in
 longer contexts "AI-generated"); the ✨ is `aria-hidden`. Where the pill labels a
@@ -98,14 +98,14 @@ region, the region uses `aria-label` (e.g. the caveat region in §3.7).
 
 These two affordances must be unmistakable at a glance. Concrete encodings:
 
-| | `✨ AI` marker / actions | `(?)` glossary help (existing) |
-| --- | --- | --- |
-| Glyph | ✨ sparkle | `?` in a circle |
-| Color role | `--color-ai` (fuchsia) **NEW** | existing help/`--color-text-muted` / link blue — unchanged |
-| Shape | pill (`--radius-full`) or text-button | small circular icon button |
-| Wording | always carries "AI" / "Explain" / "Summarize" | "What is this?" / glossary term, never "AI" |
-| Behavior | opens the Insight panel (generated prose) | opens deterministic tooltip/popover (glossary/formula) |
-| Motion | may stream/animate (reduced-motion aware) | static |
+|            | `✨ AI` marker / actions                      | `(?)` glossary help (existing)                             |
+| ---------- | --------------------------------------------- | ---------------------------------------------------------- |
+| Glyph      | ✨ sparkle                                    | `?` in a circle                                            |
+| Color role | `--color-ai` (fuchsia) **NEW**                | existing help/`--color-text-muted` / link blue — unchanged |
+| Shape      | pill (`--radius-full`) or text-button         | small circular icon button                                 |
+| Wording    | always carries "AI" / "Explain" / "Summarize" | "What is this?" / glossary term, never "AI"                |
+| Behavior   | opens the Insight panel (generated prose)     | opens deterministic tooltip/popover (glossary/formula)     |
+| Motion     | may stream/animate (reduced-motion aware)     | static                                                     |
 
 **Rule for `frontend`:** the `(?)` help component keeps its current tokens
 untouched. Do **not** introduce `--color-ai` anywhere in the help/glossary path.
@@ -126,10 +126,10 @@ Both are pills, identical geometry to `.onlinePill` / `Badge.sm`
 (`padding: 1px var(--space-2); border-radius: var(--radius-full);
 font-size: var(--font-size-xs); font-weight: var(--font-weight-medium)`).
 
-| Badge | Glyph (`aria-hidden`) | Text (the accessible signal) | Background | Foreground |
-| --- | --- | --- | --- | --- |
-| **On-device** | 🟢 | `On-device · Zero egress` | `var(--color-success-bg)` | `var(--color-success)` |
-| **Connects online** | 🔵 | `Connects online` | `var(--color-info-bg)` | `var(--color-info)` |
+| Badge               | Glyph (`aria-hidden`) | Text (the accessible signal) | Background                | Foreground             |
+| ------------------- | --------------------- | ---------------------------- | ------------------------- | ---------------------- |
+| **On-device**       | 🟢                    | `On-device · Zero egress`    | `var(--color-success-bg)` | `var(--color-success)` |
+| **Connects online** | 🔵                    | `Connects online`            | `var(--color-info-bg)`    | `var(--color-info)`    |
 
 These are existing tokens — **no new tokens for the badges.** The green/blue
 mapping is intentionally identical to weather's "what leaves / what never leaves"
@@ -153,7 +153,7 @@ privacy contract _before_ the user picks (UX §3.3, HAX G1).
   and your own API key."
 - Legend color is reinforcement; the legend **text** carries the meaning. A 3px
   left accent border on each subgroup card (`border-left: 3px solid
-  var(--color-success)` / `var(--color-info)`) echoes the consent-dialog blocks
+var(--color-success)` / `var(--color-info)`) echoes the consent-dialog blocks
   (`.egressBlock` / `.retainedBlock`) and the `.privacyNotice` pattern.
 
 ### 2.3 Radiogroup option styling (the four backends)
@@ -176,9 +176,9 @@ transition: border-color var(--transition-fast), background var(--transition-fas
 ```
 
 - **Col 1:** the radio indicator (custom 18px circle; `border: 2px solid
-  var(--color-border-emphasis)`; selected → filled `var(--color-primary)` with a
+var(--color-border-emphasis)`; selected → filled `var(--color-primary)` with a
   white/`--color-surface-primary` inner dot). Reuse `accent-color:
-  var(--color-primary)` if a native input is retained.
+var(--color-primary)` if a native input is retained.
 - **Col 2:** label (`--font-size-base`, `--font-weight-medium`,
   `--color-text-primary`) over a one-line description (`--font-size-sm`,
   `--color-text-secondary`) and an inline status line (`--font-size-xs`,
@@ -240,8 +240,8 @@ mobile (UX §4.1). Surface tokens:
 - **Per-output egress reminder (cloud backends only)** (UX §4.3): a single line
   beneath the header reusing `.syncEgressReminder` styling exactly —
   `background: var(--color-info-bg); border-left: 3px solid var(--color-info);
-  border-radius: var(--radius-md); padding: var(--space-3)`. Text: `Sends a
-  metric snapshot to <Backend>. No raw data leaves your device.` + a
+border-radius: var(--radius-md); padding: var(--space-3)`. Text: `Sends a
+metric snapshot to <Backend>. No raw data leaves your device.` + a
   `[What's sent →]` link (`--color-text-link`) opening the read-only egress
   contract. Absent for local backends.
 
@@ -252,10 +252,10 @@ mobile (UX §4.1). Surface tokens:
 - **Suggested-question chips** (UX §7.6) below the action:
   - Container: `display: flex; flex-wrap: wrap; gap: var(--space-2)`.
   - Each chip: `display: inline-flex; align-items: center; gap: var(--space-1);
-    padding: var(--space-2) var(--space-3); border-radius: var(--radius-full);
-    border: 1px solid var(--color-border-default); background:
-    var(--color-surface-secondary); color: var(--color-text-primary);
-    font-size: var(--font-size-sm); cursor: pointer; min-height: 44px`
+padding: var(--space-2) var(--space-3); border-radius: var(--radius-full);
+border: 1px solid var(--color-border-default); background:
+var(--color-surface-secondary); color: var(--color-text-primary);
+font-size: var(--font-size-sm); cursor: pointer; min-height: 44px`
     (44px touch target, UX §8.5).
   - Hover: `border-color: var(--color-ai); background: var(--color-ai-subtle-bg)`
     **NEW** (a very low-alpha fuchsia wash so chips feel "AI" on interaction
@@ -263,7 +263,7 @@ mobile (UX §4.1). Surface tokens:
   - Optional leading ✨ glyph (`aria-hidden`) at `--color-ai` to tie chips to the
     AI affordance; the chip's text label is the accessible signal.
 - **Cloud backend, no key:** primary action disabled (`--color-primary-disabled`)
-  + the §3.5 "no key" inline notice with an `Open AI Insights settings` deep-link.
+  - the §3.5 "no key" inline notice with an `Open AI Insights settings` deep-link.
 - No prose, no caveat yet (nothing generated).
 
 ### 3.2 Generating (streaming) — cursor + shimmer, reduced-motion aware
@@ -317,8 +317,8 @@ mobile (UX §4.1). Surface tokens:
 
 - Rendered **inline** in the panel as `role="alert"` (never a toast).
 - Visual: reuse the error-notice idiom — `background: var(--color-error-bg);
-  border-left: 3px solid var(--color-error); border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4)`. Title `--color-error`
+border-left: 3px solid var(--color-error); border-radius: var(--radius-md);
+padding: var(--space-3) var(--space-4)`. Title `--color-error`
   `--font-weight-semibold`; body `--color-text-primary` `--font-size-sm`.
 - Plain-language message + a concrete **next action** button (`Retry` /
   `Switch to on-device` / `Download model` / `Open settings`). Context preserved
@@ -330,8 +330,8 @@ mobile (UX §4.1). Surface tokens:
 
 - No model call is made. Render a calm empty state (not an error):
   `background: var(--color-surface-secondary); border: 1px dashed
-  var(--color-border-default); border-radius: var(--radius-md); padding:
-  var(--space-5); text-align: center`.
+var(--color-border-default); border-radius: var(--radius-md); padding:
+var(--space-5); text-align: center`.
 - Icon/illustration in `--color-text-muted`; message `--color-text-secondary`
   `--font-size-sm` (UX §7.7 copy) + a concrete fix action (`Widen range` /
   `Import data`).
@@ -344,8 +344,8 @@ A collapsible `Based on these numbers ▾` block, **expanded by default** on fir
 view per session.
 
 - Container: `background: var(--color-surface-secondary); border: 1px solid
-  var(--color-border-subtle); border-radius: var(--radius-md); padding:
-  var(--space-4)`.
+var(--color-border-subtle); border-radius: var(--radius-md); padding:
+var(--space-4)`.
 - Disclosure header: `--font-size-sm`, `--font-weight-semibold`,
   `--color-text-primary`, chevron `--color-text-muted`.
 - Body is a **definition list / table** (the authoritative accessible
@@ -408,18 +408,18 @@ return focus to trigger on close, `Esc`/overlay cancel without persisting.
   `aria-hidden`. (UX §3.8 / §7.2 lists the exact three rows.)
 - **What NEVER leaves your device** block — `.retainedBlock`:
   `background: var(--color-success-bg); border-left: 3px solid
-  var(--color-success)`. Each row a `.contractRow` with the **🔒** glyph in
+var(--color-success)`. Each row a `.contractRow` with the **🔒** glyph in
   `.lockGlyph`, `aria-hidden`.
 - **Cloud-egress emphasis (the AI-specific delta from weather):** because this is
   the only AI option that egresses, add a one-line emphasis under the description
   reusing `.syncEgressReminder` styling (blue, `border-left: 3px solid
-  var(--color-info)`): _"This is the only AI option that sends anything off your
+var(--color-info)`): _"This is the only AI option that sends anything off your
   device. On-device options send nothing."_ This is copy/placement emphasis, not
   a new token.
 - **Footnote** (`.consentFootnote`, `--color-text-muted`, `--font-size-xs`):
   re-ask-on-change note (UX §7.2).
 - **Acknowledgement** (`.consentAck`): checkbox (`accent-color:
-  var(--color-primary)`) gating the **Enable** primary button; **Cancel**
+var(--color-primary)`) gating the **Enable** primary button; **Cancel**
   secondary. `Enable` disabled (`--color-primary-disabled`) until checked.
 - No new tokens — entirely existing green/blue contract.
 
@@ -441,26 +441,26 @@ family (`--color-ai`). Everything else reuses existing tokens.
    scales so it can never be confused with any of them. Color is reinforcement
    only — the ✨ glyph is aria-hidden and the literal text "AI"/"AI-generated"
    always carries the signal (WCAG 1.4.1). */
---color-ai: #a21caf;            /* fuchsia-700: ≥ 4.5:1 as text on --color-surface-primary (#fff) */
---color-ai-bg: rgba(162, 28, 175, 0.1);   /* pill / caveat-banner fill */
+--color-ai: #a21caf; /* fuchsia-700: ≥ 4.5:1 as text on --color-surface-primary (#fff) */
+--color-ai-bg: rgba(162, 28, 175, 0.1); /* pill / caveat-banner fill */
 --color-ai-subtle-bg: rgba(162, 28, 175, 0.05); /* chip hover wash */
---color-ai-border: rgba(162, 28, 175, 0.35);     /* optional pill/region hairline */
+--color-ai-border: rgba(162, 28, 175, 0.35); /* optional pill/region hairline */
 ```
 
 ```css
 /* [data-theme='dark'] — brightened, same hue intent */
---color-ai: #e879f9;            /* fuchsia-400: ≥ 4.5:1 as text on --color-surface-primary (#0a0a0a) */
+--color-ai: #e879f9; /* fuchsia-400: ≥ 4.5:1 as text on --color-surface-primary (#0a0a0a) */
 --color-ai-bg: rgba(232, 121, 249, 0.15);
 --color-ai-subtle-bg: rgba(232, 121, 249, 0.08);
 --color-ai-border: rgba(232, 121, 249, 0.4);
 ```
 
-| Token | Light | Dark | Semantic role |
-| --- | --- | --- | --- |
-| `--color-ai` | `#a21caf` | `#e879f9` | Foreground for the ✨/AI marker, streaming caret, AI-caveat accent border, chip-hover accent. The "generated content" hue. |
-| `--color-ai-bg` | `rgba(162,28,175,0.1)` | `rgba(232,121,249,0.15)` | Fill for the AI pill and the inseparable caveat banner. |
-| `--color-ai-subtle-bg` | `rgba(162,28,175,0.05)` | `rgba(232,121,249,0.08)` | Low-alpha wash for suggested-chip hover/active so chips feel "AI" without shouting. |
-| `--color-ai-border` | `rgba(162,28,175,0.35)` | `rgba(232,121,249,0.4)` | Optional hairline for the pill / AI regions where a 1px edge improves separation on busy surfaces. |
+| Token                  | Light                   | Dark                     | Semantic role                                                                                                              |
+| ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `--color-ai`           | `#a21caf`               | `#e879f9`                | Foreground for the ✨/AI marker, streaming caret, AI-caveat accent border, chip-hover accent. The "generated content" hue. |
+| `--color-ai-bg`        | `rgba(162,28,175,0.1)`  | `rgba(232,121,249,0.15)` | Fill for the AI pill and the inseparable caveat banner.                                                                    |
+| `--color-ai-subtle-bg` | `rgba(162,28,175,0.05)` | `rgba(232,121,249,0.08)` | Low-alpha wash for suggested-chip hover/active so chips feel "AI" without shouting.                                        |
+| `--color-ai-border`    | `rgba(162,28,175,0.35)` | `rgba(232,121,249,0.4)`  | Optional hairline for the pill / AI regions where a 1px edge improves separation on busy surfaces.                         |
 
 **Contrast notes for `frontend` to verify (AA):**
 `#a21caf` on `#ffffff` ≈ 5.9:1 (passes normal text); `#e879f9` on `#0a0a0a`
@@ -482,8 +482,23 @@ Decorative only; both must be disabled under `prefers-reduced-motion: reduce`
 (per §3.2 and the global reduced-motion rule).
 
 ```css
-@keyframes ai-caret-blink { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
-@keyframes ai-shimmer { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
+@keyframes ai-caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+@keyframes ai-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   /* caret static; shimmer replaced by flat --color-surface-tertiary block */
@@ -510,4 +525,7 @@ Decorative only; both must be disabled under `prefers-reduced-motion: reduce`
    provide the static fallbacks in §3.2 / §5.1.
 7. Keep color never-sole everywhere: ✨ is `aria-hidden`; "AI" / "On-device ·
    Zero egress" / "Connects online" / severity labels are always present as text.
+
+```
+
 ```

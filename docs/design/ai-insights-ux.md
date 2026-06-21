@@ -46,12 +46,12 @@ A short "Why these guardrails" note in the feature's help article (owned by `doc
 
 ### 2.1 Where it lives
 
-| Surface | Location | Behaviour when AI disabled |
-|---|---|---|
-| Configuration | Settings → **Integrations** tab → **AI Insights** accordion item | Item present, toggle off, collapsed; no AI elsewhere |
-| Night/Range summary entry point | Dashboard header action + Session Detail header action | Action hidden entirely |
-| "Explain this" affordances | Dashboard KPI cards, trend charts, session-detail metric tables | Affordance hidden entirely |
-| Help article | Help → User Guides → Integrations → "AI Insights" | Always present (educational) |
+| Surface                         | Location                                                         | Behaviour when AI disabled                           |
+| ------------------------------- | ---------------------------------------------------------------- | ---------------------------------------------------- |
+| Configuration                   | Settings → **Integrations** tab → **AI Insights** accordion item | Item present, toggle off, collapsed; no AI elsewhere |
+| Night/Range summary entry point | Dashboard header action + Session Detail header action           | Action hidden entirely                               |
+| "Explain this" affordances      | Dashboard KPI cards, trend charts, session-detail metric tables  | Affordance hidden entirely                           |
+| Help article                    | Help → User Guides → Integrations → "AI Insights"                | Always present (educational)                         |
 
 The **AI Insights** accordion item replaces the current `llm` stub and sits **after** Weather in the Integrations accordion, because (per Core Principle 1, Privacy) the cloud backends make it the most privacy-sensitive integration and it should read last, after the user has seen the weather precedent for the two-gate pattern.
 
@@ -93,12 +93,12 @@ Toggling **off** → immediately stop any in-flight generation, hide all AI surf
 
 A labelled radio group (`role="radiogroup"`, keyboard arrow-navigable) — **not** a `<select>` — so each option can carry an inline privacy badge, description, and availability state. Four options, ordered privacy-first:
 
-| # | Option label | Badge | Default? | Egress |
-|---|---|---|---|---|
-| 1 | **In-browser (WebLLM)** | 🟢 `On-device · Zero egress` | **Yes (default)** | None |
-| 2 | **Chrome built-in AI** | 🟢 `On-device · Zero egress` | If available | None |
-| 3 | **Claude (your API key)** | 🔵 `Connects online` | No | Cloud (BYO key) |
-| 4 | **OpenAI-compatible / Ollama (your key + URL)** | 🔵 `Connects online` | No | Cloud unless URL is localhost |
+| #   | Option label                                    | Badge                        | Default?          | Egress                        |
+| --- | ----------------------------------------------- | ---------------------------- | ----------------- | ----------------------------- |
+| 1   | **In-browser (WebLLM)**                         | 🟢 `On-device · Zero egress` | **Yes (default)** | None                          |
+| 2   | **Chrome built-in AI**                          | 🟢 `On-device · Zero egress` | If available      | None                          |
+| 3   | **Claude (your API key)**                       | 🔵 `Connects online`         | No                | Cloud (BYO key)               |
+| 4   | **OpenAI-compatible / Ollama (your key + URL)** | 🔵 `Connects online`         | No                | Cloud unless URL is localhost |
 
 Requirements:
 
@@ -169,11 +169,13 @@ Reuse the exact structure, ARIA, and two-block green/blue contract of `src/views
 **What egresses — must be named exactly (this is the privacy contract; `security` to audit):**
 
 What **leaves** your device (↗):
+
 - A **compact, aggregate metric snapshot** for the night or range you ask about — the same summary numbers shown on screen (e.g. AHI, median/95th-percentile leak, usage hours, pressure summary, event counts, trend direction). Rounded/aggregate values, not raw waveform samples.
 - The **calendar date or date range** of what you asked about.
 - Your **chosen units and thresholds** so the wording matches your settings.
 
 What **never leaves** your device (🔒):
+
 - **Raw signals** — no flow, pressure, leak, or SpO₂ time-series; no 25–50 Hz data; no EDF files.
 - **Any identifier** — no name, email, machine serial number, or account. There is no CPAP-Analyzer account; requests carry only your own provider API key.
 - **Any data from nights you did not ask about.**
@@ -291,17 +293,17 @@ Per-backend error taxonomy in §6. Every error state: a plain-language message, 
 
 ## 6. Per-Backend Error States
 
-| Error | Trigger | Message (see §7) | Primary action |
-|---|---|---|---|
-| **No / missing key** | Cloud backend selected, key empty | "Add your <Backend> API key in settings to use this." | Deep-link to AI Insights settings |
-| **Invalid / unauthorized key** | 401/403 from provider on generate | "Your <Backend> API key was rejected. Check it in settings." | Open settings (key field focused) |
-| **Network blocked by CSP / connection failed** | `connect-src` blocks the origin, or fetch fails | "Couldn't reach <Backend>. Your browser blocked the connection or you're offline. On-device backends don't need a connection." | Retry · Switch to on-device |
-| **WebGPU unsupported** | WebLLM selected, no WebGPU | §7.4 fallback | Choose Chrome built-in / cloud |
-| **Model not downloaded** | WebLLM selected, model absent | "This on-device model isn't downloaded yet (~N GB)." | Download model |
-| **Model load failed / OOM** | WebLLM/WASM/GPU OOM | "The on-device model couldn't load on this device — it may need more memory. Try a smaller model." | Pick smaller model · Switch backend |
-| **Rate-limited** | 429 from provider | "<Backend> is rate-limiting requests. Wait a moment and try again." | Retry (with a brief disabled cooldown) |
-| **Timeout / aborted** | Slow or user Stop | "Generation stopped." / "This took too long and was stopped." | Regenerate |
-| **Insufficient data** | §5.5 | §7.7 | Widen range / Import |
+| Error                                          | Trigger                                         | Message (see §7)                                                                                                               | Primary action                         |
+| ---------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- |
+| **No / missing key**                           | Cloud backend selected, key empty               | "Add your <Backend> API key in settings to use this."                                                                          | Deep-link to AI Insights settings      |
+| **Invalid / unauthorized key**                 | 401/403 from provider on generate               | "Your <Backend> API key was rejected. Check it in settings."                                                                   | Open settings (key field focused)      |
+| **Network blocked by CSP / connection failed** | `connect-src` blocks the origin, or fetch fails | "Couldn't reach <Backend>. Your browser blocked the connection or you're offline. On-device backends don't need a connection." | Retry · Switch to on-device            |
+| **WebGPU unsupported**                         | WebLLM selected, no WebGPU                      | §7.4 fallback                                                                                                                  | Choose Chrome built-in / cloud         |
+| **Model not downloaded**                       | WebLLM selected, model absent                   | "This on-device model isn't downloaded yet (~N GB)."                                                                           | Download model                         |
+| **Model load failed / OOM**                    | WebLLM/WASM/GPU OOM                             | "The on-device model couldn't load on this device — it may need more memory. Try a smaller model."                             | Pick smaller model · Switch backend    |
+| **Rate-limited**                               | 429 from provider                               | "<Backend> is rate-limiting requests. Wait a moment and try again."                                                            | Retry (with a brief disabled cooldown) |
+| **Timeout / aborted**                          | Slow or user Stop                               | "Generation stopped." / "This took too long and was stopped."                                                                  | Regenerate                             |
+| **Insufficient data**                          | §5.5                                            | §7.7                                                                                                                           | Widen range / Import                   |
 
 Common rules: messages are descriptive **and** actionable (WCAG-aligned), name the backend, and — wherever the failure is cloud-specific — remind that an **on-device backend avoids it**, reinforcing the privacy-preferring path. Errors render **inline** in the panel (`role="alert"`), not as transient toasts that a screen-reader user could miss.
 
@@ -319,6 +321,7 @@ For the **CSP** case specifically: cloud backends require their origin in `conne
 > Turn computed metrics into plain-language summaries and explanations. The app does all the math; the AI only puts your existing numbers into words — it never calculates, diagnoses, or changes your therapy. Choose an on-device option to keep everything on your device, or a cloud option (your own API key) for higher-quality wording. AI output can be wrong; always check it against your data.
 
 Backend-group divider labels:
+
 > **Stays on your device** — nothing is sent anywhere.
 > **Sends a metric snapshot online** — requires your consent and your own API key.
 
@@ -328,11 +331,13 @@ Backend-group divider labels:
 **Description:** `To write summaries with <Backend>, a small snapshot of your already-computed numbers is sent to <Backend> using your own API key. This is the only AI option that sends anything off your device. On-device options send nothing.`
 
 **What leaves your device** (↗):
+
 - `A compact summary of the metrics already shown on screen — values like AHI, leak, usage, pressure and event counts for the night or range you ask about. Rounded, aggregate numbers.`
 - `The calendar date or date range you asked about.`
 - `Your chosen units and thresholds, so the wording matches your settings.`
 
 **What never leaves your device** (🔒):
+
 - `Raw signals — no flow, pressure, leak, or SpO₂ waveforms, and no EDF files. None of it is sent.`
 - `Any identifier — no name, email, or machine serial number. Requests carry only your own API key; there is no CPAP Analyzer account.`
 - `Anything about nights you didn't ask about.`
@@ -461,4 +466,7 @@ A build is non-compliant if any of these fail:
 - **`security`:** audit the egress contract, the localhost/loopback allowlist for the OpenAI-compatible backend, `connect-src` CSP entries for each cloud origin, key storage at rest, and that the snapshot can never include raw signals or identifiers.
 - **`documentation`:** author the "AI Insights" help article (what it does / can't do, the four backends, the privacy contract, "why these guardrails" restating §1 precedents) and add glossary cross-links from the source panel.
 - **`e2e-tester`:** cover the flows in §9 — enable→local (no consent, no egress), enable→cloud (consent gate, revert on cancel), generate/stream/stop/regenerate/copy, every error in §6, empty/insufficient data, disable→cleanup, and the accessibility assertions in §8.
+
+```
+
 ```
