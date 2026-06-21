@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type TransitionEvent,
 } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useMatch } from 'react-router-dom';
 import { useThemeEffect } from '@/hooks/useTheme';
 import { useURLStateSync } from '@/hooks/useURLState';
 import { RouteErrorBoundary } from '@/components/errors';
@@ -98,12 +98,25 @@ function NavItemLink({
   isRail: boolean;
   onNavigate: () => void;
 }) {
+  // We compute the active state ourselves and pass NavLink a STATIC string
+  // className (not a function). This is load-bearing in rail mode: there, the
+  // link is wrapped in a Radix Tooltip `Trigger asChild`, which clones the child
+  // via `Slot` and merges props by string concatenation. `Slot` cannot invoke a
+  // functional `className`, so a `className={({isActive}) => ...}` callback gets
+  // stringified onto the DOM `class` attribute instead of resolving — dropping
+  // `styles.navLink` entirely. That regression made rail icons fall back to the
+  // base anchor link colour and lose their geometry (centering / height). A
+  // static string merges cleanly through `Slot`.
+  const match = useMatch({ path: item.to, end: item.to === '/' });
+  const isActive = match != null;
+  const className = `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`.trim();
+
   return (
     <RailTooltip active={isRail} label={item.label}>
       <NavLink
         to={item.to}
         end={item.to === '/'}
-        className={({ isActive }) => `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`}
+        className={className}
         onClick={onNavigate}
         // In rail mode the visible label is hidden (display:none removes it from
         // the a11y tree), so attach an explicit accessible name here. Expanded
