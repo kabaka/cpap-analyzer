@@ -4,6 +4,22 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import RootLayout from '@/components/layouts/RootLayout';
 import { useAppStore } from '@/stores/useAppStore';
+// Same CSS-module import the component uses, so the active-state assertions
+// reference the SAME class token the component applies (an identity proxy under
+// vitest, a hash under a real build) rather than a hardcoded literal that could
+// silently drift from `RootLayout.module.css`.
+import styles from '@/components/layouts/RootLayout.module.css';
+
+// `noUncheckedIndexedAccess` types CSS-module members as `string | undefined`.
+// Resolve the two tokens we assert on once, failing loudly if either is missing
+// (which would itself be a meaningful regression in RootLayout.module.css),
+// while giving `toHaveClass` a plain `string` argument under strict TS.
+function requireClass(token: string | undefined, name: string): string {
+  if (!token) throw new Error(`Expected styles.${name} to be defined`);
+  return token;
+}
+const NAV_LINK = requireClass(styles.navLink, 'navLink');
+const NAV_LINK_ACTIVE = requireClass(styles.navLinkActive, 'navLinkActive');
 
 // ── matchMedia control ──────────────────────────────────────────────────────
 // The default jsdom stub in src/test/setup.ts answers `matches: false` for every
@@ -40,6 +56,34 @@ function renderLayout(initialPath = '/') {
         <Route path="/" element={<RootLayout />}>
           <Route index element={<div>dashboard-content</div>} />
           <Route path="sessions" element={<div>sessions-content</div>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+/**
+ * Render RootLayout inside a router whose tree mirrors the real nesting in
+ * src/router.tsx: a `sessions` parent with both an index child and a
+ * `:sessionId` child (which itself nests a `signals` route). This exercises the
+ * `useMatch({ path, end })` active-state path in NavItemLink on DEEP routes —
+ * the trivial two-route `renderLayout` above never descends below the first
+ * segment, so it cannot distinguish `end: true` (Dashboard) from a parent match
+ * (Sessions on `/sessions/:id`). Children render no real view content; the
+ * sidebar nav is the subject under test.
+ */
+function renderNestedLayout(initialPath: string) {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route path="/" element={<RootLayout />}>
+          <Route index element={<div>dashboard-content</div>} />
+          <Route path="sessions">
+            <Route index element={<div>session-list-content</div>} />
+            <Route path=":sessionId" element={<div>session-detail-content</div>}>
+              <Route path="signals" element={<div>signals-content</div>} />
+            </Route>
+          </Route>
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -237,6 +281,78 @@ describe('RootLayout', () => {
       expect(screen.getByRole('link', { name: 'Trends' })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Help' })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+    });
+  });
+
+  describe('nav active state (useMatch-driven)', () => {
+    // NavItemLink derives active state from `useMatch({ path: item.to, end:
+    // item.to === '/' })` and feeds NavLink a STATIC className string (so a
+    // Radix Tooltip `Slot` can merge it in rail mode — a functional className
+    // cannot be invoked by Slot). NavLink still emits `aria-current="page"` for
+    // the active link. We assert `aria-current` as the primary, stable signal
+    // and additionally assert `styles.navLinkActive` via the component's own
+    // CSS-module import.
+
+    it('marks Sessions active (not Dashboard) on a nested /sessions/:id route', () => {
+      renderNestedLayout('/sessions/abc123');
+
+      const sessions = screen.getByRole('link', { name: 'Sessions' });
+      const dashboard = screen.getByRole('link', { name: 'Dashboard' });
+
+      // Stable semantic signal: only the active link carries aria-current=page.
+      expect(sessions).toHaveAttribute('aria-current', 'page');
+      expect(dashboard).not.toHaveAttribute('aria-current');
+
+      // Visual signal: the active class token the component applies.
+      expect(sessions).toHaveClass(NAV_LINK_ACTIVE);
+      expect(dashboard).not.toHaveClass(NAV_LINK_ACTIVE);
+    });
+
+    it('keeps Sessions active on an even deeper /sessions/:id/signals route', () => {
+      renderNestedLayout('/sessions/abc123/signals');
+
+      const sessions = screen.getByRole('link', { name: 'Sessions' });
+      expect(sessions).toHaveAttribute('aria-current', 'page');
+      expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current');
+    });
+
+    it('marks Dashboard active (not Sessions) only on exactly "/" — verifies end:true', () => {
+      renderNestedLayout('/');
+
+      const dashboard = screen.getByRole('link', { name: 'Dashboard' });
+      const sessions = screen.getByRole('link', { name: 'Sessions' });
+
+      expect(dashboard).toHaveAttribute('aria-current', 'page');
+      expect(dashboard).toHaveClass(NAV_LINK_ACTIVE);
+
+      expect(sessions).not.toHaveAttribute('aria-current');
+      expect(sessions).not.toHaveClass(NAV_LINK_ACTIVE);
+    });
+
+    it('does NOT mark Dashboard active on a non-root route (end:true boundary)', () => {
+      // The `end: item.to === '/'` flag is what stops Dashboard ("/") from
+      // matching every route as a prefix. Guards against a regression that
+      // dropped `end` and lit Dashboard everywhere.
+      renderNestedLayout('/sessions/abc123');
+      expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current');
+    });
+
+    it('preserves active state in rail/collapsed mode (the Slot scenario the fix targets)', () => {
+      // Rail mode wraps each NavLink in a Radix Tooltip Trigger `asChild`, which
+      // clones via Slot and merges a STRING className. This is the exact path
+      // that broke with a functional className. Assert the active link still
+      // gets both aria-current and the active class through the Slot.
+      useAppStore.setState({ sidebarCollapsed: true });
+      renderNestedLayout('/sessions/abc123');
+
+      const sessions = screen.getByRole('link', { name: 'Sessions' });
+      expect(sessions).toHaveAttribute('aria-current', 'page');
+      expect(sessions).toHaveClass(NAV_LINK_ACTIVE);
+      // The base navLink class must survive the Slot string-merge too (losing it
+      // is what stripped the rail icon geometry/colour in the original bug).
+      expect(sessions).toHaveClass(NAV_LINK);
+
+      expect(screen.getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current');
     });
   });
 

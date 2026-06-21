@@ -322,7 +322,15 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    width: auto;
+    /* Match the nav links' full-width hit area. Nav links fill their <li>
+       (the nav content box) and inset themselves with a symmetric
+       `margin: 0 var(--space-2)`. The toggle is a direct <button> child of the
+       footer, so it must stretch to the same box explicitly: full width minus
+       the same horizontal margin, with border-box so padding+border stay inside
+       the computed width (no overflow). This makes the entire row clickable,
+       not just the icon + label. */
+    box-sizing: border-box;
+    width: calc(100% - 2 * var(--space-2));
     /* ≥36px desktop floor */
     height: 40px;
     margin: 0 var(--space-2);
@@ -377,58 +385,62 @@
     display: none;
   }
 
-  /* Nav + footer links become centered 48px squares, icon-only. */
+  /* Nav + footer links become icon-only rows with the icon centered in the
+     narrow rail. We deliberately KEEP the expanded geometry that affects an
+     icon's position — same 40px height, same vertical rhythm — and only change
+     what's needed for icon-only mode:
+       • drop the horizontal margin/padding and let the link fill the nav
+         content box so `justify-content: center` centers the icon within the
+         full rail width (a fixed 48px width inside the ~48px content box left no
+         room for `margin: 0 auto` to act, so the icon read as left-of-centre
+         once the accent bar / box rounding shifted it);
+       • collapse the icon↔label gap to 0 (the label itself is hidden below).
+     Height stays 40px so the icon's vertical centre does not move on toggle. */
   .sidebarRail .navLink {
-    width: 48px;
-    height: 48px;
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
     padding: 0;
     gap: 0;
     justify-content: center;
   }
 
+  /* Hidden from sight AND the a11y tree, but its box is gone (display:none) — the
+     accessible name is provided by the aria-label on the link in rail mode. */
   .sidebarRail .navLabel {
     display: none;
   }
 
   /* Active accent bar hugs the rail's left edge for centered icons. */
   .sidebarRail .navLinkActive::before {
-    left: calc(-1 * var(--space-2));
+    left: 0;
     top: 50%;
     transform: translateY(-50%);
     height: 24px;
     width: 3px;
   }
 
-  /* Group labels disappear; preserve visual group separation with a short
-     centered divider between consecutive groups, and tighten the group gap. */
+  /* Group labels lose their text but KEEP their box (visibility:hidden, not
+     display:none). Reserving the label's height means every icon below it stays
+     at exactly the same vertical position as in the expanded sidebar, so nothing
+     "jumps up" on collapse. The label is already aria-hidden, so reserving the
+     space has no a11y cost. The reserved label box also separates the groups, so
+     no extra divider is needed (a divider would re-introduce vertical offset). */
   .sidebarRail .navGroupLabel {
-    display: none;
+    visibility: hidden;
+    /* The label keeps its box to preserve vertical rhythm, but in the narrow
+       rail its text would otherwise wrap to multiple lines and inflate the box
+       height (pushing every icon below it down). Pin it to a single line and
+       clip the overflow so the reserved height stays identical to expanded. */
+    white-space: nowrap;
+    overflow: hidden;
   }
 
-  .sidebarRail .navGroups {
-    gap: var(--space-2);
-  }
-
-  .sidebarRail .navGroup + .navGroup {
-    margin-top: var(--space-2);
-    padding-top: var(--space-2);
-    /* Short centered ~32px divider (the uppercase labels are hidden in rail). */
-    background-image: linear-gradient(
-      to right,
-      var(--color-border-subtle),
-      var(--color-border-subtle)
-    );
-    background-repeat: no-repeat;
-    background-position: top center;
-    background-size: 32px 1px;
-  }
-
-  /* Rail toggle: centered icon-only square, hide its text label. */
+  /* Rail toggle: icon-only row, full width with the icon centered (matching the
+     nav links), text label hidden. Same 40px height as expanded so it does not
+     shift vertically either. */
   .sidebarRail .railToggle {
-    width: 48px;
-    height: 48px;
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
     padding: 0;
     gap: 0;
     justify-content: center;
