@@ -40,6 +40,19 @@
   --color-info: #2563eb;
   --color-info-bg: rgba(37, 99, 235, 0.1);
 
+  /* GENERATIVE-AI MARKER (fuchsia/magenta) — AI Insights visual spec §5.
+     Owns ONE meaning: "this is LLM-generated content / the affordance that
+     produces it." Deliberately off the clinical-severity (red/orange/green),
+     privacy (green=retained / blue=egress), and reliability/detection (violet)
+     scales so it can never be confused with any of them. Color is reinforcement
+     only — the ✨ glyph is aria-hidden and the literal text "AI"/"AI-generated"
+     always carries the signal (WCAG 1.4.1). Reserved exclusively for the
+     src/components/ai/* modules; never used on deterministic (?) glossary help. */
+  --color-ai: #a21caf; /* fuchsia-700: ~5.9:1 as text on --color-surface-primary (#fff) */
+  --color-ai-bg: rgba(162, 28, 175, 0.1); /* pill / caveat-banner fill */
+  --color-ai-subtle-bg: rgba(162, 28, 175, 0.05); /* chip hover wash */
+  --color-ai-border: rgba(162, 28, 175, 0.35); /* optional pill/region hairline */
+
   /* RELIABILITY / MEASUREMENT-UNCERTAINTY SCALE (consensus D2)
      Metadata ABOUT a metric's trustworthiness, never clinical severity.
      Deliberately on the desaturated VIOLET/NEUTRAL axis so it can never be
@@ -319,6 +332,12 @@
   --color-error-bg: rgba(239, 68, 68, 0.15);
   --color-info: #60a5fa;
   --color-info-bg: rgba(96, 165, 250, 0.15);
+  /* GENERATIVE-AI MARKER — dark theme (brightened, same hue intent).
+     #e879f9 (fuchsia-400) ≈ 8.6:1 as text on --color-surface-primary (#0a0a0a). */
+  --color-ai: #e879f9;
+  --color-ai-bg: rgba(232, 121, 249, 0.15);
+  --color-ai-subtle-bg: rgba(232, 121, 249, 0.08);
+  --color-ai-border: rgba(232, 121, 249, 0.4);
   --color-primary: #3b82f6;
   --color-primary-hover: #60a5fa;
   --color-primary-active: #2563eb;

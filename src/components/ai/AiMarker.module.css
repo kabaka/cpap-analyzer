@@ -1,0 +1,51 @@
+/* AiMarker — the ✨ AI generative-content marker (visual spec §1).
+   The fuchsia --color-ai* tokens are reserved to this AI-Insights module family
+   (visual spec §1.4); never used on deterministic (?) glossary help. Color is
+   reinforcement only — the ✨ glyph is aria-hidden and the "AI" text carries the
+   signal (WCAG 1.4.1). */
+
+.marker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-family-sans);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
+  white-space: nowrap;
+}
+
+.glyph {
+  /* The ✨ sits left of the label so disclosure precedes the content. */
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.label {
+  color: inherit;
+}
+
+/* pill (default) — filled, fully rounded (distinct from the square (?) help). */
+.pill {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-ai-bg);
+  color: var(--color-ai);
+}
+
+/* tag (compact) — no fill, for tight inline contexts. */
+.tag {
+  color: var(--color-ai);
+}
+
+/* action — reads as actionable; host wraps it in a real <button>. The glyph
+   keeps the fuchsia accent while the label inherits the button's text color so
+   it composes with Button visuals. */
+.action {
+  color: var(--color-ai);
+}
+
+.action .label {
+  color: var(--color-text-primary);
+}
