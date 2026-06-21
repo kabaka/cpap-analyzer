@@ -530,7 +530,10 @@ function EventsList({ events, sessionId, sessionStart, wallClockEpoch }: EventsL
                 <span>
                   Showing the first {EVENTS_LIST_CAP} of {sorted.length} events.
                 </span>
-                <Link to="/explore/events" className={styles.eventsViewAllLink}>
+                <Link
+                  to={`/explore/events?sessions=${sessionId}`}
+                  className={styles.eventsViewAllLink}
+                >
                   View all in Event Explorer →
                 </Link>
               </>

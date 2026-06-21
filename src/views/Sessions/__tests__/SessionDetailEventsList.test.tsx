@@ -232,7 +232,7 @@ describe('SessionDetail — EventsList', () => {
       expect(screen.getByText('Showing the first 50 of 60 events.')).toBeInTheDocument();
 
       const link = screen.getByRole('link', { name: /View all in Event Explorer/ });
-      expect(link).toHaveAttribute('href', '/explore/events');
+      expect(link).toHaveAttribute('href', '/explore/events?sessions=sess-1');
     });
 
     it('renders all rows and the "all" footer with no over-cap link for <=50 events', () => {

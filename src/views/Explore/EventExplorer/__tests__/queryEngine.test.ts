@@ -203,6 +203,43 @@ describe('matchesQuery', () => {
     expect(matchesQuery(makeEvent({ timestamp: localTimestamp(14, 0) }), q)).toBe(false);
   });
 
+  it('filters by session scope: only events in the set pass', () => {
+    const q: EventQuery = {
+      ...emptyQuery(),
+      sessionIds: new Set(['sess-A', 'sess-B']),
+    };
+    expect(matchesQuery(makeEvent({ sessionId: 'sess-A' }), q)).toBe(true);
+    expect(matchesQuery(makeEvent({ sessionId: 'sess-B' }), q)).toBe(true);
+    expect(matchesQuery(makeEvent({ sessionId: 'sess-C' }), q)).toBe(false);
+  });
+
+  it('treats a null session scope as a no-op (all sessions pass)', () => {
+    const q: EventQuery = { ...emptyQuery(), sessionIds: null };
+    expect(matchesQuery(makeEvent({ sessionId: 'sess-A' }), q)).toBe(true);
+    expect(matchesQuery(makeEvent({ sessionId: 'anything' }), q)).toBe(true);
+  });
+
+  it('rejects every event when the session scope is an empty set', () => {
+    // An empty, non-null set constrains to "no sessions" at match time.
+    const q: EventQuery = { ...emptyQuery(), sessionIds: new Set<string>() };
+    expect(matchesQuery(makeEvent({ sessionId: 'sess-A' }), q)).toBe(false);
+  });
+
+  it('AND-combines session scope with other predicates', () => {
+    const q: EventQuery = {
+      ...emptyQuery(),
+      sessionIds: new Set(['sess-A']),
+      types: new Set(['Hypopnea']),
+    };
+    expect(matchesQuery(makeEvent({ sessionId: 'sess-A', type: 'Hypopnea' }), q)).toBe(true);
+    // Right type, wrong session.
+    expect(matchesQuery(makeEvent({ sessionId: 'sess-B', type: 'Hypopnea' }), q)).toBe(false);
+    // Right session, wrong type.
+    expect(matchesQuery(makeEvent({ sessionId: 'sess-A', type: 'ObstructiveApnea' }), q)).toBe(
+      false,
+    );
+  });
+
   it('AND-combines multiple predicates', () => {
     const q: EventQuery = {
       ...emptyQuery(),

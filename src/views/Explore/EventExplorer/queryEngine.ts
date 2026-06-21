@@ -64,6 +64,13 @@ export interface EventQuery {
   readonly timeOfNight: TimeOfNightWindow | null;
   /** Inclusive epoch-ms timestamp window, or `null` for no date constraint. */
   readonly dateRange: { readonly start: number; readonly end: number } | null;
+  /**
+   * Restrict matches to events belonging to these session ids, or `null` for
+   * no session constraint. Used to pre-scope the Explorer to a single session
+   * (e.g. linked from the Session Detail page). An empty set is treated like
+   * `null` by the serializer, but the canonical "no constraint" value is `null`.
+   */
+  readonly sessionIds: ReadonlySet<string> | null;
 }
 
 /** Per-field availability across an event set (drives disabled-filter UI). */
@@ -100,6 +107,7 @@ export function emptyQuery(): EventQuery {
     spo2: UNBOUNDED_RANGE,
     timeOfNight: null,
     dateRange: null,
+    sessionIds: null,
   };
 }
 
@@ -219,6 +227,8 @@ export function countActiveFilters(query: EventQuery): number {
 
 /** Evaluate a single event against a query. */
 export function matchesQuery(event: Event, query: EventQuery): boolean {
+  if (query.sessionIds !== null && !query.sessionIds.has(event.sessionId)) return false;
+
   if (query.types.size > 0 && !query.types.has(event.type)) return false;
 
   if (!inRange(event.duration, query.duration)) return false;

@@ -7,7 +7,13 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **The Event Explorer can now be scoped to a single session.** A `sessions` URL parameter (`/explore/events?sessions=<id>`) restricts the Explorer's matched set to one night's events, and the Session Detail Events list's "View all in Event Explorer" link now pre-scopes the Explorer to that night rather than opening it across your whole history. When a scope is active, a removable **Session scope** chip (labelled with the session's date) appears in the filter panel; clearing it returns the Explorer to its global, cross-session set. A scoped session loads even when its date falls outside the Explorer's current global date-range selection, so following the link from an out-of-range night always works. The scope is part of the serialized URL state, so it is bookmarkable and survives back/forward navigation.
+
+### Changed
+
+- **The Event Explorer's event table now shows each event's wall-clock time** — the recording device's then-current local clock — rather than the time re-expressed in the viewer's machine timezone. This converges the table onto the same wall-clock-as-UTC convention already used by the Session Detail Events list and the Signal Viewer (axis, crosshair, and event readout), so all three surfaces report an identical clock time for the same event. Previously, for a session whose timestamps were recorded under a timezone offset different from the viewer's, the Explorer table could display a clock time that disagreed with those other surfaces; that divergence is resolved. The Event Explorer's time-of-night filter remains viewer-local for now (a tracked follow-up).
 
 ## [2026.06.5] — 2026-06-21
 
