@@ -61,17 +61,21 @@ export interface OpenAICompatibleProviderConfig {
   readonly getApiKey: () => string | null;
 }
 
-/** True for loopback hostnames — treated as on-device (no egress, no consent). */
+/**
+ * True for loopback hostnames — treated as on-device (no egress, no consent).
+ *
+ * Restricted to the literal loopback set (`localhost`, `127.0.0.1`, `::1`,
+ * `[::1]`). A `*.local`/`*.localhost` SUFFIX match is deliberately NOT loopback:
+ * an mDNS/`.local` name can resolve to a remote LAN host, and this classifier
+ * drives {@link egressClassForUrl} / the consent gate, so a too-permissive match
+ * could skip consent for a remote-looking host. The static `connect-src` CSP in
+ * `src/buildtime/csp.ts` is the load-bearing egress control — this classifier
+ * only governs whether the consent layer engages, and it must agree with the CSP
+ * rather than be looser than it.
+ */
 export function isLoopbackHost(hostname: string): boolean {
   const h = hostname.toLowerCase();
-  return (
-    h === 'localhost' ||
-    h === '127.0.0.1' ||
-    h === '[::1]' ||
-    h === '::1' ||
-    h.endsWith('.localhost') ||
-    h.endsWith('.local')
-  );
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1';
 }
 
 /** Parse a base URL string into a `URL`, or `null` if malformed. */

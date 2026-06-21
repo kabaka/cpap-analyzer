@@ -15,16 +15,19 @@ import {
 } from '../openaiCompatibleProvider';
 
 describe('isLoopbackHost', () => {
-  it.each(['localhost', '127.0.0.1', '[::1]', '::1', 'foo.localhost', 'ollama.local'])(
-    'treats %s as loopback',
+  it.each(['localhost', '127.0.0.1', '[::1]', '::1'])('treats %s as loopback', (host) => {
+    expect(isLoopbackHost(host)).toBe(true);
+  });
+
+  // `*.local`/`*.localhost` are NOT loopback: a `.local` mDNS name can resolve to
+  // a remote LAN host, so treating it as on-device would wrongly skip the consent
+  // gate. Tightened in LOW-1 — the CSP connect-src remains the egress control.
+  it.each(['api.openai.com', 'example.com', '8.8.8.8', 'foo.localhost', 'ollama.local'])(
+    'treats %s as remote',
     (host) => {
-      expect(isLoopbackHost(host)).toBe(true);
+      expect(isLoopbackHost(host)).toBe(false);
     },
   );
-
-  it.each(['api.openai.com', 'example.com', '8.8.8.8'])('treats %s as remote', (host) => {
-    expect(isLoopbackHost(host)).toBe(false);
-  });
 });
 
 describe('isOriginReachable (CSP allowlist)', () => {

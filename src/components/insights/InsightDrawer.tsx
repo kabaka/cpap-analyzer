@@ -38,19 +38,31 @@ import { AiMarker, InsightCaveat, MedicalDisclaimer } from '@/components/ai';
 import { useAiInsight } from '@/hooks/useAiInsight';
 import type { ErrorPrimaryAction, UseAiInsight } from '@/hooks/useAiInsight';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import type { LLMBackendId } from '@/types/settings';
 
 import { chipsForInsight } from './chips';
 import { SourcePanel } from './SourcePanel';
 import { useInsightDrawerStore } from './useInsightDrawerStore';
 import styles from './InsightDrawer.module.css';
 
-/** Friendly backend names for the egress reminder + provenance line. */
-const BACKEND_LABELS: Record<string, string> = {
+/**
+ * Friendly backend names for the egress reminder + provenance line. Keyed by
+ * {@link LLMBackendId} (not a loose `string`) so a future backend id is a
+ * compile error here rather than a silent fallback to "AI Insights".
+ */
+const BACKEND_LABELS: Record<LLMBackendId, string> = {
   anthropic: 'Claude',
   'openai-compatible': 'your AI endpoint',
   webllm: 'the on-device model',
   'chrome-ai': "Chrome's built-in AI",
 };
+
+/**
+ * Settings deep-link target for AI-Insights recovery actions (m1). The Settings
+ * view reads this hash to open the Integrations tab and expand + scroll to the
+ * AI Insights accordion item, instead of dropping the user on a bare `/settings`.
+ */
+const AI_INSIGHTS_SETTINGS_TARGET = '/settings#ai-insights';
 
 /** The exact copy footer appended on Copy (UX §7.3) — never naked prose. */
 function copyFooter(generatedOnDate: string): string {
@@ -202,7 +214,9 @@ function InsightDrawerBody({
       case 'open-settings-key':
       case 'download-model':
       case 'pick-smaller-model':
-        navigate('/settings');
+        // Deep-link to the AI Insights panel rather than bare /settings (m1) so
+        // the user lands on the control that needs attention.
+        navigate(AI_INSIGHTS_SETTINGS_TARGET);
         break;
       case 'retry':
       case 'regenerate':

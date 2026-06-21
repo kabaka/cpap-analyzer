@@ -7,8 +7,8 @@
  * @module views/Settings/Settings
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { Accordion, Button, Card, Dialog, Input, Select, Switch, Tabs } from '@/components/ui';
@@ -43,6 +43,19 @@ const CLUSTERING_METHOD_OPTIONS = [
   { value: 'kmeans', label: 'K-Means' },
   { value: 'single-link', label: 'Single-Link' },
 ];
+
+// ─── Deep-link targets ────────────────────────────────────────────────────
+
+/**
+ * Hash that deep-links to the AI Insights panel (m1). When the Settings route is
+ * opened with this hash (e.g. from the InsightDrawer's "Finish setup in Settings"
+ * recovery action), the Integrations tab is selected and the AI Insights
+ * accordion item is expanded and scrolled into view.
+ */
+const AI_INSIGHTS_HASH = '#ai-insights';
+
+/** DOM id of the AI Insights accordion item, used as the scroll/focus anchor. */
+const AI_INSIGHTS_ANCHOR_ID = 'ai-insights';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -246,10 +259,24 @@ function AnalysisSection() {
 
 // ─── Section: Integrations ────────────────────────────────────────────────
 
-function IntegrationsSection() {
+function IntegrationsSection({ aiInsightsTarget }: { readonly aiInsightsTarget: boolean }) {
   const integrations = useSettingsStore((s) => s.integrations);
   const updateIntegration = useSettingsStore((s) => s.updateIntegration);
   const navigate = useNavigate();
+
+  // When deep-linked to AI Insights (#ai-insights), scroll the item into view and
+  // move focus to its heading once after mount (m1). Accessible: focus lands on
+  // the panel the user came to fix, not the top of the page.
+  const aiInsightsAnchorRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!aiInsightsTarget) return;
+    const node = aiInsightsAnchorRef.current;
+    if (node === null) return;
+    node.scrollIntoView({ block: 'start' });
+    // Move focus to the accordion trigger button wrapping this anchor — the
+    // user lands on the control they came to fix, not the top of the page.
+    node.closest('button')?.focus();
+  }, [aiInsightsTarget]);
 
   const fitbitTriggerLabel = (() => {
     if (!integrations.fitbit.enabled) return 'Google Health (Fitbit) — Disabled';
@@ -343,7 +370,11 @@ function IntegrationsSection() {
       // two-gate precedent.
       value: 'llm',
       trigger: (
-        <span className={styles.integrationTrigger}>
+        <span
+          className={styles.integrationTrigger}
+          id={AI_INSIGHTS_ANCHOR_ID}
+          ref={aiInsightsAnchorRef}
+        >
           {integrations.llm.enabled && (
             <span className={styles.integrationTriggerIcon} aria-hidden="true">
               ✨
@@ -377,7 +408,11 @@ function IntegrationsSection() {
         Configure external service integrations. All integrations are disabled by default. When
         enabled, data may be sent to third-party services as described in each section.
       </p>
-      <Accordion items={accordionItems} type="single" />
+      <Accordion
+        items={accordionItems}
+        type="single"
+        defaultValue={aiInsightsTarget ? 'llm' : undefined}
+      />
     </div>
   );
 }
@@ -581,6 +616,16 @@ function AboutSection() {
 export default function Settings() {
   const resetToDefaults = useSettingsStore((s) => s.resetToDefaults);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const location = useLocation();
+
+  // Deep-link support (m1): `/settings#ai-insights` selects the Integrations tab
+  // and targets the AI Insights accordion item. Tracked in state so the user can
+  // still navigate away to other tabs after landing.
+  const aiInsightsTarget = location.hash === AI_INSIGHTS_HASH;
+  const [activeTab, setActiveTab] = useState(aiInsightsTarget ? 'integrations' : 'general');
+  useEffect(() => {
+    if (aiInsightsTarget) setActiveTab('integrations');
+  }, [aiInsightsTarget]);
 
   const handleReset = useCallback(() => {
     resetToDefaults();
@@ -591,7 +636,11 @@ export default function Settings() {
   const tabs = [
     { value: 'general', label: 'General', content: <GeneralSection /> },
     { value: 'analysis', label: 'Analysis', content: <AnalysisSection /> },
-    { value: 'integrations', label: 'Integrations', content: <IntegrationsSection /> },
+    {
+      value: 'integrations',
+      label: 'Integrations',
+      content: <IntegrationsSection aiInsightsTarget={aiInsightsTarget} />,
+    },
     { value: 'privacy', label: 'Privacy & Storage', content: <PrivacyStorageSection /> },
     { value: 'about', label: 'About', content: <AboutSection /> },
   ];
@@ -602,7 +651,7 @@ export default function Settings() {
         <h1 className={styles.title}>Settings</h1>
       </div>
 
-      <Tabs tabs={tabs} defaultValue="general" />
+      <Tabs tabs={tabs} value={activeTab} onValueChange={setActiveTab} />
 
       <div className={styles.footerActions}>
         <Button variant="secondary" onClick={() => setShowResetDialog(true)}>

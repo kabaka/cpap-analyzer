@@ -255,7 +255,11 @@ function useResolvedBackendConfig(): () => RunBackendConfig {
  * a real worker fail with a classified error there, not a crash.
  */
 function createWebLLMWorker(): Worker {
-  return new Worker(new URL('@/services/llm/providers/webllm.worker.ts', import.meta.url), {
+  // NB: a RELATIVE specifier — Vite's worker plugin does NOT resolve the `@`
+  // path alias inside `new Worker(new URL(...))`, so an aliased path produces an
+  // unresolved worker entry and aborts the production build. Keep this path
+  // relative (matching webllmProvider.ts's `'./webllm.worker.ts'`).
+  return new Worker(new URL('../services/llm/providers/webllm.worker.ts', import.meta.url), {
     type: 'module',
   });
 }
