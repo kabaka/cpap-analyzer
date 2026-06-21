@@ -8,7 +8,7 @@
  * @module views/Sessions/SessionDetail
  */
 
-import { useMemo } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Link, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom';
 import {
   Badge,
@@ -26,10 +26,20 @@ import {
 import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
 import { formatMetric } from '@/analysis/uncertainty';
 import { classifyAhiSeverity } from '@/analysis/clinical';
+import { EventTypeSwatch } from '@/components/events/EventTypeSwatch';
+import { eventLabel } from '@/components/events/eventTypeMeta';
+import { formatClockTime } from './hoverReadout';
+import { sessionWallClockEpoch } from './signalLanes';
 import type { Event, EventType, MachineType, NightlyAggregate } from '@/types';
 import styles from './SessionDetail.module.css';
 
 // ── Constants ────────────────────────────────────────────────────
+
+/**
+ * Maximum number of individual events rendered in the Events list. Keeps the
+ * list bounded without virtualization; overflow links out to the Event Explorer.
+ */
+const EVENTS_LIST_CAP = 50;
 
 /** Human-readable labels for machine therapy modes. */
 const MACHINE_TYPE_LABELS: Record<MachineType, string> = {
@@ -144,9 +154,15 @@ interface EventTimelineProps {
   events: Event[];
   sessionStart: number;
   sessionEnd: number;
+  /**
+   * Session start in the wall-clock-as-UTC convention (see
+   * {@link sessionWallClockEpoch}). Used to format clock times so the tooltip,
+   * the Signal Viewer crosshair, and the X-axis all agree to the second.
+   */
+  wallClockEpoch: number;
 }
 
-function EventTimeline({ events, sessionStart, sessionEnd }: EventTimelineProps) {
+function EventTimeline({ events, sessionStart, sessionEnd, wallClockEpoch }: EventTimelineProps) {
   const sessionDurationMs = sessionEnd - sessionStart;
 
   if (sessionDurationMs <= 0) return null;
@@ -167,7 +183,10 @@ function EventTimeline({ events, sessionStart, sessionEnd }: EventTimelineProps)
           return (
             <Tooltip
               key={event.id}
-              content={`${EVENT_TYPE_LABELS[event.type] ?? event.type}: ${event.duration.toFixed(1)}s`}
+              content={`${formatClockTime(
+                wallClockEpoch,
+                event.timestamp - sessionStart,
+              )} · ${EVENT_TYPE_LABELS[event.type] ?? event.type} · ${event.duration.toFixed(1)}s`}
               side="top"
             >
               <div
@@ -307,6 +326,221 @@ function EventSummaryTable({ events }: EventSummaryTableProps) {
         </div>
       </Card>
     </div>
+  );
+}
+
+// ── EventsList component ─────────────────────────────────────────
+
+interface EventsListProps {
+  events: Event[];
+  sessionId: string;
+  /** Raw session start epoch ms — turns absolute timestamps into offsets. */
+  sessionStart: number;
+  /**
+   * Session start in the wall-clock-as-UTC convention (see
+   * {@link sessionWallClockEpoch}). Used to format each event's clock time so
+   * the list, the timeline tooltip, the Signal Viewer crosshair, and the X-axis
+   * all agree to the second.
+   */
+  wallClockEpoch: number;
+}
+
+/**
+ * Chronological list of individual respiratory events for a session. Each row
+ * is a button that deep-links into the Signal Viewer framed on the event. The
+ * list is capped at {@link EVENTS_LIST_CAP}; overflow links to the Event
+ * Explorer. Renders a positive empty state when the session has zero events.
+ */
+function EventsList({ events, sessionId, sessionStart, wallClockEpoch }: EventsListProps) {
+  const navigate = useNavigate();
+  /**
+   * Index of the row that currently holds tabindex=0 (roving tabindex pattern,
+   * mirroring {@link EventTable}). Arrow keys move focus along this index; every
+   * other row holds tabindex=-1 so the whole grid is a single Tab stop rather
+   * than one stop per row. Header/cell column semantics are preserved because
+   * the grid is built from real `columnheader`/`gridcell` roles.
+   */
+  const [focusedRowIndex, setFocusedRowIndex] = useState(0);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  const sorted = useMemo(() => {
+    return [...events].sort((a, b) => a.timestamp - b.timestamp);
+  }, [events]);
+
+  const rows = useMemo(() => sorted.slice(0, EVENTS_LIST_CAP), [sorted]);
+
+  // Clamp the roving index whenever the row count shrinks (e.g. the session's
+  // events change between renders) so it never points past the last row.
+  const clampedFocusIndex = rows.length === 0 ? 0 : Math.min(focusedRowIndex, rows.length - 1);
+
+  const openEvent = useCallback(
+    (event: Event) => {
+      // Device events carry `duration` in SECONDS. When meaningful, pass the
+      // event END (`te`) so the Signal Viewer frames the whole event rather than
+      // centering a fixed window on its start. Mirrors EventExplorer/EventTable.
+      const base = `/sessions/${sessionId}/signals?t=${event.timestamp}`;
+      const url =
+        event.duration > 0 ? `${base}&te=${event.timestamp + event.duration * 1000}` : base;
+      navigate(url);
+    },
+    [navigate, sessionId],
+  );
+
+  /** Move the roving-tabindex focus to a row and pull DOM focus to it. */
+  const moveFocusTo = useCallback(
+    (nextIndex: number) => {
+      if (rows.length === 0) return;
+      const clamped = Math.max(0, Math.min(rows.length - 1, nextIndex));
+      setFocusedRowIndex(clamped);
+      const el = gridRef.current?.querySelector<HTMLDivElement>(`[data-row-index="${clamped}"]`);
+      el?.focus();
+    },
+    [rows.length],
+  );
+
+  const handleRowKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>, index: number, event: Event) => {
+      switch (e.key) {
+        case 'ArrowDown':
+          e.preventDefault();
+          moveFocusTo(index + 1);
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          moveFocusTo(index - 1);
+          break;
+        case 'Home':
+          e.preventDefault();
+          moveFocusTo(0);
+          break;
+        case 'End':
+          e.preventDefault();
+          moveFocusTo(rows.length - 1);
+          break;
+        case 'Enter':
+        case ' ':
+          e.preventDefault();
+          openEvent(event);
+          break;
+        default:
+          break;
+      }
+    },
+    [moveFocusTo, openEvent, rows.length],
+  );
+
+  return (
+    <section className={styles.eventsSection} aria-label="Individual events">
+      <h2 className={styles.sectionTitle}>Events</h2>
+
+      {rows.length === 0 ? (
+        <Card>
+          <div className={styles.eventsEmpty}>
+            <span className={styles.eventsEmptyIcon} aria-hidden="true">
+              ✓
+            </span>
+            <p className={styles.eventsEmptyTitle}>No respiratory events recorded</p>
+            <p className={styles.eventsEmptyBody}>
+              This session had no scored apnea, hypopnea, or related events. That&apos;s a clean
+              night.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <>
+          <Card padding={false}>
+            <div className={styles.tableWrapper}>
+              {/*
+               * Accessible clickable grid (mirrors EventExplorer/EventTable):
+               * a real columnheader row plus per-event rows whose gridcells are
+               * the Time / Type / Duration columns, so the column headers
+               * associate with actual per-column cells. The row itself is the
+               * activatable control that deep-links into the Signal Viewer.
+               */}
+              <div
+                ref={gridRef}
+                role="grid"
+                aria-label="Individual events"
+                aria-rowcount={rows.length + 1}
+                className={styles.eventGrid}
+              >
+                <div className={styles.eventHeaderRow} role="row" aria-rowindex={1}>
+                  <span role="columnheader" className={styles.eventHeaderCell}>
+                    Time
+                  </span>
+                  <span role="columnheader" className={styles.eventHeaderCell}>
+                    Type
+                  </span>
+                  <span
+                    role="columnheader"
+                    className={`${styles.eventHeaderCell} ${styles.eventCellNumeric}`}
+                  >
+                    Duration
+                  </span>
+                  <span role="columnheader" className={styles.eventHeaderCell} aria-hidden="true" />
+                </div>
+
+                {rows.map((event, index) => {
+                  const clock = formatClockTime(wallClockEpoch, event.timestamp - sessionStart);
+                  const label = eventLabel(event.type);
+                  const durationStr = `${event.duration.toFixed(1)}s`;
+                  const isFocused = index === clampedFocusIndex;
+                  return (
+                    <div
+                      key={event.id}
+                      role="row"
+                      aria-rowindex={index + 2}
+                      data-row-index={index}
+                      tabIndex={isFocused ? 0 : -1}
+                      className={styles.eventRow}
+                      onClick={() => openEvent(event)}
+                      onFocus={() => setFocusedRowIndex(index)}
+                      onKeyDown={(e) => handleRowKeyDown(e, index, event)}
+                      title="Open in Signal Viewer"
+                      aria-label={`${label} at ${clock}, ${event.duration.toFixed(
+                        1,
+                      )} seconds. Open in Signal Viewer.`}
+                    >
+                      <span role="gridcell" className={styles.eventTimeCell}>
+                        {clock}
+                      </span>
+                      <span role="gridcell" className={styles.eventTypeCell}>
+                        <EventTypeSwatch type={event.type} />
+                        <span className={styles.eventTypeLabel}>{label}</span>
+                      </span>
+                      <span
+                        role="gridcell"
+                        className={`${styles.eventDurationCell} ${styles.eventCellNumeric}`}
+                      >
+                        {durationStr}
+                      </span>
+                      <span role="gridcell" className={styles.eventChevronCell} aria-hidden="true">
+                        ›
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </Card>
+
+          <div className={styles.eventsFooter}>
+            {sorted.length > EVENTS_LIST_CAP ? (
+              <>
+                <span>
+                  Showing the first {EVENTS_LIST_CAP} of {sorted.length} events.
+                </span>
+                <Link to="/explore/events" className={styles.eventsViewAllLink}>
+                  View all in Event Explorer →
+                </Link>
+              </>
+            ) : (
+              <span>Showing all {sorted.length} events.</span>
+            )}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -603,6 +837,14 @@ export default function SessionDetail() {
     () => (session ? new Date(session.endTime).getTime() : 0),
     [session],
   );
+  // Session start in the wall-clock-as-UTC convention shared by the Signal
+  // Viewer X-axis and crosshair. Formatting event clock times against this epoch
+  // (with UTC getters, via formatClockTime) keeps every surface agreeing to the
+  // second — see hoverReadout.formatClockTime and signalLanes.sessionWallClockEpoch.
+  const wallClockEpochMs = useMemo(
+    () => (session ? sessionWallClockEpoch(session.startTime) : 0),
+    [session],
+  );
 
   // ── Child route (Signal Viewer) ────────────────────────────────
   if (isChildRouteActive) {
@@ -671,11 +913,25 @@ export default function SessionDetail() {
 
       {/* ── Event Timeline ──────────────────────────────────────── */}
       {events.length > 0 && (
-        <EventTimeline events={events} sessionStart={sessionStartMs} sessionEnd={sessionEndMs} />
+        <EventTimeline
+          events={events}
+          sessionStart={sessionStartMs}
+          sessionEnd={sessionEndMs}
+          wallClockEpoch={wallClockEpochMs}
+        />
       )}
 
       {/* ── Event Summary Table ─────────────────────────────────── */}
       {events.length > 0 && <EventSummaryTable events={events} />}
+
+      {/* ── Individual Events ───────────────────────────────────── */}
+      {/* Renders whenever the session is loaded so the empty state has a home. */}
+      <EventsList
+        events={events}
+        sessionId={session.id}
+        sessionStart={sessionStartMs}
+        wallClockEpoch={wallClockEpochMs}
+      />
     </div>
   );
 }

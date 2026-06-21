@@ -123,25 +123,77 @@ function makeAggregate(
   };
 }
 
+/** Build a minimal Event record (respiratory event) for a session. */
+function makeEvent(
+  id: string,
+  sessionId: string,
+  timestamp: number,
+  type: string,
+  duration: number,
+) {
+  return {
+    id,
+    sessionId,
+    type,
+    timestamp,
+    duration,
+    severity: null,
+    pressure: 10.5,
+    epap: null,
+    ipap: null,
+    leak: 4.5,
+    spo2: null,
+    clusterId: null,
+  };
+}
+
+/**
+ * Expected wall-clock string rendered by the Events list / EventTimeline for an
+ * event at `timestamp` (epoch ms). The view formats the clock as
+ * `formatClockTime(wallClockEpoch, timestamp - sessionStart)` where
+ * `wallClockEpoch = Date.UTC(...localFieldsOf(sessionStart))` and
+ * `sessionStart = new Date(sessionStartIso).getTime()`. That arithmetic reduces
+ * exactly to the LOCAL wall clock of `timestamp` read as HH:MM:SS — so we mirror
+ * it here with local getters, keeping the assertion timezone-independent (the app
+ * assumes the viewer's zone matches the import zone). See
+ * src/views/Sessions/hoverReadout.ts (formatClockTime) and
+ * src/views/Sessions/signalLanes.ts (sessionWallClockEpoch).
+ */
+function expectedClock(timestamp: number): string {
+  const d = new Date(timestamp);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
 // ── IndexedDB Helpers ──
 
 /**
- * Inject sessions and aggregates into the app's IndexedDB.
+ * Inject sessions, aggregates, and (optionally) events into the app's IndexedDB.
  * The app must have loaded at least once to create the schema.
  */
 async function injectTestData(
   page: Page,
   sessions: ReturnType<typeof makeSession>[],
   aggregates: ReturnType<typeof makeAggregate>[],
+  events: ReturnType<typeof makeEvent>[] = [],
 ): Promise<void> {
   await page.evaluate(
-    ({ dbName, sessions, aggregates }) => {
+    ({ dbName, sessions, aggregates, events }) => {
       return new Promise<void>((resolve, reject) => {
         const request = indexedDB.open(dbName);
         request.onerror = () => reject(new Error('Failed to open database'));
         request.onsuccess = () => {
           const db = request.result;
-          const tx = db.transaction(['sessions', 'nightly_aggregates'], 'readwrite');
+          // Only open the `events` store in the transaction when we have events
+          // to write — older fixtures that never touch events keep a narrower
+          // transaction scope.
+          const storeNames =
+            events.length > 0
+              ? ['sessions', 'nightly_aggregates', 'events']
+              : ['sessions', 'nightly_aggregates'];
+          const tx = db.transaction(storeNames, 'readwrite');
           const sessionsStore = tx.objectStore('sessions');
           const aggregatesStore = tx.objectStore('nightly_aggregates');
 
@@ -150,6 +202,12 @@ async function injectTestData(
           }
           for (const aggregate of aggregates) {
             aggregatesStore.put(aggregate);
+          }
+          if (events.length > 0) {
+            const eventsStore = tx.objectStore('events');
+            for (const event of events) {
+              eventsStore.put(event);
+            }
           }
 
           tx.oncomplete = () => {
@@ -163,7 +221,7 @@ async function injectTestData(
         };
       });
     },
-    { dbName: DB_NAME, sessions, aggregates },
+    { dbName: DB_NAME, sessions, aggregates, events },
   );
 }
 
@@ -176,13 +234,14 @@ async function setupWithData(
   sessions: ReturnType<typeof makeSession>[],
   aggregates: ReturnType<typeof makeAggregate>[],
   targetRoute = '/sessions',
+  events: ReturnType<typeof makeEvent>[] = [],
 ): Promise<void> {
   // First load: creates the DB schema
   await page.goto('/');
   await expect(page.locator('h1').first()).toBeVisible();
 
   // Inject data
-  await injectTestData(page, sessions, aggregates);
+  await injectTestData(page, sessions, aggregates, events);
 
   // Navigate to the target route with fresh data
   await page.goto(targetRoute);
@@ -526,10 +585,13 @@ test.describe('Session Detail', () => {
     // Wait for detail to load
     await expect(page.getByRole('heading', { name: 'AHI' })).toBeVisible();
 
-    // AHI breakdown items
-    await expect(page.getByText('Obstructive')).toBeVisible();
-    await expect(page.getByText('Central')).toBeVisible();
-    await expect(page.getByText('Hypopnea')).toBeVisible();
+    // AHI breakdown items. Use exact matches: the new Events-list empty state
+    // (this session is seeded with no events) renders a sentence containing the
+    // word "hypopnea", so an unscoped substring match on "Hypopnea" would resolve
+    // to two elements. The breakdown labels are standalone single words.
+    await expect(page.getByText('Obstructive', { exact: true })).toBeVisible();
+    await expect(page.getByText('Central', { exact: true })).toBeVisible();
+    await expect(page.getByText('Hypopnea', { exact: true })).toBeVisible();
   });
 
   test('clicking View Signals navigates to signal viewer', async ({ page }) => {
@@ -546,6 +608,286 @@ test.describe('Session Detail', () => {
 
     // Should navigate to signal viewer route
     await expect(page).toHaveURL(/\/sessions\/sess-1\/signals/);
+  });
+});
+
+test.describe('Session Detail — Events list', () => {
+  // The Events list renders each respiratory event's wall-clock Time / Type /
+  // Duration and deep-links each row into the Signal Viewer. Event timestamps
+  // are derived from the seeded session's start so the rendered clock string is
+  // deterministic. We anchor events at the session start (22:00 local) plus a
+  // few offsets and assert the rows appear in chronological order.
+
+  const EVENT_SESSION_ID = 'sess-1';
+
+  /**
+   * Build a session + aggregate + a small chronological set of events. Events
+   * are deliberately seeded OUT of chronological order in the array so the test
+   * proves the list sorts them; the returned `chronological` array is the order
+   * we expect them rendered in.
+   */
+  function createSessionWithEvents() {
+    const date = daysAgoStr(2);
+    const session = makeSession(EVENT_SESSION_ID, date, 480, 420);
+    const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 5.0, 4.5, 7.0);
+
+    // Session starts at `${date}T22:00:00Z`; anchor event timestamps off that.
+    const sessionStartMs = new Date(session.startTime).getTime();
+
+    // Three events: a 0-duration RERA, then two timed apneas/hypopneas. Pushed
+    // out of order to exercise the chronological sort in EventsList.
+    const evtRera = makeEvent(
+      'evt-rera',
+      EVENT_SESSION_ID,
+      sessionStartMs + 60 * 60 * 1000, // +1h
+      'RERA',
+      0, // zero duration → no `&te=` on the deep link
+    );
+    const evtObstructive = makeEvent(
+      'evt-obstructive',
+      EVENT_SESSION_ID,
+      sessionStartMs + 5 * 60 * 1000, // +5m (earliest)
+      'ObstructiveApnea',
+      18, // seconds
+    );
+    const evtHypopnea = makeEvent(
+      'evt-hypopnea',
+      EVENT_SESSION_ID,
+      sessionStartMs + 30 * 60 * 1000, // +30m (middle)
+      'Hypopnea',
+      12.5,
+    );
+
+    // Insertion order is intentionally non-chronological.
+    const events = [evtRera, evtObstructive, evtHypopnea];
+    // Expected rendered order (ascending by timestamp).
+    const chronological = [evtObstructive, evtHypopnea, evtRera];
+
+    return { session, aggregate, events, chronological };
+  }
+
+  test('shows per-event wall-clock time, type, and duration in chronological order', async ({
+    page,
+  }) => {
+    const { session, aggregate, events, chronological } = createSessionWithEvents();
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
+
+    // The Events list is a labelled grid.
+    const grid = page.getByRole('grid', { name: 'Individual events' });
+    await expect(grid).toBeVisible({ timeout: 10000 });
+
+    // Column headers.
+    await expect(grid.getByRole('columnheader', { name: 'Time' })).toBeVisible();
+    await expect(grid.getByRole('columnheader', { name: 'Type' })).toBeVisible();
+    await expect(grid.getByRole('columnheader', { name: 'Duration' })).toBeVisible();
+
+    // One data row per seeded event (header row is a separate role="row" but
+    // carries no role="row" gridcells of data; scope rows to those with gridcells).
+    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
+    await expect(dataRows).toHaveCount(chronological.length);
+
+    // Each row, in chronological order, shows the expected clock / type / duration.
+    for (let i = 0; i < chronological.length; i++) {
+      const evt = chronological[i]!;
+      const row = dataRows.nth(i);
+      await expect(row.getByRole('gridcell').first()).toHaveText(expectedClock(evt.timestamp));
+      await expect(row).toContainText(
+        evt.type === 'ObstructiveApnea'
+          ? 'Obstructive Apnea'
+          : evt.type === 'Hypopnea'
+            ? 'Hypopnea'
+            : 'RERA',
+      );
+      await expect(row).toContainText(`${evt.duration.toFixed(1)}s`);
+    }
+
+    // Sanity: the earliest event's clock precedes the latest in the DOM order.
+    const firstClock = expectedClock(chronological[0]!.timestamp);
+    const lastClock = expectedClock(chronological[chronological.length - 1]!.timestamp);
+    expect(firstClock).not.toEqual(lastClock);
+  });
+
+  test('clicking an event row deep-links into the Signal Viewer (with te for timed events)', async ({
+    page,
+  }) => {
+    const { session, aggregate, events, chronological } = createSessionWithEvents();
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
+
+    const grid = page.getByRole('grid', { name: 'Individual events' });
+    await expect(grid).toBeVisible({ timeout: 10000 });
+
+    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
+
+    // The first (chronologically earliest) row is the 18s ObstructiveApnea, which
+    // has duration > 0 → the deep link carries both `t` and `te`.
+    const timedEvent = chronological[0]!;
+    expect(timedEvent.duration).toBeGreaterThan(0);
+    const expectedTe = timedEvent.timestamp + timedEvent.duration * 1000;
+
+    await dataRows.first().click();
+
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/sessions/${EVENT_SESSION_ID}/signals\\?t=${timedEvent.timestamp}&te=${expectedTe}(&|$)`,
+      ),
+    );
+
+    // The Signal Viewer renders (toolbar or a graceful fallback in the sandbox).
+    await page.waitForLoadState('networkidle');
+    await expect(
+      page
+        .getByText('Signal Viewer')
+        .or(page.getByText('No Signal Data'))
+        .or(page.getByText('Failed to load signals'))
+        .or(page.getByText('Browser Not Supported')),
+    ).toBeVisible({ timeout: 10000 });
+  });
+
+  test('a zero-duration event deep-links with only t (no te)', async ({ page }) => {
+    const { session, aggregate, events, chronological } = createSessionWithEvents();
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
+
+    const grid = page.getByRole('grid', { name: 'Individual events' });
+    await expect(grid).toBeVisible({ timeout: 10000 });
+
+    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
+
+    // The last chronological row is the 0-duration RERA → link has `t` only.
+    const zeroDurEvent = chronological[chronological.length - 1]!;
+    expect(zeroDurEvent.duration).toBe(0);
+
+    await dataRows.last().click();
+
+    // `t` is present and there is NO `te` query param.
+    await expect(page).toHaveURL(
+      new RegExp(`/sessions/${EVENT_SESSION_ID}/signals\\?t=${zeroDurEvent.timestamp}(&|$)`),
+    );
+    await expect(page).not.toHaveURL(/[?&]te=/);
+  });
+
+  test('keyboard: focusing a row and pressing Enter deep-links into the Signal Viewer', async ({
+    page,
+  }) => {
+    const { session, aggregate, events, chronological } = createSessionWithEvents();
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
+
+    const grid = page.getByRole('grid', { name: 'Individual events' });
+    await expect(grid).toBeVisible({ timeout: 10000 });
+
+    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
+
+    // Focus the first row (roving-tabindex makes it the grid's single tab stop)
+    // and activate it with Enter.
+    const firstRow = dataRows.first();
+    await firstRow.focus();
+    await expect(firstRow).toBeFocused();
+    await page.keyboard.press('Enter');
+
+    const timedEvent = chronological[0]!;
+    const expectedTe = timedEvent.timestamp + timedEvent.duration * 1000;
+    await expect(page).toHaveURL(
+      new RegExp(
+        `/sessions/${EVENT_SESSION_ID}/signals\\?t=${timedEvent.timestamp}&te=${expectedTe}(&|$)`,
+      ),
+    );
+  });
+
+  test('EventTimeline tooltip shows the event wall-clock time on hover', async ({ page }) => {
+    // The EventTimeline only renders when endTime > startTime, so build a session
+    // with an explicit overnight window (the shared makeSession fixture puts both
+    // start and end on the same calendar date, which collapses the timeline). The
+    // Events list does not depend on the window; only this timeline test does.
+    const date = daysAgoStr(2);
+    const session = {
+      ...makeSession(EVENT_SESSION_ID, date, 480, 420),
+      startTime: `${date}T22:00:00Z`,
+      endTime: `${daysAgoStr(1)}T06:00:00Z`, // next calendar day → positive span
+    };
+    const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 5.0, 4.5, 7.0);
+
+    const sessionStartMs = new Date(session.startTime).getTime();
+    // One event firmly inside the window so the marker is hoverable.
+    const evt = makeEvent(
+      'evt-tl',
+      EVENT_SESSION_ID,
+      sessionStartMs + 2 * 60 * 60 * 1000, // +2h
+      'ObstructiveApnea',
+      18,
+    );
+
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, [evt]);
+
+    // The timeline renders one marker per event inside the labelled container.
+    const timeline = page.getByRole('img', { name: /Event timeline showing/ });
+    await expect(timeline).toBeVisible({ timeout: 10000 });
+
+    // Hover the marker. Radix renders the tooltip into a portal with
+    // role="tooltip"; assert it carries the wall-clock string the feature added.
+    const marker = timeline.locator('> *').first();
+    await marker.hover();
+
+    const tooltip = page.getByRole('tooltip');
+    await expect(tooltip).toBeVisible({ timeout: 10000 });
+
+    // The tooltip text is `HH:MM:SS · <Type> · <d.d>s`.
+    const tooltipText = (await tooltip.textContent()) ?? '';
+    expect(tooltipText).toContain(expectedClock(evt.timestamp));
+    expect(tooltipText).toMatch(/\d{2}:\d{2}:\d{2}/);
+  });
+
+  test('shows the positive empty state when the session has zero events', async ({ page }) => {
+    const date = daysAgoStr(2);
+    const session = makeSession(EVENT_SESSION_ID, date, 480, 420);
+    const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 0, 4.5, 7.0);
+
+    // No events seeded.
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, []);
+
+    // The Events section still renders, with a positive empty state and no grid.
+    const eventsSection = page.getByRole('region', { name: 'Individual events' });
+    await expect(eventsSection).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('No respiratory events recorded')).toBeVisible();
+
+    // No grid / data rows.
+    await expect(page.getByRole('grid', { name: 'Individual events' })).toHaveCount(0);
+  });
+
+  test('over-cap footer: shows "first 50 of N" caption and an Event Explorer link', async ({
+    page,
+  }) => {
+    const date = daysAgoStr(2);
+    const session = makeSession(EVENT_SESSION_ID, date, 480, 420);
+    const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 8.0, 4.5, 7.0);
+    const sessionStartMs = new Date(session.startTime).getTime();
+
+    const TOTAL = 60; // > EVENTS_LIST_CAP (50)
+    const types = ['ObstructiveApnea', 'CentralApnea', 'Hypopnea'];
+    const events = Array.from({ length: TOTAL }, (_, i) =>
+      makeEvent(
+        `evt-cap-${String(i).padStart(3, '0')}`,
+        EVENT_SESSION_ID,
+        sessionStartMs + i * 60 * 1000, // 1-minute spacing
+        types[i % types.length]!,
+        10 + (i % 3) * 5,
+      ),
+    );
+
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
+
+    const grid = page.getByRole('grid', { name: 'Individual events' });
+    await expect(grid).toBeVisible({ timeout: 10000 });
+
+    // Only the first 50 are rendered.
+    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
+    await expect(dataRows).toHaveCount(50);
+
+    // Over-cap caption with the true total.
+    await expect(page.getByText(`Showing the first 50 of ${TOTAL} events.`)).toBeVisible();
+
+    // "View all in Event Explorer" link points at the Event Explorer.
+    const viewAll = page.getByRole('link', { name: /View all in Event Explorer/ });
+    await expect(viewAll).toBeVisible();
+    await expect(viewAll).toHaveAttribute('href', /\/explore\/events$/);
   });
 });
 
