@@ -215,6 +215,52 @@ describe('Breathing view', () => {
     expect(screen.getAllByText(/analysis cancelled/i).length).toBeGreaterThan(0);
   });
 
+  it('status line counts only successfully-analyzed nights (failures excluded once, not twice)', () => {
+    // Regression for the double-subtraction bug: nightsCached + nightsComputed
+    // count ONLY successful nights, so the analyzed count must be their sum
+    // (2 here), not sum-minus-failures (1). Total is 3 (2 ok + 1 failed).
+    mockUseCatalog.mockReturnValue({
+      episodes: [
+        {
+          sessionId: 'sess-1',
+          nightDate: '2026-01-03',
+          nightStartMs: Date.parse('2026-01-03T22:00:00.000Z'),
+          episode: {
+            id: 'ep-1',
+            type: 'PeriodicBreathing',
+            startMs: 1_000,
+            endMs: 60_000,
+            durationSec: 59,
+            confidence: 0.9,
+            cycleLengthSec: 55,
+            modulationDepth: 0.5,
+            cycleCount: 4,
+            belowDeviceThreshold: false,
+          },
+        },
+      ],
+      phase: 'complete',
+      nightsTotal: 3,
+      nightsCached: 1,
+      nightsComputed: 1,
+      nightsFailed: 1,
+      failures: [{ date: '2026-01-02', reason: 'signal unreadable' }],
+      loading: false,
+      error: null,
+      cancel: vi.fn(),
+      resume: vi.fn(),
+    });
+    setAnalysis(null, { loading: true });
+    render(<Breathing />);
+
+    // Correct: "from 2 of 3 nights" — NOT the buggy "from 1 of 3 nights".
+    expect(screen.getByText(/from 2 of 3 night/i)).toBeInTheDocument();
+    expect(screen.queryByText(/from 1 of 3 night/i)).not.toBeInTheDocument();
+
+    // The single failure is still surfaced independently via the disclosure.
+    expect(screen.getAllByText(/1 night could not be analyzed/i).length).toBeGreaterThan(0);
+  });
+
   it('surfaces per-night failures with a Details disclosure', () => {
     mockUseCatalog.mockReturnValue({
       episodes: [],

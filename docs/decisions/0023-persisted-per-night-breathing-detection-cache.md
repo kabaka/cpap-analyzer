@@ -29,7 +29,7 @@ limits (`src/hooks/useBreathingEpisodeCatalog.ts`):
   range — directly at odds with the catalog's purpose.
 - **Ephemeral, surface-local caching only.** A module-level `Map`
   (`catalogCache`) de-dupes within the catalog for the life of the tab, and a
-  *separate* `episodeCache` serves the per-session viewer
+  _separate_ `episodeCache` serves the per-session viewer
   (`src/hooks/useBreathingEpisodes.ts`). Neither survives a reload, neither warms
   the other, and nothing is persisted. Every fresh visit recomputes from OPFS.
 
@@ -51,7 +51,7 @@ What the existing architecture already provides:
 - A **date-range-keyed analysis cache** pattern: `analysis_results` keyed by a
   compound unique `type_dateRangeHash` index, with a `cacheVersion` field for
   invalidation (`AnalysisResult` in `src/types/analysis.ts`). This is built for
-  *range-scoped* analyses, not *per-session* results.
+  _range-scoped_ analyses, not _per-session_ results.
 - An **atomic import pipeline**: `ImportService` persists session + nightly
   aggregate + events in one transaction via
   `IndexedDBService.addSessionWithRelated`, and `deleteSessionCascade` tears down
@@ -128,7 +128,7 @@ encoding each night as a one-day "range."
 - **Pro:** No schema migration; reuses an established cache type and the
   `cacheVersion` invalidation field.
 - **Con:** **Semantic and operational mismatch.** `analysis_results` is designed
-  for *range-scoped* analyses keyed by `[analysisType, dateRangeHash]` with a
+  for _range-scoped_ analyses keyed by `[analysisType, dateRangeHash]` with a
   **unique** index; modelling thousands of per-night rows as degenerate single-day
   ranges abuses that contract and pollutes a store other analyses share. Crucially,
   these rows are **not linked to `sessionId`**, so `deleteSessionCascade` would not
@@ -172,7 +172,7 @@ the keying metadata. Read it cheaply for the whole range; compute only the misse
 
 - **Pro:** Purpose-built. Keyed by `sessionId` so it participates in
   `deleteSessionCascade` and survives the multi-session-per-night reality. Keyed
-  *also* by a **detector version hash** so a detector change auto-invalidates
+  _also_ by a **detector version hash** so a detector change auto-invalidates
   without touching unrelated caches. Independent of the import-time aggregate
   (no frozen-at-import trap) and isolated from the range-scoped `analysis_results`
   contract. Indexable by `date` for range reads and by version for bulk eviction.
@@ -244,8 +244,8 @@ remains the source of truth; precompute only pre-warms it.
 The **clinical contract is unchanged.** Persistence is a performance and lifecycle
 concern only: the same detector, the same parameters, the same "candidate, never
 diagnosis" framing
-([0017](0017-app-computed-breathing-pattern-detection.md)). Caching changes *when*
-detection runs, never *what* it asserts.
+([0017](0017-app-computed-breathing-pattern-detection.md)). Caching changes _when_
+detection runs, never _what_ it asserts.
 
 ## Consequences
 
@@ -301,7 +301,7 @@ detection runs, never *what* it asserts.
 
 ### Neutral
 
-- **OPFS remains the signal source of truth.** The new store caches *derived*
+- **OPFS remains the signal source of truth.** The new store caches _derived_
   episode results only; the full-resolution signals stay in OPFS
   ([0005](0005-dual-storage-indexeddb-opfs.md)). A cold/stale cache simply re-reads
   OPFS and recomputes — the cache is an accelerator, never the canonical data.

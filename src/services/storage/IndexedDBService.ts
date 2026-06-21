@@ -3,9 +3,9 @@
  *
  * Manages all structured data persistence using the native IDBDatabase API:
  * sessions, nightly aggregates, therapy events, analysis results, settings,
- * import history, and integration data.
+ * import history, integration data, and the breathing-detection cache.
  *
- * Database: `cpap-analyzer`, schema version 2.
+ * Database: `cpap-analyzer`, schema version 4.
  */
 
 import {

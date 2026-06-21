@@ -269,6 +269,26 @@ export async function getBreathingDetection(
   }
 }
 
+/**
+ * Render a thrown value as a short, privacy-safe `name: message` string. Handles
+ * both `Error` and `DOMException` (e.g. `QuotaExceededError`) without logging the
+ * object itself — so no record id / sessionId can leak through enumerable props.
+ */
+function describeError(error: unknown): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    'message' in error &&
+    typeof (error as { name: unknown }).name === 'string' &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    const { name, message } = error as { name: string; message: string };
+    return `${name}: ${message}`;
+  }
+  return 'unknown error';
+}
+
 /** Create + initialize a fresh OPFS service. */
 async function initOpfs(): Promise<OPFSService> {
   const opfs = new OPFSService();
@@ -303,20 +323,47 @@ async function persistBestEffort(
     await db.putBreathingDetection(record);
   } catch (error) {
     // Swallow-and-degrade (storage spec §7): the cache is an accelerator, not
-    // source of truth. Log for diagnostics; never propagate.
+    // source of truth. Log for diagnostics; never propagate. Log only the error
+    // name/message — never the full error object or the record id (which embeds
+    // the sessionId) — so health-data identifiers never leak to the console.
+    // Covers both `Error` and `DOMException` (e.g. QuotaExceededError), neither
+    // of which should be logged whole.
+    const detail = describeError(error);
     // eslint-disable-next-line no-console
-    console.warn('Breathing-detection cache write failed (non-fatal):', error);
+    console.warn(`Breathing-detection cache write failed (non-fatal): ${detail}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// In-memory cache reset (privacy-critical)
+// ---------------------------------------------------------------------------
+
+/**
+ * Drop every in-memory PB/CSR detection result: the process-lifetime L1 memo and
+ * any in-flight compute promises.
+ *
+ * This is **privacy-critical** (Core Principle #1). L1 holds derived health data
+ * (`PeriodicBreathingResult` — PB/CSR episodes) for the tab's lifetime, so a
+ * "delete everything" wipe that clears only durable storage would leave this
+ * derived data resident in JS memory and re-servable from L1 on a later mount.
+ * {@link import('@/services/storage/clearAllUserData').clearAllUserData} calls
+ * this alongside the other in-memory cache clears so the wipe stays total.
+ */
+export function clearBreathingDetectionMemoryCache(): void {
+  l1.clear();
+  inFlight.clear();
 }
 
 // ---------------------------------------------------------------------------
 // Testing seams
 // ---------------------------------------------------------------------------
 
-/** @internal Clear the shared L1 cache + in-flight map between tests. */
+/**
+ * @internal Clear the shared L1 cache + in-flight map between tests. Delegates to
+ * the production {@link clearBreathingDetectionMemoryCache} so the two never drift.
+ */
 export function _clearBreathingDetectionCacheForTesting(): void {
-  l1.clear();
-  inFlight.clear();
+  clearBreathingDetectionMemoryCache();
 }
 
 /**

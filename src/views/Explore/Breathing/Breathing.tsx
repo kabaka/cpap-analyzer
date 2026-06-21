@@ -324,8 +324,13 @@ function EpisodeCatalog({
   const [confidenceMin, setConfidenceMin] = useState(0);
   const [sortBy, setSortBy] = useState<EpisodeSort>('confidence');
 
+  // `nightsCached` + `nightsComputed` count ONLY successfully-resolved nights
+  // (see useBreathingEpisodeCatalog: appendNight bumps these on success, while
+  // recordFailure bumps `nightsFailed` separately). So `nightsDone` already
+  // excludes failures — the number of nights actually analyzed IS `nightsDone`.
+  // Failures are surfaced independently via the failure disclosure.
   const nightsDone = nightsCached + nightsComputed;
-  const nightsAnalyzed = nightsDone - nightsFailed;
+  const nightsAnalyzed = nightsDone;
   const nightsRemaining = Math.max(0, nightsTotal - nightsDone - nightsFailed);
   const running = phase === 'reading-cache' || phase === 'computing';
 

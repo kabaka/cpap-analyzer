@@ -38,6 +38,7 @@ vi.mock('@/services/storage/OPFSService', () => {
 import {
   _clearBreathingDetectionCacheForTesting,
   _setBreathingDbForTesting,
+  clearBreathingDetectionMemoryCache,
   currentDetectionId,
   getBreathingDetection,
   peekL1,
@@ -335,5 +336,84 @@ describe('breathingDetectionCache — read-through', () => {
     await expect(
       getBreathingDetection({ sessionId: 'x', sessionStartMs: 0, flags: [], compute: vi.fn() }),
     ).rejects.toThrow(/OPFS/i);
+  });
+
+  // Security MEDIUM regression: derived health data must not survive a memory
+  // wipe and be re-served from L1 on a later request without recomputation.
+  it('clearBreathingDetectionMemoryCache empties L1 so a later request recomputes', async () => {
+    const sessionId = 'sess-wipe';
+    const { db, getById, getSession } = makeDbStub();
+    // L2 starts populated; first call seeds L1 from it.
+    getById.mockResolvedValue(makeStored(sessionId));
+    getSession.mockResolvedValue(makeSession(sessionId));
+    _setBreathingDbForTesting(() => Promise.resolve(db));
+
+    // First call populates L1.
+    await getBreathingDetection({ sessionId, sessionStartMs: 0, flags: [], compute: vi.fn() });
+    expect(peekL1(currentDetectionId(sessionId))).toBeDefined();
+
+    // The privacy-critical wipe drops the in-memory derived health data.
+    clearBreathingDetectionMemoryCache();
+    expect(peekL1(currentDetectionId(sessionId))).toBeUndefined();
+
+    // After the wipe, with L2 now also empty, a later request must NOT be served
+    // from the stale in-memory result — it has to recompute.
+    getById.mockResolvedValue(null);
+    const compute = vi.fn().mockResolvedValue(makeResult({ recordHours: 3 }));
+    const opfsStub = {
+      initialize: mockInitialize,
+      readManifest: mockReadManifest,
+      readChannel: mockReadChannel,
+    } as never;
+    const result = await getBreathingDetection({
+      sessionId,
+      sessionStartMs: 0,
+      flags: [],
+      compute,
+      opfs: opfsStub,
+    });
+    expect(compute).toHaveBeenCalledTimes(1);
+    expect(result.recordHours).toBe(3);
+  });
+
+  // Security LOW regression: a cache-write failure must log only the error
+  // name/message — never the full error object or the record id (it embeds the
+  // sessionId), so health-data identifiers cannot leak to the console.
+  it('cache-write failure log scrubs the error object and the sessionId', async () => {
+    const sessionId = 'sess-secret-id';
+    const { db, getById, put, getSession } = makeDbStub();
+    getById.mockResolvedValue(null);
+    getSession.mockResolvedValue(makeSession(sessionId));
+    put.mockRejectedValue(new DOMException('quota', 'QuotaExceededError'));
+    _setBreathingDbForTesting(() => Promise.resolve(db));
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const compute = vi.fn().mockResolvedValue(makeResult({ recordHours: 2 }));
+    const opfsStub = {
+      initialize: mockInitialize,
+      readManifest: mockReadManifest,
+      readChannel: mockReadChannel,
+    } as never;
+
+    await getBreathingDetection({
+      sessionId,
+      sessionStartMs: 0,
+      flags: [],
+      compute,
+      opfs: opfsStub,
+    });
+
+    await vi.waitFor(() => expect(put).toHaveBeenCalled());
+    await vi.waitFor(() => expect(warnSpy).toHaveBeenCalled());
+
+    // A single warn, with only string arguments — no Error object, no id.
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const args = warnSpy.mock.calls[0] ?? [];
+    expect(args).toHaveLength(1);
+    const message = String(args[0]);
+    expect(message).toContain('QuotaExceededError');
+    expect(message).not.toContain(sessionId);
+    expect(args.some((a) => a instanceof Error || a instanceof DOMException)).toBe(false);
+    warnSpy.mockRestore();
   });
 });

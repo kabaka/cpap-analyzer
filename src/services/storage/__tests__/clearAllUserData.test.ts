@@ -58,6 +58,14 @@ vi.mock('@/stores/useSettingsStore', () => ({
   },
 }));
 
+// In-memory PB/CSR detection cache (holds derived health data). Mocked so we can
+// assert the privacy-critical reset is invoked by the orchestration.
+const clearBreathingDetectionMemoryCache = vi.fn<() => void>();
+
+vi.mock('@/hooks/breathingDetectionCache', () => ({
+  clearBreathingDetectionMemoryCache: () => clearBreathingDetectionMemoryCache(),
+}));
+
 import { clearAllUserData } from '@/services/storage/clearAllUserData';
 
 // ---------------------------------------------------------------------------
@@ -275,6 +283,10 @@ describe('clearAllUserData', () => {
       // In-memory cache + persisted settings.
       expect(clearCache).toHaveBeenCalledTimes(1);
       expect(resetToDefaults).toHaveBeenCalledTimes(1);
+
+      // In-memory PB/CSR detection cache (derived health data) is wiped too, so
+      // delete-everything stays total (privacy regression guard).
+      expect(clearBreathingDetectionMemoryCache).toHaveBeenCalledTimes(1);
     });
 
     it('destroys the database before dropping the singleton (resetDB after destroy)', async () => {
