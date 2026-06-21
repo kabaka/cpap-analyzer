@@ -169,9 +169,20 @@ jobs:
     runs-on: ubuntu-latest
     # Scope the write permission to THIS job only. The rest of the workflow stays
     # read-only (`contents: read` at the top); only the release job can push the
-    # version-bump commit + tag and create the GitHub Release. `contents: write`
-    # covers all three (commit, tag, release) via the built-in GITHUB_TOKEN — no
-    # extra secrets, no third-party tokens.
+    # version-bump commit + tag and create the GitHub Release.
+    #
+    # AUTH NOTE: the version-bump commit is pushed DIRECTLY to `main`, which is
+    # protected by a repository ruleset (require-pull-request + require-code-
+    # scanning-results). The built-in GITHUB_TOKEN (github-actions[bot]) cannot
+    # be added as a ruleset bypass actor — rulesets only allow roles, deploy
+    # keys, teams, and Apps to bypass, not the default Actions token — so a
+    # GITHUB_TOKEN push is rejected ("Changes must be made through a pull
+    # request"). We therefore push with RELEASE_TOKEN, a repository-admin
+    # fine-grained PAT (Contents: read/write) stored as a secret; because it
+    # acts as an admin identity, the ruleset's "Repository admin" bypass covers
+    # it. If the secret is unset we fall back to GITHUB_TOKEN so the rest of the
+    # job (version compute, changelog) still runs — only the protected push then
+    # fails, exactly as before, rather than erroring on an empty token.
     permissions:
       contents: write
     steps:
@@ -181,8 +192,9 @@ jobs:
           # `vYYYY.0M.*` tags to derive the next MICRO, and we push a commit back
           # to main (a shallow clone cannot push or see tag history).
           fetch-depth: 0
-          # Persist the GITHUB_TOKEN so the later `git push` is authenticated.
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Persist the release token so the later `git push` is authenticated
+          # as the bypass-eligible admin identity (see AUTH NOTE above).
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
       # Belt-and-suspenders loop guard: if the commit that triggered this run is
       # itself a release commit (`chore(release): ...`), do nothing. The release
       # commit already carries `[skip ci]`, so GitHub should not have triggered a
@@ -254,11 +266,13 @@ jobs:
       # GitHub-hosted runners and is GitHub's own first-party tool — so there is
       # no third-party action to pin or audit, and nothing leaves the runner
       # beyond the API call to create the release. It authenticates with the
-      # built-in GITHUB_TOKEN (the same `contents: write` scope used above).
+      # same RELEASE_TOKEN used for the push (creating the release also creates
+      # the `vYYYY.0M.*` tag, which a tag ruleset could likewise gate), falling
+      # back to GITHUB_TOKEN when the secret is unset.
       - name: Create GitHub Release
         if: steps.guard.outputs.skip != 'true' && steps.cut.outputs.released == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail

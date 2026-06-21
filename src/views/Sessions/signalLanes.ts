@@ -299,16 +299,19 @@ const DEFAULT_RANGES: Record<WearableIntradayType, readonly [number, number]> = 
  * to match clinical convention. Colours are passed in already resolved.
  */
 export function hypnogramBands(resolve: (cssVar: string) => string): RibbonBand[] {
+  // Colours are requested as `var(...)` expressions to match the project-wide
+  // resolver contract (resolveColor only resolves `var(--x)`; bare names fall
+  // through unchanged and paint as an invalid canvas colour).
   return [
-    { value: SLEEP_STAGE_CODES.wake, label: 'W', color: resolve('--color-hypno-wake') },
+    { value: SLEEP_STAGE_CODES.wake, label: 'W', color: resolve('var(--color-hypno-wake)') },
     {
       value: SLEEP_STAGE_CODES.rem,
       label: 'REM',
-      color: resolve('--color-hypno-rem'),
+      color: resolve('var(--color-hypno-rem)'),
       hatch: true, // redundant non-colour cue for REM
     },
-    { value: SLEEP_STAGE_CODES.light, label: 'N1–2', color: resolve('--color-hypno-light') },
-    { value: SLEEP_STAGE_CODES.deep, label: 'N3', color: resolve('--color-hypno-deep') },
+    { value: SLEEP_STAGE_CODES.light, label: 'N1–2', color: resolve('var(--color-hypno-light)') },
+    { value: SLEEP_STAGE_CODES.deep, label: 'N3', color: resolve('var(--color-hypno-deep)') },
   ];
 }
 
