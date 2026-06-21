@@ -14,6 +14,8 @@
  * - `ton`     time-of-night `HHMM-HHMM` (local clock), may wrap midnight
  * - `from`    inclusive date-range start, epoch ms
  * - `to`      inclusive date-range end, epoch ms
+ * - `session` comma-separated session id list to scope the Explorer to, e.g.
+ *             `session=<uuid>` (links from Session Detail pre-scope to one id)
  * - `view`    active results view id (handled by the view component, not here)
  *
  * @module views/Explore/EventExplorer/querySerialization
@@ -124,7 +126,8 @@ function serializeForCompare(query: EventQuery): string {
   return keys
     .map((k) => {
       const v = params[k];
-      if (k === 'types' && v) {
+      if ((k === 'types' || k === 'session') && v) {
+        // Sort the list so set membership, not insertion order, drives equality.
         return `${k}=${v.split(',').sort().join(',')}`;
       }
       return `${k}=${v ?? ''}`;
@@ -152,6 +155,9 @@ export function queryToSearchParams(query: EventQuery): Record<string, string> {
     params.from = String(query.dateRange.start);
     params.to = String(query.dateRange.end);
   }
+  if (query.sessionIds && query.sessionIds.size > 0) {
+    params.session = [...query.sessionIds].join(',');
+  }
 
   return params;
 }
@@ -174,6 +180,16 @@ export function searchParamsToQuery(params: URLSearchParams): EventQuery {
   const to = toRaw === null ? null : toFiniteOrNull(toRaw);
   const dateRange = from !== null && to !== null ? { start: from, end: to } : null;
 
+  const sessionRaw = params.get('session');
+  let sessionIds: Set<string> | null = null;
+  if (sessionRaw) {
+    const ids = new Set<string>();
+    for (const id of sessionRaw.split(',')) {
+      if (id !== '') ids.add(id);
+    }
+    sessionIds = ids.size > 0 ? ids : null;
+  }
+
   return {
     ...base,
     types,
@@ -183,5 +199,6 @@ export function searchParamsToQuery(params: URLSearchParams): EventQuery {
     spo2: parseRange(params.get('spo2')),
     timeOfNight: parseTimeOfNight(params.get('ton')),
     dateRange,
+    sessionIds,
   };
 }

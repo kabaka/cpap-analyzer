@@ -191,6 +191,37 @@
   border-color: var(--color-error);
 }
 
+.deleteBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+/* Inline remove control inside a scope chip (× after the label). */
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1em;
+  height: 1.1em;
+  padding: 0;
+  font-size: var(--font-size-base);
+  line-height: 1;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.chipRemove:hover {
+  color: var(--color-error);
+}
+
+.chipRemove:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
 .saveForm {
   display: flex;
   gap: var(--space-2);

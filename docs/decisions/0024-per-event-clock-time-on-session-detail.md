@@ -220,10 +220,21 @@ tooltip time), and the non-negotiable _how_ (wall-clock-as-UTC).
   Until that follow-up lands, the Session Detail list and the Event Explorer table
   may display _different_ clock times for the same event — a known, tracked
   inconsistency, with Session Detail being the correct one.
+  **Update (implemented):** `EventTable.formatLocalTime` has been migrated onto the
+  wall-clock-as-UTC convention, so the Event Explorer table now agrees with the
+  Session Detail list and the Signal Viewer for the same event; the tracked
+  inconsistency above is resolved. The Event Explorer's `timeOfNight` filter, by
+  contrast, **remains viewer-local** and is a **still-open follow-up** — it was
+  intentionally left out of scope for this convergence.
 - Whether to share a single reusable event-table component between Session Detail
   and the Event Explorer (rather than two parallel implementations) is an
   implementation decision left to `frontend` / `qa`; this ADR only requires that
   the patterns and time convention not diverge.
+- **Update (implemented):** the Session Detail Events list's link into the Event
+  Explorer now **pre-scopes the Explorer to the originating session** (via a
+  `session` URL parameter) instead of dropping the user into the unscoped,
+  cross-session view — closing the information-architecture detour this ADR
+  flagged as the cost of falling back to the Explorer for a single night.
 - No storage, schema, parsing, or external-integration changes; Privacy is
   unaffected.
 
