@@ -35,7 +35,15 @@ const defaultIntegrations = {
     autoSyncNewImports: false,
     lastSyncAt: null,
   },
-  llm: { enabled: false, provider: null, apiKey: null },
+  llm: {
+    enabled: false,
+    backend: null,
+    consentAt: null,
+    consentContractVersion: null,
+    webllm: { modelId: null },
+    anthropic: { model: 'claude-opus-4-8' },
+    openaiCompatible: { baseUrl: null, model: null },
+  },
 };
 
 describe('useSettingsStore', () => {
@@ -157,16 +165,19 @@ describe('useSettingsStore', () => {
       expect(weather.autoSyncNewImports).toBe(false);
     });
 
-    it('should update LLM integration', () => {
+    it('should update LLM (AI Insights) integration', () => {
       useSettingsStore.getState().updateIntegration('llm', {
         enabled: true,
-        provider: 'anthropic',
-        apiKey: 'sk-test',
+        backend: 'anthropic',
       });
       expect(useSettingsStore.getState().integrations.llm).toEqual({
         enabled: true,
-        provider: 'anthropic',
-        apiKey: 'sk-test',
+        backend: 'anthropic',
+        consentAt: null,
+        consentContractVersion: null,
+        webllm: { modelId: null },
+        anthropic: { model: 'claude-opus-4-8' },
+        openaiCompatible: { baseUrl: null, model: null },
       });
     });
   });

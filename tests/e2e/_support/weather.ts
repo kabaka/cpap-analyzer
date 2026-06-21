@@ -433,7 +433,15 @@ export async function seedWeatherSettings(page: Page, seed: WeatherSettingsSeed)
       };
     }
     if (!integrations.llm) {
-      integrations.llm = { enabled: false, provider: null, apiKey: null };
+      integrations.llm = {
+        enabled: false,
+        backend: null,
+        consentAt: null,
+        consentContractVersion: null,
+        webllm: { modelId: null },
+        anthropic: { model: 'claude-opus-4-8' },
+        openaiCompatible: { baseUrl: null, model: null },
+      };
     }
     const weather = (integrations.weather ?? {}) as Record<string, unknown>;
 

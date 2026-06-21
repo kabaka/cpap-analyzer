@@ -86,10 +86,17 @@ export type {
   DateFormat,
   DisplayPreferences,
   IntegrationConfig,
+  LLMAnthropicConfig,
+  LLMAnthropicModel,
+  LLMBackendId,
+  LLMIntegrationConfig,
+  LLMOpenAICompatibleConfig,
   LLMProvider,
+  LLMWebLLMConfig,
   Settings,
   TimeFormat,
 } from './settings';
+export { EGRESS_CONTRACT_VERSION } from './settings';
 
 // Storage types
 export type {

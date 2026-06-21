@@ -42,11 +42,6 @@ const CLUSTERING_METHOD_OPTIONS = [
   { value: 'single-link', label: 'Single-Link' },
 ];
 
-const LLM_PROVIDER_OPTIONS = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 // ─── Section: General ─────────────────────────────────────────────────────
@@ -333,16 +328,20 @@ function IntegrationsSection() {
       ),
     },
     {
+      // FOUNDATION-WAVE STUB: the full AI Insights panel (backend selector,
+      // consent dialog, per-backend config) is built in the UI wave against
+      // `docs/design/ai-insights-ux.md`. This minimal stub keeps the settings
+      // shape compiling and exposes only the enable toggle until then.
       value: 'llm',
-      trigger: `LLM Assistant — ${integrations.llm.enabled ? 'Enabled' : 'Disabled'}`,
+      trigger: `AI Insights — ${integrations.llm.enabled ? 'Enabled' : 'Disabled'}`,
       content: (
         <div className={styles.integrationPanel}>
           <div className={styles.switchRow}>
             <div className={styles.switchInfo}>
-              <span className={styles.switchLabel}>Enable LLM Assistant</span>
+              <span className={styles.switchLabel}>Enable AI Insights</span>
               <span className={styles.switchDescription}>
-                Use AI to generate insights and explanations from your therapy data. Your data is
-                sent to the selected provider&apos;s API.
+                Turn computed metrics into plain-language summaries. The app does all the math; the
+                AI only puts your existing numbers into words. Off by default.
               </span>
             </div>
             <Switch
@@ -351,36 +350,9 @@ function IntegrationsSection() {
             />
           </div>
           {integrations.llm.enabled && (
-            <>
-              <span className={styles.comingSoon}>
-                Coming soon — Integration will be available in a future release
-              </span>
-              <Select
-                label="Provider"
-                options={LLM_PROVIDER_OPTIONS}
-                value={integrations.llm.provider ?? ''}
-                onValueChange={(v) =>
-                  updateIntegration('llm', {
-                    provider: v as 'openai' | 'anthropic',
-                  })
-                }
-                placeholder="Select provider"
-                disabled
-              />
-              <Input
-                label="API key"
-                type="password"
-                placeholder="Enter API key"
-                value={integrations.llm.apiKey ?? ''}
-                onChange={(e) =>
-                  updateIntegration('llm', {
-                    apiKey: e.target.value || null,
-                  })
-                }
-                disabled
-                hint="Configuration will be available when integration launches"
-              />
-            </>
+            <span className={styles.comingSoon}>
+              Coming soon — backend selection and configuration arrive in a future release.
+            </span>
           )}
         </div>
       ),

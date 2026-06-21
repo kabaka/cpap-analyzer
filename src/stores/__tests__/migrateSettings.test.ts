@@ -1,17 +1,30 @@
 /**
- * Unit tests for the settings persist migration (v0 → v1).
+ * Unit tests for the settings persist migration (v0 → v1 → v2).
  *
- * The weather integration was reshaped from `{ enabled, apiKey, location: string }`
- * to the richer keyless config. The migration must:
+ * v0 → v1 reshaped the weather integration from
+ * `{ enabled, apiKey, location: string }` to the richer keyless config.
+ * v1 → v2 reshaped the llm stub from `{ enabled, provider, apiKey }` into the
+ * AI Insights config (ADR 0024). Migrations apply cumulatively, so a v0 blob
+ * runs both steps.
+ *
+ * The weather (v0 → v1) step must:
  * - DROP `apiKey` entirely (Open-Meteo is keyless; a stale key is a privacy hazard);
  * - wrap the old free-text `location` string into the structured location object
  *   with null coordinates;
  * - FORCE re-consent: reset `enabled` to false and `consentAt` to null regardless
  *   of the legacy value, so a migrated user re-passes the consent gate before any
  *   egress is possible;
- * - fill all new weather fields from defaults;
- * - preserve every other settings slice untouched;
- * - never throw on a malformed blob.
+ * - fill all new weather fields from defaults.
+ *
+ * The llm (v1 → v2) step must:
+ * - map `provider:'anthropic' → backend:'anthropic'`, `'openai' → 'openai-compatible'`,
+ *   and `null`/unknown → `backend:null` (never auto-select cloud);
+ * - DROP the persisted `apiKey` (keys never enter persisted settings — ADR 0024 §4);
+ * - FORCE the feature off: `enabled:false`, `consentAt:null`,
+ *   `consentContractVersion:null`, regardless of the legacy value.
+ *
+ * In all cases the migration must preserve every other settings slice untouched
+ * and never throw on a malformed blob.
  *
  * @module stores/__tests__/migrateSettings.test
  */
@@ -19,7 +32,7 @@
 import { describe, it, expect } from 'vitest';
 import { migrateSettings } from '../useSettingsStore';
 
-describe('migrateSettings (v0 → v1)', () => {
+describe('migrateSettings (v0 → v1 → v2)', () => {
   it('drops apiKey, wraps the old location string, and forces re-consent', () => {
     const legacy = {
       integrations: {
@@ -106,7 +119,57 @@ describe('migrateSettings (v0 → v1)', () => {
     expect(migrated.analysisParams?.ahi.mildThreshold).toBe(7);
     expect(migrated.display?.dateFormat).toBe('DD/MM/YYYY');
     expect(migrated.integrations?.fitbit.recordCount).toBe(9);
-    expect(migrated.integrations?.llm.provider).toBe('anthropic');
+    // llm.provider:'anthropic' maps to backend:'anthropic' under v1 → v2; the
+    // legacy key is dropped and the feature is forced off.
+    const llm = migrated.integrations?.llm;
+    expect(llm?.backend).toBe('anthropic');
+    expect(llm?.enabled).toBe(false);
+    expect(llm && 'provider' in llm).toBe(false);
+    expect(llm && 'apiKey' in llm).toBe(false);
+  });
+
+  it('migrates the llm stub: maps provider→backend, drops apiKey, forces off (v1 → v2)', () => {
+    const v1State = {
+      integrations: {
+        weather: {
+          enabled: true,
+          consentAt: '2025-01-01T00:00:00.000Z',
+          location: { label: 'Paris', latitude: 48.85, longitude: 2.35 },
+          units: { temperature: 'C', pressure: 'hPa', wind: 'kmh', precip: 'mm' },
+          domains: { core: true, airQuality: true },
+          resolution: 'daily+hourly',
+          autoSyncNewImports: false,
+          lastSyncAt: null,
+        },
+        llm: { enabled: true, provider: 'openai', apiKey: 'sk-secret' },
+      },
+    };
+
+    // Migrating from v1 leaves the (already-current) weather slice untouched and
+    // only reshapes llm.
+    const migrated = migrateSettings(v1State, 1);
+    const llm = migrated.integrations?.llm;
+    expect(llm?.backend).toBe('openai-compatible');
+    expect(llm?.enabled).toBe(false);
+    expect(llm?.consentAt).toBeNull();
+    expect(llm?.consentContractVersion).toBeNull();
+    expect(llm?.anthropic).toEqual({ model: 'claude-opus-4-8' });
+    expect(llm?.webllm).toEqual({ modelId: null });
+    expect(llm?.openaiCompatible).toEqual({ baseUrl: null, model: null });
+    // The persisted key never survives migration.
+    expect(llm && 'apiKey' in llm).toBe(false);
+    expect(llm && 'provider' in llm).toBe(false);
+    // The already-current weather slice is preserved.
+    expect(migrated.integrations?.weather.enabled).toBe(true);
+  });
+
+  it('maps a null/absent legacy llm provider to backend:null (never auto-cloud)', () => {
+    const migrated = migrateSettings(
+      { integrations: { llm: { enabled: true, provider: null, apiKey: null } } },
+      1,
+    );
+    expect(migrated.integrations?.llm.backend).toBeNull();
+    expect(migrated.integrations?.llm.enabled).toBe(false);
   });
 
   it('falls back to full defaults on a non-object blob (never throws)', () => {
@@ -132,7 +195,7 @@ describe('migrateSettings (v0 → v1)', () => {
 
   it('returns the state unchanged when already at the current version', () => {
     const current = { integrations: { weather: { enabled: true } } };
-    const migrated = migrateSettings(current, 1);
+    const migrated = migrateSettings(current, 2);
     expect(migrated).toBe(current);
   });
 });
