@@ -37,7 +37,11 @@
 
 .headerRight {
   display: flex;
-  align-items: center;
+  /* Align to the bottom so the "✨ Summarize range" button (and the Stats
+     toggle) line up with the DateRangeSelector's <select> input. The selector
+     stacks a "Date range" label above its control, so flex-end matches the
+     controls to the input's bottom edge rather than the floating label. */
+  align-items: flex-end;
   gap: var(--space-2);
 }
 

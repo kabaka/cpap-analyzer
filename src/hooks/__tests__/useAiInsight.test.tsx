@@ -97,7 +97,7 @@ describe('useAiInsight — state machine', () => {
     const runner = scriptedRunner([
       {
         type: 'complete',
-        text: 'AI narration is unavailable, so here is the computed summary.',
+        text: 'Summary for 2024-01-01: AHI: 4.2 events/h.',
         usedFallback: true,
         context: contextStub(),
         validation: { ok: false, violations: [] },

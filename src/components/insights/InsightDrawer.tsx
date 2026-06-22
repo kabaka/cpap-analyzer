@@ -35,6 +35,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { AiMarker, InsightCaveat, MedicalDisclaimer } from '@/components/ai';
+import { FALLBACK_NOTICE } from '@/services/llm/grounding';
 import { useAiInsight } from '@/hooks/useAiInsight';
 import type { ErrorPrimaryAction, UseAiInsight } from '@/hooks/useAiInsight';
 import { useSettingsStore } from '@/stores/useSettingsStore';
@@ -320,9 +321,8 @@ function InsightDrawerBody({
         {state === 'complete' && (
           <>
             {usedFallback && (
-              <p className={styles.fallbackNotice}>
-                The AI wording could not be verified against your numbers, so a plain template
-                summary is shown instead.
+              <p className={styles.fallbackNotice} role="note">
+                {FALLBACK_NOTICE}
               </p>
             )}
             <p className={styles.prose}>{text}</p>

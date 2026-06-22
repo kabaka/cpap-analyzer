@@ -19,8 +19,14 @@
 
 import type { GroundedContext, MetricSnapshot, TrendSnapshot } from '../context/types';
 
-/** The standard "AI narration unavailable" lead-in (owned with `ux`/docs). */
-export const FALLBACK_NOTICE = 'AI narration is unavailable, so here is the computed summary.';
+/**
+ * The single, canonical notice shown ABOVE the summary when the deterministic
+ * template was substituted for AI-written text (validation failed twice). It is
+ * rendered by the drawer as a calm `role="note"` info banner — it is NOT baked
+ * into the summary body. Owned with `ux`/docs.
+ */
+export const FALLBACK_NOTICE =
+  "To stay accurate, this is the app's own computed summary rather than AI-written text.";
 
 /**
  * Render a deterministic, allow-list-safe summary for a grounded context.

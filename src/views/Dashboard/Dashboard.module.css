@@ -22,7 +22,11 @@
    navigator without competing with it (UX §4.1). */
 .headerActions {
   display: flex;
-  align-items: center;
+  /* Align to the bottom so the "✨ Summarize range" button lines up with the
+     DateRangeSelector's <select> input — the selector stacks a "Date range"
+     label above its control, so flex-end matches the button to the input's
+     bottom edge (not the floating label). Holds when the row wraps. */
+  align-items: flex-end;
   gap: var(--space-3);
   flex-wrap: wrap;
 }
