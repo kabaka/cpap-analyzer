@@ -1,43 +1,39 @@
 /**
- * Event Breakdown Chart — stacked area of event types per night.
+ * Event Breakdown Chart — stacked area of event types per night (Canvas2D).
  *
- * Two uncertainty treatments, deliberately INDEPENDENT (consensus D5/D6):
+ * Migrated from Recharts/SVG with pixel-faithful reproduction of all marks:
+ * five monotone stacked areas (obstructive → central → hypopnea → mixed → rera,
+ * bottom→top), where the central and RERA "modeled" series are filled with a 45°
+ * diagonal HATCH (the non-colour reliability cue) instead of a flat fill, a
+ * bottom legend, the synced crosshair, and settings-change markers.
  *
- * 1. The central-vs-obstructive split and RERA are LOW-reliability modelled
- *    inferences. They are drawn with a diagonal **hatch pattern** (a non-colour
- *    cue that survives grayscale/print) and a "modeled inference" caveat note.
- *    This lowers the *precision* claim only.
+ * Two uncertainty treatments remain INDEPENDENT (consensus D5/D6):
+ *
+ * 1. Central-vs-obstructive split and RERA are LOW-reliability modelled
+ *    inferences → hatched fill + a "modeled inference" caveat footnote (lowers
+ *    the PRECISION claim only).
  *
  * 2. A rising central (Clear-Airway) trend STILL surfaces a persistent, visible
- *    **"discuss with your clinician" prompt**. The low-reliability caveat must
- *    never silence, hide, or dim this prompt — under-reaction to
- *    treatment-emergent central apnea is the dangerous failure mode (D6). The
- *    prompt is rendered outside the plot, full-opacity, with informational
- *    (non-diagnostic, non-therapy-specific) copy.
+ *    **"discuss with your clinician" prompt** rendered OUTSIDE the plot as
+ *    full-opacity HTML with `role="status"` — the low-reliability caveat must
+ *    never silence, hide, or dim it (D6). This stays HTML over the canvas.
  *
  * @module views/Trends/charts/EventBreakdownChart
  */
 
 import React, { useCallback, useMemo } from 'react';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Legend,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { useChartColors } from '@/components/charts/useChartColors';
 import { useSyncedChart } from '../context/SyncedChartContext';
 import { detectRisingCentralTrend } from '../utils/centralTrend';
 import type { NightlyAggregate } from '@/types';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
-import { renderSettingsChangeMarkers } from './SettingsChangeMarkers';
 import ChartPanel from './ChartPanel';
 import styles from './EventBreakdownChart.module.css';
+import TrendsCanvasChart, { type DrawContext, type ChartMargins } from './canvas/TrendsCanvasChart';
+import type { CurvePoint } from './canvas/curve';
+import { monotonePath } from './canvas/curve';
+import { niceYTicks } from './canvas/scale';
+import { SettingsMarkerOverlay } from './SettingsChangeMarkers';
 
 interface EventBreakdownChartProps {
   data: NightlyAggregate[];
@@ -56,18 +52,33 @@ interface EventDataPoint {
   rera: number;
 }
 
-const CENTRAL_HATCH_ID = 'event-breakdown-central-hatch';
-const RERA_HATCH_ID = 'event-breakdown-rera-hatch';
+/** A stacked series in render order (bottom→top), with its visual treatment. */
+interface SeriesSpec {
+  key: keyof Omit<EventDataPoint, 'date'>;
+  name: string;
+  colorKey: 'chart1' | 'chart2' | 'chart4' | 'chart5' | 'chart6';
+  hatch: boolean;
+}
+
+const SERIES: readonly SeriesSpec[] = [
+  { key: 'obstructive', name: 'Obstructive', colorKey: 'chart2', hatch: false },
+  { key: 'central', name: 'Central (modeled)', colorKey: 'chart4', hatch: true },
+  { key: 'hypopnea', name: 'Hypopnea', colorKey: 'chart1', hatch: false },
+  { key: 'mixed', name: 'Mixed', colorKey: 'chart5', hatch: false },
+  { key: 'rera', name: 'RERA (modeled)', colorKey: 'chart6', hatch: true },
+];
+
+/** Legend reserves 24px at the bottom (Recharts `<Legend height={24}>`). */
+const MARGINS: ChartMargins = { top: 8, right: 48, bottom: 24, left: 0 };
 
 const EventBreakdownChart = React.memo(function EventBreakdownChart({
   data,
   height,
   settingsChanges,
-  hideXAxis = true,
   onDataPointClick,
 }: EventBreakdownChartProps) {
   const colors = useChartColors();
-  const { activeDate, setActive, clear } = useSyncedChart();
+  const { activeDate, activeIndex } = useSyncedChart();
 
   const eventData: EventDataPoint[] = useMemo(
     () =>
@@ -82,26 +93,75 @@ const EventBreakdownChart = React.memo(function EventBreakdownChart({
     [data],
   );
 
-  // Safety-critical: detect a rising central trend independently of the
-  // low-reliability caveat styling (consensus D6).
   const centralTrend = useMemo(() => detectRisingCentralTrend(data), [data]);
 
-  const handleMouseMove = useCallback(
-    (state: { activeLabel?: string; activeTooltipIndex?: number }) => {
-      if (state.activeLabel) {
-        setActive(state.activeLabel, state.activeTooltipIndex ?? null);
+  // Y domain: stacked total per night, niced like a Recharts auto numeric axis.
+  const domain = useMemo(() => {
+    let max = 0;
+    for (const d of eventData) {
+      max = Math.max(max, d.obstructive + d.central + d.hypopnea + d.mixed + d.rera);
+    }
+    if (max <= 0) return { min: 0, max: 1 };
+    const ticks = niceYTicks(0, max, 5);
+    const tMax = ticks.length > 0 ? Math.max(max, ticks[ticks.length - 1] as number) : max;
+    return { min: 0, max: tMax };
+  }, [eventData]);
+
+  const dateAtIndex = useCallback((i: number) => eventData[i]?.date, [eventData]);
+
+  const drawBase = useCallback(
+    ({ renderer, plot, count, fontFamily }: DrawContext) => {
+      renderer.beginBase(colors.surfacePrimary);
+      const ticks = renderer.drawHorizontalGrid(domain, plot, colors.grid);
+
+      const n = eventData.length;
+      const xs = eventData.map((_, i) => renderer.pointX(i, count, plot));
+      // Cumulative lower boundary per category (starts at 0 = baseline).
+      const lower = new Array<number>(n).fill(0);
+
+      for (const spec of SERIES) {
+        const color = colors[spec.colorKey];
+        const upperVals = eventData.map((d, i) => (lower[i] ?? 0) + d[spec.key]);
+        const upperPts: CurvePoint[] = upperVals.map((v, i) => ({
+          x: xs[i] as number,
+          y: renderer.valueY(v, domain, plot),
+        }));
+        const lowerPts: CurvePoint[] = lower.map((v, i) => ({
+          x: xs[i] as number,
+          y: renderer.valueY(v, domain, plot),
+        }));
+
+        if (spec.hatch) {
+          // Hatched "modeled" series: clip to the band and paint the 45° pattern
+          // (translucent base rect @0.25 + diagonal strokes, 6px pitch, 1.5px),
+          // reproducing the SVG <pattern>.
+          renderer.fillHatchedRegion(
+            (ctx) => buildBandPath(ctx, upperPts, lowerPts),
+            plot,
+            { color, opacity: 0.25 },
+            { color, width: 1.5, period: 6 },
+          );
+        } else {
+          renderer.drawStackedBand(upperPts, lowerPts, { color, opacity: 0.6 }, plot);
+        }
+        // Stroke the series' top boundary in its colour (Recharts area stroke).
+        renderer.drawMonotoneLine(upperPts, { color, width: 1 }, plot, false);
+
+        for (let i = 0; i < n; i++) lower[i] = upperVals[i] ?? 0;
       }
+
+      renderer.drawYAxisRight(domain, plot, colors.axis, fontFamily, ticks);
     },
-    [setActive],
+    [colors, domain, eventData],
   );
 
-  const handleClick = useCallback(
-    (state: { activeLabel?: string } | null) => {
-      if (state?.activeLabel && onDataPointClick) {
-        onDataPointClick(state.activeLabel);
-      }
+  const drawOverlay = useCallback(
+    ({ renderer, plot, count }: DrawContext, idx: number | null) => {
+      if (idx === null || idx < 0 || idx >= eventData.length) return;
+      const x = renderer.pointX(idx, count, plot);
+      renderer.drawVerticalReferenceLine(x, plot, { color: colors.axis, opacity: 0.4 });
     },
-    [onDataPointClick],
+    [colors, eventData],
   );
 
   if (data.length === 0) return null;
@@ -109,18 +169,47 @@ const EventBreakdownChart = React.memo(function EventBreakdownChart({
   const caveat =
     'Central vs. obstructive split and RERA are modeled inferences (shown with a hatched fill), not direct measurements — read them as directional, not exact.';
 
+  const srSummary = (
+    <table>
+      <caption>
+        Event counts per night by type. Central and RERA are modeled estimates, not direct
+        measurements.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Obstructive</th>
+          <th scope="col">Central</th>
+          <th scope="col">Hypopnea</th>
+          <th scope="col">Mixed</th>
+          <th scope="col">RERA</th>
+        </tr>
+      </thead>
+      <tbody>
+        {eventData.map((d) => (
+          <tr key={d.date}>
+            <td>{d.date}</td>
+            <td>{d.obstructive}</td>
+            <td>{d.central}</td>
+            <td>{d.hypopnea}</td>
+            <td>{d.mixed}</td>
+            <td>{d.rera}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <ChartPanel
       title="Event Breakdown"
       chartHeight={height + 30}
       accessibleSummary="Stacked area chart showing event types per night; central and RERA series are modeled inferences shown with a hatched fill"
       footnote={caveat}
+      srSummary={srSummary}
     >
-      {/* SAFETY-CRITICAL clinician prompt (consensus D6). Rendered ABOVE/outside
-          the plot at full opacity so the low-reliability caveat never buries it.
-          role="status" so assistive tech announces it; copy is informational
-          and non-diagnostic — it prompts a conversation, names no condition or
-          therapy. */}
+      {/* SAFETY-CRITICAL clinician prompt (consensus D6) — full-opacity HTML,
+          role="status", informational/non-diagnostic. Never dimmed or hidden. */}
       {centralTrend.rising && (
         <div
           className={styles.clinicianPrompt}
@@ -141,123 +230,115 @@ const EventBreakdownChart = React.memo(function EventBreakdownChart({
         </div>
       )}
 
-      <ResponsiveContainer width="100%" height={height}>
-        <AreaChart
+      <div style={{ position: 'relative', width: '100%', height }}>
+        <TrendsCanvasChart
+          count={eventData.length}
+          dataKey={eventData}
+          height={height}
+          margins={MARGINS}
+          drawBase={drawBase}
+          drawOverlay={drawOverlay}
+          dateAtIndex={dateAtIndex}
+          onDataPointClick={onDataPointClick}
+          ariaLabel="Event breakdown chart"
+        />
+        <SettingsMarkerOverlay
+          changes={settingsChanges}
           data={eventData}
-          margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={clear}
-          onClick={handleClick}
-        >
-          {/* Diagonal hatch patterns — non-colour cue marking the low-reliability
-              (modeled) series, robust to grayscale/print/colour-blindness. */}
-          <defs>
-            <pattern
-              id={CENTRAL_HATCH_ID}
-              patternUnits="userSpaceOnUse"
-              width={6}
-              height={6}
-              patternTransform="rotate(45)"
-            >
-              <rect width={6} height={6} fill={colors.chart4} fillOpacity={0.25} />
-              <line x1={0} y1={0} x2={0} y2={6} stroke={colors.chart4} strokeWidth={1.5} />
-            </pattern>
-            <pattern
-              id={RERA_HATCH_ID}
-              patternUnits="userSpaceOnUse"
-              width={6}
-              height={6}
-              patternTransform="rotate(45)"
-            >
-              <rect width={6} height={6} fill={colors.chart6} fillOpacity={0.25} />
-              <line x1={0} y1={0} x2={0} y2={6} stroke={colors.chart6} strokeWidth={1.5} />
-            </pattern>
-          </defs>
-
-          <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
-          <XAxis dataKey="date" hide={hideXAxis} />
-          <YAxis
-            tick={{ fill: colors.axis, fontSize: 11 }}
-            stroke={colors.axis}
-            width={40}
-            orientation="right"
+          margins={MARGINS}
+          stroke={colors.axis}
+        />
+        {/* Bottom legend (replaces Recharts <Legend>). */}
+        <ul className={styles.legend} aria-hidden="true">
+          {SERIES.map((s) => (
+            <li key={s.key} className={styles.legendItem}>
+              <span
+                className={styles.legendSwatch}
+                style={{ background: colors[s.colorKey] }}
+                data-hatch={s.hatch ? 'true' : 'false'}
+              />
+              {s.name}
+            </li>
+          ))}
+        </ul>
+        {activeDate && activeIndex !== null && eventData[activeIndex] && (
+          <EventTooltip
+            d={eventData[activeIndex]}
+            index={activeIndex}
+            count={eventData.length}
+            margins={MARGINS}
+            colors={colors}
           />
-
-          <Tooltip
-            cursor={{ stroke: colors.axis, strokeOpacity: 0.3 }}
-            contentStyle={{
-              background: colors.tooltipBg,
-              border: `1px solid ${colors.tooltipBorder}`,
-              fontSize: 12,
-            }}
-          />
-
-          <Legend
-            verticalAlign="bottom"
-            height={24}
-            iconSize={10}
-            wrapperStyle={{ fontSize: 11 }}
-          />
-
-          {/* Settings change markers — shared helper with <title> hover. */}
-          {renderSettingsChangeMarkers(settingsChanges, { stroke: colors.axis })}
-
-          {activeDate && <ReferenceLine x={activeDate} stroke={colors.axis} strokeOpacity={0.4} />}
-
-          <Area
-            type="monotone"
-            dataKey="obstructive"
-            name="Obstructive"
-            stackId="events"
-            stroke={colors.chart2}
-            fill={colors.chart2}
-            fillOpacity={0.6}
-            isAnimationActive={false}
-          />
-          <Area
-            type="monotone"
-            dataKey="central"
-            name="Central (modeled)"
-            stackId="events"
-            stroke={colors.chart4}
-            fill={`url(#${CENTRAL_HATCH_ID})`}
-            fillOpacity={1}
-            isAnimationActive={false}
-          />
-          <Area
-            type="monotone"
-            dataKey="hypopnea"
-            name="Hypopnea"
-            stackId="events"
-            stroke={colors.chart1}
-            fill={colors.chart1}
-            fillOpacity={0.6}
-            isAnimationActive={false}
-          />
-          <Area
-            type="monotone"
-            dataKey="mixed"
-            name="Mixed"
-            stackId="events"
-            stroke={colors.chart5}
-            fill={colors.chart5}
-            fillOpacity={0.6}
-            isAnimationActive={false}
-          />
-          <Area
-            type="monotone"
-            dataKey="rera"
-            name="RERA (modeled)"
-            stackId="events"
-            stroke={colors.chart6}
-            fill={`url(#${RERA_HATCH_ID})`}
-            fillOpacity={1}
-            isAnimationActive={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+        )}
+      </div>
     </ChartPanel>
   );
 });
+
+/** Build a closed monotone band path (upper L→R, lower R→L) for hatch clipping. */
+function buildBandPath(
+  ctx: CanvasRenderingContext2D,
+  upper: readonly CurvePoint[],
+  lower: readonly CurvePoint[],
+): void {
+  monotonePath(ctx, upper, false);
+  const loRev = [...lower].reverse();
+  const first = loRev[0];
+  if (first) ctx.lineTo(first.x, first.y);
+  // Append the reversed lower boundary as straight-segment monotone.
+  monotonePath(
+    {
+      moveTo: () => {},
+      lineTo: (x: number, y: number) => ctx.lineTo(x, y),
+      bezierCurveTo: (a, b, c, d, e, f) => ctx.bezierCurveTo(a, b, c, d, e, f),
+    },
+    loRev,
+    false,
+  );
+  ctx.closePath();
+}
+
+function EventTooltip({
+  d,
+  index,
+  count,
+  margins,
+  colors,
+}: {
+  d: EventDataPoint;
+  index: number;
+  count: number;
+  margins: ChartMargins;
+  colors: ReturnType<typeof useChartColors>;
+}) {
+  const leftPct = count <= 1 ? 50 : (index / (count - 1)) * 100;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: margins.top,
+        left: `calc(${margins.left}px + (100% - ${margins.left + margins.right}px) * ${leftPct / 100})`,
+        transform: 'translateX(-50%)',
+        background: colors.tooltipBg,
+        border: `1px solid ${colors.tooltipBorder}`,
+        fontSize: 12,
+        padding: '6px 8px',
+        borderRadius: 4,
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+        zIndex: 2,
+      }}
+      role="status"
+      aria-hidden="true"
+    >
+      <div style={{ fontWeight: 600 }}>{d.date}</div>
+      <div>Obstructive: {d.obstructive}</div>
+      <div>Central: {d.central}</div>
+      <div>Hypopnea: {d.hypopnea}</div>
+      <div>Mixed: {d.mixed}</div>
+      <div>RERA: {d.rera}</div>
+    </div>
+  );
+}
 
 export default EventBreakdownChart;

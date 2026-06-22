@@ -1,24 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { ReactElement } from 'react';
-
-vi.mock('recharts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('recharts')>();
-  return {
-    ...actual,
-    ResponsiveContainer: ({ children }: { children: ReactElement }) => (
-      <div style={{ width: 800, height: 300 }}>
-        <actual.ResponsiveContainer width={800} height={300}>
-          {children}
-        </actual.ResponsiveContainer>
-      </div>
-    ),
-  };
-});
 
 import EventBreakdownChart from '@/views/Trends/charts/EventBreakdownChart';
 import { SyncedChartProvider } from '@/views/Trends/context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
+import { installCanvas2DStub } from './canvasStub';
+
+// Migrated from Recharts/SVG to Canvas2D — stub the jsdom 2D context so the
+// renderer's fail-soft does not log "Not implemented" noise.
+installCanvas2DStub();
 
 function makeAggregate(overrides: Partial<NightlyAggregate> = {}): NightlyAggregate {
   const central = overrides.eventsByType?.central ?? 4;

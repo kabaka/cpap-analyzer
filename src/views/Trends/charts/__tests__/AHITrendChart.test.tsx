@@ -1,26 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import type { ReactElement } from 'react';
-
-// Recharts' ResponsiveContainer measures its parent (0×0 in jsdom), which
-// suppresses the inner SVG. Mock it to a fixed size so series actually render.
-vi.mock('recharts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('recharts')>();
-  return {
-    ...actual,
-    ResponsiveContainer: ({ children }: { children: ReactElement }) => (
-      <div style={{ width: 800, height: 300 }}>
-        <actual.ResponsiveContainer width={800} height={300}>
-          {children}
-        </actual.ResponsiveContainer>
-      </div>
-    ),
-  };
-});
 
 import AHITrendChart from '@/views/Trends/charts/AHITrendChart';
 import { SyncedChartProvider } from '@/views/Trends/context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
+import { installCanvas2DStub } from './canvasStub';
+
+// The chart was migrated from Recharts/SVG to Canvas2D. Under jsdom getContext
+// is unimplemented; the renderer fails soft (HTML chrome still renders). Stub
+// the 2D context so the suite output stays clean without masking real errors.
+installCanvas2DStub();
 
 function makeAggregate(overrides: Partial<NightlyAggregate> = {}): NightlyAggregate {
   return {
@@ -99,13 +88,39 @@ describe('AHITrendChart', () => {
   it('renders the rolling-median centre line and the band series', () => {
     const { container } = renderChart(buildData(14));
 
-    // recharts sets a class per series; the median line and band area exist.
-    const lines = container.querySelectorAll('.recharts-line');
-    const areas = container.querySelectorAll('.recharts-area');
-    // Two lines: faint raw nightly + headline rolling median.
-    expect(lines.length).toBeGreaterThanOrEqual(2);
-    // One floating band area (the typical nightly range).
-    expect(areas.length).toBeGreaterThanOrEqual(1);
+    // Post-migration the marks are painted to Canvas2D (no SVG series). The
+    // chart renders its base + overlay canvas surfaces inside the figure.
+    const canvases = container.querySelectorAll('canvas');
+    expect(canvases.length).toBeGreaterThanOrEqual(1);
+
+    // The semantic content the canvas conveys graphically stays intact in the
+    // screen-reader data table: each night carries a rolling-median value and
+    // the P25/P75 typical-range bounds. Once enough nights exist for the
+    // rolling window, at least one row must show finite numbers (not just "—").
+    const table = screen.getByRole('table');
+    const bodyRows = within(table).getAllByRole('row').slice(1); // drop header
+    expect(bodyRows.length).toBe(14);
+
+    const numeric = /^\d+(\.\d+)?$/;
+    const cellText = (row: HTMLElement): string[] =>
+      within(row)
+        .getAllByRole('cell')
+        .map((c) => c.textContent?.trim() ?? '');
+
+    const rowsWithMedianAndBand = bodyRows.filter((row) => {
+      // Columns: Date | median | P25 | P75 | this-night.
+      const text = cellText(row);
+      return (
+        numeric.test(text[1] ?? '') && numeric.test(text[2] ?? '') && numeric.test(text[3] ?? '')
+      );
+    });
+    expect(rowsWithMedianAndBand.length).toBeGreaterThan(0);
+
+    // The band bounds are an ordered interval (P25 <= P75) wherever present.
+    for (const row of rowsWithMedianAndBand) {
+      const text = cellText(row);
+      expect(Number(text[2])).toBeLessThanOrEqual(Number(text[3]));
+    }
   });
 
   it('labels the band as a typical nightly range / percentile spread, NOT a 95% CI', () => {

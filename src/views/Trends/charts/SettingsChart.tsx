@@ -1,27 +1,24 @@
 /**
- * Machine Settings Chart — step chart for pressure config and EPR level.
+ * Machine Settings Chart — step chart for pressure config and EPR level
+ * (Canvas2D).
  *
- * Shows configuredMinPressure, configuredMaxPressure as step lines
- * and EPR level on a secondary y-axis.
+ * Migrated from Recharts/SVG. Shows configuredMinPressure and
+ * configuredMaxPressure as `stepAfter` lines on a pressure Y axis (oriented
+ * RIGHT, matching the original) and the EPR level on a secondary Y axis fixed to
+ * [0, 3] (oriented LEFT). The EPR line is dashed (4 2); the pressure lines are
+ * solid. The empty-state panel is preserved when no settings data exists.
  *
  * @module views/Trends/charts/SettingsChart
  */
 
 import React, { useCallback, useMemo } from 'react';
-import {
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { useChartColors } from '@/components/charts/useChartColors';
 import { useSyncedChart } from '../context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
 import ChartPanel from './ChartPanel';
+import TrendsCanvasChart, { type DrawContext, type ChartMargins } from './canvas/TrendsCanvasChart';
+import type { CurvePoint } from './canvas/curve';
+import { niceYTicks } from './canvas/scale';
 
 interface SettingsChartProps {
   data: NightlyAggregate[];
@@ -36,13 +33,12 @@ interface SettingsDataPoint {
   eprLevel: number | null;
 }
 
-const SettingsChart = React.memo(function SettingsChart({
-  data,
-  height,
-  hideXAxis = true,
-}: SettingsChartProps) {
+/** Pressure axis right (`width={40}`), EPR axis left (`width={30}`). */
+const MARGINS: ChartMargins = { top: 8, right: 48, bottom: 0, left: 30 };
+
+const SettingsChart = React.memo(function SettingsChart({ data, height }: SettingsChartProps) {
   const colors = useChartColors();
-  const { activeDate, setActive, clear } = useSyncedChart();
+  const { activeDate, activeIndex } = useSyncedChart();
 
   const hasSettingsData = useMemo(
     () =>
@@ -66,13 +62,72 @@ const SettingsChart = React.memo(function SettingsChart({
     [data],
   );
 
-  const handleMouseMove = useCallback(
-    (state: { activeLabel?: string; activeTooltipIndex?: number }) => {
-      if (state.activeLabel) {
-        setActive(state.activeLabel, state.activeTooltipIndex ?? null);
-      }
+  // Pressure Y domain (auto from data, niced like a Recharts numeric axis).
+  const pressureDomain = useMemo(() => {
+    const vals: number[] = [];
+    for (const d of settingsData) {
+      if (d.minPressure !== null) vals.push(d.minPressure);
+      if (d.maxPressure !== null) vals.push(d.maxPressure);
+    }
+    if (vals.length === 0) return { min: 0, max: 1 };
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals);
+    if (lo === hi) return { min: lo - 1, max: hi + 1 };
+    const ticks = niceYTicks(lo, hi, 5);
+    const tMin = ticks.length > 0 ? Math.min(lo, ticks[0] as number) : lo;
+    const tMax = ticks.length > 0 ? Math.max(hi, ticks[ticks.length - 1] as number) : hi;
+    return { min: tMin, max: tMax };
+  }, [settingsData]);
+
+  const eprDomain = useMemo(() => ({ min: 0, max: 3 }), []);
+  const dateAtIndex = useCallback((i: number) => settingsData[i]?.date, [settingsData]);
+
+  const drawBase = useCallback(
+    ({ renderer, plot, count, fontFamily }: DrawContext) => {
+      renderer.beginBase(colors.surfacePrimary);
+      const ticks = renderer.drawHorizontalGrid(pressureDomain, plot, colors.grid);
+
+      const xs = settingsData.map((_, i) => renderer.pointX(i, count, plot));
+
+      const maxPts: CurvePoint[] = settingsData.map((d, i) =>
+        d.maxPressure === null
+          ? null
+          : { x: xs[i] as number, y: renderer.valueY(d.maxPressure, pressureDomain, plot) },
+      );
+      const minPts: CurvePoint[] = settingsData.map((d, i) =>
+        d.minPressure === null
+          ? null
+          : { x: xs[i] as number, y: renderer.valueY(d.minPressure, pressureDomain, plot) },
+      );
+      const eprPts: CurvePoint[] = settingsData.map((d, i) =>
+        d.eprLevel === null
+          ? null
+          : { x: xs[i] as number, y: renderer.valueY(d.eprLevel, eprDomain, plot) },
+      );
+
+      renderer.drawStepAfterLine(maxPts, { color: colors.chart2, width: 1.5 }, plot, true);
+      renderer.drawStepAfterLine(minPts, { color: colors.chart3, width: 1.5 }, plot, true);
+      renderer.drawStepAfterLine(
+        eprPts,
+        { color: colors.chart5, width: 1.5, dash: [4, 2] },
+        plot,
+        true,
+      );
+
+      // Pressure axis on the RIGHT; EPR axis on the LEFT.
+      renderer.drawYAxisRight(pressureDomain, plot, colors.axis, fontFamily, ticks);
+      renderer.drawYAxisLeft(eprDomain, plot, colors.axis, fontFamily, [0, 1, 2, 3]);
     },
-    [setActive],
+    [colors, pressureDomain, eprDomain, settingsData],
+  );
+
+  const drawOverlay = useCallback(
+    ({ renderer, plot, count }: DrawContext, idx: number | null) => {
+      if (idx === null || idx < 0 || idx >= settingsData.length) return;
+      const x = renderer.pointX(idx, count, plot);
+      renderer.drawVerticalReferenceLine(x, plot, { color: colors.axis, opacity: 0.4 });
+    },
+    [colors, settingsData],
   );
 
   if (!hasSettingsData || data.length === 0) {
@@ -94,115 +149,108 @@ const SettingsChart = React.memo(function SettingsChart({
     );
   }
 
+  const fmt = (n: number | null): string =>
+    typeof n === 'number' && Number.isFinite(n) ? n.toFixed(1) : '—';
+
+  const srSummary = (
+    <table>
+      <caption>
+        Configured machine settings over time: min/max pressure (cmH₂O) and EPR level.
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Min pressure</th>
+          <th scope="col">Max pressure</th>
+          <th scope="col">EPR</th>
+        </tr>
+      </thead>
+      <tbody>
+        {settingsData.map((d) => (
+          <tr key={d.date}>
+            <td>{d.date}</td>
+            <td>{fmt(d.minPressure)}</td>
+            <td>{fmt(d.maxPressure)}</td>
+            <td>{fmt(d.eprLevel)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   return (
     <ChartPanel
       title="Machine Settings"
       chartHeight={height}
       accessibleSummary="Step chart showing configured pressure and EPR settings over time"
+      srSummary={srSummary}
     >
-      <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart
-          data={settingsData}
-          margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={clear}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
-          <XAxis dataKey="date" hide={hideXAxis} />
-
-          {/* Left Y-axis: pressure */}
-          <YAxis
-            yAxisId="pressure"
-            tick={{ fill: colors.axis, fontSize: 11 }}
-            stroke={colors.axis}
-            width={40}
-            orientation="right"
-            label={{
-              value: 'cmH₂O',
-              angle: -90,
-              position: 'insideRight',
-              fill: colors.axis,
-              fontSize: 10,
-            }}
+      <div style={{ position: 'relative', width: '100%', height }}>
+        <TrendsCanvasChart
+          count={settingsData.length}
+          dataKey={settingsData}
+          height={height}
+          margins={MARGINS}
+          drawBase={drawBase}
+          drawOverlay={drawOverlay}
+          dateAtIndex={dateAtIndex}
+          ariaLabel="Machine settings chart"
+        />
+        {activeDate && activeIndex !== null && settingsData[activeIndex] && (
+          <SettingsTooltip
+            d={settingsData[activeIndex]}
+            index={activeIndex}
+            count={settingsData.length}
+            margins={MARGINS}
+            colors={colors}
           />
-
-          {/* Right Y-axis: EPR */}
-          <YAxis
-            yAxisId="epr"
-            domain={[0, 3]}
-            tick={{ fill: colors.axis, fontSize: 11 }}
-            stroke={colors.axis}
-            width={30}
-            orientation="left"
-            label={{
-              value: 'EPR',
-              angle: 90,
-              position: 'insideLeft',
-              fill: colors.axis,
-              fontSize: 10,
-            }}
-          />
-
-          <Tooltip
-            cursor={{ stroke: colors.axis, strokeOpacity: 0.3 }}
-            contentStyle={{
-              background: colors.tooltipBg,
-              border: `1px solid ${colors.tooltipBorder}`,
-              fontSize: 12,
-            }}
-            formatter={(value: number) => {
-              if (value == null) return ['N/A', ''];
-              return [value.toFixed(1), ''];
-            }}
-          />
-
-          {activeDate && (
-            <ReferenceLine
-              x={activeDate}
-              stroke={colors.axis}
-              strokeOpacity={0.4}
-              yAxisId="pressure"
-            />
-          )}
-
-          <Line
-            yAxisId="pressure"
-            type="stepAfter"
-            dataKey="maxPressure"
-            name="maxPressure"
-            stroke={colors.chart2}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-            connectNulls
-          />
-          <Line
-            yAxisId="pressure"
-            type="stepAfter"
-            dataKey="minPressure"
-            name="minPressure"
-            stroke={colors.chart3}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-            connectNulls
-          />
-          <Line
-            yAxisId="epr"
-            type="stepAfter"
-            dataKey="eprLevel"
-            name="eprLevel"
-            stroke={colors.chart5}
-            strokeWidth={1.5}
-            strokeDasharray="4 2"
-            dot={false}
-            isAnimationActive={false}
-            connectNulls
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
+        )}
+      </div>
     </ChartPanel>
   );
 });
+
+function SettingsTooltip({
+  d,
+  index,
+  count,
+  margins,
+  colors,
+}: {
+  d: SettingsDataPoint;
+  index: number;
+  count: number;
+  margins: ChartMargins;
+  colors: ReturnType<typeof useChartColors>;
+}) {
+  const leftPct = count <= 1 ? 50 : (index / (count - 1)) * 100;
+  const fmt = (n: number | null): string =>
+    typeof n === 'number' && Number.isFinite(n) ? n.toFixed(1) : '—';
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: margins.top,
+        left: `calc(${margins.left}px + (100% - ${margins.left + margins.right}px) * ${leftPct / 100})`,
+        transform: 'translateX(-50%)',
+        background: colors.tooltipBg,
+        border: `1px solid ${colors.tooltipBorder}`,
+        fontSize: 12,
+        padding: '6px 8px',
+        borderRadius: 4,
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+        zIndex: 2,
+      }}
+      role="status"
+      aria-hidden="true"
+    >
+      <div style={{ fontWeight: 600 }}>{d.date}</div>
+      <div>Max pressure: {fmt(d.maxPressure)}</div>
+      <div>Min pressure: {fmt(d.minPressure)}</div>
+      <div>EPR: {fmt(d.eprLevel)}</div>
+    </div>
+  );
+}
 
 export default SettingsChart;
