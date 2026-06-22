@@ -7,7 +7,11 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **AI Insights no longer falls back to the plain template when the summary mentions a date.** The numeral-validation backstop only recognised ISO dates, so a model that wrote the date in long form (e.g. "Jun 9, 2026") had the year flagged as an un-computed number, failing validation and substituting the deterministic template even though the AI summary was correct. The validator now recognises the snapshot's own dates in long form; the safety guarantee is unchanged (a genuinely fabricated number is still caught and never shown).
+- **AI Insights fallback notice is now single and accurate.** When the deterministic template is shown, it no longer prepends a misleading "AI narration is unavailable" line into the summary body; a single calm notice ("To stay accurate, this is the app's own computed summary rather than AI-written text.") appears once, in the panel.
+- **"Summarize range" button now aligns with the date-range control** on the Dashboard and Trends headers.
 
 ## [2026.06.7] — 2026-06-22
 

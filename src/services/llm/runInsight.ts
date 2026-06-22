@@ -29,8 +29,9 @@
  *  7. **Validate** the accumulated narrative with `validateNarrative`. On
  *     failure, regenerate ONCE with the offending tokens fed back into the
  *     prompt; if it fails again, emit the deterministic `renderTemplateFallback`
- *     text (with `FALLBACK_NOTICE`) and `usedFallback: true`. Unvalidated text is
- *     never surfaced as the final narrative.
+ *     text with `usedFallback: true` (the drawer renders the canonical fallback
+ *     notice; it is NOT baked into the body). Unvalidated text is never surfaced
+ *     as the final narrative.
  *  8. The terminal `complete` event always carries the source `GroundedContext`
  *     (for the "show your work" panel — UX §4.4) and a `validation` summary.
  *
@@ -61,12 +62,7 @@ import type {
   ClinicalContextInput,
 } from './context/buildGroundedContext';
 import type { GroundedContext } from './context/types';
-import {
-  buildPrompt,
-  validateNarrative,
-  renderTemplateFallback,
-  FALLBACK_NOTICE,
-} from './grounding';
+import { buildPrompt, validateNarrative, renderTemplateFallback } from './grounding';
 import type { AssembledPrompt, ValidationResult } from './grounding';
 import { createProvider } from './providers';
 import type { ProviderConfig } from './providers';
@@ -173,7 +169,8 @@ export interface CompleteEvent {
   readonly text: string;
   /**
    * True when validation failed twice and the deterministic template fallback
-   * was substituted. The `text` then begins with {@link FALLBACK_NOTICE}.
+   * was substituted. The `text` is the clean template prose only; the drawer
+   * renders the canonical notice ({@link FALLBACK_NOTICE}) above it.
    */
   readonly usedFallback: boolean;
   /** The source snapshot (for the "show your work" panel — UX §4.4). */
@@ -578,7 +575,11 @@ export async function* runInsight(req: RunInsightRequest): AsyncIterable<Insight
     // The fallback is allow-list-safe by construction (it only restates computed
     // displayValues), so it passes validateNarrative; we never surface the
     // unvalidated model text.
-    const fallbackText = `${FALLBACK_NOTICE}\n\n${renderTemplateFallback(context)}`;
+    // The body is the clean template prose ONLY — no lead-in line. The
+    // `usedFallback: true` flag on this event tells the drawer to render the
+    // canonical notice (FALLBACK_NOTICE) above the summary, so the notice is
+    // never mistaken for model output.
+    const fallbackText = renderTemplateFallback(context);
     yield {
       type: 'complete',
       text: fallbackText,

@@ -436,8 +436,10 @@ describe('InsightDrawer fallback notice', () => {
       }),
     );
 
-    // The fallback banner explains a plain template was substituted.
-    expect(screen.getByText(/a plain template summary is shown instead/i)).toBeInTheDocument();
+    // The fallback banner explains the app's own computed summary was used.
+    expect(
+      screen.getByText(/this is the app's own computed summary rather than AI-written text/i),
+    ).toBeInTheDocument();
     // The normal narrative still renders.
     expect(screen.getByText(/within the normal range/i)).toBeInTheDocument();
     // The inseparable caveat is still present (never naked prose).
@@ -455,7 +457,9 @@ describe('InsightDrawer fallback notice', () => {
       }),
     );
 
-    expect(screen.queryByText(/a plain template summary is shown instead/i)).toBeNull();
+    expect(
+      screen.queryByText(/this is the app's own computed summary rather than AI-written text/i),
+    ).toBeNull();
   });
 });
 

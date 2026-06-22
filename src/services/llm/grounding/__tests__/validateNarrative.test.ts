@@ -20,6 +20,24 @@ describe('extractNumerals', () => {
   it('extracts decimals, integers, and split ranges', () => {
     expect(extractNumerals('AHI was 4.2 events/h, between 5-15.')).toEqual(['4.2', '5', '15']);
   });
+
+  it('strips ISO dates so their components are not extracted', () => {
+    expect(extractNumerals('On 2026-06-20 your AHI was 4.2.')).toEqual(['4.2']);
+  });
+
+  it('strips long-form dates (Mon DD, YYYY / Month DD YYYY / DD Mon YYYY)', () => {
+    expect(extractNumerals('Night of Jun 9, 2026 — AHI 4.2.')).toEqual(['4.2']);
+    expect(extractNumerals('Night of June 9 2026 — AHI 4.2.')).toEqual(['4.2']);
+    expect(extractNumerals('Night of 9 Jun 2026 — AHI 4.2.')).toEqual(['4.2']);
+  });
+
+  it('strips a month-name-with-year span ("through June 2026")', () => {
+    expect(extractNumerals('Data through June 2026, AHI 4.2.')).toEqual(['4.2']);
+  });
+
+  it('does not strip an arbitrary "<word> <number>" pair (no month name)', () => {
+    expect(extractNumerals('Section 12 covered 4.2.')).toEqual(['12', '4.2']);
+  });
 });
 
 describe('validateNarrative — numeral extraction', () => {
@@ -47,6 +65,81 @@ describe('validateNarrative — numeral extraction', () => {
     const ctx = singleNight();
     const res = validateNarrative('This is the 1 night summarized here.', ctx);
     expect(res.violations.some((v) => v.kind === 'fabricated-numeral')).toBe(false);
+  });
+
+  it('LONG-FORM DATE: passes a single-night summary that writes the date long-form', () => {
+    // Regression: the model renders the app-provided scope date (2026-06-20) in
+    // long form. The year "2026" and day "20" must not be flagged as fabricated.
+    const ctx = singleNight();
+    const res = validateNarrative(
+      'Summary for the night of Jun 20, 2026: your AHI was 4.2 events/h, an estimate given the moderate reliability of the count.',
+      ctx,
+    );
+    expect(res.ok).toBe(true);
+    expect(res.violations).toHaveLength(0);
+  });
+
+  it('LONG-FORM DATE: passes the full-month rendering ("June 20, 2026")', () => {
+    const ctx = singleNight();
+    const res = validateNarrative(
+      'On June 20, 2026 your AHI was 4.2 events/h — treat this as an estimate.',
+      ctx,
+    );
+    expect(res.ok).toBe(true);
+    expect(res.violations).toHaveLength(0);
+  });
+
+  it('DATE RANGE: passes a narrative referencing the scope years/months long-form', () => {
+    const ctx = buildClinicalContext({
+      ...COMMON,
+      aggregate: makeAggregate({ ahi: 18 }),
+    });
+    // buildClinicalContext is single-aggregate; scope start/end both 2026-06-20,
+    // generatedOnDate 2026-06-21. Reference the months/years in long form.
+    const res = validateNarrative(
+      'Covering Jun 20, 2026 through June 2026 (generated Jun 21, 2026), your AHI of 18.0 events/h falls in the moderate band — an estimate.',
+      ctx,
+    );
+    expect(res.ok).toBe(true);
+    expect(res.violations.some((v) => v.kind === 'fabricated-numeral')).toBe(false);
+  });
+
+  it('YEAR ADMISSION IS SCOPED: a 4-digit number that is not a context date year is still rejected', () => {
+    const ctx = singleNight();
+    const res = validateNarrative(
+      'Back in 1999 the situation differed; your AHI was 4.2 events/h (an estimate).',
+      ctx,
+    );
+    expect(
+      res.violations.some((v) => v.kind === 'fabricated-numeral' && v.offending === '1999'),
+    ).toBe(true);
+  });
+
+  it('GUARD INTACT: a fabricated clinical number is still rejected even amid a long-form date', () => {
+    // 7.5 is NOT the context AHI (4.2); writing the date long-form must not let it through.
+    const ctx = singleNight();
+    expect(ctx.numericAllowList).not.toContain('7.5');
+    const res = validateNarrative('On Jun 20, 2026 your AHI was 7.5 events/h (an estimate).', ctx);
+    expect(res.ok).toBe(false);
+    expect(
+      res.violations.some((v) => v.kind === 'fabricated-numeral' && v.offending === '7.5'),
+    ).toBe(true);
+  });
+
+  it('DAY/MONTH NOT ADMITTED: a fabricated integer equal to the scope day-of-month is still rejected', () => {
+    // Only the date YEAR is admitted; the day (20) and month (6) are not, so a
+    // fabricated count that coincides with the date's day-of-month — written
+    // outside a strippable long-form date and with no recognized unit — must
+    // still be flagged. (Guards against the day/month admission widening.)
+    const ctx = singleNight();
+    expect(ctx.numericAllowList).not.toContain('20');
+    const res = validateNarrative(
+      'You woke 20 times overnight; your AHI was 4.2 events/h (an estimate).',
+      ctx,
+    );
+    expect(
+      res.violations.some((v) => v.kind === 'fabricated-numeral' && v.offending === '20'),
+    ).toBe(true);
   });
 });
 

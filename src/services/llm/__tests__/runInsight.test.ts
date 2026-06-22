@@ -242,7 +242,10 @@ describe('runInsight — validation, regenerate-once, fallback', () => {
       // The fallback is the deterministic, allow-list-safe summary — it never
       // contains the fabricated number.
       expect(last.text).not.toContain('999');
-      expect(last.text).toContain('AI narration is unavailable');
+      // The notice is NOT baked into the body anymore — the drawer renders it
+      // from `usedFallback`. The body is the clean template prose only.
+      expect(last.text).not.toContain('computed summary rather than AI-written text');
+      expect(last.text).not.toContain('unavailable');
       // The validation summary describes the rejected model output.
       expect(last.validation.ok).toBe(false);
       // The source context is always present for "show your work".

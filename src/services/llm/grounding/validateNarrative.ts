@@ -85,6 +85,34 @@ const NUMERAL_RE = /\d+(?:\.\d+)?/g;
 /** ISO calendar date (YYYY-MM-DD) — a legitimately quotable token (design §3). */
 const ISO_DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/g;
 
+/**
+ * Month names (full and 3-letter), for the long-form date pre-pass. Models
+ * routinely render the app-provided ISO scope dates in natural language
+ * ("Jun 9, 2026" / "June 9, 2026" / "9 Jun 2026"); their component numerals are
+ * legitimately quotable, so we strip recognizable long-form dates the same way
+ * ISO dates are stripped before numeral extraction.
+ */
+const MONTH_NAMES =
+  'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t)?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+
+/**
+ * Long-form calendar dates the model commonly emits. Conservative: each pattern
+ * pins a month NAME against a 1–2 digit day and/or a 4-digit year, so we never
+ * strip an arbitrary "<word> <number>" pair. Covers:
+ *  - "Mon DD, YYYY" / "Month DD YYYY"   (e.g. "Jun 9, 2026", "June 9 2026")
+ *  - "DD Mon YYYY"                      (e.g. "9 Jun 2026")
+ *  - "Mon YYYY"                         (e.g. "through June 2026")
+ */
+const LONG_DATE_RE = new RegExp(
+  [
+    // Month [day][,] year  — day optional so "June 2026" is also covered.
+    `\\b(?:${MONTH_NAMES})\\.?\\s+(?:\\d{1,2}(?:st|nd|rd|th)?\\s*,?\\s+)?\\d{4}\\b`,
+    // DD Month YYYY
+    `\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:${MONTH_NAMES})\\.?\\s+\\d{4}\\b`,
+  ].join('|'),
+  'gi',
+);
+
 /** Unit tokens the narrative may attach, mapped to a normalized form. */
 const KNOWN_UNITS: readonly string[] = [
   'events/h',
@@ -167,6 +195,19 @@ export function validateNarrative(
   for (const t of context.numericAllowList) allow.add(bareMagnitude(t));
   allow.add(bareMagnitude(String(context.scope.nightCount)));
   allow.add(bareMagnitude(String(context.scope.nightsWithDefinedRate)));
+  // The snapshot's own calendar dates are app-authored and legitimately
+  // quotable. A long-form date ("Jun 9, 2026") is stripped wholesale before
+  // numeral extraction (see extractNumerals), so its day/month never reach this
+  // check; the one component that can still surface on its own is the YEAR (a
+  // 4-digit value, never a safe literal — e.g. "compared with early 2026").
+  // Admit only the year of each scope/generation date — scoped to THESE dates,
+  // never blanket 4-digit numbers. Day/month are deliberately NOT admitted: that
+  // would let a fabricated small integer that happens to equal the date's
+  // day-of-month slip past the numeral check, weakening the backstop.
+  for (const iso of [context.scope.startDate, context.scope.endDate, context.generatedOnDate]) {
+    const year = dateYear(iso);
+    if (year !== null) allow.add(year);
+  }
   // App-authored label/caption text legitimately contains fixed numerals (e.g.
   // "T90", "95th-percentile", "below 90%"). Those are not model-introduced
   // figures, so admit every numeral that appears in the snapshot's own labels.
@@ -228,15 +269,30 @@ export function validateNarrative(
 /**
  * Extract every numeral token from text (design §5 step 2).
  *
- * ISO calendar dates (`YYYY-MM-DD`) are stripped first so a date's component
- * numbers are not mistaken for fabricated figures — dates are a permitted,
- * separately-checked token class. Remaining numerals are matched as bare
+ * Calendar dates are stripped first so a date's component numbers are not
+ * mistaken for fabricated figures — dates are a permitted, separately-checked
+ * token class. Both ISO form (`YYYY-MM-DD`) and the common long forms the model
+ * emits ("Jun 9, 2026", "9 June 2026", "through June 2026") are stripped. The
+ * long-date patterns are conservative (anchored on a month NAME), so ordinary
+ * "<word> <number>" prose is untouched. Remaining numerals are matched as bare
  * non-negative magnitudes, so a hyphenated range "5-15" yields "5" and "15".
  */
 export function extractNumerals(text: string): string[] {
-  const withoutDates = text.replace(ISO_DATE_RE, ' ');
+  const withoutDates = text.replace(ISO_DATE_RE, ' ').replace(LONG_DATE_RE, ' ');
   const matches = withoutDates.match(NUMERAL_RE);
   return matches ? [...matches] : [];
+}
+
+/**
+ * The year of an `YYYY-MM-DD` date — the only date component admitted to the
+ * numeral allow-list (day/month are handled by long-form stripping and the
+ * 0–10 safe-literal set; see the admission site for why they are not admitted).
+ * Returns `null` for anything not matching the ISO shape, so a malformed date
+ * never widens the allow-list.
+ */
+function dateYear(iso: string): string | null {
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(iso);
+  return m === null ? null : (m[1] ?? null);
 }
 
 /** Strip a single leading sign so signed/unsigned forms compare equal. */
