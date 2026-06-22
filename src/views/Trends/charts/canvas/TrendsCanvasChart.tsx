@@ -110,6 +110,11 @@ export default function TrendsCanvasChart({
   const rafRef = useRef<number | null>(null);
   const widthRef = useRef(0);
 
+  // Latest height + redraw scheduler kept in refs so the renderer construction
+  // path (a STABLE callback ref) reads current values without depending on them.
+  const heightRef = useRef(height);
+  heightRef.current = height;
+
   // Latest draw callbacks (kept in refs so the imperative paths never go stale
   // without forcing the renderer/observer to be torn down).
   const drawBaseRef = useRef(drawBase);
@@ -164,6 +169,10 @@ export default function TrendsCanvasChart({
     });
   }, [paintBase, paintOverlay]);
 
+  // Stable handle to the latest scheduleRedraw for the construction path.
+  const scheduleRedrawRef = useRef(scheduleRedraw);
+  scheduleRedrawRef.current = scheduleRedraw;
+
   // Hold a stable getter for the shared active index without re-subscribing.
   const sync = useSyncedChart();
   const activeIndexFromContext = useRef(() => sync.activeIndexRef.current ?? null);
@@ -175,48 +184,81 @@ export default function TrendsCanvasChart({
     return unregister;
   }, [registerOverlay, paintOverlay]);
 
-  // Construct the renderer + observe size via callback refs.
+  // ── Renderer lifecycle: construction + teardown co-located in the base
+  // callback ref (mirrors SignalViewer's `tryInitRenderer`/`teardownRenderer`).
+  //
+  // Construction and disposal MUST live on the same ref-callback path. Splitting
+  // teardown into a separate `useEffect` cleanup breaks under React StrictMode's
+  // mount→unmount→remount: the effect cleanup nulls the renderer on the unmount,
+  // but on the remount React reuses the same DOM node and does NOT re-invoke the
+  // callback ref, so the renderer is never reconstructed and stays null for the
+  // rest of the view's life (pointer handlers then bail on their first guard).
+  //
+  // Height/data/theme/count changes drive resize + redraw via the ResizeObserver
+  // and the redraw `useEffect` below — NOT via the callback ref identity — so the
+  // callback ref's `useCallback` deps stay empty and StrictMode never thrashes it.
+
+  /** Construct the renderer once (idempotent) and start observing the wrapper. */
+  const tryInitRenderer = useCallback(() => {
+    const canvas = baseCanvasRef.current;
+    if (!canvas) return;
+    if (rendererRef.current) return; // already constructed
+
+    const renderer = new TrendsCanvasRenderer(canvas);
+    rendererRef.current = renderer;
+    if (overlayCanvasRef.current) renderer.setOverlayCanvas(overlayCanvasRef.current);
+
+    const wrapper = wrapperRef.current ?? canvas.parentElement;
+    if (wrapper && !observerRef.current) {
+      let pending: number | null = null;
+      const observer = new ResizeObserver((entries) => {
+        for (const entry of entries) widthRef.current = entry.contentRect.width;
+        if (pending !== null) return;
+        pending = requestAnimationFrame(() => {
+          pending = null;
+          const w = widthRef.current;
+          const r = rendererRef.current;
+          if (r && w > 0) {
+            r.resize(w, heightRef.current);
+            scheduleRedrawRef.current();
+          }
+        });
+      });
+      observer.observe(wrapper);
+      observerRef.current = observer;
+      const rect = wrapper.getBoundingClientRect();
+      if (rect.width > 0) {
+        widthRef.current = rect.width;
+        renderer.resize(rect.width, heightRef.current);
+        scheduleRedrawRef.current();
+      }
+    }
+  }, []);
+
+  /** Dispose the renderer + observer. Called only from the callback ref's
+   *  `null` branch — never while the canvas DOM node is still mounted. */
+  const teardownRenderer = useCallback(() => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    rendererRef.current = null;
+  }, []);
+
   const baseCallbackRef = useCallback(
     (canvas: HTMLCanvasElement | null) => {
       baseCanvasRef.current = canvas;
       if (!canvas) {
-        if (observerRef.current) {
-          observerRef.current.disconnect();
-          observerRef.current = null;
-        }
-        rendererRef.current = null;
+        teardownRenderer();
         return;
       }
-      const renderer = new TrendsCanvasRenderer(canvas);
-      rendererRef.current = renderer;
-      if (overlayCanvasRef.current) renderer.setOverlayCanvas(overlayCanvasRef.current);
-
-      const wrapper = wrapperRef.current ?? canvas.parentElement;
-      if (wrapper && !observerRef.current) {
-        let pending: number | null = null;
-        const observer = new ResizeObserver((entries) => {
-          for (const entry of entries) widthRef.current = entry.contentRect.width;
-          if (pending !== null) return;
-          pending = requestAnimationFrame(() => {
-            pending = null;
-            const w = widthRef.current;
-            if (w > 0) {
-              renderer.resize(w, height);
-              scheduleRedraw();
-            }
-          });
-        });
-        observer.observe(wrapper);
-        observerRef.current = observer;
-        const rect = wrapper.getBoundingClientRect();
-        if (rect.width > 0) {
-          widthRef.current = rect.width;
-          renderer.resize(rect.width, height);
-          scheduleRedraw();
-        }
-      }
+      tryInitRenderer();
     },
-    [height, scheduleRedraw],
+    [tryInitRenderer, teardownRenderer],
   );
 
   const overlayCallbackRef = useCallback((canvas: HTMLCanvasElement | null) => {
@@ -225,22 +267,25 @@ export default function TrendsCanvasChart({
     if (renderer) renderer.setOverlayCanvas(canvas);
   }, []);
 
-  // Redraw on data identity, theme, height, count, margins change.
+  // Redraw on data identity, theme, height, count, margins change. This (plus the
+  // ResizeObserver) drives all resize/redraw so the callback ref identity can stay
+  // stable. scheduleRedraw is intentionally excluded from deps — it is read via a
+  // ref so its identity churn (count/fontFamily/margins) does not re-run this.
   useEffect(() => {
     const renderer = rendererRef.current;
     if (renderer && widthRef.current > 0) renderer.resize(widthRef.current, height);
     scheduleRedraw();
-  }, [dataKey, resolvedTheme, height, count, scheduleRedraw]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataKey, resolvedTheme, height, count]);
 
-  // Teardown.
+  // Cancel any pending rAF on unmount (the renderer itself is torn down via the
+  // callback ref's null branch, NOT here — see the lifecycle note above).
   useEffect(() => {
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-        observerRef.current = null;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
       }
-      rendererRef.current = null;
     };
   }, []);
 
