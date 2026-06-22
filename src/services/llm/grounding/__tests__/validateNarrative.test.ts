@@ -125,6 +125,22 @@ describe('validateNarrative — numeral extraction', () => {
       res.violations.some((v) => v.kind === 'fabricated-numeral' && v.offending === '7.5'),
     ).toBe(true);
   });
+
+  it('DAY/MONTH NOT ADMITTED: a fabricated integer equal to the scope day-of-month is still rejected', () => {
+    // Only the date YEAR is admitted; the day (20) and month (6) are not, so a
+    // fabricated count that coincides with the date's day-of-month — written
+    // outside a strippable long-form date and with no recognized unit — must
+    // still be flagged. (Guards against the day/month admission widening.)
+    const ctx = singleNight();
+    expect(ctx.numericAllowList).not.toContain('20');
+    const res = validateNarrative(
+      'You woke 20 times overnight; your AHI was 4.2 events/h (an estimate).',
+      ctx,
+    );
+    expect(
+      res.violations.some((v) => v.kind === 'fabricated-numeral' && v.offending === '20'),
+    ).toBe(true);
+  });
 });
 
 describe('validateNarrative — unit consistency', () => {

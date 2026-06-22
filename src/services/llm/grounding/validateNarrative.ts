@@ -196,12 +196,17 @@ export function validateNarrative(
   allow.add(bareMagnitude(String(context.scope.nightCount)));
   allow.add(bareMagnitude(String(context.scope.nightsWithDefinedRate)));
   // The snapshot's own calendar dates are app-authored and legitimately
-  // quotable. The model often renders them in long form ("Jun 9, 2026"), whose
-  // year is neither a safe literal nor otherwise in the allow-list. Admit the
-  // year / month / day components (both zero-padded and bare) of each scope and
-  // generation date — scoped to THESE dates only, never blanket 4-digit numbers.
+  // quotable. A long-form date ("Jun 9, 2026") is stripped wholesale before
+  // numeral extraction (see extractNumerals), so its day/month never reach this
+  // check; the one component that can still surface on its own is the YEAR (a
+  // 4-digit value, never a safe literal — e.g. "compared with early 2026").
+  // Admit only the year of each scope/generation date — scoped to THESE dates,
+  // never blanket 4-digit numbers. Day/month are deliberately NOT admitted: that
+  // would let a fabricated small integer that happens to equal the date's
+  // day-of-month slip past the numeral check, weakening the backstop.
   for (const iso of [context.scope.startDate, context.scope.endDate, context.generatedOnDate]) {
-    for (const token of dateComponents(iso)) allow.add(token);
+    const year = dateYear(iso);
+    if (year !== null) allow.add(year);
   }
   // App-authored label/caption text legitimately contains fixed numerals (e.g.
   // "T90", "95th-percentile", "below 90%"). Those are not model-introduced
@@ -279,17 +284,15 @@ export function extractNumerals(text: string): string[] {
 }
 
 /**
- * The admissible numeral components of an `YYYY-MM-DD` date: its year, and its
- * month and day in both zero-padded and bare forms (e.g. `06`/`6`, `09`/`9`).
- * Returns an empty list for anything not matching the ISO shape, so a malformed
- * date never widens the allow-list.
+ * The year of an `YYYY-MM-DD` date — the only date component admitted to the
+ * numeral allow-list (day/month are handled by long-form stripping and the
+ * 0–10 safe-literal set; see the admission site for why they are not admitted).
+ * Returns `null` for anything not matching the ISO shape, so a malformed date
+ * never widens the allow-list.
  */
-function dateComponents(iso: string): string[] {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (m === null) return [];
-  const [, year, month, day] = m;
-  if (year === undefined || month === undefined || day === undefined) return [];
-  return [year, month, String(Number(month)), day, String(Number(day))];
+function dateYear(iso: string): string | null {
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(iso);
+  return m === null ? null : (m[1] ?? null);
 }
 
 /** Strip a single leading sign so signed/unsigned forms compare equal. */
