@@ -117,29 +117,36 @@ const PressureChart = React.memo(function PressureChart({
     [colors, domain, data],
   );
 
-  if (data.length === 0) return null;
-
-  const srSummary = (
-    <table>
-      <caption>Therapy pressure per night: mean and 95th percentile (cmH₂O).</caption>
-      <thead>
-        <tr>
-          <th scope="col">Date</th>
-          <th scope="col">Mean pressure</th>
-          <th scope="col">P95 pressure</th>
-        </tr>
-      </thead>
-      <tbody>
-        {data.map((d) => (
-          <tr key={d.date}>
-            <td>{d.date}</td>
-            <td>{d.pressureMean.toFixed(1)}</td>
-            <td>{d.pressureP95.toFixed(1)}</td>
+  // Screen-reader table depends ONLY on the per-night rows, never on the active
+  // hover index — memoise it so a hover-driven re-render does not reconcile the
+  // night <tr>s. Markup is identical to the inline form. Declared BEFORE the
+  // empty-data early return to keep hook order unconditional.
+  const srSummary = useMemo(
+    () => (
+      <table>
+        <caption>Therapy pressure per night: mean and 95th percentile (cmH₂O).</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Mean pressure</th>
+            <th scope="col">P95 pressure</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {data.map((d) => (
+            <tr key={d.date}>
+              <td>{d.date}</td>
+              <td>{d.pressureMean.toFixed(1)}</td>
+              <td>{d.pressureP95.toFixed(1)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ),
+    [data],
   );
+
+  if (data.length === 0) return null;
 
   return (
     <ChartPanel

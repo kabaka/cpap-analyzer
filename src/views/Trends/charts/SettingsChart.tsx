@@ -130,6 +130,41 @@ const SettingsChart = React.memo(function SettingsChart({ data, height }: Settin
     [colors, settingsData],
   );
 
+  // Screen-reader table depends ONLY on the per-night rows, never on the active
+  // hover index — memoise it so a hover-driven re-render does not reconcile the
+  // night <tr>s. Markup is identical to the inline form (the local `fmt` helper
+  // is inlined into the memo so it has no per-render closure dependency). Declared
+  // BEFORE the empty-state early return to keep hook order unconditional.
+  const srSummary = useMemo(() => {
+    const fmt = (n: number | null): string =>
+      typeof n === 'number' && Number.isFinite(n) ? n.toFixed(1) : '—';
+    return (
+      <table>
+        <caption>
+          Configured machine settings over time: min/max pressure (cmH₂O) and EPR level.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Min pressure</th>
+            <th scope="col">Max pressure</th>
+            <th scope="col">EPR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {settingsData.map((d) => (
+            <tr key={d.date}>
+              <td>{d.date}</td>
+              <td>{fmt(d.minPressure)}</td>
+              <td>{fmt(d.maxPressure)}</td>
+              <td>{fmt(d.eprLevel)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }, [settingsData]);
+
   if (!hasSettingsData || data.length === 0) {
     return (
       <ChartPanel title="Machine Settings" chartHeight={60} accessibleSummary="No settings data">
@@ -148,35 +183,6 @@ const SettingsChart = React.memo(function SettingsChart({ data, height }: Settin
       </ChartPanel>
     );
   }
-
-  const fmt = (n: number | null): string =>
-    typeof n === 'number' && Number.isFinite(n) ? n.toFixed(1) : '—';
-
-  const srSummary = (
-    <table>
-      <caption>
-        Configured machine settings over time: min/max pressure (cmH₂O) and EPR level.
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Date</th>
-          <th scope="col">Min pressure</th>
-          <th scope="col">Max pressure</th>
-          <th scope="col">EPR</th>
-        </tr>
-      </thead>
-      <tbody>
-        {settingsData.map((d) => (
-          <tr key={d.date}>
-            <td>{d.date}</td>
-            <td>{fmt(d.minPressure)}</td>
-            <td>{fmt(d.maxPressure)}</td>
-            <td>{fmt(d.eprLevel)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
 
   return (
     <ChartPanel

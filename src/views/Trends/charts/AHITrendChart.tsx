@@ -211,6 +211,42 @@ const AHITrendChart = React.memo(function AHITrendChart({
     [colors, domain, chartData],
   );
 
+  // Screen-reader table depends ONLY on the per-night rows, never on the active
+  // hover index — memoise it so a hover-driven re-render does not reconcile the
+  // (potentially thousands of) night <tr>s. Markup is identical to the inline form.
+  // Declared BEFORE the empty-data early return to keep hook order unconditional.
+  const srSummary = useMemo(
+    () => (
+      <table>
+        <caption>
+          AHI trend: rolling median and typical nightly range (P25–P75) per night. The band is the
+          inter-quartile spread of recent nights, not a confidence interval.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Rolling median AHI</th>
+            <th scope="col">Typical range lower (P25)</th>
+            <th scope="col">Typical range upper (P75)</th>
+            <th scope="col">This night AHI</th>
+          </tr>
+        </thead>
+        <tbody>
+          {chartData.map((d) => (
+            <tr key={d.date}>
+              <td>{d.date}</td>
+              <td>{fmt(d.ahiMedian)}</td>
+              <td>{fmt(d.ahiBand?.[0] ?? null)}</td>
+              <td>{fmt(d.ahiBand?.[1] ?? null)}</td>
+              <td>{fmt(d.ahi)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ),
+    [chartData],
+  );
+
   if (data.length === 0) return null;
 
   const footnote = (
@@ -220,35 +256,6 @@ const AHITrendChart = React.memo(function AHITrendChart({
       column's min–max range so a single spike night cannot vanish between pixels; nights with no
       data stay gaps.
     </>
-  );
-
-  const srSummary = (
-    <table>
-      <caption>
-        AHI trend: rolling median and typical nightly range (P25–P75) per night. The band is the
-        inter-quartile spread of recent nights, not a confidence interval.
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Date</th>
-          <th scope="col">Rolling median AHI</th>
-          <th scope="col">Typical range lower (P25)</th>
-          <th scope="col">Typical range upper (P75)</th>
-          <th scope="col">This night AHI</th>
-        </tr>
-      </thead>
-      <tbody>
-        {chartData.map((d) => (
-          <tr key={d.date}>
-            <td>{d.date}</td>
-            <td>{fmt(d.ahiMedian)}</td>
-            <td>{fmt(d.ahiBand?.[0] ?? null)}</td>
-            <td>{fmt(d.ahiBand?.[1] ?? null)}</td>
-            <td>{fmt(d.ahi)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 
   const activePoint = activeIndex !== null ? chartData[activeIndex] : undefined;

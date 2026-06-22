@@ -104,27 +104,34 @@ const UsageChart = React.memo(function UsageChart({
     [colors, data],
   );
 
-  if (data.length === 0) return null;
-
-  const srSummary = (
-    <table>
-      <caption>Nightly usage hours, colour-coded by compliance.</caption>
-      <thead>
-        <tr>
-          <th scope="col">Date</th>
-          <th scope="col">Usage hours</th>
-        </tr>
-      </thead>
-      <tbody>
-        {data.map((d) => (
-          <tr key={d.date}>
-            <td>{d.date}</td>
-            <td>{d.usageHours.toFixed(1)}</td>
+  // Screen-reader table depends ONLY on the per-night rows, never on the active
+  // hover index — memoise it so a hover-driven re-render does not reconcile the
+  // night <tr>s. Markup is identical to the inline form. Declared BEFORE the
+  // empty-data early return to keep hook order unconditional.
+  const srSummary = useMemo(
+    () => (
+      <table>
+        <caption>Nightly usage hours, colour-coded by compliance.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Usage hours</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {data.map((d) => (
+            <tr key={d.date}>
+              <td>{d.date}</td>
+              <td>{d.usageHours.toFixed(1)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ),
+    [data],
   );
+
+  if (data.length === 0) return null;
 
   return (
     <ChartPanel

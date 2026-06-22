@@ -164,41 +164,48 @@ const EventBreakdownChart = React.memo(function EventBreakdownChart({
     [colors, eventData],
   );
 
+  // Screen-reader table depends ONLY on the per-night rows, never on the active
+  // hover index — memoise it so a hover-driven re-render does not reconcile the
+  // night <tr>s. Markup is identical to the inline form. Declared BEFORE the
+  // empty-data early return to keep hook order unconditional.
+  const srSummary = useMemo(
+    () => (
+      <table>
+        <caption>
+          Event counts per night by type. Central and RERA are modeled estimates, not direct
+          measurements.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Obstructive</th>
+            <th scope="col">Central</th>
+            <th scope="col">Hypopnea</th>
+            <th scope="col">Mixed</th>
+            <th scope="col">RERA</th>
+          </tr>
+        </thead>
+        <tbody>
+          {eventData.map((d) => (
+            <tr key={d.date}>
+              <td>{d.date}</td>
+              <td>{d.obstructive}</td>
+              <td>{d.central}</td>
+              <td>{d.hypopnea}</td>
+              <td>{d.mixed}</td>
+              <td>{d.rera}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ),
+    [eventData],
+  );
+
   if (data.length === 0) return null;
 
   const caveat =
     'Central vs. obstructive split and RERA are modeled inferences (shown with a hatched fill), not direct measurements — read them as directional, not exact.';
-
-  const srSummary = (
-    <table>
-      <caption>
-        Event counts per night by type. Central and RERA are modeled estimates, not direct
-        measurements.
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Date</th>
-          <th scope="col">Obstructive</th>
-          <th scope="col">Central</th>
-          <th scope="col">Hypopnea</th>
-          <th scope="col">Mixed</th>
-          <th scope="col">RERA</th>
-        </tr>
-      </thead>
-      <tbody>
-        {eventData.map((d) => (
-          <tr key={d.date}>
-            <td>{d.date}</td>
-            <td>{d.obstructive}</td>
-            <td>{d.central}</td>
-            <td>{d.hypopnea}</td>
-            <td>{d.mixed}</td>
-            <td>{d.rera}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
 
   return (
     <ChartPanel
