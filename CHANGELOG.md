@@ -7,7 +7,13 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **The Trends AHI chart's faint raw per-night line now shows a per-pixel min–max envelope on dense date ranges, so a single bad night can no longer visually vanish.** When a selected date range packs more nights than the chart has horizontal pixel columns, several nights must share each one-pixel column. A plain polyline through one sampled value per column can then skip straight over a lone spike, hiding it between the points it happens to draw. The faint individual-nights line is now replaced in that regime by a per-pixel-column **min–max envelope**: each column spans the full range from the lowest to the highest AHI among the nights that fall in it, so a single-night spike is always drawn even when its neighbours are calm. Nights with no valid AHI remain gaps and are never plotted as zero. This changes only how the faint raw series is **drawn** on dense ranges — the rolling-median line, the typical-nightly-range (P25–P75) band, the severity zones, and every computed value are unchanged. The "Understanding Measurement Uncertainty" help article notes the envelope behaviour.
+
+### Changed
+
+- **The Trends charts (AHI, Leak, Pressure, Usage, Settings, and Event Breakdown) are now drawn through a faster Canvas2D rendering pipeline for smoother panning, hovering, and crosshair tracking.** The charts were migrated from the previous Recharts/SVG implementation to the same Canvas2D + HTML-chrome + overlay-crosshair architecture that made the Session Signals page fluid: the data marks render on a Canvas2D layer, the axes / labels / legend remain HTML, and the synced crosshair draws on a lightweight transparent overlay so moving the pointer repaints only that overlay rather than every chart. The result is markedly more responsive interaction on long, multi-year date ranges. **Appearance and features are intended to be identical** — the same severity zones, lines, bands, markers, tooltips, settings-change markers, and the synchronized crosshair across all six charts — with one deliberate honesty improvement to the AHI chart's faint raw line, noted under Added. Rendering remains entirely client-side; nothing leaves the browser. (See ADR 0025.)
 
 ## [2026.06.8] — 2026-06-22
 
