@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.8] — 2026-06-22
+
 ### Fixed
 
 - **AI Insights no longer falls back to the plain template when the summary mentions a date.** The numeral-validation backstop only recognised ISO dates, so a model that wrote the date in long form (e.g. "Jun 9, 2026") had the year flagged as an un-computed number, failing validation and substituting the deterministic template even though the AI summary was correct. The validator now recognises the snapshot's own dates in long form; the safety guarantee is unchanged (a genuinely fabricated number is still caught and never shown).
