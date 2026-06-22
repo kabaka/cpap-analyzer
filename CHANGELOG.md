@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.9] — 2026-06-22
+
 ### Added
 
 - **The Trends AHI chart's faint raw per-night line now shows a per-pixel min–max envelope on dense date ranges, so a single bad night can no longer visually vanish.** When a selected date range packs more nights than the chart has horizontal pixel columns, several nights must share each one-pixel column. A plain polyline through one sampled value per column can then skip straight over a lone spike, hiding it between the points it happens to draw. The faint individual-nights line is now replaced in that regime by a per-pixel-column **min–max envelope**: each column spans the full range from the lowest to the highest AHI among the nights that fall in it, so a single-night spike is always drawn even when its neighbours are calm. Nights with no valid AHI remain gaps and are never plotted as zero. This changes only how the faint raw series is **drawn** on dense ranges — the rolling-median line, the typical-nightly-range (P25–P75) band, the severity zones, and every computed value are unchanged. The "Understanding Measurement Uncertainty" help article notes the envelope behaviour.
