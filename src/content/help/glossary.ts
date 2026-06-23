@@ -1251,6 +1251,32 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['edf', 'usage-hours'],
   },
   {
+    id: 'background-import',
+    term: 'Background Import',
+    category: 'data',
+    aliases: ['Background Import Indicator', 'Import Progress Pill'],
+    quick:
+      'An import that keeps running while you use the rest of the app, shown by a persistent progress indicator.',
+    standard:
+      'A background import runs without holding you on the import screen. After you start it, you can navigate anywhere in CPAP Analyzer while the import continues, tracked by a small progress pill at the bottom-left of every screen. Expanding the pill shows each stage of the import and its state, lets you cancel, and a toast announces completion. All work remains client-side; nothing is uploaded.',
+    detailed:
+      "Because CPAP Analyzer is entirely client-side, an import is driven inside the browser tab rather than by a server-side job. The background-import design moves the import's control loop off any single view so it survives navigation between views, and surfaces a single, app-wide progress indicator (the bottom-left pill, expandable to a detail panel with per-stage state and a Cancel button, plus a completion toast). Progress is multi-stage: a CPAP SD-card import reports scanning → parsing → building sessions → storing, and a Google Health (Fitbit) import reports scanning → a determinate sub-progress row per discovered data type. Results are written durably and incrementally, so cancelling, or closing the tab mid-import, never corrupts data — already-stored nights and records remain valid, and re-importing resumes by skipping duplicates. The indicator is keyboard-accessible and announces progress to assistive technology through a polite ARIA live region.",
+    relatedTerms: ['session', 'intraday', 'edf'],
+  },
+  {
+    id: 'intraday',
+    term: 'Intraday',
+    category: 'data',
+    aliases: ['Intraday Data', 'Intraday Series'],
+    quick:
+      'High-resolution, within-day samples (e.g. heart rate every few seconds) rather than a single daily summary value.',
+    standard:
+      'Intraday data is recorded many times across a single day, preserving how a value changes through the day and night, rather than collapsing it to one daily number. In a Google Health (Fitbit) export, intraday heart rate is sampled roughly every 5 seconds, and SpO\\u2082, HRV, and snoring also carry intraday detail. CPAP Analyzer imports these full-resolution series so wearable signals can be overlaid against your CPAP airflow within the same night.',
+    detailed:
+      '"Intraday" distinguishes a within-day time series from a daily summary: a daily resting heart rate is one number per day, whereas intraday heart rate is a dense series (~5-second cadence) showing the shape of your heart rate across the night. These series are large — intraday heart rate alone is on the order of 0.4–0.6 MB per day — which is why their import runs off the main thread (in Web Workers) with granular, determinate progress, so the interface stays responsive during a big wearable import. Full resolution is retained on purpose: it preserves short-timescale features (for example, the cyclic variation of heart rate around respiratory events) that a daily summary would erase. All parsing and storage are client-side; nothing leaves your browser.',
+    relatedTerms: ['background-import', 'sample-rate', 'signal'],
+  },
+  {
     id: 'signal',
     term: 'Signal',
     category: 'data',

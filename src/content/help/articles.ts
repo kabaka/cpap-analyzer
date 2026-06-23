@@ -87,13 +87,21 @@ export const helpArticles: readonly HelpArticle[] = [
     slug: 'importing-data',
     title: 'Importing Data',
     summary:
-      'How to import CPAP data from your SD card and wearable data from Google Health (Fitbit).',
+      'How to import CPAP data from your SD card and wearable data from Google Health (Fitbit), and how the background import indicator works.',
     icon: 'import',
     sections: [
       {
         heading: 'Overview',
         paragraphs: [
-          "CPAP Analyzer reads data directly from your CPAP machine's SD card. ResMed devices store therapy data in a structured directory format with EDF (European Data Format) files containing detailed signal recordings and summary statistics.",
+          "CPAP Analyzer reads data directly from your CPAP machine's SD card. ResMed devices store therapy data in a structured directory format with EDF (European Data Format) files containing detailed signal recordings and summary statistics. The app can also import wearable health data from a Google Health (Fitbit) export. Both kinds of import run client-side, in the background, with the same persistent progress indicator described below.",
+        ],
+      },
+      {
+        heading: 'How the import runs (background import and the progress indicator)',
+        paragraphs: [
+          'Imports run in the background. Once you start an import, you do not have to wait on the import screen — you can navigate anywhere in the app (Dashboard, Sessions, Trends, Settings) while it continues. A small progress pill appears at the bottom-left of every screen so you always know an import is in flight and how far along it is.',
+          'Click (or keyboard-activate) the pill to expand a detail panel. The panel lists every stage of the current import with its own state — pending, running, done, or, if something goes wrong, failed or cancelled — and shows a Cancel button. When the import finishes, a completion toast tells you what changed (for example, how many new sessions or records were added and how many duplicates were skipped). The indicator is keyboard-accessible and announces progress to assistive technology through a polite live region, so screen-reader users are kept informed without a flood of chatter.',
+          'Progress is multi-stage and every stage is shown from the start, each advancing independently — there is no longer a single bar whose meaning silently changes as the import moves through its phases. A CPAP SD-card import shows four stages: scanning files (discovering what is on the card), parsing (decoding the EDF signal and summary files), building sessions (assembling each night from its segments and summaries), and storing (writing the results to your local database). A Google Health import shows a scanning stage, then a determinate sub-progress row for each discovered data type (sleep, intraday heart rate, SpO\\u2082, HRV, snoring, and so on) that fills in as that type is imported. This makes it obvious, at a glance, exactly where a long import is and which data types are still to come.',
         ],
       },
       {
@@ -122,13 +130,13 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Import duration',
         paragraphs: [
-          'Import time depends on how many nights of data are on the SD card. Typical import times: 30 days takes 5–15 seconds; 6 months takes 30–60 seconds; 1+ year may take 1–3 minutes. Detailed signal data (EDF files) is the largest component. You can monitor progress in the import wizard.',
+          'Import time depends on how many nights of data are on the SD card. Typical import times: 30 days takes 5–15 seconds; 6 months takes 30–60 seconds; 1+ year may take 1–3 minutes. Detailed signal data (EDF files) is the largest component. You can monitor progress on the persistent progress indicator (see "How the import runs," above) and continue using the app while a long import finishes in the background.',
         ],
       },
       {
         heading: 'Re-importing and updates',
         paragraphs: [
-          'You can re-import at any time to add new nights. CPAP Analyzer will detect which sessions already exist and only import new data. Existing data is not duplicated.',
+          'You can re-import at any time to add new nights. CPAP Analyzer will detect which sessions already exist and only import new data. Existing data is not duplicated. The same incremental, de-duplicated behaviour is what makes cancelling an import or closing the tab mid-import safe — see "De-duplication" and "Closing the tab during an import," below.',
         ],
       },
       {
@@ -144,6 +152,7 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           "The following data types are imported when present in the export: Sleep Sessions (start/end times, duration, efficiency), Sleep Scores (composite sleep quality metric, 0--100), Sleep Stages (wake, light, deep, REM durations and transitions), SpO\\u2082 — daily summary and per-minute intraday readings (peripheral oxygen saturation measured by the wearable's red/infrared sensor), HRV — daily summary and detailed intraday readings (heart rate variability, measured as RMSSD in milliseconds), Respiratory Rate (breaths per minute during sleep), Resting Heart Rate (daily resting BPM), Readiness Score (recovery/readiness composite, 0--100), Stress Score (stress management composite), Skin Temperature (nightly deviation from personal baseline in degrees), Daily Activity (steps, active minutes, calories), and Snoring (detected snoring episodes and duration).",
           'Not every Fitbit device records every data type. Older trackers may lack SpO\\u2082, HRV, or skin temperature sensors. The importer processes whatever data is present and silently skips missing categories.',
+          'The large, full-resolution intraday series — heart rate at roughly a 5-second cadence, plus SpO\\u2082, HRV, and snoring — are parsed off the main thread so a big wearable import does not freeze the interface. Each of these data types advances its own determinate progress row in the import indicator, so you can watch them complete one by one while you continue using the app.',
         ],
       },
       {
@@ -156,6 +165,26 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Data privacy for Google Health imports',
         paragraphs: [
           'Google Health data is processed entirely in your browser, using the same client-side architecture as CPAP SD card imports. No data is uploaded to any server during or after the import. The parsed records are stored locally in IndexedDB alongside your CPAP data. The original export files on your computer are read but never modified.',
+        ],
+      },
+      {
+        heading: 'Cancelling an import',
+        paragraphs: [
+          'You can cancel an in-progress import at any time from the Cancel button in the expanded progress panel. Cancellation is immediate and safe: it stops the import promptly rather than waiting for the current phase to finish.',
+          'Anything already written to your local database when you cancel is kept — cancellation never rolls back or corrupts data that was already stored. Because import is incremental and de-duplicated (see below), you lose no progress: when you re-import the same source later, the nights and records that were already saved are recognised and skipped, and only the remainder is added. In effect, cancelling and re-importing resumes from where you stopped.',
+        ],
+      },
+      {
+        heading: 'De-duplication: re-importing is always safe',
+        paragraphs: [
+          'Every import is incremental. CPAP Analyzer identifies what it already holds and imports only genuinely new data, so re-importing the same SD card or Google Health export — or a newer export that overlaps dates you have already loaded — never creates duplicates. For CPAP data this is keyed by session; for Google Health data it is keyed by data type, date, and timestamp. This is what makes cancellation, a closed tab, and routine periodic re-exports all safe: you can always just re-import, and the app sorts out what is new.',
+        ],
+      },
+      {
+        heading: 'Closing the tab during an import',
+        paragraphs: [
+          'Because the app is entirely client-side, an import lives inside the browser tab — there is no server-side job and no background process that survives the tab. If you close the tab (or the whole browser) while an import is running, the import simply ends.',
+          'No data is corrupted by this. Results are written durably and incrementally as the import proceeds, so every night and record stored up to that moment remains valid and usable. The partial results are real, finished data — not a half-written file. To pick up the rest, re-import the same source: de-duplication recognises what was already saved, skips it, and imports only what is left. If you want an import to complete in one pass, leave the tab open until the completion toast appears; you are free to switch to other browser tabs in the meantime, but do not close this one.',
         ],
       },
     ],

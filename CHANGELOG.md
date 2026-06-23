@@ -7,7 +7,22 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **Imports now run in the background, with a persistent progress indicator on every screen.** You no longer have to sit on the import wizard and wait. Once an import starts, it continues running while you navigate anywhere in the app — the Dashboard, Sessions, Trends, or Settings. A small **progress pill** appears bottom-left on every screen showing the live percentage; click it to expand a detail panel that lists each stage and its state, and gives you a **Cancel** button. When the import finishes, a completion **toast** announces how many sessions or records were added (and how many duplicates were skipped). The indicator is keyboard-accessible and announces progress to screen readers via a polite live region. Everything still runs entirely client-side; nothing leaves your browser. (See ADR 0026.)
+- **Multi-stage import progress.** Instead of a single bar whose meaning shifted as the import moved through its phases, every stage is now shown from the start, each with its own state (pending → running → done, or failed/cancelled). A **CPAP SD-card import** shows: scanning files, parsing, building sessions, and storing. A **Google Health (Fitbit) import** shows: scanning, then a determinate sub-progress row per discovered data type (sleep, intraday heart rate, SpO₂, HRV, snoring, …) as each is imported. You can see at a glance exactly where a long import is and which data types remain. New in-app help section "How the import runs" and two new glossary entries (Background Import, Intraday). (See ADRs 0026 and 0027.)
+
+### Changed
+
+- **Cancelling an import is now immediate and safe.** Pressing Cancel stops the import promptly rather than after the current phase finishes. Any data already written to your local database is **kept** — cancellation never rolls back or corrupts what was already stored — and because import is incremental with duplicate detection, simply re-importing later resumes where you left off: already-stored nights and records are recognised and skipped, and only the genuinely new data is added.
+
+### Performance
+
+- **Google Health (Fitbit) intraday import no longer freezes the UI.** Parsing the large, full-resolution intraday files (heart rate at ~5-second cadence, plus SpO₂, HRV, and snoring) used to run on the main thread, so the app could lock up for seconds during a big wearable import. That work now runs **off the main thread** (in Web Workers), and reports **granular, determinate** progress as it goes, so the interface stays responsive and the per-data-type progress rows advance smoothly. (See ADR 0027.)
+
+### Fixed
+
+- **Closing the browser tab during an import no longer corrupts data.** If you close the tab (or the browser) while an import is in progress, the import simply ends — there is no background process to leave running. Nothing is corrupted: data is written **durably and incrementally** as the import proceeds, so the nights and records already stored remain valid and usable. Re-importing the same source later transparently resumes via duplicate detection, skipping what was already saved and importing only the remainder. The "Importing Data" help article documents this tab-close behaviour.
 
 ## [2026.06.9] — 2026-06-22
 
