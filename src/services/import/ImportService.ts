@@ -45,6 +45,7 @@ import type {
   ImportProgress,
 } from './types';
 import { checkpoint } from './types';
+import { importProfiler } from './profiling/ImportProfiler';
 
 // Re-export types for consumers
 export type { ImportError, ImportOptions, ImportProgress } from './types';
@@ -140,6 +141,10 @@ export class ImportService {
     const signal = options.signal;
     const progress = this.createInitialProgress();
 
+    // Gated, default-OFF profiling. `begin()` reads the live global switch; when
+    // off, every subsequent profiler call is a cheap no-op (see ImportProfiler).
+    importProfiler.begin('cpap');
+
     const emit = (patch: Partial<ImportProgress>): void => {
       Object.assign(progress, patch);
       options.onProgress?.({ ...progress });
@@ -148,8 +153,10 @@ export class ImportService {
     emit({ status: 'scanning', startTime: Date.now() });
 
     // --- 1. Scan & classify -----------------------------------------------
+    const stopScan = importProfiler.open('scan');
     const discovered = this.scanFiles(files);
     const totalBytes = discovered.reduce((sum, f) => sum + f.file.size, 0);
+    stopScan();
     emit({ totalFiles: discovered.length, totalBytes });
 
     if (discovered.length === 0) {
@@ -194,6 +201,7 @@ export class ImportService {
       let strMaskIntervalsByDate: ReadonlyMap<string, readonly MaskInterval[]> = new Map();
       const strParser = new STRParser();
 
+      const stopStr = importProfiler.open('str');
       for (const df of strFiles) {
         // Loop-boundary checkpoint: abort lands here, before any parse work for
         // this STR file begins — never mid-write.
@@ -249,6 +257,7 @@ export class ImportService {
         // STR raw `edf` is now consumable garbage; `parsed`/`result` go out of
         // scope at the next loop iteration so its buffers are released.
       }
+      stopStr();
 
       // --- 2b. Per-day streaming phase ------------------------------------
       // Group the non-STR files by day, then for each day: parse concurrently,
@@ -271,6 +280,7 @@ export class ImportService {
         // Parse every file in this day-group concurrently across the pool. The
         // per-file callback keeps `status: 'parsing'` while files are in flight,
         // even though parse/build/store now interleave per day.
+        const stopParse = importProfiler.open('parse');
         const { interpretations, byteTotal, emptySkips } = await this.parseDayGroup(
           runner,
           dayGroup,
@@ -289,17 +299,20 @@ export class ImportService {
             });
           },
         );
-        void byteTotal;
+        stopParse();
+        const dayParseMs = importProfiler.isEnabled() ? importProfiler.lastSpanMs : 0;
         filesSkippedEmpty += emptySkips;
 
         // Build sessions for this day.
         let dayResults: BuildResult[] = [];
+        let dayBuildMs = 0;
         const dayInterps = [...interpretations.values()];
         if (dayInterps.length > 0) {
           emit({
             status: 'building',
             currentStage: `Building sessions: day ${i + 1} of ${dayGroups.length}`,
           });
+          const stopBuild = importProfiler.open('build');
           try {
             dayResults = this.sessionBuilder.buildSessions(
               dayInterps,
@@ -313,9 +326,18 @@ export class ImportService {
               recoverable: true,
             });
           }
+          stopBuild();
+          dayBuildMs = importProfiler.isEnabled() ? importProfiler.lastSpanMs : 0;
         }
 
         // Validate + store this day's sessions, then release its buffers.
+        const dayStoreTiming = {
+          validateMs: 0,
+          storeMs: 0,
+          storeIdbMs: 0,
+          storeOpfsMs: 0,
+          chunks: 0,
+        };
         const storeOutcome = await this.validateAndStoreDay(
           dayGroup,
           dayResults,
@@ -328,7 +350,22 @@ export class ImportService {
           sessionBaselineStore,
           (patch) => emit(patch),
           signal,
+          dayStoreTiming,
         );
+
+        // Record this day-group's timing breakdown (no-op when profiling is off).
+        importProfiler.recordCpapDayGroup({
+          dayFolder: dayGroup.dayFolder || '(root)',
+          files: this.countDayFiles(dayGroup),
+          parsedBytes: byteTotal,
+          parseMs: dayParseMs,
+          buildMs: dayBuildMs,
+          validateMs: dayStoreTiming.validateMs,
+          storeMs: dayStoreTiming.storeMs,
+          storeIdbMs: dayStoreTiming.storeIdbMs,
+          storeOpfsMs: dayStoreTiming.storeOpfsMs,
+          opfsChunks: dayStoreTiming.chunks,
+        });
         sessionsCreated += storeOutcome.created;
         sessionsSkipped += storeOutcome.skipped;
         allBuildResults.push(...dayResults);
@@ -359,6 +396,8 @@ export class ImportService {
       filesSkippedEmpty,
     });
 
+    importProfiler.finish();
+
     const overallHash = await this.computeStringHash(allSessionSourceHashes.sort().join(':'));
     return this.buildImportRecord(
       allBuildResults,
@@ -382,6 +421,13 @@ export class ImportService {
   private createParseRunner(signal?: AbortSignal): ParseRunner {
     if (this.workerPoolFactory) {
       const pool = this.workerPoolFactory();
+      // Gated occupancy sampling: when profiling is on, poll the pool's
+      // busy/size so the profile can show whether workers idle during
+      // build/validate/store. No-op when profiling is off.
+      importProfiler.attachPoolSnapshot(() => ({
+        busy: pool.busyWorkerCount,
+        size: pool.maxPoolSize,
+      }));
       return {
         // Forward the job's signal so a cancelled job's still-queued parse
         // tasks are dropped immediately (the pool rejects them) rather than
@@ -546,7 +592,8 @@ export class ImportService {
     warnings: string[],
     storeBaseline: { value: number },
     emit: (patch: Partial<ImportProgress>) => void,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    timing?: StoreTiming,
   ): Promise<{ created: number; skipped: number; sourceHashes: string[] }> {
     let created = 0;
     let skipped = 0;
@@ -558,6 +605,7 @@ export class ImportService {
 
     // Validate (warnings only — never blocks the store).
     emit({ status: 'building', currentStage: 'Validating sessions...' });
+    const stopValidate = importProfiler.open('validate');
     for (let i = 0; i < dayResults.length; i++) {
       const br = dayResults[i];
       if (!br) continue;
@@ -572,7 +620,10 @@ export class ImportService {
       // Validation is read-only — safe to abort between sessions.
       if ((i + 1) % YIELD_EVERY === 0) await checkpoint(signal);
     }
+    stopValidate();
+    if (timing) timing.validateMs = importProfiler.isEnabled() ? importProfiler.lastSpanMs : 0;
 
+    const stopStore = importProfiler.open('store');
     // Store. `totalSessionsToStore` accumulates across days (sessions are built
     // incrementally under streaming, so the denominator grows but is never 0
     // once storing begins) — keeps the storing-stage progress bar meaningful.
@@ -616,7 +667,12 @@ export class ImportService {
 
         const sessionWithHash = { ...br.session, sourceHash: sessionSourceHash };
 
-        await this.storeSession({ ...br, session: sessionWithHash }, interpretations, contributing);
+        await this.storeSession(
+          { ...br, session: sessionWithHash },
+          interpretations,
+          contributing,
+          timing,
+        );
 
         // Record the new keys so later sessions in THIS import also dedup
         // against it (e.g. the same night appearing twice in one selection).
@@ -644,6 +700,8 @@ export class ImportService {
       // aborting here leaves storage consistent.
       if ((i + 1) % YIELD_EVERY === 0) await checkpoint(signal);
     }
+    stopStore();
+    if (timing) timing.storeMs = importProfiler.isEnabled() ? importProfiler.lastSpanMs : 0;
 
     storeBaseline.value += dayResults.length;
     return { created, skipped, sourceHashes };
@@ -684,6 +742,13 @@ export class ImportService {
     }
 
     return discovered;
+  }
+
+  /** Count the total files across all timestamp-groups in a day-group. */
+  private countDayFiles(dayGroup: DayFileGroup): number {
+    let n = 0;
+    for (const group of dayGroup.files.values()) n += group.length;
+    return n;
   }
 
   /** Group discovered files by day folder and timestamp. */
@@ -798,8 +863,10 @@ export class ImportService {
     buildResult: BuildResult,
     interpretations: InterpretationMap,
     contributingFiles: Set<string>,
+    timing?: StoreTiming,
   ): Promise<void> {
     const { session, aggregate, events } = buildResult;
+    const profiling = importProfiler.isEnabled();
 
     const storedAggregate: StoredNightlyAggregate = {
       ...aggregate,
@@ -807,7 +874,9 @@ export class ImportService {
     };
 
     // 1. Atomic metadata write (sessions + nightly_aggregates + events).
+    const idbStart = profiling ? performanceNow() : 0;
     await this.indexedDB.addSessionWithRelated(session, storedAggregate, events);
+    if (profiling && timing) timing.storeIdbMs += performanceNow() - idbStart;
 
     // 2. Signal data → OPFS (if available). Sequenced after the IDB commit so a
     //    successful commit is never left pointing at a failed signal write.
@@ -832,7 +901,12 @@ export class ImportService {
         const hasSignalData =
           channelInputs.length > 0 && channelInputs.some((ch) => ch.data.length > 0);
         if (hasSignalData) {
-          await this.opfs.writeSession(session.id, startMs, endMs, channelInputs);
+          const opfsStart = profiling ? performanceNow() : 0;
+          const manifest = await this.opfs.writeSession(session.id, startMs, endMs, channelInputs);
+          if (profiling && timing) {
+            timing.storeOpfsMs += performanceNow() - opfsStart;
+            timing.chunks += manifest.chunks.length;
+          }
         }
       } catch (opfsErr) {
         // Compensate: undo the metadata commit so the two stores stay in sync.
@@ -1012,6 +1086,28 @@ interface ParseRunner {
 interface DedupKeys {
   readonly hashes: Set<string>;
   readonly naturalKeys: Set<string>;
+}
+
+/**
+ * Per-day-group store-phase timing accumulator (gated profiling only). Split so
+ * the profile can attribute store time to IndexedDB metadata writes vs. OPFS
+ * chunk writes — the decision input for "parallel OPFS chunk writes". Passed in
+ * (and mutated) only when profiling is enabled; otherwise it is `undefined` and
+ * the timing branches are skipped.
+ */
+interface StoreTiming {
+  validateMs: number;
+  storeMs: number;
+  storeIdbMs: number;
+  storeOpfsMs: number;
+  chunks: number;
+}
+
+/** Monotonic clock for the store IDB/OPFS split. */
+function performanceNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
 }
 
 /** Per-day map of relativePath → interpretation (channels carried for OPFS). */
