@@ -38,8 +38,17 @@ import type {
   IntegrationSource,
 } from '@/types/storage';
 import type { ImportError as StorageImportError } from '@/types/storage';
+import * as Comlink from 'comlink';
+
 import type { GoogleHealthImportProgress, ImportError } from '../types';
-import { checkpoint } from '../types';
+import { checkpoint, ImportAbortedError, isImportAbortedError } from '../types';
+import type { WorkerPool } from '@/services/workers/WorkerPool';
+import type {
+  FitbitParserWorkerAPI,
+  FitbitWorkerDataType,
+  FitbitWorkerFile,
+  FitbitWorkerProgress,
+} from '@/services/workers/fitbitParser.worker';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -53,6 +62,29 @@ const YIELD_EVERY = 50;
 
 /** Integration source identifier for Fitbit data. */
 const SOURCE: IntegrationSource = 'fitbit';
+
+/**
+ * The heavy data types routed through the Fitbit parser worker pool (ADR 0027).
+ * Everything else stays inline on the main thread (small CSVs/JSONs where worker
+ * round-trip overhead would not pay for itself).
+ */
+const WORKER_PARSED_TYPES: ReadonlySet<string> = new Set<FitbitWorkerDataType>([
+  'heart_rate_intraday',
+  'spo2_intraday',
+  'hrv_detail',
+  'snoring_daily',
+  'snoring_segments',
+]);
+
+/**
+ * Factory that builds a {@link WorkerPool} for the Fitbit parser worker.
+ *
+ * Injected (like the EDF pool factory on {@link ImportService}) so tests can run
+ * the equivalence path without spinning real Web Workers. When omitted, the
+ * heavy parsers run inline via the SAME worker-safe cores, so output is
+ * identical — only the threading differs.
+ */
+export type FitbitWorkerPoolFactory = () => WorkerPool<FitbitParserWorkerAPI>;
 
 // ---------------------------------------------------------------------------
 // Public option types
@@ -93,7 +125,16 @@ export interface ParsedTimeseriesRecord {
 // ---------------------------------------------------------------------------
 
 export class GoogleHealthImportService {
-  constructor(private readonly db: IndexedDBService) {}
+  /**
+   * @param db                 IndexedDB service (injected for testability).
+   * @param workerPoolFactory  Optional factory for the Fitbit parser worker pool
+   *   (ADR 0027). When provided, the heavy intraday/snoring parsers run on the
+   *   pool; otherwise they run inline via the same worker-safe cores (tests).
+   */
+  constructor(
+    private readonly db: IndexedDBService,
+    private readonly workerPoolFactory?: FitbitWorkerPoolFactory,
+  ) {}
 
   // -----------------------------------------------------------------------
   // Public API
@@ -226,109 +267,153 @@ export class GoogleHealthImportService {
     // Process each selected data type
     // -----------------------------------------------------------------------
 
-    for (let i = 0; i < selectedInfos.length; i++) {
-      const dtInfo = selectedInfos[i];
-      if (!dtInfo) continue;
+    // The Fitbit parser worker pool is created lazily on first heavy data type
+    // and shut down once the whole import finishes (or aborts). When no factory
+    // was injected (tests) it stays null and the heavy parsers run inline.
+    let pool: WorkerPool<FitbitParserWorkerAPI> | null = null;
 
-      // Loop-boundary checkpoint: abort lands between fully-processed data
-      // types, before this type's files are read/parsed/stored.
-      await checkpoint(signal);
+    try {
+      for (let i = 0; i < selectedInfos.length; i++) {
+        const dtInfo = selectedInfos[i];
+        if (!dtInfo) continue;
 
-      emit({
-        currentDataType: dtInfo.dataType,
-        currentStage: `Processing ${dtInfo.label} (${String(i + 1)}/${String(selectedInfos.length)})`,
-        dataTypesProcessed: i,
-      });
+        // Loop-boundary checkpoint: abort lands between fully-processed data
+        // types, before this type's files are read/parsed/stored.
+        await checkpoint(signal);
 
-      try {
-        // 1. Read File objects from directory handle.
-        const files = await this.readFilesForDataType(root, dtInfo, errors);
-        if (files.length === 0) {
-          warnings.push(`No readable files found for ${dtInfo.label}`);
-          continue;
-        }
-
-        // Compute a simple hash of file names + sizes for the import record.
-        for (const file of files) {
-          fileHashes.push(await this.computeStringHash(`${file.name}:${String(file.size)}`));
-        }
-
-        // 2. Parse the files using the appropriate parser.
-        const { daily, timeseries } = await this.parseDataType(
-          parsers,
-          dtInfo.dataType,
-          files,
-          errors,
-        );
-
-        // 3. Store daily records.
-        if (daily.length > 0) {
-          const dailyDataType = dtInfo.dataType as FitbitDailyType;
-          const outcome = await this.processDailyRecords(
-            daily,
-            dailyDataType,
-            skipDuplicates,
-            errors,
-            (processed, skipped) => {
-              emit({
-                status: 'storing',
-                recordsProcessed: progress.recordsProcessed + processed,
-                recordsSkipped: progress.recordsSkipped + skipped,
-              });
-            },
-            signal,
-          );
-          totalImported += outcome.stored;
-          totalSkipped += outcome.skipped;
-
-          for (const rec of daily) {
-            trackDate(rec.date);
-          }
-        }
-
-        // 4. Store timeseries records.
-        if (timeseries.length > 0) {
-          const tsDataType = dtInfo.dataType as FitbitTimeseriesType;
-          const outcome = await this.processTimeseriesRecords(
-            timeseries,
-            tsDataType,
-            skipDuplicates,
-            errors,
-            (processed, skipped) => {
-              emit({
-                status: 'storing',
-                recordsProcessed: progress.recordsProcessed + processed,
-                recordsSkipped: progress.recordsSkipped + skipped,
-              });
-            },
-            signal,
-          );
-          totalImported += outcome.stored;
-          totalSkipped += outcome.skipped;
-
-          for (const rec of timeseries) {
-            trackDate(rec.date);
-          }
-        }
-      } catch (err) {
-        // Cancellation must NOT be swallowed as a per-type error — rethrow so it
-        // unwinds the whole import. (Checked by name to be robust across realms.)
-        if (err instanceof Error && err.name === 'ImportAbortedError') {
-          throw err;
-        }
-        // Per-data-type failure. Collect and continue with next type.
-        errors.push({
-          fileName: dtInfo.dataType,
-          error: `Failed to process ${dtInfo.label}: ${err instanceof Error ? err.message : String(err)}`,
-          recoverable: true,
+        emit({
+          status: 'parsing',
+          currentDataType: dtInfo.dataType,
+          currentDataTypeLabel: dtInfo.label,
+          currentDataTypePhase: 'parsing',
+          currentDataTypeRecordsProcessed: 0,
+          currentDataTypeRecordsTotal: 0,
+          currentStage: `Processing ${dtInfo.label} (${String(i + 1)}/${String(selectedInfos.length)})`,
+          dataTypesProcessed: i,
         });
+
+        try {
+          // 1. Read File objects from directory handle.
+          const files = await this.readFilesForDataType(root, dtInfo, errors);
+          if (files.length === 0) {
+            warnings.push(`No readable files found for ${dtInfo.label}`);
+            continue;
+          }
+
+          // Compute a simple hash of file names + sizes for the import record.
+          for (const file of files) {
+            fileHashes.push(await this.computeStringHash(`${file.name}:${String(file.size)}`));
+          }
+
+          // 2. Parse the files. Heavy types go through the worker pool with
+          //    determinate per-file/per-chunk progress; light types stay inline.
+          let daily: ParsedDailyRecord[];
+          let timeseries: ParsedTimeseriesRecord[];
+
+          if (WORKER_PARSED_TYPES.has(dtInfo.dataType) && this.workerPoolFactory) {
+            pool ??= this.workerPoolFactory();
+            ({ daily, timeseries } = await this.parseDataTypeViaWorker(
+              pool,
+              dtInfo.dataType as FitbitWorkerDataType,
+              files,
+              errors,
+              (parsed, total) => {
+                emit({
+                  status: 'parsing',
+                  currentDataTypePhase: 'parsing',
+                  currentDataTypeRecordsProcessed: parsed,
+                  currentDataTypeRecordsTotal: total,
+                });
+              },
+              signal,
+            ));
+          } else {
+            ({ daily, timeseries } = await this.parseDataType(
+              parsers,
+              dtInfo.dataType,
+              files,
+              errors,
+            ));
+          }
+
+          // 3. Store daily records.
+          if (daily.length > 0) {
+            const dailyDataType = dtInfo.dataType as FitbitDailyType;
+            const outcome = await this.processDailyRecords(
+              daily,
+              dailyDataType,
+              skipDuplicates,
+              errors,
+              (processed, skipped) => {
+                emit({
+                  status: 'storing',
+                  currentDataTypePhase: 'storing',
+                  recordsProcessed: progress.recordsProcessed + processed,
+                  recordsSkipped: progress.recordsSkipped + skipped,
+                });
+              },
+              signal,
+            );
+            totalImported += outcome.stored;
+            totalSkipped += outcome.skipped;
+
+            for (const rec of daily) {
+              trackDate(rec.date);
+            }
+          }
+
+          // 4. Store timeseries records.
+          if (timeseries.length > 0) {
+            const tsDataType = dtInfo.dataType as FitbitTimeseriesType;
+            const outcome = await this.processTimeseriesRecords(
+              timeseries,
+              tsDataType,
+              skipDuplicates,
+              errors,
+              (processed, skipped) => {
+                emit({
+                  status: 'storing',
+                  currentDataTypePhase: 'storing',
+                  recordsProcessed: progress.recordsProcessed + processed,
+                  recordsSkipped: progress.recordsSkipped + skipped,
+                });
+              },
+              signal,
+            );
+            totalImported += outcome.stored;
+            totalSkipped += outcome.skipped;
+
+            for (const rec of timeseries) {
+              trackDate(rec.date);
+            }
+          }
+        } catch (err) {
+          // Cancellation must NOT be swallowed as a per-type error — rethrow so
+          // it unwinds the whole import. (Checked by name to be robust across
+          // realms.)
+          if (err instanceof Error && err.name === 'ImportAbortedError') {
+            throw err;
+          }
+          // Per-data-type failure. Collect and continue with next type.
+          errors.push({
+            fileName: dtInfo.dataType,
+            error: `Failed to process ${dtInfo.label}: ${err instanceof Error ? err.message : String(err)}`,
+            recoverable: true,
+          });
+        }
+
+        emit({ dataTypesProcessed: i + 1 });
+
+        // Checkpoint between data types: abort lands here, between fully-stored
+        // types.
+        await checkpoint(signal);
       }
-
-      emit({ dataTypesProcessed: i + 1 });
-
-      // Checkpoint between data types: abort lands here, between fully-stored
-      // types.
-      await checkpoint(signal);
+    } finally {
+      // Release the worker pool (if one was created) regardless of how the loop
+      // exits — normal completion, per-type error, or abort.
+      if (pool) {
+        void pool.shutdown();
+      }
     }
 
     // -----------------------------------------------------------------------
@@ -463,6 +548,107 @@ export class GoogleHealthImportService {
     } catch {
       return null;
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Worker-pool parser dispatch (ADR 0027)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Parse a heavy data type on the Fitbit parser worker pool.
+   *
+   * Files are processed ONE AT A TIME per pool task: each file's bytes are read,
+   * its `ArrayBuffer` is TRANSFERRED into the worker (neutered on this thread so
+   * the clone is avoided and main-thread memory is released), parsed off-thread,
+   * and its `ParsedRecord[]` returned. Processing per-file rather than batching
+   * keeps peak memory bounded to a single file and lets per-file + per-chunk
+   * progress flow continuously.
+   *
+   * The job `signal` is forwarded to {@link WorkerPool.submit} so a cancelled
+   * job's still-queued parse tasks are dropped immediately. The parsed output is
+   * byte-identical to the inline {@link parseDataType} path (same worker-safe
+   * cores) — gated by golden-fixture equality tests.
+   *
+   * @param onParseProgress Receives `(recordsProcessedSoFar, recordsTotal)`
+   *   across the whole data type. `recordsTotal` is the summed entry count of
+   *   all files; it becomes known incrementally as each file is decoded, so it
+   *   is reported as a running floor (processed-so-far + current-file-total).
+   */
+  private async parseDataTypeViaWorker(
+    pool: WorkerPool<FitbitParserWorkerAPI>,
+    dataType: FitbitWorkerDataType,
+    files: File[],
+    errors: ImportError[],
+    onParseProgress: (recordsProcessed: number, recordsTotal: number) => void,
+    signal?: AbortSignal,
+  ): Promise<{ daily: ParsedDailyRecord[]; timeseries: ParsedTimeseriesRecord[] }> {
+    const daily: ParsedDailyRecord[] = [];
+    const timeseries: ParsedTimeseriesRecord[] = [];
+
+    // Records fully parsed in files completed BEFORE the current one.
+    let baseProcessed = 0;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!file) continue;
+
+      // Abort lands between files, before the next is read/transferred.
+      await checkpoint(signal);
+
+      let buffer: ArrayBuffer;
+      try {
+        buffer = await file.arrayBuffer();
+      } catch (err) {
+        errors.push({
+          fileName: file.name,
+          error: `Failed to read file: ${err instanceof Error ? err.message : String(err)}`,
+          recoverable: true,
+        });
+        continue;
+      }
+
+      // The bytes are TRANSFERRED into the worker (neutered here): the single
+      // source file becomes the worker's; the structured-clone copy is avoided
+      // and this thread's reference to the buffer is released.
+      const workerFile = Comlink.transfer<FitbitWorkerFile>({ name: file.name, buffer }, [buffer]);
+
+      // Determinate within-file progress proxied back from the worker. The
+      // last report's `samplesTotal` is this file's exact entry count, which we
+      // fold into `baseProcessed` once the file completes so the across-type
+      // counter stays monotonic.
+      let fileTotal = 0;
+      const onProgress = (p: FitbitWorkerProgress): void => {
+        fileTotal = Math.max(fileTotal, p.samplesTotal, p.samplesProcessed);
+        onParseProgress(baseProcessed + p.samplesProcessed, baseProcessed + fileTotal);
+      };
+
+      try {
+        const result = await pool.submit(
+          (proxy) => proxy.parseDataType(dataType, [workerFile], Comlink.proxy(onProgress)),
+          { signal },
+        );
+        for (const rec of result.daily) daily.push(rec);
+        for (const rec of result.timeseries) timeseries.push(rec);
+
+        baseProcessed += fileTotal;
+        onParseProgress(baseProcessed, baseProcessed);
+      } catch (err) {
+        // A mid-flight abort surfaces as either our ImportAbortedError (thrown
+        // by a checkpoint that raced) or the pool's TASK_ABORTED/POOL_SHUTDOWN
+        // CPAPError. Both must unwind the import as a cancellation, not a
+        // per-file parser error.
+        if (isImportAbortedError(err) || isPoolAbort(err) || signal?.aborted) {
+          throw new ImportAbortedError();
+        }
+        errors.push({
+          fileName: file.name,
+          error: `Parser error: ${err instanceof Error ? err.message : String(err)}`,
+          recoverable: true,
+        });
+      }
+    }
+
+    return { daily, timeseries };
   }
 
   // -----------------------------------------------------------------------
@@ -833,4 +1019,22 @@ export class GoogleHealthImportService {
     }
     return hex.join('');
   }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Recognise the {@link WorkerPool}'s cancellation rejections.
+ *
+ * When a job is cancelled mid-flight the pool rejects in-flight/queued tasks
+ * with a `CPAPError` whose `id` is `TASK_ABORTED` (signal fired) or
+ * `POOL_SHUTDOWN` (pool draining). Either should be treated as a deliberate
+ * cancellation rather than a parser failure.
+ */
+function isPoolAbort(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const id = (err as { id?: unknown }).id;
+  return id === 'TASK_ABORTED' || id === 'POOL_SHUTDOWN';
 }

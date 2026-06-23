@@ -159,6 +159,34 @@ export interface GoogleHealthImportProgress {
   readonly warnings: readonly string[];
   readonly startTime: number;
   readonly currentStage: string;
+  // -------------------------------------------------------------------------
+  // Granular per-data-type progress (ADR 0027, additive)
+  // -------------------------------------------------------------------------
+  //
+  // These OPTIONAL fields give the controller adapter determinate within-type
+  // record progress so the unified `ImportJobProgress` can show e.g. the
+  // intraday-HR substage as a live bar instead of a multi-minute freeze. They
+  // describe the CURRENTLY-active data type only; `dataTypesProcessed` /
+  // `dataTypesTotal` continue to describe the across-type position.
+  //
+  // For heavy worker-parsed types these reflect the parse phase (entries
+  // decoded). For light/inline types they may be omitted (left undefined),
+  // in which case the adapter falls back to the coarse per-type counters.
+
+  /** Human-readable label of the current data type (e.g. "Heart Rate (intraday)"). */
+  readonly currentDataTypeLabel?: string;
+  /**
+   * Records (entries/rows/samples) processed for the CURRENT data type so far.
+   * Determinate within-type progress for the active substage.
+   */
+  readonly currentDataTypeRecordsProcessed?: number;
+  /**
+   * Total records to process for the CURRENT data type. `0`/undefined means the
+   * total is not yet known (indeterminate substage).
+   */
+  readonly currentDataTypeRecordsTotal?: number;
+  /** Phase of the current data type: parsing files vs. storing records. */
+  readonly currentDataTypePhase?: 'parsing' | 'storing';
 }
 
 // ---------------------------------------------------------------------------

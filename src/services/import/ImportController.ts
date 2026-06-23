@@ -43,6 +43,7 @@ import {
 import { createWorker } from '@/services/workers/createWorker';
 import { WorkerPool } from '@/services/workers/WorkerPool';
 import type { EDFParserWorkerAPI } from '@/services/workers/edfParser.worker';
+import type { FitbitParserWorkerAPI } from '@/services/workers/fitbitParser.worker';
 import { getDB } from '@/services/storage/getDB';
 import { OPFSService } from '@/services/storage/OPFSService';
 import type { IndexedDBService } from '@/services/storage/IndexedDBService';
@@ -132,6 +133,27 @@ function makeWorkerPoolFactory(): EDFWorkerPoolFactory {
       minWorkers: 1,
       maxWorkers: recommendedPoolSize(),
       taskTimeoutMs: 60_000,
+    });
+}
+
+/**
+ * Build a {@link WorkerPool} for the Fitbit (Google Health) parser worker (ADR
+ * 0027). Mirrors {@link makeWorkerPoolFactory} for EDF. The `new Worker(new
+ * URL(...))` call is inline so Vite statically bundles the worker script.
+ */
+function makeFitbitWorkerPoolFactory(): () => WorkerPool<FitbitParserWorkerAPI> {
+  return () =>
+    new WorkerPool<FitbitParserWorkerAPI>({
+      workerFactory: (name?: string) =>
+        new Worker(new URL('../workers/fitbitParser.worker.ts', import.meta.url), {
+          type: 'module',
+          name: name ?? 'fitbit-parser',
+        }),
+      minWorkers: 1,
+      maxWorkers: recommendedPoolSize(),
+      // Intraday HR files can carry ~17k entries; allow generous headroom over
+      // the EDF default so a large day's parse never hits the task timeout.
+      taskTimeoutMs: 120_000,
     });
 }
 
@@ -445,7 +467,10 @@ export class ImportController {
   private async getFitbitService(): Promise<GoogleHealthImportService> {
     if (this.fitbitService) return this.fitbitService;
     const db = await getDB();
-    this.fitbitService = new GoogleHealthImportService(db);
+    // Inject the Fitbit parser worker-pool factory so the heavy intraday/snoring
+    // parsers run off the main thread (ADR 0027). Tests inject a service without
+    // a pool via __resetForTests, exercising the inline equivalence path.
+    this.fitbitService = new GoogleHealthImportService(db, makeFitbitWorkerPoolFactory());
     return this.fitbitService;
   }
 
@@ -562,19 +587,28 @@ export class ImportController {
     const itemsProcessed = p.recordsProcessed;
     const itemsTotal = p.recordsTotal > 0 ? p.recordsTotal : null;
 
-    // The import stage carries one sub-item per selected data type. We can only
-    // mark the current/processed ones from the coarse counters the service emits.
+    // The import stage carries one sub-item per selected data type. The active
+    // substage shows DETERMINATE within-type record progress (ADR 0027): heavy
+    // intraday parsers report `currentDataTypeRecords{Processed,Total}` per chunk
+    // so the bar advances live instead of freezing. Completed types read as
+    // fully done; pending types are not yet started.
+    const activeRecsProcessed = p.currentDataTypeRecordsProcessed ?? 0;
+    const activeRecsTotal = p.currentDataTypeRecordsTotal ?? 0;
     const subItems = Array.from({ length: p.dataTypesTotal }, (_, idx) => {
       const done = idx < p.dataTypesProcessed;
       const activeIdx = idx === p.dataTypesProcessed && status === 'running';
+      const baseLabel = `Data type ${String(idx + 1)}`;
+      const activeLabel = p.currentDataTypeLabel || p.currentDataType || baseLabel;
+      // For the active type, surface its determinate record counters when known;
+      // otherwise the substage is indeterminate (total = null).
+      const completed = done ? 1 : activeIdx ? activeRecsProcessed : 0;
+      const total = done ? 1 : activeIdx ? (activeRecsTotal > 0 ? activeRecsTotal : null) : 1;
       return {
         id: `dt-${String(idx)}`,
-        label: activeIdx
-          ? p.currentDataType || `Data type ${String(idx + 1)}`
-          : `Data type ${String(idx + 1)}`,
+        label: activeIdx ? activeLabel : baseLabel,
         state: stageState(done ? 'done' : activeIdx ? 'active' : 'pending'),
-        completed: done ? 1 : 0,
-        total: 1,
+        completed,
+        total,
       };
     });
 

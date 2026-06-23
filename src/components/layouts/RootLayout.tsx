@@ -12,6 +12,7 @@ import { useThemeEffect } from '@/hooks/useTheme';
 import { useURLStateSync } from '@/hooks/useURLState';
 import { RouteErrorBoundary } from '@/components/errors';
 import { InsightDrawer } from '@/components/insights';
+import { ImportStatusDock, ImportToastProvider } from '@/components/import';
 import { Tooltip, TooltipProvider, Icon, type IconName } from '@/components/ui';
 import { useAppStore } from '@/stores/useAppStore';
 import { StatusBar } from './StatusBar';
@@ -339,141 +340,153 @@ export default function RootLayout() {
 
   return (
     <TooltipProvider>
-      <a href="#main-content" className={styles.skipLink} onClick={handleSkipToContent}>
-        Skip to main content
-      </a>
-      <div className={styles.layout}>
-        {/* Mobile overlay */}
-        <div
-          className={`${styles.overlay} ${sidebarOpen ? styles.overlayVisible : ''}`}
-          onClick={closeSidebar}
-          aria-hidden="true"
-        />
+      <ImportToastProvider>
+        <a href="#main-content" className={styles.skipLink} onClick={handleSkipToContent}>
+          Skip to main content
+        </a>
+        <div className={styles.layout}>
+          {/* Mobile overlay */}
+          <div
+            className={`${styles.overlay} ${sidebarOpen ? styles.overlayVisible : ''}`}
+            onClick={closeSidebar}
+            aria-hidden="true"
+          />
 
-        {/* Polite live region announcing rail collapse/expand. Covers the `[`
+          {/* Polite live region announcing rail collapse/expand. Covers the `[`
             shortcut path where the toggle button is not focused. */}
-        <div className={styles.srOnly} role="status" aria-live="polite">
-          {railAnnouncement}
-        </div>
+          <div className={styles.srOnly} role="status" aria-live="polite">
+            {railAnnouncement}
+          </div>
 
-        {/* Sidebar */}
-        <aside
-          ref={sidebarRef}
-          className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''} ${
-            isRail ? styles.sidebarRail : ''
-          }`}
-          aria-label="Main navigation"
-          onTransitionEnd={handleSidebarTransitionEnd}
-        >
-          <div className={styles.brandArea}>
-            <RailTooltip active={isRail} label="CPAP Analyzer">
-              <NavLink
-                to="/"
-                end
-                className={styles.brand}
-                aria-label="CPAP Analyzer — go to Dashboard"
-                onClick={closeSidebar}
-              >
-                <Icon name="brand" size="lg" className={styles.brandMark} />
-                <span className={styles.wordmark} aria-hidden="true">
-                  <span className={styles.wordmarkPrimary}>CPAP</span>
-                  <span className={styles.wordmarkSecondary}>Analyzer</span>
-                </span>
-                {/* Contiguous text for screen readers and text-based selectors;
+          {/* Sidebar */}
+          <aside
+            ref={sidebarRef}
+            className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ''} ${
+              isRail ? styles.sidebarRail : ''
+            }`}
+            aria-label="Main navigation"
+            onTransitionEnd={handleSidebarTransitionEnd}
+          >
+            <div className={styles.brandArea}>
+              <RailTooltip active={isRail} label="CPAP Analyzer">
+                <NavLink
+                  to="/"
+                  end
+                  className={styles.brand}
+                  aria-label="CPAP Analyzer — go to Dashboard"
+                  onClick={closeSidebar}
+                >
+                  <Icon name="brand" size="lg" className={styles.brandMark} />
+                  <span className={styles.wordmark} aria-hidden="true">
+                    <span className={styles.wordmarkPrimary}>CPAP</span>
+                    <span className={styles.wordmarkSecondary}>Analyzer</span>
+                  </span>
+                  {/* Contiguous text for screen readers and text-based selectors;
                     the visible wordmark above is split for two-tone styling and
                     is aria-hidden, so this provides one clean "CPAP Analyzer"
                     node. */}
-                <span className={styles.srOnly}>CPAP Analyzer</span>
-              </NavLink>
-            </RailTooltip>
-          </div>
+                  <span className={styles.srOnly}>CPAP Analyzer</span>
+                </NavLink>
+              </RailTooltip>
+            </div>
 
-          {/* Single navigation landmark: scrollable groups plus a pinned
+            {/* Single navigation landmark: scrollable groups plus a pinned
               footer region (Help / Settings). Keeping one <nav> means e2e
               `getByRole('navigation')` resolves unambiguously and all six
               section links plus Help/Settings live inside it. */}
-          <nav className={styles.nav} aria-label="Primary">
-            <div className={styles.navGroups}>
-              <NavGroup
-                label="Analysis"
-                items={ANALYSIS_ITEMS}
-                isRail={isRail}
-                onNavigate={closeSidebar}
-              />
-              <NavGroup label="Data" items={DATA_ITEMS} isRail={isRail} onNavigate={closeSidebar} />
-            </div>
+            <nav className={styles.nav} aria-label="Primary">
+              <div className={styles.navGroups}>
+                <NavGroup
+                  label="Analysis"
+                  items={ANALYSIS_ITEMS}
+                  isRail={isRail}
+                  onNavigate={closeSidebar}
+                />
+                <NavGroup
+                  label="Data"
+                  items={DATA_ITEMS}
+                  isRail={isRail}
+                  onNavigate={closeSidebar}
+                />
+              </div>
 
-            <div className={styles.sidebarFooter}>
-              <ul className={styles.navList}>
-                {FOOTER_ITEMS.map((item) => (
-                  <li key={item.to}>
-                    <NavItemLink item={item} isRail={isRail} onNavigate={closeSidebar} />
-                  </li>
-                ))}
-              </ul>
+              <div className={styles.sidebarFooter}>
+                <ul className={styles.navList}>
+                  {FOOTER_ITEMS.map((item) => (
+                    <li key={item.to}>
+                      <NavItemLink item={item} isRail={isRail} onNavigate={closeSidebar} />
+                    </li>
+                  ))}
+                </ul>
 
-              {/* Dedicated desktop-only rail toggle, pinned below Help/Settings.
+                {/* Dedicated desktop-only rail toggle, pinned below Help/Settings.
                   Distinct from the mobile hamburger (which is hidden ≥768px), so
                   the two never coexist. */}
-              <RailTooltip active={isRail} label={isRail ? 'Expand sidebar' : 'Collapse sidebar'}>
-                <button
-                  type="button"
-                  className={styles.railToggle}
-                  onClick={handleRailToggle}
-                  aria-pressed={isRail}
-                  aria-label={isRail ? 'Expand sidebar' : 'Collapse sidebar'}
-                >
-                  {/* Swap the icon by state (no CSS rotation): chevron points
+                <RailTooltip active={isRail} label={isRail ? 'Expand sidebar' : 'Collapse sidebar'}>
+                  <button
+                    type="button"
+                    className={styles.railToggle}
+                    onClick={handleRailToggle}
+                    aria-pressed={isRail}
+                    aria-label={isRail ? 'Expand sidebar' : 'Collapse sidebar'}
+                  >
+                    {/* Swap the icon by state (no CSS rotation): chevron points
                       left when expanded (collapse-ward) and right when in rail
                       (expand-ward). */}
-                  <Icon
-                    name={isRail ? 'chevron-right' : 'chevron-left'}
-                    size="md"
-                    className={styles.railToggleIcon}
-                  />
-                  <span className={styles.railToggleLabel}>Collapse</span>
+                    <Icon
+                      name={isRail ? 'chevron-right' : 'chevron-left'}
+                      size="md"
+                      className={styles.railToggleIcon}
+                    />
+                    <span className={styles.railToggleLabel}>Collapse</span>
+                  </button>
+                </RailTooltip>
+              </div>
+            </nav>
+          </aside>
+
+          {/* Content area */}
+          <div className={`${styles.content} ${isRail ? styles.contentRail : ''}`}>
+            <header className={styles.header}>
+              <div className={styles.headerLeft}>
+                <button
+                  ref={hamburgerRef}
+                  type="button"
+                  className={styles.menuToggle}
+                  onClick={toggleSidebar}
+                  aria-label={sidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                  aria-expanded={sidebarOpen}
+                >
+                  <Icon name={sidebarOpen ? 'close' : 'menu'} size="md" />
                 </button>
-              </RailTooltip>
-            </div>
-          </nav>
-        </aside>
-
-        {/* Content area */}
-        <div className={`${styles.content} ${isRail ? styles.contentRail : ''}`}>
-          <header className={styles.header}>
-            <div className={styles.headerLeft}>
-              <button
-                ref={hamburgerRef}
-                type="button"
-                className={styles.menuToggle}
-                onClick={toggleSidebar}
-                aria-label={sidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
-                aria-expanded={sidebarOpen}
-              >
-                <Icon name={sidebarOpen ? 'close' : 'menu'} size="md" />
-              </button>
-              {/* Non-heading element: avoids competing with view <h1>s for the
+                {/* Non-heading element: avoids competing with view <h1>s for the
                   heading role (e2e selectors target view headings). */}
-              <span className={styles.sectionTitle} aria-live="polite">
-                {sectionTitle}
-              </span>
-            </div>
-            <div className={styles.headerRight}>
-              <ThemeMenu />
-            </div>
-          </header>
-          <main id="main-content" className={styles.main} ref={mainRef} tabIndex={-1}>
-            <RouteErrorBoundary resetKeys={[location.pathname]}>
-              <Outlet />
-            </RouteErrorBoundary>
-          </main>
-          <StatusBar />
-        </div>
+                <span className={styles.sectionTitle} aria-live="polite">
+                  {sectionTitle}
+                </span>
+              </div>
+              <div className={styles.headerRight}>
+                <ThemeMenu />
+              </div>
+            </header>
+            <main id="main-content" className={styles.main} ref={mainRef} tabIndex={-1}>
+              <RouteErrorBoundary resetKeys={[location.pathname]}>
+                <Outlet />
+              </RouteErrorBoundary>
+            </main>
+            <StatusBar />
+          </div>
 
-        {/* AI Insights drawer — non-modal, app-level surface. Renders nothing
+          {/* AI Insights drawer — non-modal, app-level surface. Renders nothing
             unless an insight is open (and is gated to enabled triggers). */}
-        <InsightDrawer />
-      </div>
+          <InsightDrawer />
+
+          {/* Persistent import indicator — bottom-left pill that survives
+            navigation. Renders nothing unless an import is active or terminal
+            and not yet dismissed. Sibling of StatusBar / InsightDrawer. */}
+          <ImportStatusDock />
+        </div>
+      </ImportToastProvider>
     </TooltipProvider>
   );
 }

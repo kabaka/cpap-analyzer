@@ -2,25 +2,42 @@
  * Multi-step import wizard.
  *
  * Guides the user through data import from two sources:
- * - CPAP SD Card: Select files -> Scanning -> Importing -> Complete
- * - Google Health: Select source -> Preview (scan + choose data types) -> Importing -> Complete
+ * - CPAP SD Card: Select files -> Scanning/Importing (stage list) -> Complete
+ * - Google Health: Select source -> Preview (scan + choose data types) ->
+ *   Importing (stage list) -> Complete
+ *
+ * Since the import-redesign the live progress is driven by the unified, global
+ * {@link ImportJobProgress} held in {@link useImportStore} (the controller is the
+ * single writer). That means:
+ * - The importing/complete views render {@link ImportStageList} /
+ *   {@link ImportSummary} from the active job — and the SAME job is mirrored in
+ *   the persistent {@link ImportStatusDock}.
+ * - On mount, an import already running in the background (started elsewhere and
+ *   navigated back to) is reflected immediately; a terminal-but-undismissed job
+ *   shows its summary.
+ * - Starting a second import of the same kind while one runs is rejected by the
+ *   controller; we surface that rather than dropping it silently.
  *
  * @module views/DataManagement/ImportWizard
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Badge } from '@/components/ui';
+import { useStore } from 'zustand';
+
+import { Button, Card, Badge, Icon } from '@/components/ui';
+import { ImportStageList, ImportSummary, type SummaryStat } from '@/components/import';
 import { useImport } from '@/hooks/useImport';
 import { useGoogleHealthImport } from '@/hooks/useGoogleHealthImport';
-import type { ImportProgress, ImportError } from '@/services/import/types';
-import type { GoogleHealthImportProgress } from '@/services/import/types';
+import { importController } from '@/services/import/ImportController';
+import { useImportStore, selectLatestJobOfKind } from '@/stores/useImportStore';
+import type { ImportJobProgress } from '@/services/import/types';
 import type { GoogleHealthScanResult, GoogleHealthDataTypeInfo } from '@/types/fitbit';
 import { FITBIT_DATA_TIERS } from '@/types/fitbit';
-import type { IntegrationImportRecord } from '@/types/storage';
+import type { ImportRecord, IntegrationImportRecord } from '@/types/storage';
 import styles from './ImportWizard.module.css';
 
-type WizardStep = 'select' | 'preview' | 'scanning' | 'importing' | 'complete';
+type WizardStep = 'select' | 'preview' | 'importing' | 'complete';
 
 /** The active import source the user chose. */
 type ImportSource = 'cpap' | 'google-health' | null;
@@ -53,6 +70,11 @@ function formatDate(iso: string): string {
   }
 }
 
+/** Whether a job status is terminal (complete / error / cancelled). */
+function isTerminalStatus(status: ImportJobProgress['status']): boolean {
+  return status === 'complete' || status === 'error' || status === 'cancelled';
+}
+
 export default function ImportWizard() {
   const navigate = useNavigate();
 
@@ -60,7 +82,6 @@ export default function ImportWizard() {
   const {
     startFileImport,
     startDirectoryImport,
-    progress: cpapProgress,
     result: cpapResult,
     error: cpapError,
     reset: cpapReset,
@@ -71,22 +92,68 @@ export default function ImportWizard() {
     scan: ghScan,
     startImport: ghStartImport,
     scanResult: ghScanResult,
-    progress: ghProgress,
     isActive: ghIsActive,
     result: ghResult,
     error: ghError,
     reset: ghReset,
   } = useGoogleHealthImport();
 
+  // Unified, global job progress (the single source of truth driving the views
+  // AND the persistent dock). Selecting by kind keeps the wizard in sync with a
+  // job started in the background.
+  const cpapEntry = useStore(useImportStore, (s) => selectLatestJobOfKind(s, 'cpap'));
+  const fitbitEntry = useStore(useImportStore, (s) => selectLatestJobOfKind(s, 'fitbit'));
+
   const [step, setStep] = useState<WizardStep>('select');
   const [source, setSource] = useState<ImportSource>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [errorsExpanded, setErrorsExpanded] = useState(false);
   const [ghScanning, setGhScanning] = useState(false);
   const [ghScanError, setGhScanError] = useState<string | null>(null);
   const [ghDirHandle, setGhDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [ghSelectedTypes, setGhSelectedTypes] = useState<Set<string>>(new Set());
+  const [busyNotice, setBusyNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // The job progress relevant to the chosen source.
+  const activeJobProgress: ImportJobProgress | null = useMemo(() => {
+    if (source === 'cpap') return cpapEntry?.progress ?? null;
+    if (source === 'google-health') return fitbitEntry?.progress ?? null;
+    return null;
+  }, [source, cpapEntry, fitbitEntry]);
+
+  // On first mount, if a job of either kind is already active or terminal but
+  // not yet dismissed, adopt its source and jump to the right step. Runs once.
+  const adoptedRef = useRef(false);
+  useEffect(() => {
+    if (adoptedRef.current) return;
+    adoptedRef.current = true;
+    const cpap = cpapEntry?.progress;
+    const fitbit = fitbitEntry?.progress;
+    const cpapLive =
+      cpap &&
+      (cpap.status === 'scanning' || cpap.status === 'running' || isTerminalStatus(cpap.status));
+    const fitbitLive =
+      fitbit &&
+      (fitbit.status === 'scanning' ||
+        fitbit.status === 'running' ||
+        isTerminalStatus(fitbit.status));
+    // Prefer the freshest live job.
+    const pick =
+      cpapLive && fitbitLive
+        ? cpap.startedAtMs >= fitbit.startedAtMs
+          ? 'cpap'
+          : 'google-health'
+        : cpapLive
+          ? 'cpap'
+          : fitbitLive
+            ? 'google-health'
+            : null;
+    if (!pick) return;
+    const progress = pick === 'cpap' ? cpap : fitbit;
+    if (!progress) return;
+    setSource(pick);
+    setStep(isTerminalStatus(progress.status) ? 'complete' : 'importing');
+  }, [cpapEntry, fitbitEntry]);
 
   // Initialize selected types when scan completes
   useEffect(() => {
@@ -95,49 +162,26 @@ export default function ImportWizard() {
     }
   }, [ghScanResult]);
 
-  // Sync wizard step from CPAP progress status
+  // Sync wizard step from the unified job status for the chosen source.
   useEffect(() => {
-    if (source !== 'cpap') return;
-
-    if (cpapProgress.status === 'scanning') {
-      setStep('scanning');
-    } else if (
-      cpapProgress.status === 'parsing' ||
-      cpapProgress.status === 'building' ||
-      cpapProgress.status === 'storing'
-    ) {
+    if (!activeJobProgress) return;
+    const s = activeJobProgress.status;
+    if (s === 'scanning' || s === 'running') {
       setStep('importing');
-    } else if (cpapProgress.status === 'complete' || cpapProgress.status === 'error') {
+    } else if (isTerminalStatus(s)) {
       setStep('complete');
     }
-  }, [cpapProgress.status, source]);
-
-  // Sync wizard step from Google Health progress status
-  useEffect(() => {
-    if (source !== 'google-health' || !ghProgress) return;
-
-    if (
-      ghProgress.status === 'parsing' ||
-      ghProgress.status === 'storing' ||
-      ghProgress.status === 'scanning'
-    ) {
-      setStep('importing');
-    } else if (ghProgress.status === 'complete' || ghProgress.status === 'error') {
-      setStep('complete');
-    }
-  }, [ghProgress, source]);
-
-  // Also transition to complete if ghResult or ghError arrive
-  useEffect(() => {
-    if (source !== 'google-health') return;
-    if (ghResult || ghError) {
-      setStep('complete');
-    }
-  }, [ghResult, ghError, source]);
+  }, [activeJobProgress]);
 
   // ── CPAP File Selection Handlers ──
 
   const handleBrowseFolder = useCallback(async () => {
+    setBusyNotice(null);
+    if (importController.isActive('cpap')) {
+      setSource('cpap');
+      setBusyNotice('A CPAP import is already running. Showing its progress.');
+      return;
+    }
     setSource('cpap');
     if (hasDirectoryPicker()) {
       try {
@@ -150,8 +194,6 @@ export default function ImportWizard() {
           setSource(null);
           return;
         }
-        // eslint-disable-next-line no-console
-        console.error('Failed to open directory picker:', err);
         setSource(null);
       }
     } else {
@@ -163,6 +205,11 @@ export default function ImportWizard() {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (files && files.length > 0) {
+        if (importController.isActive('cpap')) {
+          setSource('cpap');
+          setBusyNotice('A CPAP import is already running. Showing its progress.');
+          return;
+        }
         setSource('cpap');
         await startFileImport(Array.from(files));
       }
@@ -177,6 +224,12 @@ export default function ImportWizard() {
 
       const items = e.dataTransfer.items;
       if (!items || items.length === 0) return;
+
+      if (importController.isActive('cpap')) {
+        setSource('cpap');
+        setBusyNotice('A CPAP import is already running. Showing its progress.');
+        return;
+      }
 
       setSource('cpap');
 
@@ -219,6 +272,13 @@ export default function ImportWizard() {
 
   const handleGoogleHealthSelect = useCallback(async () => {
     if (!hasDirectoryPicker()) return;
+    setBusyNotice(null);
+
+    if (importController.isActive('fitbit')) {
+      setSource('google-health');
+      setBusyNotice('A Fitbit import is already running. Showing its progress.');
+      return;
+    }
 
     try {
       const handle = await (
@@ -241,8 +301,7 @@ export default function ImportWizard() {
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      // eslint-disable-next-line no-console
-      console.error('Failed to open directory picker:', err);
+      setGhScanError('Failed to open directory picker.');
     }
   }, [ghScan]);
 
@@ -270,7 +329,7 @@ export default function ImportWizard() {
     ghReset();
     setStep('select');
     setSource(null);
-    setErrorsExpanded(false);
+    setBusyNotice(null);
     setGhScanning(false);
     setGhScanError(null);
     setGhDirHandle(null);
@@ -278,6 +337,12 @@ export default function ImportWizard() {
   }, [cpapReset, ghReset]);
 
   const handleViewDashboard = useCallback(() => {
+    void navigate('/');
+  }, [navigate]);
+
+  const handleContinueInBackground = useCallback(() => {
+    // The job keeps running on the controller; just leave the page. The dock
+    // surfaces its progress everywhere.
     void navigate('/');
   }, [navigate]);
 
@@ -297,7 +362,6 @@ export default function ImportWizard() {
     }
     return [
       { key: 'select' as WizardStep, label: 'Select' },
-      { key: 'scanning' as WizardStep, label: 'Scan' },
       { key: 'importing' as WizardStep, label: 'Import' },
       { key: 'complete' as WizardStep, label: 'Complete' },
     ];
@@ -314,6 +378,7 @@ export default function ImportWizard() {
         {step === 'select' && (
           <SourceSelectStep
             dragOver={dragOver}
+            busyNotice={busyNotice}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -337,29 +402,26 @@ export default function ImportWizard() {
           />
         )}
 
-        {step === 'scanning' && source === 'cpap' && <ScanningStep progress={cpapProgress} />}
-
-        {step === 'importing' && source === 'cpap' && <CpapImportingStep progress={cpapProgress} />}
-
-        {step === 'importing' && source === 'google-health' && ghProgress && (
-          <GoogleHealthImportingStep progress={ghProgress} />
+        {step === 'importing' && activeJobProgress && (
+          <JobImportingStep
+            progress={activeJobProgress}
+            onContinueInBackground={handleContinueInBackground}
+          />
         )}
 
-        {step === 'complete' && source === 'cpap' && (
+        {step === 'complete' && source === 'cpap' && activeJobProgress && (
           <CpapCompleteStep
-            progress={cpapProgress}
+            progress={activeJobProgress}
             result={cpapResult}
             error={cpapError}
-            errorsExpanded={errorsExpanded}
-            onToggleErrors={() => setErrorsExpanded((v) => !v)}
             onViewDashboard={handleViewDashboard}
             onImportMore={handleReset}
           />
         )}
 
-        {step === 'complete' && source === 'google-health' && (
+        {step === 'complete' && source === 'google-health' && activeJobProgress && (
           <GoogleHealthCompleteStep
-            progress={ghProgress}
+            progress={activeJobProgress}
             result={ghResult}
             error={ghError}
             onViewDashboard={handleViewDashboard}
@@ -404,6 +466,7 @@ function StepIndicator({ currentStep, steps }: StepIndicatorProps) {
 
 interface SourceSelectStepProps {
   dragOver: boolean;
+  busyNotice: string | null;
   onDrop: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: (e: React.DragEvent) => void;
@@ -415,6 +478,7 @@ interface SourceSelectStepProps {
 
 function SourceSelectStep({
   dragOver,
+  busyNotice,
   onDrop,
   onDragOver,
   onDragLeave,
@@ -427,6 +491,11 @@ function SourceSelectStep({
 
   return (
     <Card className={styles.selectCard}>
+      {busyNotice && (
+        <p className={styles.busyNotice} role="status">
+          {busyNotice}
+        </p>
+      )}
       <div className={styles.sourceSelectGrid}>
         {/* CPAP SD Card source */}
         <div
@@ -445,9 +514,7 @@ function SourceSelectStep({
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
         >
-          <span className={styles.sourceCardIcon} aria-hidden="true">
-            💾
-          </span>
+          <Icon name="storage" size="lg" className={styles.sourceCardIcon} />
           <p className={styles.sourceCardTitle}>CPAP SD Card</p>
           <p className={styles.sourceCardDescription}>
             Import from your ResMed CPAP machine&apos;s SD card
@@ -471,9 +538,7 @@ function SourceSelectStep({
           }}
           style={!directoryPickerAvailable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
         >
-          <span className={styles.sourceCardIcon} aria-hidden="true">
-            ❤️
-          </span>
+          <Icon name="data" size="lg" className={styles.sourceCardIcon} />
           <p className={styles.sourceCardTitle}>Google Health (Fitbit)</p>
           <p className={styles.sourceCardDescription}>
             Import sleep, heart rate, SpO&#x2082;, and activity data from your Google Health
@@ -561,27 +626,13 @@ function GoogleHealthPreviewStep({
     return (
       <Card className={styles.previewCard}>
         <div className={styles.scanningOverlay}>
-          <span className={styles.progressIcon} aria-hidden="true">
-            🔍
+          <span className={styles.scanIcon} aria-hidden="true">
+            <Icon name="spinner" size="lg" className={styles.scanSpinner} />
           </span>
-          <p className={styles.scanningOverlayTitle}>Scanning Google Health data...</p>
+          <p className={styles.scanningOverlayTitle}>Scanning Google Health data…</p>
           <p className={styles.scanningOverlayDescription}>
             Discovering available data types in the selected folder.
           </p>
-          <div className={styles.progressBarWrapper}>
-            <div
-              className={styles.progressBar}
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={0}
-              aria-label="Scanning Google Health data"
-            >
-              <div
-                className={`${styles.progressFill} ${styles.progressFillFull} ${styles.progressIndeterminate}`}
-              />
-            </div>
-          </div>
         </div>
       </Card>
     );
@@ -591,8 +642,8 @@ function GoogleHealthPreviewStep({
     return (
       <Card className={styles.previewCard}>
         <div className={styles.scanningOverlay}>
-          <span className={styles.progressIcon} aria-hidden="true">
-            ❌
+          <span className={styles.scanIcon} style={{ color: 'var(--color-stage-error)' }}>
+            <Icon name="x-circle" size="lg" title="Scan failed" />
           </span>
           <p className={styles.scanningOverlayTitle}>Scan Failed</p>
           <p className={styles.errorMessage}>{scanError}</p>
@@ -608,8 +659,8 @@ function GoogleHealthPreviewStep({
     return (
       <Card className={styles.previewCard}>
         <div className={styles.scanningOverlay}>
-          <span className={styles.progressIcon} aria-hidden="true">
-            📭
+          <span className={styles.scanIcon} style={{ color: 'var(--color-stage-pending)' }}>
+            <Icon name="circle-dashed" size="lg" title="No data found" />
           </span>
           <p className={styles.scanningOverlayTitle}>No Data Found</p>
           <p className={styles.scanningOverlayDescription}>
@@ -712,174 +763,31 @@ function GoogleHealthPreviewStep({
   );
 }
 
-// ── Scanning Step (CPAP) ──
+// ── Unified Importing Step (CPAP + Google Health) ──
 
-function ScanningStep({ progress }: { progress: ImportProgress }) {
-  return (
-    <Card className={styles.progressCard}>
-      <div className={styles.progressContent}>
-        <span className={styles.progressIcon} aria-hidden="true">
-          🔍
-        </span>
-        <h2 className={styles.progressTitle}>Scanning files...</h2>
-        <p className={styles.progressDescription}>Discovering EDF files in the selected folder.</p>
-        <div className={styles.statsRow} aria-live="polite">
-          <span>{progress.totalFiles} files found</span>
-        </div>
-        <div className={styles.progressBarWrapper}>
-          <div
-            className={styles.progressBar}
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={0}
-            aria-label="Scanning files"
-          >
-            <div
-              className={`${styles.progressFill} ${styles.progressFillFull} ${styles.progressIndeterminate}`}
-            />
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
+interface JobImportingStepProps {
+  progress: ImportJobProgress;
+  onContinueInBackground: () => void;
 }
 
-// ── CPAP Importing Step ──
-
-function CpapImportingStep({ progress }: { progress: ImportProgress }) {
-  let percent = 0;
-  let stageLabel = '';
-
-  if (progress.status === 'parsing') {
-    percent =
-      progress.totalFiles > 0
-        ? Math.round((progress.filesProcessed / progress.totalFiles) * 100)
-        : 0;
-    stageLabel = `Parsing files: ${progress.filesProcessed} of ${progress.totalFiles}`;
-  } else if (progress.status === 'building') {
-    percent =
-      progress.totalDayGroups > 0
-        ? Math.round((progress.dayGroupsProcessed / progress.totalDayGroups) * 100)
-        : 0;
-    stageLabel = `Building sessions: day ${progress.dayGroupsProcessed} of ${progress.totalDayGroups}`;
-  } else if (progress.status === 'storing') {
-    percent =
-      progress.totalSessionsToStore > 0
-        ? Math.round((progress.sessionsStored / progress.totalSessionsToStore) * 100)
-        : 0;
-    stageLabel = `Storing sessions: ${progress.sessionsStored} of ${progress.totalSessionsToStore}`;
-  }
-
-  const fillRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (fillRef.current) {
-      fillRef.current.style.width = `${percent}%`;
-    }
-  }, [percent]);
+function JobImportingStep({ progress, onContinueInBackground }: JobImportingStepProps) {
+  const jobId = progress.jobId;
+  const handleCancel = useCallback(() => {
+    importController.cancel(jobId);
+  }, [jobId]);
 
   return (
     <Card className={styles.progressCard}>
-      <div className={styles.progressContent}>
-        <h2 className={styles.progressTitle}>Importing data...</h2>
-        <div className={styles.progressBarWrapper}>
-          <div
-            className={styles.progressBar}
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={percent}
-            aria-label={`Import progress: ${percent}%`}
-          >
-            <div ref={fillRef} className={styles.progressFill} />
-          </div>
-        </div>
-        <div className={styles.statsRow} aria-live="polite">
-          <span>{stageLabel}</span>
-          <span>{percent}%</span>
-        </div>
-        {progress.currentStage && (
-          <p className={styles.currentFile} aria-live="polite">
-            {progress.currentStage}
-          </p>
-        )}
-        <div className={styles.statsRow}>
-          <span>{progress.sessionsCreated} sessions created</span>
-          {progress.warnings.length > 0 && (
-            <Badge variant="warning" size="sm">
-              {progress.warnings.length} warnings
-            </Badge>
-          )}
-          {progress.errors.length > 0 && (
-            <Badge variant="danger" size="sm">
-              {progress.errors.length} errors
-            </Badge>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-// ── Google Health Importing Step ──
-
-function GoogleHealthImportingStep({ progress }: { progress: GoogleHealthImportProgress }) {
-  const percent =
-    progress.dataTypesTotal > 0
-      ? Math.round((progress.dataTypesProcessed / progress.dataTypesTotal) * 100)
-      : 0;
-
-  const fillRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (fillRef.current) {
-      fillRef.current.style.width = `${percent}%`;
-    }
-  }, [percent]);
-
-  const stageLabel =
-    progress.dataTypesTotal > 0
-      ? `Data types: ${progress.dataTypesProcessed} of ${progress.dataTypesTotal}`
-      : 'Preparing...';
-
-  return (
-    <Card className={styles.progressCard}>
-      <div className={styles.progressContent}>
-        <h2 className={styles.progressTitle}>Importing Google Health data...</h2>
-        <div className={styles.progressBarWrapper}>
-          <div
-            className={styles.progressBar}
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={percent}
-            aria-label={`Import progress: ${percent}%`}
-          >
-            <div ref={fillRef} className={styles.progressFill} />
-          </div>
-        </div>
-        <div className={styles.statsRow} aria-live="polite">
-          <span>{stageLabel}</span>
-          <span>{percent}%</span>
-        </div>
-        {progress.currentDataType && (
-          <p className={styles.currentFile} aria-live="polite">
-            Processing: {progress.currentDataType}
-          </p>
-        )}
-        <div className={styles.statsRow}>
-          <span>{progress.recordsProcessed.toLocaleString()} records processed</span>
-          {progress.recordsSkipped > 0 && (
-            <Badge variant="info" size="sm">
-              {progress.recordsSkipped.toLocaleString()} skipped (dedup)
-            </Badge>
-          )}
-          {progress.errors.length > 0 && (
-            <Badge variant="danger" size="sm">
-              {progress.errors.length} errors
-            </Badge>
-          )}
+      <div className={styles.importingContent}>
+        <h2 className={styles.progressTitle}>Importing data…</h2>
+        <ImportStageList progress={progress} />
+        <div className={styles.importingActions}>
+          <Button variant="secondary" onClick={onContinueInBackground}>
+            Continue in background
+          </Button>
+          <Button variant="danger" onClick={handleCancel}>
+            Cancel import
+          </Button>
         </div>
       </div>
     </Card>
@@ -889,11 +797,9 @@ function GoogleHealthImportingStep({ progress }: { progress: GoogleHealthImportP
 // ── CPAP Complete Step ──
 
 interface CpapCompleteStepProps {
-  progress: ImportProgress;
-  result: { sessionsImported: number; sessionsSkipped: number; errors: unknown[] } | null;
+  progress: ImportJobProgress;
+  result: ImportRecord | null;
   error: string | null;
-  errorsExpanded: boolean;
-  onToggleErrors: () => void;
   onViewDashboard: () => void;
   onImportMore: () => void;
 }
@@ -902,92 +808,21 @@ function CpapCompleteStep({
   progress,
   result,
   error,
-  errorsExpanded,
-  onToggleErrors,
   onViewDashboard,
   onImportMore,
 }: CpapCompleteStepProps) {
-  const hasErrors = progress.errors.length > 0 || error;
-  const isFullError = error && !result;
+  const isFullError = error !== null && !result;
+
+  const stats: SummaryStat[] = result
+    ? [
+        { label: 'Sessions imported', value: result.sessionsImported.toLocaleString() },
+        { label: 'Skipped (duplicates)', value: result.sessionsSkipped.toLocaleString() },
+      ]
+    : [];
 
   return (
     <Card className={styles.completeCard}>
-      <div className={styles.completeContent}>
-        {isFullError ? (
-          <>
-            <span className={styles.completeIcon} aria-hidden="true">
-              ❌
-            </span>
-            <h2 className={styles.completeTitle}>Import Failed</h2>
-            <p className={styles.errorMessage}>{error}</p>
-          </>
-        ) : (
-          <>
-            <span className={styles.completeIcon} aria-hidden="true">
-              ✅
-            </span>
-            <h2 className={styles.completeTitle}>Import Complete</h2>
-          </>
-        )}
-
-        {result && (
-          <div className={styles.summaryGrid}>
-            <div className={styles.summaryItem}>
-              <span className={styles.summaryValue}>{result.sessionsImported}</span>
-              <span className={styles.summaryLabel}>Sessions imported</span>
-            </div>
-            <div className={styles.summaryItem}>
-              <span className={styles.summaryValue}>{result.sessionsSkipped}</span>
-              <span className={styles.summaryLabel}>Skipped (duplicates)</span>
-            </div>
-            {progress.filesSkippedEmpty > 0 && (
-              <div className={styles.summaryItem}>
-                <span className={styles.summaryValue}>{progress.filesSkippedEmpty}</span>
-                <span className={styles.summaryLabel}>Empty files skipped</span>
-              </div>
-            )}
-            {progress.warnings.length > 0 && (
-              <div className={styles.summaryItem}>
-                <span className={styles.summaryValue}>{progress.warnings.length}</span>
-                <span className={styles.summaryLabel}>Warnings</span>
-              </div>
-            )}
-            {progress.errors.length > 0 && (
-              <div className={styles.summaryItem}>
-                <span className={styles.summaryValue}>{progress.errors.length}</span>
-                <span className={styles.summaryLabel}>Errors</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {hasErrors && progress.errors.length > 0 && (
-          <div className={styles.errorsSection}>
-            <button
-              className={styles.errorsToggle}
-              onClick={onToggleErrors}
-              aria-expanded={errorsExpanded ? 'true' : 'false'}
-            >
-              {errorsExpanded ? '▾' : '▸'} {progress.errors.length} file errors
-            </button>
-            {errorsExpanded && (
-              <ul className={styles.errorsList}>
-                {progress.errors.map((err: ImportError, i: number) => (
-                  <li key={i} className={styles.errorItem}>
-                    <code className={styles.errorFileName}>{err.fileName}</code>
-                    <span className={styles.errorText}>{err.error}</span>
-                    {err.recoverable && (
-                      <Badge variant="warning" size="sm">
-                        recoverable
-                      </Badge>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
+      <ImportSummary progress={progress} stats={stats} fatalError={isFullError ? error : null}>
         <div className={styles.completeActions}>
           {!isFullError && (
             <Button variant="primary" onClick={onViewDashboard}>
@@ -998,7 +833,7 @@ function CpapCompleteStep({
             {isFullError ? 'Try Again' : 'Import More'}
           </Button>
         </div>
-      </div>
+      </ImportSummary>
     </Card>
   );
 }
@@ -1006,7 +841,7 @@ function CpapCompleteStep({
 // ── Google Health Complete Step ──
 
 interface GoogleHealthCompleteStepProps {
-  progress: GoogleHealthImportProgress | null;
+  progress: ImportJobProgress;
   result: IntegrationImportRecord | null;
   error: string | null;
   onViewDashboard: () => void;
@@ -1022,60 +857,19 @@ function GoogleHealthCompleteStep({
   onExploreCorrelations,
   onImportMore,
 }: GoogleHealthCompleteStepProps) {
-  const isFullError = error && !result;
+  const isFullError = error !== null && !result;
+
+  const stats: SummaryStat[] = result
+    ? [
+        { label: 'Records imported', value: result.recordsImported.toLocaleString() },
+        { label: 'Skipped (duplicates)', value: result.recordsSkipped.toLocaleString() },
+        { label: 'Data types imported', value: result.dataTypes.length.toLocaleString() },
+      ]
+    : [];
 
   return (
     <Card className={styles.completeCard}>
-      <div className={styles.completeContent}>
-        {isFullError ? (
-          <>
-            <span className={styles.completeIcon} aria-hidden="true">
-              ❌
-            </span>
-            <h2 className={styles.completeTitle}>Import Failed</h2>
-            <p className={styles.errorMessage}>{error}</p>
-          </>
-        ) : (
-          <>
-            <span className={styles.completeIcon} aria-hidden="true">
-              ✅
-            </span>
-            <h2 className={styles.completeTitle}>Import Complete</h2>
-          </>
-        )}
-
-        {result && (
-          <div className={styles.summaryGrid}>
-            <div className={styles.summaryItem}>
-              <span className={styles.summaryValue}>{result.recordsImported.toLocaleString()}</span>
-              <span className={styles.summaryLabel}>Records imported</span>
-            </div>
-            <div className={styles.summaryItem}>
-              <span className={styles.summaryValue}>{result.recordsSkipped.toLocaleString()}</span>
-              <span className={styles.summaryLabel}>Skipped (duplicates)</span>
-            </div>
-            <div className={styles.summaryItem}>
-              <span className={styles.summaryValue}>{result.dataTypes.length}</span>
-              <span className={styles.summaryLabel}>Data types imported</span>
-            </div>
-            {result.errors.length > 0 && (
-              <div className={styles.summaryItem}>
-                <span className={styles.summaryValue}>{result.errors.length}</span>
-                <span className={styles.summaryLabel}>Errors</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {progress && progress.warnings.length > 0 && (
-          <div className={styles.errorsSection}>
-            <p className={styles.currentFile}>
-              {progress.warnings.length} warning{progress.warnings.length !== 1 ? 's' : ''} during
-              import
-            </p>
-          </div>
-        )}
-
+      <ImportSummary progress={progress} stats={stats} fatalError={isFullError ? error : null}>
         <div className={styles.completeActions}>
           {!isFullError && (
             <>
@@ -1091,7 +885,7 @@ function GoogleHealthCompleteStep({
             {isFullError ? 'Try Again' : 'Import More'}
           </Button>
         </div>
-      </div>
+      </ImportSummary>
     </Card>
   );
 }
