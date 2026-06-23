@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.13] — 2026-06-23
+
 ### Added
 
 - **A "Data persistence" indicator in Settings → Privacy & Storage → Storage Usage.** It tells you, in plain language, whether your browser has marked CPAP Analyzer's local data as **Protected** (persistent — the browser will not silently discard it to reclaim space) or **Not protected** (best-effort — eligible for automatic eviction under storage pressure). When it shows "Not protected," a **Protect my data** button asks the browser to grant persistent storage, and the indicator updates to reflect the result. This is purely local: requesting persistence sends nothing anywhere and contacts no network. A new "Keeping your data safe" help section and a new "Persistent Storage" glossary entry explain what eviction is, why a browser might discard app data, and how to satisfy the browser's heuristic so persistence is granted.
