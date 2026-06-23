@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.15] — 2026-06-23
+
 ### Fixed
 
 - **Google Health (Fitbit) imports no longer silently drop the heavy intraday data types — intraday heart rate, intraday SpO₂, HRV detail, and snoring.** On affected builds these full-resolution types imported **zero records** while the import still reported success; daily-resolution data and every other source were unaffected, which is why the gap went unnoticed. The cause was a defect in the Web Worker call wrapper that dropped the progress callback across the worker boundary, so every heavy-intraday file errored and was skipped — and because the lighter data still imported, the overall import looked successful. These intraday types now import correctly again. As a safeguard, this class of internal worker-serialisation failure now **fails the import loudly** rather than being silently skipped, so a future regression of this kind can no longer masquerade as success. **If you imported Fitbit/Google Health data on an affected build, please re-import** to pick up the missing intraday heart-rate, SpO₂, HRV, and snoring data; re-importing is safe — existing data is de-duplicated, so nothing is doubled.
