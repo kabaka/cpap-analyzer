@@ -53,6 +53,18 @@ export interface ProgressBarProps {
    * "Analyzing: 37 of 1825 nights done, 11 from cache."). Strongly recommended.
    */
   readonly valueText?: string;
+  /**
+   * Track/fill height. `md` (default) is the standard 8px bar; `sm` is a 6px
+   * mini-meter for dense surfaces such as the import dock. Purely presentational.
+   */
+  readonly size?: 'sm' | 'md';
+  /**
+   * Fill colour, mapping to the matching `--color-{tone}` token. `primary`
+   * (default) for in-progress work; `success` / `warning` / `error` for
+   * terminal states. Colour is reinforcement only — pair with text/ARIA, never
+   * rely on it alone (WCAG 1.4.1).
+   */
+  readonly tone?: 'primary' | 'success' | 'warning' | 'error';
   /** Optional extra class on the outer wrapper. */
   readonly className?: string;
 }
@@ -69,6 +81,8 @@ export function ProgressBar({
   label,
   labelledBy,
   valueText,
+  size = 'md',
+  tone = 'primary',
   className,
 }: ProgressBarProps): JSX.Element {
   const fillRef = useRef<HTMLDivElement>(null);
@@ -83,8 +97,18 @@ export function ProgressBar({
     el.style.width = `${percent}%`;
   }, [percent, indeterminate]);
 
-  const barClassName = [styles.bar, paused ? styles.paused : null].filter(Boolean).join(' ');
-  const fillClassName = [styles.fill, indeterminate ? styles.indeterminate : null]
+  const barClassName = [
+    styles.bar,
+    size === 'sm' ? styles.barSm : null,
+    paused ? styles.paused : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const fillClassName = [
+    styles.fill,
+    tone !== 'primary' ? styles[`tone-${tone}`] : null,
+    indeterminate ? styles.indeterminate : null,
+  ]
     .filter(Boolean)
     .join(' ');
   const wrapperClassName = [styles.wrapper, className].filter(Boolean).join(' ');

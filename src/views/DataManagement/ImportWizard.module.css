@@ -169,27 +169,28 @@
   line-height: var(--line-height-relaxed);
 }
 
-/* ── Progress Steps ── */
+/* ── Source-select busy notice ── */
+
+.busyNotice {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+/* ── Importing Step (stage list) ── */
 
 .progressCard {
   min-height: 240px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.progressContent {
+.importingContent {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-5);
   width: 100%;
-  max-width: 480px;
-  text-align: center;
-}
-
-.progressIcon {
-  font-size: 2rem;
 }
 
 .progressTitle {
@@ -199,74 +200,39 @@
   margin: 0;
 }
 
-.progressDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  margin: 0;
-}
-
-.progressBarWrapper {
-  width: 100%;
-}
-
-.progressBar {
-  width: 100%;
-  height: 8px;
-  background-color: var(--color-surface-tertiary);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.progressFill {
-  height: 100%;
-  background-color: var(--color-primary);
-  border-radius: var(--radius-full);
-  transition: width var(--transition-base);
-  width: 0;
-}
-
-.progressFillFull {
-  width: 100%;
-}
-
-.progressIndeterminate {
-  animation: indeterminate 1.5s ease-in-out infinite;
-}
-
-@keyframes indeterminate {
-  0% {
-    transform: translateX(-100%);
-  }
-  50% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.statsRow {
+.importingActions {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  flex-wrap: wrap;
   gap: var(--space-3);
+  margin-top: var(--space-2);
 }
 
-.currentFile {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  margin: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* ── Scan overlay (Google Health preview) ── */
+
+.scanIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-stage-active);
 }
 
-.currentFile code {
-  font-family: var(--font-family-mono);
+.scanSpinner {
+  animation: import-wizard-spin 0.9s linear infinite;
+}
+
+@keyframes import-wizard-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scanSpinner {
+    animation: none;
+  }
 }
 
 /* ── Complete Step ── */
@@ -275,116 +241,18 @@
   min-height: 240px;
 }
 
-.completeContent {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-5);
-  text-align: center;
-}
-
-.completeIcon {
-  font-size: 2.5rem;
-}
-
-.completeTitle {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0;
-}
-
-.summaryGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--space-4);
-  width: 100%;
-  max-width: 480px;
-}
-
-.summaryItem {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.summaryValue {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
-}
-
-.summaryLabel {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-}
-
 .errorMessage {
   font-size: var(--font-size-sm);
   color: var(--color-error);
   margin: 0;
 }
 
-.errorsSection {
-  width: 100%;
-  max-width: 480px;
-  text-align: left;
-}
-
-.errorsToggle {
-  background: none;
-  border: none;
-  padding: var(--space-2) 0;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-family: var(--font-family-sans);
-}
-
-.errorsToggle:hover {
-  color: var(--color-text-primary);
-}
-
-.errorsToggle:focus-visible {
-  outline: 2px solid var(--color-focus-ring);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-.errorsList {
-  list-style: none;
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-.errorItem {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border-bottom: 1px solid var(--color-border-subtle);
-  font-size: var(--font-size-xs);
-  flex-wrap: wrap;
-}
-
-.errorFileName {
-  font-family: var(--font-family-mono);
-  color: var(--color-text-primary);
-  font-weight: var(--font-weight-medium);
-}
-
-.errorText {
-  color: var(--color-error);
-}
-
 .completeActions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-3);
   margin-top: var(--space-4);
+  justify-content: center;
 }
 
 /* ── Source Select Step ── */
@@ -425,7 +293,7 @@
 }
 
 .sourceCardIcon {
-  font-size: 2.5rem;
+  color: var(--color-primary);
 }
 
 .sourceCardTitle {
@@ -603,10 +471,6 @@
 
   .stepLabel {
     display: none;
-  }
-
-  .summaryGrid {
-    grid-template-columns: repeat(2, 1fr);
   }
 
   .sourceSelectGrid {

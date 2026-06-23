@@ -23,9 +23,17 @@ export type IconName =
   | 'close'
   | 'chevron-left'
   | 'chevron-right'
+  | 'chevron-up'
+  | 'chevron-down'
   | 'storage'
   | 'calendar'
   | 'clock'
+  | 'check-circle'
+  | 'alert-triangle'
+  | 'x-circle'
+  | 'circle-dashed'
+  | 'circle-dot'
+  | 'spinner'
   | 'brand';
 
 export type IconSize = 'sm' | 'md' | 'lg';
@@ -140,6 +148,8 @@ const PATHS: Record<IconName, JSX.Element> = {
   ),
   'chevron-left': <polyline points="15 5 8 12 15 19" />,
   'chevron-right': <polyline points="9 5 16 12 9 19" />,
+  'chevron-up': <polyline points="5 15 12 8 19 15" />,
+  'chevron-down': <polyline points="5 9 12 16 19 9" />,
   storage: (
     <>
       <ellipse cx="12" cy="5.5" rx="7" ry="2.5" />
@@ -161,6 +171,37 @@ const PATHS: Record<IconName, JSX.Element> = {
       <polyline points="12 7 12 12 15.5 14" />
     </>
   ),
+  'check-circle': (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="8 12 11 15 16 9" />
+    </>
+  ),
+  'alert-triangle': (
+    <>
+      <path d="M12 3.5 21 19 H3 Z" strokeLinejoin="round" />
+      <line x1="12" y1="9" x2="12" y2="13.5" />
+      <circle cx="12" cy="16.5" r="0.9" fill="currentColor" stroke="none" />
+    </>
+  ),
+  'x-circle': (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="9" y1="9" x2="15" y2="15" />
+      <line x1="15" y1="9" x2="9" y2="15" />
+    </>
+  ),
+  'circle-dashed': <circle cx="12" cy="12" r="9" strokeDasharray="3.6 3.4" />,
+  'circle-dot': (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" />
+    </>
+  ),
+  // Open ~270° arc (top → right → bottom → left, missing the top-left quadrant).
+  // The consumer rotates this with CSS to spin it (and disables that under
+  // prefers-reduced-motion, falling back to a static status glyph).
+  spinner: <path d="M12 3 a9 9 0 1 1 -6.36 2.64" />,
   brand: (
     <>
       <path

@@ -24,9 +24,17 @@ describe('Icon', () => {
     'close',
     'chevron-left',
     'chevron-right',
+    'chevron-up',
+    'chevron-down',
     'storage',
     'calendar',
     'clock',
+    'check-circle',
+    'alert-triangle',
+    'x-circle',
+    'circle-dashed',
+    'circle-dot',
+    'spinner',
     'brand',
   ];
 

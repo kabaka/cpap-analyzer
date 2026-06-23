@@ -128,8 +128,8 @@ Each manufacturer plugin encapsulates all format-specific knowledge.
 2. The application may detect the card automatically (via File System Access API, if available) or the user selects the SD card location via a directory picker.
 3. The application scans the directory structure to identify machine model, data range, and estimated import size.
 4. A confirmation dialog shows what will be imported (date range, estimated sessions, estimated storage).
-5. Import proceeds with a progress indicator showing: files processed, sessions imported, time remaining.
-6. On completion, the user is directed to the dashboard.
+5. Import proceeds in the background, driven by a controller that lives outside any single view so it survives navigation, and surfaces a persistent, multi-stage progress indicator (a bottom-left pill expandable to a per-stage detail panel with a Cancel button, plus a completion toast). See ADR 0026 (Background Import Controller Outside the React Tree) for the control-loop and indicator design, and ADR 0027 (Fitbit/Google Health Parsing in Web Workers) for off-main-thread intraday parsing with determinate per-data-type progress.
+6. On completion, the user is directed to the dashboard (or continues wherever they navigated to while the import ran).
 
 ### 2.2 Incremental Import
 

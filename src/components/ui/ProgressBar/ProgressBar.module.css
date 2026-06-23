@@ -19,12 +19,34 @@
   overflow: hidden;
 }
 
+/* Compact size for dense surfaces (e.g. the import dock mini-meter). */
+.barSm {
+  height: 6px;
+}
+
 .fill {
   height: 100%;
   background-color: var(--color-primary);
   border-radius: var(--radius-full);
   transition: width var(--transition-base);
   width: 0;
+}
+
+/*
+ * Tone modifiers map the fill to a semantic colour token for terminal states.
+ * `primary` is the default fill above; these override it. Colour is
+ * reinforcement only — the caller carries the meaning in text + ARIA.
+ */
+.tone-success {
+  background-color: var(--color-success);
+}
+
+.tone-warning {
+  background-color: var(--color-warning);
+}
+
+.tone-error {
+  background-color: var(--color-error);
 }
 
 /* Indeterminate (no known total) — a sweeping shimmer. */

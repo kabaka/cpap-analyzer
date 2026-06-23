@@ -61,6 +61,51 @@ export interface ParsedRecord<T> {
 }
 
 // ---------------------------------------------------------------------------
+// Worker-safe pure cores
+// ---------------------------------------------------------------------------
+//
+// The heavy intraday parsers (heart rate, SpO2, HRV detail, snoring) are the
+// ones moved off the main thread (ADR 0027). Their core logic is factored out
+// here so that it (1) operates on already-decoded `(fileName, text)` input with
+// NO `File`/DOM dependency, and (2) can be invoked verbatim from BOTH the
+// existing `File[]`-based public functions (the equivalence baseline) and the
+// `fitbitParser.worker`.
+//
+// IMPORTANT: the arithmetic/semantics here are a VERBATIM move from the original
+// per-file bodies — same grouping, same `parseFitbitLegacyDateTime`, same
+// sort/map, same outputs. Golden-fixture tests gate this equivalence.
+
+/**
+ * Per-file progress callback for the chunked worker-safe cores.
+ *
+ * Invoked between processed chunks of a file's entries so the worker can report
+ * determinate within-file progress. `samplesTotal` is known up-front (right
+ * after `JSON.parse` / `parseCSV`), so the reported fraction is determinate.
+ */
+export interface CoreProgressReport {
+  /** 0-based index of the file currently being processed. */
+  readonly fileIndex: number;
+  /** Name of the file currently being processed. */
+  readonly fileName: string;
+  /** Entries processed so far within this file. */
+  readonly samplesProcessed: number;
+  /** Total entries in this file (known up-front). */
+  readonly samplesTotal: number;
+}
+
+/** Optional per-chunk progress callback passed to the worker-safe cores. */
+export type CoreProgressCallback = (report: CoreProgressReport) => void;
+
+/**
+ * Default chunk size for the per-entry loops in the worker-safe cores.
+ *
+ * Progress is emitted (and the cooperative chunk boundary is hit) every this
+ * many entries. Chosen to bound `postMessage` frequency from the worker while
+ * keeping the within-file progress bar visibly live on ~17k-sample HR files.
+ */
+export const DEFAULT_CORE_CHUNK_SIZE = 2_000;
+
+// ---------------------------------------------------------------------------
 // Sleep sessions (JSON)
 // ---------------------------------------------------------------------------
 
@@ -323,69 +368,96 @@ export async function parseSpO2IntradayFiles(
   files: File[],
 ): Promise<ParsedRecord<FitbitSpO2Intraday>[]> {
   const results: ParsedRecord<FitbitSpO2Intraday>[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    results.push(...parseSpO2IntradayCore(file.name, await file.text(), i));
+  }
+  return results;
+}
 
-  for (const file of files) {
-    try {
-      const text = await file.text();
-      const { headers, rows } = parseCSV(text);
-      const idx = buildColumnIndex(headers);
+/**
+ * Worker-safe core for {@link parseSpO2IntradayFiles}. Operates on decoded text.
+ *
+ * Verbatim move of the per-file body. Chunks the per-row loop so a progress
+ * callback can report determinate within-file progress (`onProgress`). The
+ * returned output is byte-identical to the corresponding single-file slice of
+ * {@link parseSpO2IntradayFiles}.
+ */
+export function parseSpO2IntradayCore(
+  fileName: string,
+  text: string,
+  fileIndex = 0,
+  onProgress?: CoreProgressCallback,
+  chunkSize: number = DEFAULT_CORE_CHUNK_SIZE,
+): ParsedRecord<FitbitSpO2Intraday>[] {
+  const results: ParsedRecord<FitbitSpO2Intraday>[] = [];
 
-      // Group samples by date
-      const grouped = new Map<string, { timestamps: Date[]; values: number[] }>();
+  try {
+    const { headers, rows } = parseCSV(text);
+    const idx = buildColumnIndex(headers);
 
-      for (const row of rows) {
-        try {
-          const timestamp = getColumn(row, idx, 'timestamp');
-          const valueStr = getColumn(row, idx, 'value');
-          if (!timestamp || !valueStr) continue;
+    // Group samples by date
+    const grouped = new Map<string, { timestamps: Date[]; values: number[] }>();
 
-          const value = parseNumericField(valueStr);
-          if (value === null || value === 50) continue; // Sentinel filter
+    const total = rows.length;
+    for (let r = 0; r < total; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      try {
+        const timestamp = getColumn(row, idx, 'timestamp');
+        const valueStr = getColumn(row, idx, 'value');
+        if (!timestamp || !valueStr) continue;
 
-          const date = extractDate(timestamp);
-          const ts = new Date(timestamp);
-          if (Number.isNaN(ts.getTime())) continue;
+        const value = parseNumericField(valueStr);
+        if (value === null || value === 50) continue; // Sentinel filter
 
-          let group = grouped.get(date);
-          if (!group) {
-            group = { timestamps: [], values: [] };
-            grouped.set(date, group);
-          }
-          group.timestamps.push(ts);
-          group.values.push(value);
-        } catch {
-          // Skip malformed row silently for intraday data
+        const date = extractDate(timestamp);
+        const ts = new Date(timestamp);
+        if (Number.isNaN(ts.getTime())) continue;
+
+        let group = grouped.get(date);
+        if (!group) {
+          group = { timestamps: [], values: [] };
+          grouped.set(date, group);
         }
+        group.timestamps.push(ts);
+        group.values.push(value);
+      } catch {
+        // Skip malformed row silently for intraday data
       }
-
-      for (const [date, group] of grouped) {
-        if (group.timestamps.length === 0) continue;
-
-        // Sort by timestamp
-        const sortedPairs = group.timestamps
-          .map((ts, i) => ({ ts, value: group.values[i] ?? 0 }))
-          .sort((a, b) => a.ts.getTime() - b.ts.getTime());
-
-        const firstTs = sortedPairs[0]?.ts;
-        if (!firstTs) continue;
-
-        const samples = sortedPairs.map((pair) => ({
-          minuteOffset: Math.round((pair.ts.getTime() - firstTs.getTime()) / 60_000),
-          value: pair.value,
-        }));
-
-        results.push({
-          date,
-          data: {
-            samples,
-            sleepStartTime: firstTs.toISOString(),
-            sampleCount: samples.length,
-          },
-        });
-      }
-    } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse SpO2 intraday file ${file.name}:`, e);
+      reportChunk(onProgress, fileIndex, fileName, r, total, chunkSize);
     }
+
+    for (const [date, group] of grouped) {
+      if (group.timestamps.length === 0) continue;
+
+      // Sort by timestamp
+      const sortedPairs = group.timestamps
+        .map((ts, i) => ({ ts, value: group.values[i] ?? 0 }))
+        .sort((a, b) => a.ts.getTime() - b.ts.getTime());
+
+      const firstTs = sortedPairs[0]?.ts;
+      if (!firstTs) continue;
+
+      const samples = sortedPairs.map((pair) => ({
+        minuteOffset: Math.round((pair.ts.getTime() - firstTs.getTime()) / 60_000),
+        value: pair.value,
+      }));
+
+      results.push({
+        date,
+        data: {
+          samples,
+          sleepStartTime: firstTs.toISOString(),
+          sampleCount: samples.length,
+        },
+      });
+    }
+
+    onProgress?.({ fileIndex, fileName, samplesProcessed: total, samplesTotal: total });
+  } catch (e) {
+    console.warn(`[GoogleHealth] Failed to parse SpO2 intraday file ${fileName}:`, e);
   }
 
   return results;
@@ -457,51 +529,77 @@ export async function parseHRVDailyFiles(files: File[]): Promise<ParsedRecord<Fi
  */
 export async function parseHRVDetailFiles(files: File[]): Promise<ParsedRecord<FitbitHRVDetail>[]> {
   const results: ParsedRecord<FitbitHRVDetail>[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    results.push(...parseHRVDetailCore(file.name, await file.text(), i));
+  }
+  return results;
+}
 
-  for (const file of files) {
-    try {
-      const text = await file.text();
-      const { headers, rows } = parseCSV(text);
-      const idx = buildColumnIndex(headers);
+/**
+ * Worker-safe core for {@link parseHRVDetailFiles}. Operates on decoded text.
+ *
+ * Verbatim move of the per-file body; chunked for determinate progress. Output
+ * is byte-identical to the corresponding single-file slice of
+ * {@link parseHRVDetailFiles}.
+ */
+export function parseHRVDetailCore(
+  fileName: string,
+  text: string,
+  fileIndex = 0,
+  onProgress?: CoreProgressCallback,
+  chunkSize: number = DEFAULT_CORE_CHUNK_SIZE,
+): ParsedRecord<FitbitHRVDetail>[] {
+  const results: ParsedRecord<FitbitHRVDetail>[] = [];
 
-      // Group intervals by date
-      const grouped = new Map<string, FitbitHRVDetailInterval[]>();
+  try {
+    const { headers, rows } = parseCSV(text);
+    const idx = buildColumnIndex(headers);
 
-      for (const row of rows) {
-        try {
-          const timestamp = getColumn(row, idx, 'timestamp');
-          if (!timestamp) continue;
+    // Group intervals by date
+    const grouped = new Map<string, FitbitHRVDetailInterval[]>();
 
-          const rmssd = parseNumericField(getColumn(row, idx, 'rmssd'));
-          if (rmssd === null) continue;
+    const total = rows.length;
+    for (let r = 0; r < total; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      try {
+        const timestamp = getColumn(row, idx, 'timestamp');
+        if (!timestamp) continue;
 
-          const date = extractDate(timestamp);
-          const interval: FitbitHRVDetailInterval = {
-            timestamp,
-            rmssd,
-            coverage: parseNumericFieldWithDefault(getColumn(row, idx, 'coverage'), 0),
-            hf: parseNumericFieldWithDefault(getColumn(row, idx, 'high_frequency'), 0),
-            lf: parseNumericFieldWithDefault(getColumn(row, idx, 'low_frequency'), 0),
-          };
+        const rmssd = parseNumericField(getColumn(row, idx, 'rmssd'));
+        if (rmssd === null) continue;
 
-          let group = grouped.get(date);
-          if (!group) {
-            group = [];
-            grouped.set(date, group);
-          }
-          group.push(interval);
-        } catch {
-          // Skip silently for detail data
+        const date = extractDate(timestamp);
+        const interval: FitbitHRVDetailInterval = {
+          timestamp,
+          rmssd,
+          coverage: parseNumericFieldWithDefault(getColumn(row, idx, 'coverage'), 0),
+          hf: parseNumericFieldWithDefault(getColumn(row, idx, 'high_frequency'), 0),
+          lf: parseNumericFieldWithDefault(getColumn(row, idx, 'low_frequency'), 0),
+        };
+
+        let group = grouped.get(date);
+        if (!group) {
+          group = [];
+          grouped.set(date, group);
         }
+        group.push(interval);
+      } catch {
+        // Skip silently for detail data
       }
-
-      for (const [date, intervals] of grouped) {
-        if (intervals.length === 0) continue;
-        results.push({ date, data: { intervals } });
-      }
-    } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse HRV detail file ${file.name}:`, e);
+      reportChunk(onProgress, fileIndex, fileName, r, total, chunkSize);
     }
+
+    for (const [date, intervals] of grouped) {
+      if (intervals.length === 0) continue;
+      results.push({ date, data: { intervals } });
+    }
+
+    onProgress?.({ fileIndex, fileName, samplesProcessed: total, samplesTotal: total });
+  } catch (e) {
+    console.warn(`[GoogleHealth] Failed to parse HRV detail file ${fileName}:`, e);
   }
 
   return results;
@@ -739,66 +837,101 @@ export async function parseHeartRateIntradayFiles(
   files: File[],
 ): Promise<ParsedRecord<FitbitHeartRateIntraday>[]> {
   const results: ParsedRecord<FitbitHeartRateIntraday>[] = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    results.push(...parseHeartRateIntradayCore(file.name, await file.text(), i));
+  }
+  return results;
+}
 
-  for (const file of files) {
-    try {
-      const text = await file.text();
-      const entries: RawHeartRateIntradayEntry[] = JSON.parse(text) as RawHeartRateIntradayEntry[];
+/**
+ * Worker-safe core for {@link parseHeartRateIntradayFiles}. Operates on decoded
+ * text.
+ *
+ * This is the heaviest parser (a synchronous `JSON.parse` of ~17k entries plus a
+ * full `.sort()` and `.map()`), and the primary reason for the worker move (ADR
+ * 0027). The body is a VERBATIM move — same grouping, same
+ * {@link parseFitbitLegacyDateTime}, same sort/map — so the output is
+ * byte-identical to the corresponding single-file slice of
+ * {@link parseHeartRateIntradayFiles}. The only addition is the chunked progress
+ * callback over the (now-known-up-front) entries array.
+ */
+export function parseHeartRateIntradayCore(
+  fileName: string,
+  text: string,
+  fileIndex = 0,
+  onProgress?: CoreProgressCallback,
+  chunkSize: number = DEFAULT_CORE_CHUNK_SIZE,
+): ParsedRecord<FitbitHeartRateIntraday>[] {
+  const results: ParsedRecord<FitbitHeartRateIntraday>[] = [];
 
-      // Group raw (epochMs, bpm, confidence) tuples by calendar date.
-      const grouped = new Map<string, { epochMs: number; bpm: number; confidence: number }[]>();
+  try {
+    const entries: RawHeartRateIntradayEntry[] = JSON.parse(text) as RawHeartRateIntradayEntry[];
 
-      for (const entry of entries) {
-        try {
-          const bpm = entry.value?.bpm;
-          if (entry.dateTime === undefined || typeof bpm !== 'number' || !Number.isFinite(bpm)) {
-            continue;
-          }
+    // Group raw (epochMs, bpm, confidence) tuples by calendar date.
+    const grouped = new Map<string, { epochMs: number; bpm: number; confidence: number }[]>();
 
-          const { epochMs, date } = parseFitbitLegacyDateTime(entry.dateTime);
-          const rawConfidence = entry.value?.confidence;
-          const confidence =
-            typeof rawConfidence === 'number' && Number.isFinite(rawConfidence) ? rawConfidence : 0;
-
-          let group = grouped.get(date);
-          if (!group) {
-            group = [];
-            grouped.set(date, group);
-          }
-          group.push({ epochMs, bpm, confidence });
-        } catch {
-          // Skip malformed sample silently for high-frequency intraday data.
+    const total = entries.length;
+    for (let e = 0; e < total; e++) {
+      const entry = entries[e];
+      try {
+        const bpm = entry?.value?.bpm;
+        if (
+          entry === undefined ||
+          entry.dateTime === undefined ||
+          typeof bpm !== 'number' ||
+          !Number.isFinite(bpm)
+        ) {
+          continue;
         }
+
+        const { epochMs, date } = parseFitbitLegacyDateTime(entry.dateTime);
+        const rawConfidence = entry.value?.confidence;
+        const confidence =
+          typeof rawConfidence === 'number' && Number.isFinite(rawConfidence) ? rawConfidence : 0;
+
+        let group = grouped.get(date);
+        if (!group) {
+          group = [];
+          grouped.set(date, group);
+        }
+        group.push({ epochMs, bpm, confidence });
+      } catch {
+        // Skip malformed sample silently for high-frequency intraday data.
       }
-
-      for (const [date, raw] of grouped) {
-        if (raw.length === 0) continue;
-
-        // Sort chronologically so offsets are non-negative and monotonic.
-        raw.sort((a, b) => a.epochMs - b.epochMs);
-
-        const base = raw[0];
-        if (!base) continue;
-        const baseTimestampMs = base.epochMs;
-
-        const samples: FitbitHeartRateIntradaySample[] = raw.map((r) => ({
-          offsetSec: Math.round((r.epochMs - baseTimestampMs) / 1000),
-          bpm: r.bpm,
-          confidence: r.confidence,
-        }));
-
-        results.push({
-          date,
-          data: {
-            baseTimestampMs,
-            samples,
-            sampleCount: samples.length,
-          },
-        });
-      }
-    } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse intraday heart rate file ${file.name}:`, e);
+      reportChunk(onProgress, fileIndex, fileName, e, total, chunkSize);
     }
+
+    for (const [date, raw] of grouped) {
+      if (raw.length === 0) continue;
+
+      // Sort chronologically so offsets are non-negative and monotonic.
+      raw.sort((a, b) => a.epochMs - b.epochMs);
+
+      const base = raw[0];
+      if (!base) continue;
+      const baseTimestampMs = base.epochMs;
+
+      const samples: FitbitHeartRateIntradaySample[] = raw.map((r) => ({
+        offsetSec: Math.round((r.epochMs - baseTimestampMs) / 1000),
+        bpm: r.bpm,
+        confidence: r.confidence,
+      }));
+
+      results.push({
+        date,
+        data: {
+          baseTimestampMs,
+          samples,
+          sampleCount: samples.length,
+        },
+      });
+    }
+
+    onProgress?.({ fileIndex, fileName, samplesProcessed: total, samplesTotal: total });
+  } catch (e) {
+    console.warn(`[GoogleHealth] Failed to parse intraday heart rate file ${fileName}:`, e);
   }
 
   return results;
@@ -1112,76 +1245,110 @@ export async function parseSnoringFiles(files: File[]): Promise<{
   const daily: ParsedRecord<FitbitSnoringDaily>[] = [];
   const segments: ParsedRecord<FitbitSnoringSegments>[] = [];
 
-  for (const file of files) {
-    try {
-      const text = await file.text();
-      const { headers, rows } = parseCSV(text);
-      const idx = buildColumnIndex(headers);
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    const result = parseSnoringCore(file.name, await file.text(), i);
+    daily.push(...result.daily);
+    segments.push(...result.segments);
+  }
 
-      // Group by date
-      const grouped = new Map<string, FitbitSnoringSegment[]>();
+  return { daily, segments };
+}
 
-      for (const row of rows) {
-        try {
-          const timestamp = getColumn(row, idx, 'timestamp');
-          if (!timestamp) continue;
+/**
+ * Worker-safe core for {@link parseSnoringFiles}. Operates on decoded text.
+ *
+ * Verbatim move of the per-file body; chunked for determinate progress. Output
+ * is byte-identical to the corresponding single-file slice of
+ * {@link parseSnoringFiles}.
+ */
+export function parseSnoringCore(
+  fileName: string,
+  text: string,
+  fileIndex = 0,
+  onProgress?: CoreProgressCallback,
+  chunkSize: number = DEFAULT_CORE_CHUNK_SIZE,
+): {
+  daily: ParsedRecord<FitbitSnoringDaily>[];
+  segments: ParsedRecord<FitbitSnoringSegments>[];
+} {
+  const daily: ParsedRecord<FitbitSnoringDaily>[] = [];
+  const segments: ParsedRecord<FitbitSnoringSegments>[] = [];
 
-          const date = extractDate(timestamp);
-          const meanDba = parseNumericFieldWithDefault(getColumn(row, idx, 'mean_dba'), 0);
-          const maxDba = parseNumericFieldWithDefault(getColumn(row, idx, 'max_dba'), 0);
-          const sampleDuration = parseNumericFieldWithDefault(
-            getColumn(row, idx, 'sample_duration'),
-            30,
-          );
-          const snoreLabel = getColumn(row, idx, 'snore_label');
-          const snoreDetected = snoreLabel === '1' || snoreLabel === 'true';
+  try {
+    const { headers, rows } = parseCSV(text);
+    const idx = buildColumnIndex(headers);
 
-          const segment: FitbitSnoringSegment = {
-            timestamp,
-            durationSeconds: sampleDuration,
-            meanDba,
-            maxDba,
-            snoreDetected,
-          };
+    // Group by date
+    const grouped = new Map<string, FitbitSnoringSegment[]>();
 
-          let group = grouped.get(date);
-          if (!group) {
-            group = [];
-            grouped.set(date, group);
-          }
-          group.push(segment);
-        } catch {
-          // Skip silently
+    const total = rows.length;
+    for (let r = 0; r < total; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      try {
+        const timestamp = getColumn(row, idx, 'timestamp');
+        if (!timestamp) continue;
+
+        const date = extractDate(timestamp);
+        const meanDba = parseNumericFieldWithDefault(getColumn(row, idx, 'mean_dba'), 0);
+        const maxDba = parseNumericFieldWithDefault(getColumn(row, idx, 'max_dba'), 0);
+        const sampleDuration = parseNumericFieldWithDefault(
+          getColumn(row, idx, 'sample_duration'),
+          30,
+        );
+        const snoreLabel = getColumn(row, idx, 'snore_label');
+        const snoreDetected = snoreLabel === '1' || snoreLabel === 'true';
+
+        const segment: FitbitSnoringSegment = {
+          timestamp,
+          durationSeconds: sampleDuration,
+          meanDba,
+          maxDba,
+          snoreDetected,
+        };
+
+        let group = grouped.get(date);
+        if (!group) {
+          group = [];
+          grouped.set(date, group);
         }
+        group.push(segment);
+      } catch {
+        // Skip silently
       }
-
-      for (const [date, segs] of grouped) {
-        if (segs.length === 0) continue;
-
-        // Build daily summary
-        const totalDurationMinutes = segs.reduce((sum, s) => sum + s.durationSeconds / 60, 0);
-        const dbValues = segs.filter((s) => s.meanDba > 0).map((s) => s.meanDba);
-        const maxDbValues = segs.filter((s) => s.maxDba > 0).map((s) => s.maxDba);
-
-        daily.push({
-          date,
-          data: {
-            totalSegments: segs.length,
-            totalDurationMinutes: Math.round(totalDurationMinutes * 10) / 10,
-            avgDb:
-              dbValues.length > 0
-                ? Math.round((dbValues.reduce((a, b) => a + b, 0) / dbValues.length) * 10) / 10
-                : null,
-            maxDb: maxDbValues.length > 0 ? Math.max(...maxDbValues) : null,
-          },
-        });
-
-        // Build segment timeseries
-        segments.push({ date, data: { segments: segs } });
-      }
-    } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse snoring file ${file.name}:`, e);
+      reportChunk(onProgress, fileIndex, fileName, r, total, chunkSize);
     }
+
+    for (const [date, segs] of grouped) {
+      if (segs.length === 0) continue;
+
+      // Build daily summary
+      const totalDurationMinutes = segs.reduce((sum, s) => sum + s.durationSeconds / 60, 0);
+      const dbValues = segs.filter((s) => s.meanDba > 0).map((s) => s.meanDba);
+      const maxDbValues = segs.filter((s) => s.maxDba > 0).map((s) => s.maxDba);
+
+      daily.push({
+        date,
+        data: {
+          totalSegments: segs.length,
+          totalDurationMinutes: Math.round(totalDurationMinutes * 10) / 10,
+          avgDb:
+            dbValues.length > 0
+              ? Math.round((dbValues.reduce((a, b) => a + b, 0) / dbValues.length) * 10) / 10
+              : null,
+          maxDb: maxDbValues.length > 0 ? Math.max(...maxDbValues) : null,
+        },
+      });
+
+      // Build segment timeseries
+      segments.push({ date, data: { segments: segs } });
+    }
+
+    onProgress?.({ fileIndex, fileName, samplesProcessed: total, samplesTotal: total });
+  } catch (e) {
+    console.warn(`[GoogleHealth] Failed to parse snoring file ${fileName}:`, e);
   }
 
   return { daily, segments };
@@ -1190,6 +1357,32 @@ export async function parseSnoringFiles(files: File[]): Promise<{
 // ---------------------------------------------------------------------------
 // Column index utilities
 // ---------------------------------------------------------------------------
+
+/**
+ * Emit a determinate within-file progress report at chunk boundaries.
+ *
+ * Called once per processed entry by the worker-safe cores, but only actually
+ * invokes `onProgress` when a chunk boundary is crossed (`(index + 1) %
+ * chunkSize === 0`). This bounds the postMessage frequency from the worker while
+ * keeping within-file progress visibly live. The final exact total is emitted
+ * separately by each core after its loop completes.
+ *
+ * @param index  0-based index of the entry just processed.
+ * @param total  Total entries in the file (known up-front).
+ */
+function reportChunk(
+  onProgress: CoreProgressCallback | undefined,
+  fileIndex: number,
+  fileName: string,
+  index: number,
+  total: number,
+  chunkSize: number,
+): void {
+  if (!onProgress) return;
+  if (chunkSize > 0 && (index + 1) % chunkSize === 0) {
+    onProgress({ fileIndex, fileName, samplesProcessed: index + 1, samplesTotal: total });
+  }
+}
 
 /**
  * Build a case-insensitive column name → index map from CSV headers.

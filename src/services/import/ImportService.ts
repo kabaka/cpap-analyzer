@@ -44,6 +44,7 @@ import type {
   ImportOptions,
   ImportProgress,
 } from './types';
+import { checkpoint } from './types';
 
 // Re-export types for consumers
 export type { ImportError, ImportOptions, ImportProgress } from './types';
@@ -136,6 +137,7 @@ export class ImportService {
 
   private async runImport(files: File[], options: ImportOptions): Promise<ImportRecord> {
     const skipDuplicates = options.skipDuplicates ?? true;
+    const signal = options.signal;
     const progress = this.createInitialProgress();
 
     const emit = (patch: Partial<ImportProgress>): void => {
@@ -171,7 +173,7 @@ export class ImportService {
     // --- 2. Parse via pool (or single-worker fallback) --------------------
     emit({ status: 'parsing' });
 
-    const runner = this.createParseRunner();
+    const runner = this.createParseRunner(signal);
     const totalFiles = discovered.length;
 
     // Cumulative store counters that span all day-groups.
@@ -193,6 +195,9 @@ export class ImportService {
       const strParser = new STRParser();
 
       for (const df of strFiles) {
+        // Loop-boundary checkpoint: abort lands here, before any parse work for
+        // this STR file begins — never mid-write.
+        await checkpoint(signal);
         const parsed = await this.parseOne(runner, df, /* includeEdf */ true);
         bytesRead += parsed.byteLength;
         emit({
@@ -258,6 +263,11 @@ export class ImportService {
         const dayGroup = dayGroups[i];
         if (!dayGroup) continue;
 
+        // Loop-boundary checkpoint: abort lands here, between fully-committed
+        // days. The previous day's storage is complete and consistent; this
+        // day's parse/build/store has not started.
+        await checkpoint(signal);
+
         // Parse every file in this day-group concurrently across the pool. The
         // per-file callback keeps `status: 'parsing'` while files are in flight,
         // even though parse/build/store now interleave per day.
@@ -317,6 +327,7 @@ export class ImportService {
           warnings,
           sessionBaselineStore,
           (patch) => emit(patch),
+          signal,
         );
         sessionsCreated += storeOutcome.created;
         sessionsSkipped += storeOutcome.skipped;
@@ -333,7 +344,7 @@ export class ImportService {
         });
 
         if ((i + 1) % YIELD_EVERY === 0) {
-          await this.yieldToEventLoop();
+          await checkpoint(signal);
         }
       }
     } finally {
@@ -368,11 +379,15 @@ export class ImportService {
    * injected, or a single Comlink worker otherwise (tests / environments
    * without `navigator.hardwareConcurrency`).
    */
-  private createParseRunner(): ParseRunner {
+  private createParseRunner(signal?: AbortSignal): ParseRunner {
     if (this.workerPoolFactory) {
       const pool = this.workerPoolFactory();
       return {
-        run: (buffer, includeEdf) => pool.submit((proxy) => proxy.parseEDFFile(buffer, includeEdf)),
+        // Forward the job's signal so a cancelled job's still-queued parse
+        // tasks are dropped immediately (the pool rejects them) rather than
+        // running to completion in the background.
+        run: (buffer, includeEdf) =>
+          pool.submit((proxy) => proxy.parseEDFFile(buffer, includeEdf), { signal }),
         dispose: () => {
           void pool.shutdown();
         },
@@ -531,6 +546,7 @@ export class ImportService {
     warnings: string[],
     storeBaseline: { value: number },
     emit: (patch: Partial<ImportProgress>) => void,
+    signal?: AbortSignal,
   ): Promise<{ created: number; skipped: number; sourceHashes: string[] }> {
     let created = 0;
     let skipped = 0;
@@ -553,7 +569,8 @@ export class ImportService {
         warnings.push(`Session ${br.session.date} [error]: ${e.message}`);
       }
       emit({ sessionsValidated: storeBaseline.value + i + 1 });
-      if ((i + 1) % YIELD_EVERY === 0) await this.yieldToEventLoop();
+      // Validation is read-only — safe to abort between sessions.
+      if ((i + 1) % YIELD_EVERY === 0) await checkpoint(signal);
     }
 
     // Store. `totalSessionsToStore` accumulates across days (sessions are built
@@ -591,7 +608,9 @@ export class ImportService {
             sessionsStored: storeIdx + 1,
             currentStage: `Storing session ${storeIdx + 1}`,
           });
-          if ((i + 1) % YIELD_EVERY === 0) await this.yieldToEventLoop();
+          // Boundary AFTER this session's outcome is finalised (skip path: no
+          // write was performed). Safe to abort here.
+          if ((i + 1) % YIELD_EVERY === 0) await checkpoint(signal);
           continue;
         }
 
@@ -620,7 +639,10 @@ export class ImportService {
           currentStage: `Storing session ${storeIdx + 1}`,
         });
       }
-      if ((i + 1) % YIELD_EVERY === 0) await this.yieldToEventLoop();
+      // Boundary AFTER this session's store (or its compensation) has fully
+      // resolved — the per-session IDB transaction + OPFS write are complete, so
+      // aborting here leaves storage consistent.
+      if ((i + 1) % YIELD_EVERY === 0) await checkpoint(signal);
     }
 
     storeBaseline.value += dayResults.length;
@@ -909,16 +931,6 @@ export class ImportService {
       naturalKeys.add(this.naturalKey(s.machineId, s.startTime));
     }
     return { hashes, naturalKeys };
-  }
-
-  /** Yield control to the event loop so the UI can repaint. */
-  private async yieldToEventLoop(): Promise<void> {
-    const sched = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
-    if (sched?.yield) {
-      await sched.yield();
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   /** Build an initial (idle) progress snapshot. */
