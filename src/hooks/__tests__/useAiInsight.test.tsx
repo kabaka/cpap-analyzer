@@ -163,6 +163,74 @@ describe('useAiInsight — state machine', () => {
   });
 });
 
+// ─── Cancel during model load returns to idle (model-download-ux spec §4.3) ──
+
+describe('useAiInsight — stop during model load', () => {
+  /**
+   * A runner that emits a `progress` event, then blocks until its `signal`
+   * aborts, then yields a terminal `aborted` error — mirroring a provider whose
+   * download is cancelled before any token streams.
+   */
+  function abortableLoadRunner(): typeof runInsight {
+    return async function* run(req): AsyncIterable<InsightEvent> {
+      yield { type: 'phase', phase: 'loading' };
+      yield { type: 'progress', progress: { phase: 'downloading', fraction: 0.2, text: 'x' } };
+      await new Promise<void>((resolve) => {
+        if (req.signal?.aborted) {
+          resolve();
+          return;
+        }
+        req.signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+      yield {
+        type: 'error',
+        error: new LLMError('aborted', 'Generation stopped.', { backend: 'webllm' }),
+      };
+    } as typeof runInsight;
+  }
+
+  it('returns to idle (not error) when stop() lands before any token', async () => {
+    const { result } = renderHook(() => useAiInsight(abortableLoadRunner()));
+    act(() => result.current.run(singleNightInput()));
+    await waitFor(() =>
+      expect(result.current.progress).toEqual({ phase: 'downloading', fraction: 0.2, text: 'x' }),
+    );
+    expect(result.current.state).toBe('generating');
+
+    act(() => result.current.stop());
+
+    await waitFor(() => expect(result.current.state).toBe('idle'));
+    expect(result.current.error).toBeNull();
+    expect(result.current.progress).toBeNull();
+  });
+
+  it('keeps the error screen for a stop AFTER a token has streamed', async () => {
+    const runner = (() =>
+      async function* run(req): AsyncIterable<InsightEvent> {
+        yield { type: 'phase', phase: 'generating' };
+        yield { type: 'delta', text: 'Your AHI ', accumulated: 'Your AHI ' };
+        await new Promise<void>((resolve) => {
+          req.signal?.addEventListener('abort', () => resolve(), { once: true });
+        });
+        yield {
+          type: 'error',
+          error: new LLMError('aborted', 'Generation stopped.', { backend: 'webllm' }),
+        };
+      } as typeof runInsight)();
+
+    const { result } = renderHook(() => useAiInsight(runner));
+    act(() => result.current.run(singleNightInput()));
+    await waitFor(() => expect(result.current.text).toBe('Your AHI '));
+
+    act(() => result.current.stop());
+
+    await waitFor(() => expect(result.current.state).toBe('error'));
+    expect(result.current.error?.kind).toBe('aborted');
+    // Partial text is retained (UX §5.2).
+    expect(result.current.text).toBe('Your AHI ');
+  });
+});
+
 // ─── Feedback (local-only) ───────────────────────────────────────────────────
 
 describe('useAiInsight — feedback', () => {

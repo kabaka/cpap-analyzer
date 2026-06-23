@@ -32,6 +32,7 @@ import type {
   GenerateOptions,
   LLMProvider,
   ModelLoadProgress,
+  PrefetchOptions,
   StreamChunk,
 } from '../types';
 
@@ -78,6 +79,124 @@ interface WebLLMEngineLike {
 /** Default WebGPU feature detection: a `gpu` adapter on `navigator`. */
 function defaultHasWebGPU(): boolean {
   return typeof navigator !== 'undefined' && 'gpu' in navigator && navigator.gpu != null;
+}
+
+/**
+ * The handle returned by {@link createEngine}: the live engine plus its worker
+ * and a teardown that detaches the abort listener. Bundling these lets the
+ * caller `unload()`/`terminate()` deterministically on abort or error.
+ */
+interface EngineHandle {
+  readonly engine: WebLLMEngineLike;
+  readonly worker: Worker;
+  /** Detach the init-phase abort listener (the worker is NOT terminated here). */
+  readonly detachInitAbort: () => void;
+}
+
+/**
+ * Create (provision + warm up) a WebLLM worker engine for `modelId`, honouring
+ * `signal` **during the download/warm-up itself**.
+ *
+ * This is the heart of the Stop-during-download fix: the abort listener — which
+ * `worker.terminate()`s the in-flight engine — is registered *before* the
+ * `CreateWebWorkerMLCEngine` await and stays active until init resolves. WebLLM
+ * has no way to cancel a mid-download `Create…`, so terminating the worker is
+ * the hard stop that actually halts the network fetch. A terminated init
+ * surfaces as an `aborted` {@link LLMError}.
+ *
+ * On any failure the worker is terminated so no worker (and its GPU context)
+ * leaks; on success the caller owns teardown (`unload()` then drop the worker).
+ */
+async function createEngine(
+  modelId: string,
+  createWorker: () => Worker,
+  signal: AbortSignal | undefined,
+  onProgress: ((progress: ModelLoadProgress) => void) | undefined,
+): Promise<EngineHandle> {
+  if (signal?.aborted) {
+    throw new LLMError('aborted', 'Model loading was stopped.', {
+      backend: 'webllm',
+      retryable: false,
+    });
+  }
+
+  const webllm = await import('@mlc-ai/web-llm');
+  const worker = createWorker();
+
+  // Register the terminate-on-abort listener BEFORE awaiting the download so an
+  // abort during the (multi-minute) provision actually stops it. `aborted` is
+  // tracked so a termination is reported as `aborted`, not a generic load error.
+  let abortedDuringInit = false;
+  const onAbort = (): void => {
+    abortedDuringInit = true;
+    try {
+      worker.terminate();
+    } catch {
+      // Best-effort — a terminated worker rejects the pending Create… await.
+    }
+  };
+  // An abort that landed during the dynamic import above (before the listener
+  // was attached) won't re-fire, so handle the already-aborted case explicitly:
+  // terminate now and bail before kicking off the download.
+  if (signal?.aborted) {
+    onAbort();
+    throw new LLMError('aborted', 'Model loading was stopped.', {
+      backend: 'webllm',
+      retryable: false,
+    });
+  }
+  signal?.addEventListener('abort', onAbort, { once: true });
+
+  try {
+    const engine = (await webllm.CreateWebWorkerMLCEngine(worker, modelId, {
+      initProgressCallback: (report: { progress?: number; text?: string }) => {
+        onProgress?.(toModelLoadProgress(report));
+      },
+    })) as unknown as WebLLMEngineLike;
+
+    // A late abort that landed between the await resolving and here: tear the
+    // fresh engine down and report it as aborted rather than returning a live
+    // engine the caller believes was cancelled.
+    if (abortedDuringInit || signal?.aborted) {
+      signal?.removeEventListener('abort', onAbort);
+      try {
+        await engine.unload();
+      } catch {
+        // Ignore unload failures during teardown.
+      }
+      try {
+        worker.terminate();
+      } catch {
+        // Ignore terminate failures during teardown.
+      }
+      throw new LLMError('aborted', 'Model loading was stopped.', {
+        backend: 'webllm',
+        retryable: false,
+      });
+    }
+
+    return {
+      engine,
+      worker,
+      detachInitAbort: () => signal?.removeEventListener('abort', onAbort),
+    };
+  } catch (err) {
+    signal?.removeEventListener('abort', onAbort);
+    // Always terminate so a failed/aborted init never leaks a worker.
+    try {
+      worker.terminate();
+    } catch {
+      // Ignore.
+    }
+    if (abortedDuringInit || signal?.aborted) {
+      throw new LLMError('aborted', 'Model loading was stopped.', {
+        backend: 'webllm',
+        retryable: false,
+        cause: err,
+      });
+    }
+    throw mapWebLLMError(err);
+  }
 }
 
 /** Map an arbitrary thrown value from engine init/generation onto an {@link LLMError}. */
@@ -210,6 +329,49 @@ export class WebLLMProvider implements LLMProvider {
     }
   }
 
+  /**
+   * Proactively download + cache the configured model's weights, then release
+   * the engine's GPU/VRAM (the cached weights remain on disk). Honours `signal`
+   * *during the download* — aborting terminates the in-flight fetch and rejects
+   * with an `aborted` {@link LLMError}. Powers the Settings download affordance.
+   */
+  async prefetch(options: PrefetchOptions): Promise<void> {
+    if (!this.hasWebGPU()) {
+      throw new LLMError('webgpu-unsupported', 'WebGPU is unavailable for on-device AI.', {
+        backend: this.backend,
+        retryable: false,
+      });
+    }
+    if (this.config.modelId === null || this.config.modelId.length === 0) {
+      throw new LLMError('model-not-downloaded', 'No on-device model is selected.', {
+        backend: this.backend,
+        retryable: false,
+      });
+    }
+
+    const handle = await createEngine(
+      this.config.modelId,
+      this.config.createWorker ?? defaultCreateWorker,
+      options.signal,
+      options.onProgress,
+    );
+    // The weights are now downloaded and cached. Free GPU/VRAM immediately —
+    // Settings only needed the cache populated, not a warm engine — and drop the
+    // worker so nothing leaks.
+    handle.detachInitAbort();
+    try {
+      await handle.engine.unload();
+    } catch {
+      // Ignore unload failures during teardown.
+    } finally {
+      try {
+        handle.worker.terminate();
+      } catch {
+        // Ignore terminate failures during teardown.
+      }
+    }
+  }
+
   async *generate(options: GenerateOptions): AsyncIterable<StreamChunk> {
     if (!this.hasWebGPU()) {
       throw new LLMError('webgpu-unsupported', 'WebGPU is unavailable for on-device AI.', {
@@ -231,23 +393,22 @@ export class WebLLMProvider implements LLMProvider {
     }
 
     const modelId = this.config.modelId;
-    let engine: WebLLMEngineLike;
 
-    try {
-      const webllm = await import('@mlc-ai/web-llm');
-      const worker = (this.config.createWorker ?? defaultCreateWorker)();
-      // `CreateWebWorkerMLCEngine` provisions (downloads if needed) and warms up
-      // the model inside the worker, reporting coarse progress as it goes.
-      engine = (await webllm.CreateWebWorkerMLCEngine(worker, modelId, {
-        initProgressCallback: (report: { progress?: number; text?: string }) => {
-          options.onProgress?.(toModelLoadProgress(report));
-        },
-      })) as unknown as WebLLMEngineLike;
-    } catch (err) {
-      throw mapWebLLMError(err);
-    }
+    // Provision the engine with the SAME abort-aware path `prefetch` uses, so
+    // Stop works during the model load/download — not only during generation.
+    const handle = await createEngine(
+      modelId,
+      this.config.createWorker ?? defaultCreateWorker,
+      options.signal,
+      options.onProgress,
+    );
+    const engine = handle.engine;
+    // The init-phase abort listener (which terminates the worker) has done its
+    // job; detach it and switch to interrupting token generation on abort.
+    handle.detachInitAbort();
 
-    // Wire cancellation: aborting interrupts the in-flight generation.
+    // Wire cancellation: once loaded, aborting interrupts the in-flight
+    // generation (the worker terminate in `finally` is the hard stop).
     const onAbort = (): void => {
       try {
         engine.interruptGenerate();
@@ -285,11 +446,16 @@ export class WebLLMProvider implements LLMProvider {
       throw mapWebLLMError(err);
     } finally {
       options.signal?.removeEventListener('abort', onAbort);
-      // Free GPU/VRAM held by the engine + worker.
+      // Free GPU/VRAM held by the engine, then drop the worker so neither leaks.
       try {
         await engine.unload();
       } catch {
         // Ignore unload failures during teardown.
+      }
+      try {
+        handle.worker.terminate();
+      } catch {
+        // Ignore terminate failures during teardown.
       }
     }
   }

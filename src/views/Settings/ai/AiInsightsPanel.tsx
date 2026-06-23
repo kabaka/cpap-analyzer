@@ -24,9 +24,12 @@
  * @module views/Settings/ai/AiInsightsPanel
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Input, Select, Switch } from '@/components/ui';
 import { MedicalDisclaimer } from '@/components/ai';
+import { ModelDownloadProgress } from '@/components/insights/ModelDownloadProgress';
+import { useModelDownload } from '@/hooks/useModelDownload';
+import type { DownloadProvider } from '@/hooks/useModelDownload';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useLLMCredentialStore } from '@/stores/useLLMCredentialStore';
 import { ChromeAIProvider } from '@/services/llm/providers/chromeAiProvider';
@@ -73,11 +76,17 @@ export interface AiInsightsPanelProps {
   readonly checkWebLLM?: () => Promise<BackendAvailability>;
   /** Override the Chrome-AI availability probe. */
   readonly checkChromeAI?: () => Promise<BackendAvailability>;
+  /**
+   * Override the WebLLM download-provider factory used by the Settings download
+   * affordance (defaults to a real {@link WebLLMProvider}); overridden in tests.
+   */
+  readonly downloadProviderFactory?: (modelId: string | null) => DownloadProvider;
 }
 
 export function AiInsightsPanel({
   checkWebLLM,
   checkChromeAI,
+  downloadProviderFactory,
 }: AiInsightsPanelProps = {}): JSX.Element {
   const llm = useSettingsStore((s) => s.integrations.llm);
   const updateIntegration = useSettingsStore((s) => s.updateIntegration);
@@ -280,6 +289,8 @@ export function AiInsightsPanel({
               onModelChange={(modelId) =>
                 updateIntegration('llm', { webllm: { ...llm.webllm, modelId } })
               }
+              onDownloaded={probeWebLLM}
+              {...(downloadProviderFactory ? { downloadProviderFactory } : {})}
             />
           )}
 
@@ -343,9 +354,55 @@ interface WebLLMConfigProps {
   readonly availability: BackendAvailability | null;
   readonly modelId: string | null;
   readonly onModelChange: (modelId: string) => void;
+  /** Re-probe availability after a successful download (so the picker → "Ready"). */
+  readonly onDownloaded: () => void | Promise<void>;
+  /** Injectable download-provider factory (tests). */
+  readonly downloadProviderFactory?: (modelId: string | null) => DownloadProvider;
 }
 
-function WebLLMConfig({ availability, modelId, onModelChange }: WebLLMConfigProps): JSX.Element {
+function WebLLMConfig({
+  availability,
+  modelId,
+  onModelChange,
+  onDownloaded,
+  downloadProviderFactory,
+}: WebLLMConfigProps): JSX.Element {
+  const selectWrapRef = useRef<HTMLDivElement>(null);
+  // `useModelDownload` defaults to a real provider when no factory is injected;
+  // pass `undefined` straight through so the hook is called unconditionally
+  // (rules of hooks) with its own default.
+  const download = useModelDownload(modelId, downloadProviderFactory);
+
+  // A new model selection resets the download lifecycle (spec §3, acceptance).
+  useEffect(() => {
+    download.reset();
+    // `download.reset` is stable; depend on the model id only so a re-render
+    // mid-download doesn't wipe progress.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId]);
+
+  // On a successful download, re-probe availability once so the radiogroup +
+  // status flip to "Ready" / "Available" without a manual refresh (spec §3.1).
+  const lastProbedDone = useRef(false);
+  useEffect(() => {
+    if (download.state === 'done' && !lastProbedDone.current) {
+      lastProbedDone.current = true;
+      void onDownloaded();
+    }
+    if (download.state !== 'done') lastProbedDone.current = false;
+    // onDownloaded identity is stable from the parent's useCallback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [download.state]);
+
+  // On an out-of-memory failure, move focus to the model picker so the user can
+  // immediately pick a smaller model (spec §3.2 / §6). `Select` is a Radix
+  // component (no native ref), so focus its trigger button via the wrapper.
+  useEffect(() => {
+    if (download.state === 'error' && download.error?.kind === 'model-load-failed') {
+      selectWrapRef.current?.querySelector<HTMLElement>('[role="combobox"], button')?.focus();
+    }
+  }, [download.state, download.error]);
+
   if (availability?.state === 'unsupported') {
     return (
       <div className={styles.fallbackNotice} role="note">
@@ -357,21 +414,25 @@ function WebLLMConfig({ availability, modelId, onModelChange }: WebLLMConfigProp
   }
 
   const selected = webllmModelById(modelId);
-  const downloaded = availability?.state === 'available';
+  const sizeLabel = selected?.sizeLabel ?? '';
+  // "done" reflects either a just-finished download or a model already cached.
+  const downloaded = availability?.state === 'available' || download.state === 'done';
 
   return (
     <fieldset className={styles.group}>
       <legend className={styles.groupLegend}>On-device model</legend>
-      <Select
-        label="Model"
-        value={modelId ?? ''}
-        onValueChange={onModelChange}
-        placeholder="Choose a model…"
-        options={WEBLLM_MODELS.map((m) => ({
-          value: m.id,
-          label: `${m.label} — ${m.sizeLabel} — ${m.note}`,
-        }))}
-      />
+      <div ref={selectWrapRef}>
+        <Select
+          label="Model"
+          value={modelId ?? ''}
+          onValueChange={onModelChange}
+          placeholder="Choose a model…"
+          options={WEBLLM_MODELS.map((m) => ({
+            value: m.id,
+            label: `${m.label} — ${m.sizeLabel} — ${m.note}`,
+          }))}
+        />
+      </div>
       {selected && (
         <p className={styles.storageNote}>
           This model downloads about {selected.sizeLabel} and is stored in your browser so it can
@@ -379,16 +440,82 @@ function WebLLMConfig({ availability, modelId, onModelChange }: WebLLMConfigProp
           can remove it any time.
         </p>
       )}
-      <p className={styles.statusLine}>
-        {downloaded ? (
-          <span className={styles.statusReady}>Available — runs entirely on your device.</span>
-        ) : (
-          <span className={styles.statusPending}>
-            {selected ? `Needs download (${selected.sizeLabel}).` : 'Choose a model to continue.'}
+
+      {/* ── Download lifecycle (spec §3.1) ─────────────────────────────────── */}
+      {download.isActive ? (
+        <ModelDownloadProgress
+          variant="settings"
+          phase={download.progress?.phase ?? 'downloading'}
+          fraction={download.progress?.fraction ?? null}
+          statusText={download.progress?.text ?? ''}
+          sizeLabel={sizeLabel}
+          {...(selected ? { modelLabel: selected.label } : {})}
+          onCancel={download.cancel}
+        />
+      ) : downloaded ? (
+        <p className={styles.statusLine}>
+          <span className={styles.statusReady}>
+            <span aria-hidden="true">✓ </span>Downloaded — ready. Runs entirely on your device.
           </span>
-        )}
-      </p>
+        </p>
+      ) : download.state === 'error' && download.error !== null ? (
+        <DownloadError error={download.error} onRetry={download.start} />
+      ) : (
+        <>
+          {download.state === 'cancelled' && (
+            <p className={styles.statusLine}>
+              <span className={styles.statusPending}>
+                Download cancelled. The partial download is discarded.
+              </span>
+            </p>
+          )}
+          <p className={styles.statusLine}>
+            <span className={styles.statusPending}>
+              {selected
+                ? `Needs a one-time download (${sizeLabel}).`
+                : 'Choose a model to continue.'}
+            </span>
+          </p>
+          <Button variant="primary" onClick={download.start} disabled={selected === null}>
+            {selected ? `Download model (${sizeLabel})` : 'Download model'}
+          </Button>
+        </>
+      )}
     </fieldset>
+  );
+}
+
+/**
+ * The Settings download-error block (spec §3.2). Maps `LLMError.kind` onto the
+ * plain-language message + retry; OOM steers the user at a smaller model.
+ */
+function DownloadError({
+  error,
+  onRetry,
+}: {
+  readonly error: { readonly kind: string };
+  readonly onRetry: () => void;
+}): JSX.Element {
+  let message: string;
+  switch (error.kind) {
+    case 'network-blocked':
+      message =
+        "The model download was interrupted. Check your connection and try again — it resumes from where browsers cache it, so you won't always re-download everything.";
+      break;
+    case 'model-load-failed':
+      message =
+        "This model couldn't load on this device — it may need more memory. Try a smaller model below.";
+      break;
+    default:
+      message = 'The download ran into a problem. Try again.';
+  }
+  return (
+    <div className={styles.fallbackNotice} role="alert">
+      <p className={styles.statusLine}>{message}</p>
+      <Button variant="secondary" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
   );
 }
 

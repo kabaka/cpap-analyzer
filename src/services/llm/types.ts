@@ -249,4 +249,33 @@ export interface LLMProvider {
    * Cancellation is via `options.signal`.
    */
   generate(options: GenerateOptions): AsyncIterable<StreamChunk>;
+
+  /**
+   * OPTIONAL — proactively download + cache this backend's model weights without
+   * running a generation, then release any GPU/VRAM held (the weights stay
+   * cached). Only on-device backends that have a one-time weights download
+   * implement it (currently WebLLM); call sites MUST guard on its presence.
+   *
+   * It powers the Settings "Download model" affordance and the Stop-during-
+   * download fix: the `signal` is honoured *during the weights download*, so
+   * aborting it actually stops the in-flight fetch. On abort it rejects with an
+   * {@link LLMError} of kind `aborted`. Progress is reported via `onProgress`,
+   * the same {@link ModelLoadProgress} channel `generate` uses for its load.
+   */
+  prefetch?(options: PrefetchOptions): Promise<void>;
+}
+
+/** Options for {@link LLMProvider.prefetch}. */
+export interface PrefetchOptions {
+  /**
+   * Cancellation signal. Aborting terminates the in-flight weights download and
+   * rejects with an {@link LLMError} of kind `aborted` (a "Cancel" button wires
+   * here).
+   */
+  readonly signal?: AbortSignal;
+  /**
+   * Optional coarse progress callback — the same {@link ModelLoadProgress}
+   * channel `generate` uses. Best-effort; the provider must not depend on it.
+   */
+  readonly onProgress?: (progress: ModelLoadProgress) => void;
 }

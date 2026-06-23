@@ -7,7 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **On-device AI now shows clear model-download progress, and Stop works during the download.** The first time you use an on-device backend (in-browser WebLLM), the model weights (~1–2 GB) are downloaded once; previously this happened with almost no feedback, so a long first-use wait looked like the app had frozen, and the Stop button could not interrupt it. There is now a distinct "Preparing the on-device model" state with a real progress bar, the one-time download size, and clear "runs on your device — nothing is uploaded" context (with separate copy for downloading vs. warming up). Settings → Integrations → AI Insights now also offers an explicit **Download model** button so you can fetch the weights ahead of time and make the first summary instant. Cancel/Stop now genuinely aborts an in-flight download and returns cleanly to the starting state, and the weights stay cached for next time.
+- **AI Insights no longer falls back to the plain template when a summary restates a duration in mixed units.** The numeral-validation backstop rejected correct summaries that wrote an hours value (e.g. "6.7 h") as "6 hours 42 minutes" or "402 minutes", because the minute components weren't recognised as the same computed value. Such restatements of the app's own computed durations are now accepted; the safety guarantee is unchanged (a fabricated duration that doesn't match the computed value is still caught and never shown).
 
 ## [2026.06.9] — 2026-06-22
 

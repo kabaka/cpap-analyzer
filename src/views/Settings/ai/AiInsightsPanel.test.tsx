@@ -1,12 +1,19 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@test/test-utils';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useLLMCredentialStore } from '@/stores/useLLMCredentialStore';
 import { EGRESS_CONTRACT_VERSION } from '@/types/settings';
-import type { BackendAvailability } from '@/services/llm/types';
+import { LLMError } from '@/services/llm/types';
+import type { BackendAvailability, PrefetchOptions } from '@/services/llm/types';
+import type { DownloadProvider } from '@/hooks/useModelDownload';
+import { DEFAULT_WEBLLM_MODEL_ID } from './backends';
 import { AiInsightsPanel } from './AiInsightsPanel';
 
 const available: BackendAvailability = { state: 'available', reason: null };
+const needsDownload: BackendAvailability = {
+  state: 'needs-download',
+  reason: 'Model not downloaded',
+};
 const webgpuUnsupported: BackendAvailability = {
   state: 'unsupported',
   reason: "WebGPU isn't supported in this browser",
@@ -166,6 +173,86 @@ describe('AiInsightsPanel', () => {
     renderPanel({ webllm: webgpuUnsupported });
 
     expect(await screen.findByText(/needs WebGPU/i)).toBeInTheDocument();
+  });
+
+  // ── On-device model download affordance (model-download-ux spec §3) ──
+
+  it('shows a "Download model (~N GB)" button when the model needs download', async () => {
+    useSettingsStore.getState().updateIntegration('llm', {
+      enabled: true,
+      backend: 'webllm',
+      webllm: { modelId: DEFAULT_WEBLLM_MODEL_ID },
+    });
+    renderPanel({ webllm: needsDownload });
+
+    expect(await screen.findByText(/Needs a one-time download/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Download model \(~1\.9 GB\)/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('clicking Download starts the prefetch; on success it re-probes to Ready', async () => {
+    useSettingsStore.getState().updateIntegration('llm', {
+      enabled: true,
+      backend: 'webllm',
+      webllm: { modelId: DEFAULT_WEBLLM_MODEL_ID },
+    });
+
+    const prefetch = vi.fn(async (opts: PrefetchOptions) => {
+      opts.onProgress?.({ phase: 'downloading', fraction: 0.5, text: 'Fetching' });
+      // resolve → done
+    });
+    const factory = (): DownloadProvider => ({ prefetch });
+
+    // First probe → needs-download; after a successful download → available.
+    const checkWebLLM = vi
+      .fn<() => Promise<BackendAvailability>>()
+      .mockResolvedValueOnce(needsDownload)
+      .mockResolvedValue(available);
+
+    render(
+      <AiInsightsPanel
+        checkWebLLM={checkWebLLM}
+        checkChromeAI={() => Promise.resolve(webgpuUnsupported)}
+        downloadProviderFactory={factory}
+      />,
+    );
+
+    const downloadButton = await screen.findByRole('button', {
+      name: /Download model \(~1\.9 GB\)/i,
+    });
+    fireEvent.click(downloadButton);
+
+    expect(prefetch).toHaveBeenCalledTimes(1);
+    // The done state re-probes; the panel reflects the new "ready" status.
+    expect(await screen.findByText(/Downloaded — ready/i)).toBeInTheDocument();
+    expect(checkWebLLM.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('an OOM download failure surfaces the smaller-model hint + Try again', async () => {
+    useSettingsStore.getState().updateIntegration('llm', {
+      enabled: true,
+      backend: 'webllm',
+      webllm: { modelId: DEFAULT_WEBLLM_MODEL_ID },
+    });
+
+    const prefetch = vi.fn(async () => {
+      throw new LLMError('model-load-failed', 'OOM', { backend: 'webllm' });
+    });
+    const factory = (): DownloadProvider => ({ prefetch });
+
+    render(
+      <AiInsightsPanel
+        checkWebLLM={() => Promise.resolve(needsDownload)}
+        checkChromeAI={() => Promise.resolve(webgpuUnsupported)}
+        downloadProviderFactory={factory}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /Download model \(~1\.9 GB\)/i }));
+
+    expect(await screen.findByText(/Try a smaller model below/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Try again/i })).toBeInTheDocument();
   });
 
   it('disabling clears enabled (config disappears)', async () => {

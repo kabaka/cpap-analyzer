@@ -1,0 +1,78 @@
+/* ModelDownloadProgress — the shared on-device model download / warm-up block
+   (docs/design/ai-insights-model-download-ux.md §7). All values are tokens.
+   The drawer variant reads as a distinct panel (surface-secondary) so it is
+   visually unmistakably NOT the streaming prose area; the Settings variant sits
+   inline in the fieldset with no extra surface. */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.drawer {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-secondary);
+}
+
+.settings {
+  /* Inline in the fieldset — no extra surface (spec §7). */
+  padding: 0;
+  background: transparent;
+}
+
+.heading {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.glyph {
+  color: var(--color-text-secondary);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.phaseLine {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.bar {
+  margin: var(--space-1) 0;
+}
+
+.context {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.statusText {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* Visually-hidden live region for milestone announcements (spec §6). */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
