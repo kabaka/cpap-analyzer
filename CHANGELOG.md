@@ -7,7 +7,13 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **A "Data persistence" indicator in Settings → Privacy & Storage → Storage Usage.** It tells you, in plain language, whether your browser has marked CPAP Analyzer's local data as **Protected** (persistent — the browser will not silently discard it to reclaim space) or **Not protected** (best-effort — eligible for automatic eviction under storage pressure). When it shows "Not protected," a **Protect my data** button asks the browser to grant persistent storage, and the indicator updates to reflect the result. This is purely local: requesting persistence sends nothing anywhere and contacts no network. A new "Keeping your data safe" help section and a new "Persistent Storage" glossary entry explain what eviction is, why a browser might discard app data, and how to satisfy the browser's heuristic so persistence is granted.
+
+### Fixed
+
+- **The browser can no longer silently discard your imported data.** CPAP Analyzer stored everything (sessions, signals, settings) in the browser's default _best-effort_ storage, which the browser is allowed to evict automatically when disk space runs low, when "clear data on exit" is configured, or during routine disk cleanup — most often on Chrome on Windows. The symptom was intermittent, total data loss: opening the app to an empty database, or a "database connection is closing" error partway through a session. The app now **requests persistent storage when it first opens your local data**, which marks your data as protected from automatic eviction, and the database connection now **reconnects automatically** if the browser force-closes it mid-session rather than failing. If the browser declines to grant persistence (it weighs signals such as whether you have bookmarked or installed the app and how regularly you use it), the new Settings indicator shows "Not protected" and a one-click **Protect my data** button lets you ask again; the "Keeping your data safe" help section explains how to make a grant more likely and recommends periodic exports as a backup. No data leaves your device at any point.
 
 ## [2026.06.12] — 2026-06-23
 

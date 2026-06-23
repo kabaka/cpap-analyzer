@@ -146,14 +146,43 @@ const DB_NAME = 'cpap-analyzer';
  */
 const DB_VERSION = 4;
 
+/**
+ * Optional callback invoked when an OPEN connection is lost out-of-band — i.e.
+ * not via an explicit {@link IndexedDBService.close} call.
+ *
+ * Fires when the browser force-closes the connection under storage eviction
+ * (`IDBDatabase.onclose`) or when a newer-version connection requires this one
+ * to step aside (`IDBDatabase.onversionchange`). The service has already nulled
+ * its internal handle by the time this runs, so the listener's job is to drop
+ * any cached reference to this now-dead instance and let the next access reopen
+ * a fresh connection. The callback must not throw.
+ */
+export type ConnectionLostListener = () => void;
+
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
   private readonly dbName: string;
   private readonly dbVersion: number;
+  private readonly onConnectionLost?: ConnectionLostListener;
 
-  constructor(dbName: string = DB_NAME, dbVersion: number = DB_VERSION) {
+  /**
+   * @param dbName           - IndexedDB database name (defaults to the app DB).
+   * @param dbVersion        - Target schema version (defaults to {@link DB_VERSION}).
+   * @param onConnectionLost - Optional listener notified when an open connection
+   *                           is force-closed by eviction or superseded by a
+   *                           version change. Lets a singleton owner (see
+   *                           `getDB`) discard the dead instance so the next
+   *                           access transparently reopens. Omitting it keeps
+   *                           the service fully usable and independently testable.
+   */
+  constructor(
+    dbName: string = DB_NAME,
+    dbVersion: number = DB_VERSION,
+    onConnectionLost?: ConnectionLostListener,
+  ) {
     this.dbName = dbName;
     this.dbVersion = dbVersion;
+    this.onConnectionLost = onConnectionLost;
   }
 
   // -----------------------------------------------------------------------
@@ -180,6 +209,29 @@ export class IndexedDBService {
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       });
+
+      // Harden the connection lifecycle so an out-of-band loss does not leave a
+      // permanently-dead handle in place.
+      const db = this.db;
+
+      // A newer-version connection (e.g. another tab after an app update, or a
+      // schema bump) cannot upgrade while this one is open. Close ours and null
+      // the handle so we don't deadlock the upgrade; notify the owner so the
+      // next access reopens at the new version.
+      db.onversionchange = () => {
+        db.close();
+        this.db = null;
+        this.onConnectionLost?.();
+      };
+
+      // Fires when the browser force-closes the connection out from under us —
+      // most notably when best-effort storage is evicted mid-session (surfaces
+      // elsewhere as "The database connection is closing"). Null the handle so
+      // the next access reopens instead of throwing on a dead connection.
+      db.onclose = () => {
+        this.db = null;
+        this.onConnectionLost?.();
+      };
     } catch (error) {
       throw new StorageError(
         'STORAGE_OPEN_FAILED',

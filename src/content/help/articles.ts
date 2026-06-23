@@ -677,6 +677,14 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
       },
       {
+        heading: 'Keeping your data safe (data persistence)',
+        paragraphs: [
+          'Because CPAP Analyzer is entirely client-side, your imported data lives in your browser\'s own storage (IndexedDB and OPFS) rather than on a server. Browsers keep that storage in one of two modes. The default is "best-effort": the browser is allowed to automatically evict — silently delete — site data to reclaim space when the disk runs low, when the browser is configured to "clear data on exit," or during routine cleanup. This is the most common cause of unexpected data loss, and it is most often seen on Chrome on Windows; the symptom is opening the app to an empty database, or a "database connection is closing" error part-way through a session.',
+          'To prevent that, CPAP Analyzer asks the browser for "persistent" storage when it starts. Persistent storage opts your data out of automatic eviction — the browser will not discard it to free space. The Storage Usage panel above shows a "Data persistence" indicator with the current state: "Protected" means the browser has granted persistence and your data is safe from automatic eviction; "Not protected" means your data is still in best-effort storage and could be evicted. Requesting persistence is entirely local — it is a request to your own browser and sends nothing anywhere; no network connection is made.',
+          'If the indicator shows "Not protected," use the "Protect my data" button to ask the browser again. Note that some browsers — Chrome in particular — do not grant persistence on request alone: they apply a heuristic based on how "engaged" you are with the site. The most reliable ways to satisfy it are to bookmark CPAP Analyzer (or install it to your home screen / as an app) and to use it regularly; once those signals accumulate, a later request is usually granted. Regardless of persistence state, the safest backstop is to export your data to a file periodically (Storage management, above) — an export is a snapshot you control that survives whatever the browser does with its cache, and it lets you re-import on a new device or browser profile. Persistence protects only against the browser\'s *automatic* eviction; it does not prevent you (or a manual "clear browsing data") from deleting the data yourself, and it applies only to the current browser profile on the current device. See the "Persistent Storage" glossary entry for the full technical detail.',
+        ],
+      },
+      {
         heading: 'Machine configuration',
         paragraphs: [
           'Set your machine type, therapy mode, and mask type so that CPAP Analyzer can provide more accurate interpretive context. This information is used only locally for analysis and is not transmitted anywhere.',
