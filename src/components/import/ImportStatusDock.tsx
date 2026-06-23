@@ -117,59 +117,77 @@ export function ImportStatusDock(): JSX.Element | null {
   const progress = job?.progress ?? null;
   const onImportRoute = location.pathname === IMPORT_ROUTE;
 
-  // ── Terminal toast (once per job) ──
-  const toastedJobRef = useRef<string | null>(null);
+  // ── Terminal toast (once per job, across concurrent kinds) ──
+  //
+  // ADR 0026 permits a CPAP and a Fitbit import to run concurrently. The dock
+  // only ever SURFACES one job, but a completion toast + assertive announcement
+  // must fire for EVERY job's terminal transition — so we scan all jobs the
+  // store knows about (the active one plus the latest of each kind), not just
+  // the dock-surfaced one, and remember which job-ids have already toasted in a
+  // Set. A dismissed-then-re-run import gets a fresh job-id, so it toasts again
+  // as expected; a job already in the Set never toasts twice.
+  const toastedJobsRef = useRef<Set<string>>(new Set());
+  const announcedJobsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!progress) return;
-    if (!isTerminal(progress.status)) return;
-    if (toastedJobRef.current === progress.jobId) return;
-    toastedJobRef.current = progress.jobId;
-
-    // Suppress the toast if the user is already looking at the import page.
-    if (onImportRoute) return;
-
-    const label = kindLabel(progress.kind);
-    if (progress.status === 'complete') {
-      const hasIssues = progress.warningCount + progress.errorCount > 0;
-      raiseToast({
-        title: hasIssues ? `${label} finished with issues` : `${label} complete`,
-        description: hasIssues
-          ? `${(progress.warningCount + progress.errorCount).toLocaleString()} issues — open the dock for details.`
-          : undefined,
-        variant: hasIssues ? 'warning' : 'success',
-      });
-    } else if (progress.status === 'error') {
-      raiseToast({
-        title: `${label} failed`,
-        description: progress.currentLabel,
-        variant: 'error',
-      });
-    } else {
-      raiseToast({ title: `${label} cancelled`, variant: 'info' });
+    // De-duplicate the candidate jobs by id (active may equal a latest-of-kind).
+    const candidates = new Map<string, ImportJobProgress>();
+    for (const entry of [active, latestCpap, latestFitbit]) {
+      if (entry) candidates.set(entry.progress.jobId, entry.progress);
     }
-  }, [progress, onImportRoute, raiseToast]);
+
+    for (const candidate of candidates.values()) {
+      if (!isTerminal(candidate.status)) continue;
+      const label = kindLabel(candidate.kind);
+
+      // Assertive announcement: once per job, regardless of route (assistive tech
+      // should always learn an import ended). Distinct phrasing from the visual
+      // toast title so the two surfaces never collide for AT (or tests).
+      if (!announcedJobsRef.current.has(candidate.jobId)) {
+        announcedJobsRef.current.add(candidate.jobId);
+        const msg =
+          candidate.status === 'complete'
+            ? `${label} finished`
+            : candidate.status === 'error'
+              ? `${label} failed: ${candidate.currentLabel}`
+              : `${label} stopped`;
+        setAssertiveMessage(msg);
+      }
+
+      // Visual toast: once per job. Suppressed (but still marked) while the user
+      // is already on the import page, so it never re-fires later on navigation.
+      if (toastedJobsRef.current.has(candidate.jobId)) continue;
+      toastedJobsRef.current.add(candidate.jobId);
+      if (onImportRoute) continue;
+
+      if (candidate.status === 'complete') {
+        const hasIssues = candidate.warningCount + candidate.errorCount > 0;
+        raiseToast({
+          title: hasIssues ? `${label} finished with issues` : `${label} complete`,
+          description: hasIssues
+            ? `${(candidate.warningCount + candidate.errorCount).toLocaleString()} issues — open the dock for details.`
+            : undefined,
+          variant: hasIssues ? 'warning' : 'success',
+        });
+      } else if (candidate.status === 'error') {
+        raiseToast({
+          title: `${label} failed`,
+          description: candidate.currentLabel,
+          variant: 'error',
+        });
+      } else {
+        raiseToast({ title: `${label} cancelled`, variant: 'info' });
+      }
+    }
+  }, [active, latestCpap, latestFitbit, onImportRoute, raiseToast]);
 
   // ── Quantized polite announcer: stage transitions + ~25% milestones ──
+  // Terminal assertive announcements are handled in the multi-job effect above;
+  // this effect only emits in-flight progress milestones for the surfaced job.
   const lastStageRef = useRef<string | null>(null);
   const lastBucketRef = useRef<number>(-1);
   useEffect(() => {
     if (!progress) return;
-
-    if (isTerminal(progress.status)) {
-      const label = kindLabel(progress.kind);
-      // Distinct phrasing from the visual toast title so the two never collide
-      // for assistive tech (or tests) reading both surfaces.
-      const msg =
-        progress.status === 'complete'
-          ? `${label} finished`
-          : progress.status === 'error'
-            ? `${label} failed: ${progress.currentLabel}`
-            : `${label} stopped`;
-      // Terminal + error are assertive; success is surfaced assertively too as a
-      // clear end-of-task signal.
-      setAssertiveMessage(msg);
-      return;
-    }
+    if (isTerminal(progress.status)) return;
 
     // Announce on stage change.
     const activeStageId = progress.activeStageId;
@@ -261,13 +279,17 @@ export function ImportStatusDock(): JSX.Element | null {
               ref={pillRef}
               type="button"
               className={styles.pillBody}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
               aria-expanded={expanded}
               aria-label={`${label}: ${String(pct)}% — open details`}
               onClick={() => setExpanded(true)}
             >
               <span className={styles.pillTopLine}>
-                <span className={pillIconClass} style={{ color: visual.colorVar }}>
+                <span
+                  className={pillIconClass}
+                  style={{ color: visual.colorVar }}
+                  data-testid="import-dock-pill-icon"
+                  data-animated={animate ? 'true' : 'false'}
+                >
                   <Icon name={iconName} size="sm" />
                 </span>
                 <span className={styles.pillLabel}>{progress.currentLabel || label}</span>

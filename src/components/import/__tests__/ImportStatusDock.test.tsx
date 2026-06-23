@@ -131,6 +131,51 @@ describe('ImportStatusDock', () => {
     expect(screen.queryByText('CPAP import complete')).not.toBeInTheDocument();
   });
 
+  it('toasts EACH of two concurrent terminal jobs exactly once (cpap + fitbit)', () => {
+    // ADR 0026 allows a CPAP and a Fitbit import to run at once. When BOTH reach
+    // a terminal state the dock surfaces only one of them, but each must still
+    // raise its own completion toast — the regression the Set-based tracking
+    // fixes (a single ref dropped the non-surfaced job's toast).
+    const cpapDone = jobProgress({
+      jobId: 'cpap-done',
+      kind: 'cpap',
+      status: 'complete',
+      startedAtMs: 1_000,
+      stages: [stage({ id: 'scan', state: 'done' })],
+    });
+    const fitbitDone = jobProgress({
+      jobId: 'fitbit-done',
+      kind: 'fitbit',
+      status: 'complete',
+      startedAtMs: 2_000,
+      stages: [stage({ id: 'scan', state: 'done' })],
+    });
+
+    useImportStore.setState({
+      jobs: {
+        [cpapDone.jobId]: {
+          progress: cpapDone,
+          legacy: { kind: 'cpap', progress: {} as never },
+          result: { kind: 'cpap', record: {} as never },
+          error: null,
+        },
+        [fitbitDone.jobId]: {
+          progress: fitbitDone,
+          legacy: { kind: 'fitbit', progress: {} as never },
+          result: { kind: 'fitbit', record: {} as never },
+          error: null,
+        },
+      },
+      activeJobId: null,
+    });
+
+    renderDock('/dashboard');
+
+    // BOTH completion toasts surface, each exactly once.
+    expect(screen.getAllByText('CPAP import complete')).toHaveLength(1);
+    expect(screen.getAllByText('Fitbit import complete')).toHaveLength(1);
+  });
+
   it('dismisses a terminal job via the controller', () => {
     const dismissSpy = vi.spyOn(importController, 'dismiss').mockImplementation(() => undefined);
     const completed = jobProgress({

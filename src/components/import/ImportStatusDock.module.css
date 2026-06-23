@@ -73,6 +73,10 @@
   gap: 2px;
   min-width: 0;
   flex: 1;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
 }
 
 .pillTopLine {
@@ -168,8 +172,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   background: none;
   border: none;
   border-radius: var(--radius-md);

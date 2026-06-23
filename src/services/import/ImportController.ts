@@ -441,6 +441,13 @@ export class ImportController {
       if (runtime.rafHandle !== null) cancelFrame(runtime.rafHandle);
     }
     this.active.clear();
+    // The `db: null` cast is safe ONLY because of the invariant in `getCpapDeps`:
+    // when `cpapDeps` is already set it short-circuits (`if (this.cpapDeps) return
+    // this.cpapDeps`) and never touches `db`, and CPAP imports reach storage
+    // exclusively through the injected `service`, not `cpapDeps.db`. So in test
+    // mode `db` is never dereferenced. If `getCpapDeps` ever starts reading
+    // `cpapDeps.db` directly, this cast becomes unsound — provide a real/mock db
+    // here instead.
     this.cpapDeps = deps?.cpapService
       ? { db: null as unknown as IndexedDBService, opfs: null, service: deps.cpapService }
       : null;
