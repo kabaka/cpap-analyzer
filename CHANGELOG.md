@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.12] — 2026-06-23
+
 ### Performance
 
 - **Large Google Health (Fitbit) imports use far less memory.** Importing the big intraday data types (heart rate, SpO₂, HRV, snoring) previously held every parsed record for a whole data type in memory at once before writing it, so a multi-year wearable export could consume hundreds of megabytes — enough to exhaust memory and crash the tab on lower-RAM devices. Each file's records are now stored and released as it is parsed, so peak memory stays roughly flat regardless of how many years you import. Imported data, de-duplication, and progress are unchanged.
