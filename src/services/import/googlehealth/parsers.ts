@@ -49,6 +49,7 @@ import {
   parseNumericField,
   parseNumericFieldWithDefault,
 } from './csv-utils';
+import { warnParseIssue } from './logging';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -202,11 +203,11 @@ export async function parseSleepFiles(files: File[]): Promise<{
             }
           }
         } catch (e) {
-          console.warn(`[GoogleHealth] Skipping malformed sleep entry in ${file.name}:`, e);
+          warnParseIssue('Skipping malformed sleep entry in', file.name, e);
         }
       }
     } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse sleep file ${file.name}:`, e);
+      warnParseIssue('Failed to parse sleep file', file.name, e);
     }
   }
 
@@ -285,11 +286,11 @@ export async function parseSleepScoreFile(file: File): Promise<ParsedRecord<Fitb
           },
         });
       } catch (e) {
-        console.warn(`[GoogleHealth] Skipping malformed sleep score row in ${file.name}:`, e);
+        warnParseIssue('Skipping malformed sleep score row in', file.name, e);
       }
     }
   } catch (e) {
-    console.warn(`[GoogleHealth] Failed to parse sleep score file ${file.name}:`, e);
+    warnParseIssue('Failed to parse sleep score file', file.name, e);
   }
 
   return results;
@@ -339,11 +340,11 @@ export async function parseSpO2DailyFiles(files: File[]): Promise<ParsedRecord<F
             },
           });
         } catch (e) {
-          console.warn(`[GoogleHealth] Skipping malformed SpO2 daily row in ${file.name}:`, e);
+          warnParseIssue('Skipping malformed SpO2 daily row in', file.name, e);
         }
       }
     } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse SpO2 daily file ${file.name}:`, e);
+      warnParseIssue('Failed to parse SpO2 daily file', file.name, e);
     }
   }
 
@@ -457,7 +458,7 @@ export function parseSpO2IntradayCore(
 
     onProgress?.({ fileIndex, fileName, samplesProcessed: total, samplesTotal: total });
   } catch (e) {
-    console.warn(`[GoogleHealth] Failed to parse SpO2 intraday file ${fileName}:`, e);
+    warnParseIssue('Failed to parse SpO2 intraday file', fileName, e);
   }
 
   return results;
@@ -503,11 +504,11 @@ export async function parseHRVDailyFiles(files: File[]): Promise<ParsedRecord<Fi
             },
           });
         } catch (e) {
-          console.warn(`[GoogleHealth] Skipping malformed HRV daily row in ${file.name}:`, e);
+          warnParseIssue('Skipping malformed HRV daily row in', file.name, e);
         }
       }
     } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse HRV daily file ${file.name}:`, e);
+      warnParseIssue('Failed to parse HRV daily file', file.name, e);
     }
   }
 
@@ -599,7 +600,7 @@ export function parseHRVDetailCore(
 
     onProgress?.({ fileIndex, fileName, samplesProcessed: total, samplesTotal: total });
   } catch (e) {
-    console.warn(`[GoogleHealth] Failed to parse HRV detail file ${fileName}:`, e);
+    warnParseIssue('Failed to parse HRV detail file', fileName, e);
   }
 
   return results;
@@ -688,14 +689,11 @@ export async function parseRespiratoryRateFiles(
             });
           }
         } catch (e) {
-          console.warn(
-            `[GoogleHealth] Skipping malformed respiratory rate row in ${file.name}:`,
-            e,
-          );
+          warnParseIssue('Skipping malformed respiratory rate row in', file.name, e);
         }
       }
     } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse respiratory rate file ${file.name}:`, e);
+      warnParseIssue('Failed to parse respiratory rate file', file.name, e);
     }
   }
 
@@ -758,11 +756,11 @@ export async function parseRestingHeartRateFiles(
             },
           });
         } catch (e) {
-          console.warn(`[GoogleHealth] Skipping malformed resting HR entry in ${file.name}:`, e);
+          warnParseIssue('Skipping malformed resting HR entry in', file.name, e);
         }
       }
     } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse resting HR file ${file.name}:`, e);
+      warnParseIssue('Failed to parse resting HR file', file.name, e);
     }
   }
 
@@ -931,7 +929,7 @@ export function parseHeartRateIntradayCore(
 
     onProgress?.({ fileIndex, fileName, samplesProcessed: total, samplesTotal: total });
   } catch (e) {
-    console.warn(`[GoogleHealth] Failed to parse intraday heart rate file ${fileName}:`, e);
+    warnParseIssue('Failed to parse intraday heart rate file', fileName, e);
   }
 
   return results;
@@ -984,11 +982,11 @@ export async function parseReadinessFiles(files: File[]): Promise<ParsedRecord<F
             },
           });
         } catch (e) {
-          console.warn(`[GoogleHealth] Skipping malformed readiness row in ${file.name}:`, e);
+          warnParseIssue('Skipping malformed readiness row in', file.name, e);
         }
       }
     } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse readiness file ${file.name}:`, e);
+      warnParseIssue('Failed to parse readiness file', file.name, e);
     }
   }
 
@@ -1073,11 +1071,11 @@ export async function parseStressFile(file: File): Promise<ParsedRecord<FitbitSt
           },
         });
       } catch (e) {
-        console.warn(`[GoogleHealth] Skipping malformed stress row in ${file.name}:`, e);
+        warnParseIssue('Skipping malformed stress row in', file.name, e);
       }
     }
   } catch (e) {
-    console.warn(`[GoogleHealth] Failed to parse stress file ${file.name}:`, e);
+    warnParseIssue('Failed to parse stress file', file.name, e);
   }
 
   return results;
@@ -1125,11 +1123,11 @@ export async function parseTemperatureFiles(
             },
           });
         } catch (e) {
-          console.warn(`[GoogleHealth] Skipping malformed temperature row in ${file.name}:`, e);
+          warnParseIssue('Skipping malformed temperature row in', file.name, e);
         }
       }
     } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse temperature file ${file.name}:`, e);
+      warnParseIssue('Failed to parse temperature file', file.name, e);
     }
   }
 
@@ -1215,7 +1213,7 @@ export async function parseActivityFiles(
         });
       }
     } catch (e) {
-      console.warn(`[GoogleHealth] Failed to parse activity file ${file.name}:`, e);
+      warnParseIssue('Failed to parse activity file', file.name, e);
     }
   }
 
@@ -1348,7 +1346,7 @@ export function parseSnoringCore(
 
     onProgress?.({ fileIndex, fileName, samplesProcessed: total, samplesTotal: total });
   } catch (e) {
-    console.warn(`[GoogleHealth] Failed to parse snoring file ${fileName}:`, e);
+    warnParseIssue('Failed to parse snoring file', fileName, e);
   }
 
   return { daily, segments };
