@@ -1251,6 +1251,22 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['edf', 'usage-hours'],
   },
   {
+    id: 'persistent-storage',
+    term: 'Persistent Storage (Storage Eviction)',
+    category: 'data',
+    aliases: ['Persistent Storage', 'Storage Eviction', 'Best-Effort Storage', 'Data Persistence'],
+    quick:
+      'A browser guarantee that your locally stored data will not be silently discarded to reclaim disk space.',
+    standard:
+      'Browsers keep site data (IndexedDB, OPFS, and similar) in one of two modes. The default is "best-effort": the browser may automatically evict — silently delete — that data when the device is low on disk space, when the browser is told to clear data on exit, or during routine cleanup, which can wipe out your imported history. "Persistent" storage opts out of that automatic eviction, so the browser will not discard your data to free space. CPAP Analyzer requests persistent storage at startup; the Settings → Privacy & Storage → Storage Usage panel shows whether the request was granted ("Protected") or not ("Not protected"), with a "Protect my data" button to ask again. Requesting persistence is entirely local — it sends nothing anywhere.',
+    detailed:
+      'Per the Storage Standard, an origin\'s storage bucket has a persistence mode of either "best-effort" (the default, evictable) or "persistent" (not evictable under storage pressure). An app moves to persistent mode by calling navigator.storage.persist(); the browser returns whether the grant succeeded. Chrome, in particular, does not grant persistence on request alone — it applies a heuristic based on engagement signals: whether the site is bookmarked, whether it has been installed (added to the home screen / installed as a PWA), whether it has been granted notification permission, and how frequently and recently you use it. So a brand-new visit may legitimately be denied. If persistence is "Not protected," the practical mitigations are: (1) bookmark or install CPAP Analyzer and use it regularly, which over time satisfies Chrome\'s heuristic so a later request is granted; and (2) export your data periodically to a file as an independent backup, since an export is a snapshot you control regardless of what the browser does with its cache. Note that persistence protects against *automatic* eviction only — it does not stop you, or a manual "clear browsing data" action, from deleting the data yourself, and it is scoped to the current browser profile on the current device. CPAP Analyzer also hardens the database connection so that if the browser force-closes it (which can otherwise surface as a "database connection is closing" error mid-session), the app reconnects rather than failing. None of this involves the network: persistence is a request to your own browser, and your therapy data never leaves the device.',
+    relatedTerms: ['session', 'edf', 'downsampling'],
+    references: [
+      'WHATWG Storage Standard — Persistence. https://storage.spec.whatwg.org/ — Defines best-effort vs. persistent storage buckets and the navigator.storage.persist() grant.',
+    ],
+  },
+  {
     id: 'background-import',
     term: 'Background Import',
     category: 'data',

@@ -13,6 +13,12 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { Accordion, Button, Card, Dialog, Input, Select, Switch, Tabs } from '@/components/ui';
 import { clearAllUserData } from '@/services/storage/clearAllUserData';
+import {
+  isPersistenceApiAvailable,
+  isStoragePersisted,
+  requestPersistentStorage,
+  type PersistenceStatus,
+} from '@/services/storage/persistentStorage';
 import { formatBytes } from '@/utils/formatBytes';
 import { WeatherIntegrationPanel } from './weather/WeatherIntegrationPanel';
 import { AiInsightsPanel } from './ai/AiInsightsPanel';
@@ -424,6 +430,139 @@ interface StorageEstimate {
   quota: number;
 }
 
+/**
+ * UI state for the data-persistence indicator.
+ *
+ * - `'loading'`     — initial `isStoragePersisted()` probe is in flight.
+ * - `'unsupported'` — the Storage persistence API is unavailable in this
+ *                     browser; only an informational note is shown.
+ * - {@link PersistenceStatus} — a resolved durability state. `'persisted'` and
+ *                     `'denied'` come from the live API; `'unsupported'` is
+ *                     folded into the dedicated state above.
+ */
+type PersistenceUiState = 'loading' | PersistenceStatus;
+
+/**
+ * "Data persistence" indicator (eviction-protection).
+ *
+ * Surfaces whether the browser has placed this origin's IndexedDB + OPFS data in
+ * the durable bucket, and lets the user request durability when it is not yet
+ * granted. Purely local UI over `navigator.storage.*` (via the
+ * {@link requestPersistentStorage} service) — no network or telemetry, in line
+ * with the project's privacy-first principle.
+ *
+ * Accessibility: status is conveyed by text + an icon (never color alone); the
+ * resolved status lives in a polite `aria-live` region so screen readers
+ * announce the outcome after a request resolves; the action button reflects its
+ * in-flight state and is keyboard-operable with the shared focus styles.
+ */
+function DataPersistenceCard() {
+  // Feature-gate computed once: the API surface does not change at runtime, so a
+  // constant avoids re-probing on every render.
+  const [supported] = useState(isPersistenceApiAvailable);
+  const [state, setState] = useState<PersistenceUiState>(supported ? 'loading' : 'unsupported');
+  const [requesting, setRequesting] = useState(false);
+
+  // Probe the current durability state on mount. `isStoragePersisted()` never
+  // throws and resolves `false` when unsupported, so no try/catch is needed.
+  useEffect(() => {
+    if (!supported) return;
+    let cancelled = false;
+    void isStoragePersisted().then((persisted) => {
+      if (!cancelled) setState(persisted ? 'persisted' : 'denied');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [supported]);
+
+  const handleRequest = useCallback(async () => {
+    setRequesting(true);
+    // requestPersistentStorage() never throws; it maps every outcome to a
+    // PersistenceStatus, so we can assign the result directly. We keep the
+    // 'denied' branch's guidance visible by leaving the state at 'denied'.
+    const result = await requestPersistentStorage();
+    setState(result);
+    setRequesting(false);
+  }, []);
+
+  // The API is absent (non-secure context, older browser, some test runners):
+  // show a brief note instead of controls, so the absence is explained rather
+  // than silently missing.
+  if (!supported || state === 'unsupported') {
+    return (
+      <div className={styles.persistenceInfo}>
+        <h4 className={styles.fieldGroupTitle}>Data persistence</h4>
+        <p className={styles.sectionDescription}>
+          Eviction protection is not supported in this browser. Export your data periodically from
+          Data Management to keep a backup.
+        </p>
+      </div>
+    );
+  }
+
+  const isPersisted = state === 'persisted';
+
+  return (
+    <div className={styles.persistenceInfo}>
+      <h4 className={styles.fieldGroupTitle}>Data persistence</h4>
+
+      {/* Polite live region: announces the resolved status (including the result
+          of a request) without interrupting the user. Color is never the sole
+          signal — each state carries an icon and explanatory text. */}
+      <div className={styles.persistenceStatus} aria-live="polite">
+        {state === 'loading' ? (
+          <p className={styles.sectionDescription}>Checking data persistence…</p>
+        ) : (
+          <>
+            <p
+              className={
+                isPersisted
+                  ? `${styles.persistenceBadge} ${styles.persistenceBadgeOk}`
+                  : `${styles.persistenceBadge} ${styles.persistenceBadgeWarn}`
+              }
+            >
+              <span className={styles.persistenceBadgeIcon} aria-hidden="true">
+                {isPersisted ? '🛡️' : '⚠️'}
+              </span>
+              <span>{isPersisted ? 'Protected' : 'Not protected'}</span>
+            </p>
+            <p className={styles.sectionDescription}>
+              {isPersisted
+                ? 'Your data is protected from automatic browser cleanup.'
+                : 'Your browser may evict this data under storage pressure, which would permanently remove your imported sessions and analysis results.'}
+            </p>
+            {/* Denied guidance lives inside the polite live region so a
+                screen-reader user hears the outcome of a "Protect my data"
+                request even when the badge text is unchanged (denied → denied). */}
+            {state === 'denied' && (
+              <p className={styles.sectionDescription}>
+                Your browser declined to protect this data for now. Chrome grants this based on
+                engagement — bookmarking or installing the app and using it regularly increases the
+                chance it is granted, and trying again later may succeed. As a backstop, export your
+                data periodically from Data Management.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {!isPersisted && state !== 'loading' && (
+        <div className={styles.persistenceAction}>
+          <Button
+            variant="primary"
+            onClick={() => void handleRequest()}
+            loading={requesting}
+            disabled={requesting}
+          >
+            Protect my data
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PrivacyStorageSection() {
   const [storageEstimate, setStorageEstimate] = useState<StorageEstimate | null>(null);
   const [showClearDialog, setShowClearDialog] = useState(false);
@@ -514,6 +653,8 @@ function PrivacyStorageSection() {
             Storage estimate unavailable in this browser.
           </p>
         )}
+
+        <DataPersistenceCard />
       </Card>
 
       <Card>
