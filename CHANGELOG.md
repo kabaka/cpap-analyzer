@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.14] — 2026-06-23
+
 ### Fixed
 
 - **Google Health (Fitbit) imports no longer fail when an export contains more than one record for the same data type and calendar date.** An export carrying, say, two `temperature` readings dated `2025-09-30` previously aborted with a storage error (`Storage failed: ... Unable to add key to index 'source_dataType_date': at least one key does not satisfy the uniqueness requirements`), because the per-(source, data type, date) uniqueness index rejected the second write. Such same-date duplicates within a single import are now de-duplicated automatically — the first occurrence is kept — so the import completes. Genuine uniqueness or constraint violations are now correctly counted as **skipped** in the import summary rather than surfaced as import errors.
