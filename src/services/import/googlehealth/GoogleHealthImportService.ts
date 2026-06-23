@@ -401,6 +401,13 @@ export class GoogleHealthImportService {
           if (err instanceof Error && err.name === 'ImportAbortedError') {
             throw err;
           }
+          // A structured-clone/serialisation failure is a programming bug, not a
+          // recoverable data problem. Let it unwind the whole import as a hard
+          // failure rather than collecting it as a per-type error and pressing on
+          // (which would report success having stored nothing).
+          if (isCloneFailure(err)) {
+            throw err;
+          }
           // Per-data-type failure. Collect and continue with next type.
           errors.push({
             fileName: dtInfo.dataType,
@@ -684,6 +691,14 @@ export class GoogleHealthImportService {
         // per-file parser error.
         if (isImportAbortedError(err) || isPoolAbort(err) || signal?.aborted) {
           throw new ImportAbortedError();
+        }
+        // A structured-clone/serialisation failure is a PROGRAMMING bug (e.g. a
+        // non-cloneable argument crossing the worker boundary), not bad input.
+        // It must NOT be swallowed as a recoverable per-file parser error — that
+        // would silently import ZERO records while reporting success. Rethrow so
+        // it unwinds the import as a hard failure.
+        if (isCloneFailure(err)) {
+          throw err;
         }
         errors.push({
           fileName: file.name,
@@ -1215,4 +1230,33 @@ function isPoolAbort(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
   const id = (err as { id?: unknown }).id;
   return id === 'TASK_ABORTED' || id === 'POOL_SHUTDOWN';
+}
+
+/**
+ * Recognise a structured-clone / serialisation failure crossing the worker
+ * boundary.
+ *
+ * `structuredClone` (used by `postMessage`/Comlink) rejects non-cloneable
+ * values with a `DataCloneError` `DOMException`. Such a failure is a
+ * PROGRAMMING bug — a value that cannot be transferred to or from the worker —
+ * not a recoverable problem with the user's data. It must therefore be allowed
+ * to fail the import hard rather than being collected as a per-file/per-type
+ * parser error (which would silently import zero records while reporting
+ * success).
+ *
+ * Detects both a native `DataCloneError` (`err.name === 'DataCloneError'`) and a
+ * marshalled {@link CPAPError} whose message indicates a clone/serialisation
+ * failure (e.g. one surfaced across the boundary by the worker pool).
+ */
+function isCloneFailure(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  if ((err as { name?: unknown }).name === 'DataCloneError') return true;
+  const message = (err as { message?: unknown }).message;
+  if (
+    typeof message === 'string' &&
+    /\b(DataCloneError|could not be cloned|structuredClone)\b/i.test(message)
+  ) {
+    return true;
+  }
+  return false;
 }

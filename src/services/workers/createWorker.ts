@@ -157,9 +157,12 @@ function isSerialised(value: unknown): value is Record<string, unknown> {
  * bounded by `timeoutMs`.  Non-function properties are passed through
  * unchanged.
  *
+ * Exported for regression testing against a real Comlink endpoint; not part of
+ * the public API surface.
+ *
  * @internal
  */
-function withTimeout<T>(target: Remote<T>, timeoutMs: number): Remote<T> {
+export function withTimeout<T>(target: Remote<T>, timeoutMs: number): Remote<T> {
   return new Proxy(target, {
     get(obj, prop, receiver) {
       const value = Reflect.get(obj, prop, receiver);
@@ -171,7 +174,22 @@ function withTimeout<T>(target: Remote<T>, timeoutMs: number): Remote<T> {
 
       // Return a wrapper that races the original call against a timer.
       return (...args: unknown[]) => {
-        const call = (value as (...a: unknown[]) => unknown).apply(obj, args) as Promise<unknown>;
+        // Invoke the method ON the Comlink proxy (`obj[prop](...args)`) rather
+        // than reaching for `value.apply(...)`. `value` is itself a Comlink
+        // proxy, not a real function, so `value.apply` resolves to ANOTHER
+        // Comlink proxy (path `[prop, 'apply']`) instead of
+        // `Function.prototype.apply`. Calling that proxy ships the real
+        // argument list NESTED as a single element, so Comlink's
+        // `processArguments`/`toWireValue` never sees a top-level
+        // `proxyMarker` on a `Comlink.proxy(callback)` argument and tries to
+        // structuredClone the callback (→ DataCloneError). Calling through the
+        // proxy's own `apply` trap keeps the argument list FLAT so proxied
+        // callbacks are turned into a MessagePort/handler as intended. For
+        // clone-safe arguments (EDF etc.) the wire payload is byte-identical.
+        const method = (obj as Record<PropertyKey, ((...a: unknown[]) => unknown) | undefined>)[
+          prop
+        ] as (...a: unknown[]) => unknown;
+        const call = method(...args) as Promise<unknown>;
 
         // If the underlying call isn't thenable there's no point racing.
         if (typeof (call as { then?: unknown })?.then !== 'function') {
