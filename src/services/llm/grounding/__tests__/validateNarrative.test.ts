@@ -16,6 +16,18 @@ import { COMMON, makeAggregate } from '../../context/__tests__/fixtures';
 
 const singleNight = () => buildSingleNightContext({ ...COMMON, aggregate: makeAggregate() });
 
+/**
+ * Single-night context with a usage value chosen so its H/M decomposition tokens
+ * (6.7 h → 6 h / 42 min / 402 total min) do NOT coincidentally collide with any
+ * other allow-listed numeral — so the decomposition-admission path is what the
+ * tests actually exercise. Mask-on is 400 min (≠ the 402 total) on purpose.
+ */
+const usageNight = () =>
+  buildSingleNightContext({
+    ...COMMON,
+    aggregate: makeAggregate({ usageHours: 6.7, maskOnTimeMinutes: 400 }),
+  });
+
 describe('extractNumerals', () => {
   it('extracts decimals, integers, and split ranges', () => {
     expect(extractNumerals('AHI was 4.2 events/h, between 5-15.')).toEqual(['4.2', '5', '15']);
@@ -123,6 +135,86 @@ describe('validateNarrative — numeral extraction', () => {
     expect(res.ok).toBe(false);
     expect(
       res.violations.some((v) => v.kind === 'fabricated-numeral' && v.offending === '7.5'),
+    ).toBe(true);
+  });
+
+  it('DECOMPOSED TIME: passes a usage restated as "6 hours 42 minutes" (from "6.7 h")', () => {
+    // Usage 6.7 h → floor 6 h, round(0.7 × 60) = 42 min. The model restates the
+    // allow-listed "6.7 h" in mixed units; "42" (well above the 0–10 safe set
+    // and NOT a raw allow-list value) must be admitted as the derived
+    // decomposition of the context's own hours metric, not flagged.
+    const ctx = usageNight();
+    const usage = ctx.metrics.find((m) => m.id === 'usageHours');
+    expect(usage?.displayValue).toBe('6.7');
+    expect(ctx.numericAllowList).not.toContain('42'); // not a raw allow-list value
+    const res = validateNarrative(
+      'You wore the mask about 6 hours 42 minutes — treat this as an estimate.',
+      ctx,
+    );
+    expect(res.ok).toBe(true);
+    expect(res.violations).toHaveLength(0);
+  });
+
+  it('DECOMPOSED TIME: passes the abbreviated "6 h 42 min" variant', () => {
+    const ctx = usageNight();
+    const res = validateNarrative(
+      'Usage was approximately 6 h 42 min for the night (an estimate).',
+      ctx,
+    );
+    expect(res.ok).toBe(true);
+    expect(res.violations).toHaveLength(0);
+  });
+
+  it('DECOMPOSED TIME: passes a total-minutes restatement ("402 minutes")', () => {
+    // 6.7 h → round(6.7 × 60) = 402 min, an exact derivation of the usage value.
+    // The fixture's mask-on metric is 400 min, so 402 is NOT separately
+    // allow-listed; it is admitted purely as the hours-metric decomposition.
+    const ctx = usageNight();
+    expect(ctx.numericAllowList).not.toContain('402');
+    const res = validateNarrative(
+      'That is roughly 402 minutes of therapy — an estimate given the reliability tier.',
+      ctx,
+    );
+    expect(res.ok).toBe(true);
+    expect(res.violations).toHaveLength(0);
+  });
+
+  it('DECOMPOSED TIME: tolerates ±1 minute on the sub-hour component ("6 hours 41 minutes")', () => {
+    // 42 ± 1 is admitted to tolerate the model rounding the displayed decimal
+    // slightly differently; 41 is within the tight window.
+    const ctx = usageNight();
+    const res = validateNarrative(
+      'You used it about 6 hours 41 minutes overnight (an estimate).',
+      ctx,
+    );
+    expect(res.ok).toBe(true);
+    expect(res.violations).toHaveLength(0);
+  });
+
+  it('GUARD INTACT — FABRICATED MINUTE: rejects "6 hours 55 minutes" (real decomposition is 42)', () => {
+    // 55 ≠ the true 42 (and is outside the ±1 window), so a fabricated minutes
+    // value must still be flagged — the decomposition admission does NOT widen
+    // to arbitrary integers > 10.
+    const ctx = usageNight();
+    expect(ctx.numericAllowList).not.toContain('55');
+    const res = validateNarrative(
+      'You wore the mask about 6 hours 55 minutes — treat this as an estimate.',
+      ctx,
+    );
+    expect(res.ok).toBe(false);
+    expect(
+      res.violations.some((v) => v.kind === 'fabricated-numeral' && v.offending === '55'),
+    ).toBe(true);
+  });
+
+  it('GUARD INTACT — FABRICATED TOTAL MINUTES: rejects "420 minutes" (real total is 402)', () => {
+    // A made-up total-minutes value that is not round(value × 60) for any context
+    // hours metric stays a fabrication.
+    const ctx = usageNight();
+    expect(ctx.numericAllowList).not.toContain('420');
+    const res = validateNarrative('That is roughly 420 minutes of therapy (an estimate).', ctx);
+    expect(
+      res.violations.some((v) => v.kind === 'fabricated-numeral' && v.offending === '420'),
     ).toBe(true);
   });
 

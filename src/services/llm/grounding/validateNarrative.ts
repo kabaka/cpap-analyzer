@@ -212,6 +212,15 @@ export function validateNarrative(
   // "T90", "95th-percentile", "below 90%"). Those are not model-introduced
   // figures, so admit every numeral that appears in the snapshot's own labels.
   for (const token of labelNumerals(context)) allow.add(token);
+  // An hours-valued metric shown as "7.3 h" is naturally restated by the model
+  // in mixed units ("7 hours 18 minutes" / "7 h 18 min" / "438 minutes"). The
+  // whole-hours / minutes / total-minutes restatement is a faithful re-rendering
+  // of a value already in the allow-list, so admit ONLY the specific tokens that
+  // an actual context hours-value decomposes to — exactly as the scope-date fix
+  // admits only the years of the context's own dates. A fabricated minute that
+  // does not match any context hours decomposition is still rejected. Mirrored in
+  // checkUnitConsistency so "<minutes> min" is also accepted with its true unit.
+  for (const d of hourDecompositions(context)) allow.add(d.token);
 
   // ── 1. Numeral-extraction (prose) ─────────────────────────────────────────
   for (const token of extractNumerals(narrative)) {
@@ -316,6 +325,65 @@ function labelNumerals(context: GroundedContext): string[] {
   return sources.flatMap(extractNumerals);
 }
 
+/** A decomposition token admitted from an hours-valued metric, with its unit. */
+interface HourDecompositionToken {
+  /** The bare numeral the model may write (e.g. "7", "18", "438"). */
+  readonly token: string;
+  /** The restatement unit this token is paired with ("h" or "min"). */
+  readonly unit: string;
+}
+
+/**
+ * Tolerance (in minutes) applied to the sub-hour MINUTES component only.
+ *
+ * The model sees the value already rounded to one decimal ("7.3 h") and most
+ * naturally computes round(0.3 × 60) = 18. We additionally admit ±1 minute to
+ * tolerate the model rounding the decimal→minutes conversion slightly
+ * differently (e.g. truncating, or carrying an extra digit of the displayed
+ * decimal). The window is kept to ±1: it is wide enough for benign re-rounding
+ * yet far too tight to admit a fabricated minute (a made-up "42 minutes" against
+ * a true 18 is rejected). The whole-hours and total-minutes restatements get NO
+ * tolerance — they are exact single derivations of the displayed value.
+ */
+const MINUTES_TOLERANCE = 1;
+
+/**
+ * Derive the admissible H/M decomposition tokens from the context's OWN
+ * hours-valued metrics (unit `h`/`hours`), mirroring how `dateYear` admits only
+ * the years of the context's own dates. For a metric whose `displayValue` parses
+ * to `value` hours:
+ *  - whole hours  = floor(value)                      → admitted as "h"
+ *  - minutes      = round((value − wholeHours) × 60)  → admitted as "min" (±1)
+ *  - total minutes= round(value × 60)                 → admitted as "min" (exact)
+ *
+ * This admits ONLY the specific decomposition of a value already in the
+ * allow-list. A fabricated minute that matches no context hours value (e.g. "42"
+ * when the real 7.3 h decomposes to 18) is NOT produced here and remains a
+ * fabricated-numeral violation, so the anti-fabrication backstop is intact.
+ *
+ * Whole-number hour values (e.g. "8.0 h") yield minutes 0 (a safe literal
+ * already), so they add nothing new beyond the hours token.
+ */
+function hourDecompositions(context: GroundedContext): HourDecompositionToken[] {
+  const out: HourDecompositionToken[] = [];
+  for (const m of context.metrics) {
+    if (m.availability !== 'present' || m.displayValue === null) continue;
+    if (normalizeUnit(m.unit) !== 'h') continue;
+    const value = Number(m.displayValue);
+    if (!Number.isFinite(value) || value < 0) continue;
+    const wholeHours = Math.floor(value);
+    const minutes = Math.round((value - wholeHours) * 60);
+    const totalMinutes = Math.round(value * 60);
+    out.push({ token: String(wholeHours), unit: 'h' });
+    out.push({ token: String(totalMinutes), unit: 'min' });
+    for (let delta = -MINUTES_TOLERANCE; delta <= MINUTES_TOLERANCE; delta++) {
+      const candidate = minutes + delta;
+      if (candidate >= 0 && candidate < 60) out.push({ token: String(candidate), unit: 'min' });
+    }
+  }
+  return out;
+}
+
 /**
  * Check that any value quoted with a unit is quoted with the SAME unit the
  * context attaches to a metric of that display value. A value present in the
@@ -338,6 +406,12 @@ function checkUnitConsistency(narrative: string, context: GroundedContext): Narr
     for (const p of context.series.points) note(p.displayValue, context.series.yUnit);
     for (const r of context.series.referenceLines) note(r.value, r.unit);
   }
+  // Admit the H/M decomposition tokens of every hours-valued metric with their
+  // restatement units, so "7 hours 18 minutes" / "438 minutes" (a faithful
+  // re-rendering of a "7.3 h" value) is not flagged wrong-unit. Without this, a
+  // decomposed minute that happens to equal another metric's display value (e.g.
+  // a leak of 18 L/min) would be mis-attributed to that metric's unit.
+  for (const d of hourDecompositions(context)) note(d.token, d.unit);
 
   // For each "<number> <unit>" pair in the prose, if we know that value's
   // units, the attached unit must be one of them.
