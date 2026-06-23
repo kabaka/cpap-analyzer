@@ -1,27 +1,25 @@
 /**
- * Pressure Chart — mean line with P95 band and configured pressure references.
+ * Pressure Chart — mean line with a mean→P95 band and configured-pressure
+ * reference lines (Canvas2D).
+ *
+ * Migrated from Recharts/SVG. Visuals reproduced exactly: a desaturated band
+ * from the per-night mean up to the 95th percentile (the Recharts "knockout"
+ * drawn directly as a single band between the two series), the mean line on top,
+ * configured min/max pressure reference lines with right-anchored labels,
+ * settings-change markers, and the synced crosshair.
  *
  * @module views/Trends/charts/PressureChart
  */
 
 import React, { useCallback, useMemo } from 'react';
-import {
-  Area,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { useChartColors } from '@/components/charts/useChartColors';
 import { useSyncedChart } from '../context/SyncedChartContext';
 import type { NightlyAggregate } from '@/types';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
-import { renderSettingsChangeMarkers } from './SettingsChangeMarkers';
 import ChartPanel from './ChartPanel';
+import TrendsCanvasChart, { type DrawContext, type ChartMargins } from './canvas/TrendsCanvasChart';
+import type { CurvePoint } from './canvas/curve';
+import { SettingsMarkerOverlay } from './SettingsChangeMarkers';
 
 interface PressureChartProps {
   data: NightlyAggregate[];
@@ -31,15 +29,16 @@ interface PressureChartProps {
   onDataPointClick?: (date: string) => void;
 }
 
+const MARGINS: ChartMargins = { top: 8, right: 48, bottom: 0, left: 0 };
+
 const PressureChart = React.memo(function PressureChart({
   data,
   height,
   settingsChanges,
-  hideXAxis = true,
   onDataPointClick,
 }: PressureChartProps) {
   const colors = useChartColors();
-  const { activeDate, setActive, clear } = useSyncedChart();
+  const { activeDate, activeIndex } = useSyncedChart();
 
   const { yMin, yMax, configuredMin, configuredMax } = useMemo(() => {
     const means = data.map((d) => d.pressureMean);
@@ -49,7 +48,6 @@ const PressureChart = React.memo(function PressureChart({
     const low = Math.min(...allVals);
     const high = Math.max(...allVals);
 
-    // Use the latest aggregate for configured pressures
     const latest = data.length > 0 ? data[data.length - 1] : null;
     const cfgMin = latest?.configuredMinPressure ?? null;
     const cfgMax = latest?.configuredMaxPressure ?? null;
@@ -62,22 +60,90 @@ const PressureChart = React.memo(function PressureChart({
     };
   }, [data]);
 
-  const handleMouseMove = useCallback(
-    (state: { activeLabel?: string; activeTooltipIndex?: number }) => {
-      if (state.activeLabel) {
-        setActive(state.activeLabel, state.activeTooltipIndex ?? null);
+  const domain = useMemo(() => ({ min: yMin, max: yMax }), [yMin, yMax]);
+  const dateAtIndex = useCallback((i: number) => data[i]?.date, [data]);
+
+  const drawBase = useCallback(
+    ({ renderer, plot, count, fontFamily }: DrawContext) => {
+      renderer.beginBase(colors.surfacePrimary);
+      const ticks = renderer.drawHorizontalGrid(domain, plot, colors.grid);
+
+      const mean: CurvePoint[] = data.map((d, i) => ({
+        x: renderer.pointX(i, count, plot),
+        y: renderer.valueY(d.pressureMean, domain, plot),
+      }));
+      const p95: CurvePoint[] = data.map((d, i) => ({
+        x: renderer.pointX(i, count, plot),
+        y: renderer.valueY(d.pressureP95, domain, plot),
+      }));
+      renderer.drawBandBetween(mean, p95, { color: colors.chart4, opacity: 0.15 }, plot);
+
+      if (configuredMin !== null) {
+        renderer.drawHorizontalReferenceLine(
+          configuredMin,
+          domain,
+          plot,
+          { color: colors.axis, dash: [3, 3] },
+          { text: 'Min', color: colors.axis, fontFamily },
+        );
       }
+      if (configuredMax !== null) {
+        renderer.drawHorizontalReferenceLine(
+          configuredMax,
+          domain,
+          plot,
+          { color: colors.axis, dash: [3, 3] },
+          { text: 'Max', color: colors.axis, fontFamily },
+        );
+      }
+
+      renderer.drawMonotoneLine(mean, { color: colors.chart4, width: 1.5 }, plot, false);
+      renderer.drawYAxisRight(domain, plot, colors.axis, fontFamily, ticks);
     },
-    [setActive],
+    [colors, domain, data, configuredMin, configuredMax],
   );
 
-  const handleClick = useCallback(
-    (state: { activeLabel?: string } | null) => {
-      if (state?.activeLabel && onDataPointClick) {
-        onDataPointClick(state.activeLabel);
+  const drawOverlay = useCallback(
+    ({ renderer, plot, count }: DrawContext, idx: number | null) => {
+      if (idx === null || idx < 0 || idx >= data.length) return;
+      const x = renderer.pointX(idx, count, plot);
+      renderer.drawVerticalReferenceLine(x, plot, { color: colors.axis, opacity: 0.4 });
+      const d = data[idx];
+      if (d) {
+        const y = renderer.valueY(d.pressureMean, domain, plot);
+        renderer.drawActiveDot(x, y, 5, colors.chart4);
       }
     },
-    [onDataPointClick],
+    [colors, domain, data],
+  );
+
+  // Screen-reader table depends ONLY on the per-night rows, never on the active
+  // hover index — memoise it so a hover-driven re-render does not reconcile the
+  // night <tr>s. Markup is identical to the inline form. Declared BEFORE the
+  // empty-data early return to keep hook order unconditional.
+  const srSummary = useMemo(
+    () => (
+      <table>
+        <caption>Therapy pressure per night: mean and 95th percentile (cmH₂O).</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Mean pressure</th>
+            <th scope="col">P95 pressure</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((d) => (
+            <tr key={d.date}>
+              <td>{d.date}</td>
+              <td>{d.pressureMean.toFixed(1)}</td>
+              <td>{d.pressureP95.toFixed(1)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ),
+    [data],
   );
 
   if (data.length === 0) return null;
@@ -87,91 +153,78 @@ const PressureChart = React.memo(function PressureChart({
       title="Pressure"
       chartHeight={height}
       accessibleSummary="Therapy pressure chart with mean line and P95 band"
+      srSummary={srSummary}
     >
-      <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart
+      <div style={{ position: 'relative', width: '100%', height }}>
+        <TrendsCanvasChart
+          count={data.length}
+          dataKey={data}
+          height={height}
+          margins={MARGINS}
+          drawBase={drawBase}
+          drawOverlay={drawOverlay}
+          dateAtIndex={dateAtIndex}
+          onDataPointClick={onDataPointClick}
+          ariaLabel="Pressure chart"
+        />
+        <SettingsMarkerOverlay
+          changes={settingsChanges}
           data={data}
-          margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={clear}
-          onClick={handleClick}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} vertical={false} />
-          <XAxis dataKey="date" hide={hideXAxis} />
-          <YAxis
-            domain={[yMin, yMax]}
-            tick={{ fill: colors.axis, fontSize: 11 }}
-            stroke={colors.axis}
-            width={40}
-            orientation="right"
+          margins={MARGINS}
+          stroke={colors.axis}
+        />
+        {activeDate && activeIndex !== null && data[activeIndex] && (
+          <PressureTooltip
+            d={data[activeIndex]}
+            index={activeIndex}
+            count={data.length}
+            margins={MARGINS}
+            colors={colors}
           />
-
-          <Tooltip
-            cursor={{ stroke: colors.axis, strokeOpacity: 0.3 }}
-            contentStyle={{
-              background: colors.tooltipBg,
-              border: `1px solid ${colors.tooltipBorder}`,
-              fontSize: 12,
-            }}
-            formatter={(value: number, name: string) => {
-              const label = name === 'pressureP95' ? 'P95' : 'Mean';
-              return [`${value.toFixed(1)} cmH₂O`, label];
-            }}
-          />
-
-          {/* P95 band */}
-          <Area
-            dataKey="pressureP95"
-            stroke="none"
-            fill={colors.chart4}
-            fillOpacity={0.15}
-            isAnimationActive={false}
-          />
-          <Area
-            dataKey="pressureMean"
-            stroke="none"
-            fill={colors.surfacePrimary}
-            fillOpacity={1}
-            isAnimationActive={false}
-          />
-
-          {/* Configured pressure reference lines */}
-          {configuredMin !== null && (
-            <ReferenceLine
-              y={configuredMin}
-              stroke={colors.axis}
-              strokeDasharray="3 3"
-              label={{ value: 'Min', position: 'right', fill: colors.axis, fontSize: 10 }}
-            />
-          )}
-          {configuredMax !== null && (
-            <ReferenceLine
-              y={configuredMax}
-              stroke={colors.axis}
-              strokeDasharray="3 3"
-              label={{ value: 'Max', position: 'right', fill: colors.axis, fontSize: 10 }}
-            />
-          )}
-
-          {/* Settings change markers — shared helper with <title> hover. */}
-          {renderSettingsChangeMarkers(settingsChanges, { stroke: colors.axis })}
-
-          {activeDate && <ReferenceLine x={activeDate} stroke={colors.axis} strokeOpacity={0.4} />}
-
-          {/* Mean line on top */}
-          <Line
-            dataKey="pressureMean"
-            type="monotone"
-            stroke={colors.chart4}
-            strokeWidth={1.5}
-            dot={false}
-            isAnimationActive={false}
-            activeDot={{ r: 5, cursor: 'pointer' }}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
+        )}
+      </div>
     </ChartPanel>
   );
 });
+
+function PressureTooltip({
+  d,
+  index,
+  count,
+  margins,
+  colors,
+}: {
+  d: NightlyAggregate;
+  index: number;
+  count: number;
+  margins: ChartMargins;
+  colors: ReturnType<typeof useChartColors>;
+}) {
+  const leftPct = count <= 1 ? 50 : (index / (count - 1)) * 100;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top: margins.top,
+        left: `calc(${margins.left}px + (100% - ${margins.left + margins.right}px) * ${leftPct / 100})`,
+        transform: 'translateX(-50%)',
+        background: colors.tooltipBg,
+        border: `1px solid ${colors.tooltipBorder}`,
+        fontSize: 12,
+        padding: '6px 8px',
+        borderRadius: 4,
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+        zIndex: 2,
+      }}
+      role="status"
+      aria-hidden="true"
+    >
+      <div style={{ fontWeight: 600 }}>{d.date}</div>
+      <div>Mean: {d.pressureMean.toFixed(1)} cmH₂O</div>
+      <div>P95: {d.pressureP95.toFixed(1)} cmH₂O</div>
+    </div>
+  );
+}
 
 export default PressureChart;
