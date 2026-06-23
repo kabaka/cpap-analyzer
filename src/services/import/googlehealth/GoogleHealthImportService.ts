@@ -305,18 +305,22 @@ export class GoogleHealthImportService {
             fileHashes.push(await this.computeStringHash(`${file.name}:${String(file.size)}`));
           }
 
-          // 2. Parse the files. Heavy types go through the worker pool with
-          //    determinate per-file/per-chunk progress; light types stay inline.
-          let daily: ParsedDailyRecord[];
-          let timeseries: ParsedTimeseriesRecord[];
-
+          // 2. Parse + store. Heavy types go through the worker pool, which
+          //    INTERLEAVES storage with parsing: each file's records are stored
+          //    and released before the next file is parsed, so peak heap stays
+          //    ~O(one file) regardless of how many files/years the type spans.
+          //    Light types parse fully inline (trivially small) then store.
           if (WORKER_PARSED_TYPES.has(dtInfo.dataType) && this.workerPoolFactory) {
             pool ??= this.workerPoolFactory();
-            ({ daily, timeseries } = await this.parseDataTypeViaWorker(
+            const outcome = await this.parseAndStoreDataTypeViaWorker(
               pool,
               dtInfo.dataType as FitbitWorkerDataType,
               files,
+              skipDuplicates,
               errors,
+              progress,
+              emit,
+              trackDate,
               (parsed, total) => {
                 emit({
                   status: 'parsing',
@@ -326,65 +330,67 @@ export class GoogleHealthImportService {
                 });
               },
               signal,
-            ));
+            );
+            totalImported += outcome.stored;
+            totalSkipped += outcome.skipped;
           } else {
-            ({ daily, timeseries } = await this.parseDataType(
+            const { daily, timeseries } = await this.parseDataType(
               parsers,
               dtInfo.dataType,
               files,
               errors,
-            ));
-          }
-
-          // 3. Store daily records.
-          if (daily.length > 0) {
-            const dailyDataType = dtInfo.dataType as FitbitDailyType;
-            const outcome = await this.processDailyRecords(
-              daily,
-              dailyDataType,
-              skipDuplicates,
-              errors,
-              (processed, skipped) => {
-                emit({
-                  status: 'storing',
-                  currentDataTypePhase: 'storing',
-                  recordsProcessed: progress.recordsProcessed + processed,
-                  recordsSkipped: progress.recordsSkipped + skipped,
-                });
-              },
-              signal,
             );
-            totalImported += outcome.stored;
-            totalSkipped += outcome.skipped;
 
-            for (const rec of daily) {
-              trackDate(rec.date);
+            // 3. Store daily records.
+            if (daily.length > 0) {
+              const dailyDataType = dtInfo.dataType as FitbitDailyType;
+              const outcome = await this.processDailyRecords(
+                daily,
+                dailyDataType,
+                skipDuplicates,
+                errors,
+                (processed, skipped) => {
+                  emit({
+                    status: 'storing',
+                    currentDataTypePhase: 'storing',
+                    recordsProcessed: progress.recordsProcessed + processed,
+                    recordsSkipped: progress.recordsSkipped + skipped,
+                  });
+                },
+                signal,
+              );
+              totalImported += outcome.stored;
+              totalSkipped += outcome.skipped;
+
+              for (const rec of daily) {
+                trackDate(rec.date);
+              }
             }
-          }
 
-          // 4. Store timeseries records.
-          if (timeseries.length > 0) {
-            const tsDataType = dtInfo.dataType as FitbitTimeseriesType;
-            const outcome = await this.processTimeseriesRecords(
-              timeseries,
-              tsDataType,
-              skipDuplicates,
-              errors,
-              (processed, skipped) => {
-                emit({
-                  status: 'storing',
-                  currentDataTypePhase: 'storing',
-                  recordsProcessed: progress.recordsProcessed + processed,
-                  recordsSkipped: progress.recordsSkipped + skipped,
-                });
-              },
-              signal,
-            );
-            totalImported += outcome.stored;
-            totalSkipped += outcome.skipped;
+            // 4. Store timeseries records.
+            if (timeseries.length > 0) {
+              const tsDataType = dtInfo.dataType as FitbitTimeseriesType;
+              const outcome = await this.processTimeseriesRecords(
+                timeseries,
+                tsDataType,
+                skipDuplicates,
+                errors,
+                (processed, skipped) => {
+                  emit({
+                    status: 'storing',
+                    currentDataTypePhase: 'storing',
+                    recordsProcessed: progress.recordsProcessed + processed,
+                    recordsSkipped: progress.recordsSkipped + skipped,
+                  });
+                },
+                signal,
+              );
+              totalImported += outcome.stored;
+              totalSkipped += outcome.skipped;
 
-            for (const rec of timeseries) {
-              trackDate(rec.date);
+              for (const rec of timeseries) {
+                trackDate(rec.date);
+              }
             }
           }
         } catch (err) {
@@ -555,38 +561,72 @@ export class GoogleHealthImportService {
   // -----------------------------------------------------------------------
 
   /**
-   * Parse a heavy data type on the Fitbit parser worker pool.
+   * Parse AND store a heavy data type on the Fitbit parser worker pool,
+   * INTERLEAVING storage with parsing to bound peak main-thread memory.
    *
    * Files are processed ONE AT A TIME per pool task: each file's bytes are read,
    * its `ArrayBuffer` is TRANSFERRED into the worker (neutered on this thread so
    * the clone is avoided and main-thread memory is released), parsed off-thread,
-   * and its `ParsedRecord[]` returned. Processing per-file rather than batching
-   * keeps peak memory bounded to a single file and lets per-file + per-chunk
-   * progress flow continuously.
+   * and its `ParsedRecord[]` returned. The returned records are then stored
+   * IMMEDIATELY (daily + timeseries) and the per-file `result` is dropped before
+   * the next file is parsed. Peak accumulated-results heap is therefore ~O(one
+   * file) regardless of how many files/years the type spans — the previous path
+   * accumulated every file's records for the whole type before storing.
+   *
+   * Equivalence with the old parse-all-then-store path:
+   * - **Stored output** is identical: the same records are wrapped and written;
+   *   storing per-file vs. per-type does not change record contents.
+   * - **Dedup** is preserved, INCLUDING within-import duplicates: dedup is keyed
+   *   on `(source, dataType, date)` via {@link IndexedDBService} lookups, so once
+   *   file A's record for a date is committed, file B's duplicate finds it and is
+   *   skipped — exactly as when all files were stored in one pass. No in-memory
+   *   dedup set exists to reset, so nothing per-file can desynchronise it.
+   * - **Progress counters** stay monotonic: the running base in `progress`
+   *   (`recordsProcessed`/`recordsSkipped`) is advanced by each file's outcome
+   *   AFTER that file is stored, so the next file's store callbacks build on the
+   *   updated base and totals never go backwards or double-count.
+   * - **trackDate** is called for every stored record's date (both halves), so
+   *   the import's date-range summary is unchanged.
    *
    * The job `signal` is forwarded to {@link WorkerPool.submit} so a cancelled
-   * job's still-queued parse tasks are dropped immediately. The parsed output is
-   * byte-identical to the inline {@link parseDataType} path (same worker-safe
-   * cores) — gated by golden-fixture equality tests.
+   * job's still-queued parse tasks are dropped immediately. A cancel mid-type now
+   * leaves MORE already-stored data durable (the desired side benefit); this is
+   * consistent with the idempotent per-day dedup model — a re-import skips what
+   * was already committed.
    *
    * @param onParseProgress Receives `(recordsProcessedSoFar, recordsTotal)`
    *   across the whole data type. `recordsTotal` is the summed entry count of
    *   all files; it becomes known incrementally as each file is decoded, so it
    *   is reported as a running floor (processed-so-far + current-file-total).
+   * @returns Aggregate `{ stored, skipped }` across all files of the type.
    */
-  private async parseDataTypeViaWorker(
+  private async parseAndStoreDataTypeViaWorker(
     pool: WorkerPool<FitbitParserWorkerAPI>,
     dataType: FitbitWorkerDataType,
     files: File[],
+    skipDuplicates: boolean,
     errors: ImportError[],
+    progress: GoogleHealthImportProgress,
+    emit: (patch: Partial<GoogleHealthImportProgress>) => void,
+    trackDate: (date: string) => void,
     onParseProgress: (recordsProcessed: number, recordsTotal: number) => void,
     signal?: AbortSignal,
-  ): Promise<{ daily: ParsedDailyRecord[]; timeseries: ParsedTimeseriesRecord[] }> {
-    const daily: ParsedDailyRecord[] = [];
-    const timeseries: ParsedTimeseriesRecord[] = [];
+  ): Promise<{ stored: number; skipped: number }> {
+    let totalStored = 0;
+    let totalSkipped = 0;
 
     // Records fully parsed in files completed BEFORE the current one.
     let baseProcessed = 0;
+
+    // Explicit, deterministic store-progress base for THIS type. Seeded from the
+    // cross-type running totals so progress keeps accumulating across data types,
+    // and advanced by each file's stored/skipped outcome AFTER it is stored. The
+    // per-file store callbacks render `baseStored + processed` /
+    // `baseSkipped + skipped`, so counters stay monotonic and end at the same
+    // totals as the old parse-all-then-store path — without depending on whether
+    // a fully-skipped file happens to emit a final batch callback.
+    let baseStored = progress.recordsProcessed;
+    let baseSkipped = progress.recordsSkipped;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -622,13 +662,17 @@ export class GoogleHealthImportService {
         onParseProgress(baseProcessed + p.samplesProcessed, baseProcessed + fileTotal);
       };
 
+      // Parsed records for THIS file only; dropped before the next iteration.
+      let daily: ParsedDailyRecord[];
+      let timeseries: ParsedTimeseriesRecord[];
       try {
         const result = await pool.submit(
           (proxy) => proxy.parseDataType(dataType, [workerFile], Comlink.proxy(onProgress)),
           { signal },
         );
-        for (const rec of result.daily) daily.push(rec);
-        for (const rec of result.timeseries) timeseries.push(rec);
+        // Copy out of the Comlink result so the proxied object can be released.
+        daily = result.daily.map((rec) => ({ date: rec.date, data: rec.data }));
+        timeseries = result.timeseries.map((rec) => ({ date: rec.date, data: rec.data }));
 
         baseProcessed += fileTotal;
         onParseProgress(baseProcessed, baseProcessed);
@@ -645,10 +689,72 @@ export class GoogleHealthImportService {
           error: `Parser error: ${err instanceof Error ? err.message : String(err)}`,
           recoverable: true,
         });
+        continue;
       }
+
+      // Store THIS file's records immediately, then release them.
+      if (daily.length > 0) {
+        const dailyDataType = dataType as FitbitDailyType;
+        const outcome = await this.processDailyRecords(
+          daily,
+          dailyDataType,
+          skipDuplicates,
+          errors,
+          (processed, skipped) => {
+            emit({
+              status: 'storing',
+              currentDataTypePhase: 'storing',
+              recordsProcessed: baseStored + processed,
+              recordsSkipped: baseSkipped + skipped,
+            });
+          },
+          signal,
+        );
+        totalStored += outcome.stored;
+        totalSkipped += outcome.skipped;
+        // Advance the running base so the next store builds on it.
+        baseStored += outcome.stored;
+        baseSkipped += outcome.skipped;
+
+        for (const rec of daily) {
+          trackDate(rec.date);
+        }
+      }
+
+      if (timeseries.length > 0) {
+        const tsDataType = dataType as FitbitTimeseriesType;
+        const outcome = await this.processTimeseriesRecords(
+          timeseries,
+          tsDataType,
+          skipDuplicates,
+          errors,
+          (processed, skipped) => {
+            emit({
+              status: 'storing',
+              currentDataTypePhase: 'storing',
+              recordsProcessed: baseStored + processed,
+              recordsSkipped: baseSkipped + skipped,
+            });
+          },
+          signal,
+        );
+        totalStored += outcome.stored;
+        totalSkipped += outcome.skipped;
+        baseStored += outcome.stored;
+        baseSkipped += outcome.skipped;
+
+        for (const rec of timeseries) {
+          trackDate(rec.date);
+        }
+      }
+
+      // Drop this file's parsed records before the next iteration so peak heap
+      // stays bounded to one file.
+      daily = [];
+      timeseries = [];
     }
 
-    return { daily, timeseries };
+    return { stored: totalStored, skipped: totalSkipped };
   }
 
   // -----------------------------------------------------------------------
