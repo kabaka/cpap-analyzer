@@ -88,6 +88,20 @@ const MAX_FILE_SIZE = 100 * 1024 * 1024;
 /** Yield to the event loop every Nth iteration of long synchronous-ish loops. */
 const YIELD_EVERY = 10;
 
+/**
+ * Bounded look-ahead budget for the per-day parse pipeline, in bytes (ADR 0029).
+ *
+ * The producer admits the next day-group's parse only while the in-flight
+ * parsed-buffer total (parsed but not-yet-stored day-groups) is at or below this
+ * budget — a BYTE budget, not a day count, so it adapts to both import shapes: a
+ * full 8 h night parses to ~10.5 MB (≈6 nights in flight here), a small day to
+ * ~0.04 MB (hundreds in flight). It always stays under the 100 MB/file cap. The
+ * producer always admits at least one day-group regardless of size, so a single
+ * oversized night still progresses and the budget can never deadlock. This is a
+ * tunable constant, not a structural commitment.
+ */
+const PIPELINE_BYTE_BUDGET = 64 * 1024 * 1024;
+
 // ---------------------------------------------------------------------------
 // ImportService
 // ---------------------------------------------------------------------------
@@ -259,49 +273,311 @@ export class ImportService {
       }
       stopStr();
 
-      // --- 2b. Per-day streaming phase ------------------------------------
-      // Group the non-STR files by day, then for each day: parse concurrently,
-      // build → validate → store, and release that day's buffers before moving
-      // on. This caps peak memory regardless of total import span.
+      // --- 2b. Per-day streaming phase (bounded look-ahead pipeline) ------
+      // Group the non-STR files by day. A PRODUCER parses upcoming day-groups
+      // ahead of the consumer (keeping the worker pool fed), bounded by an
+      // in-flight parsed-byte budget. A single-flight CONSUMER then, in strict
+      // day order, builds → validates → stores each day-group and releases its
+      // buffers. Only parsing (read-only) is pipelined; store stays single-
+      // flight and in order, so dedup state and the IDB-then-OPFS protocol
+      // behave byte-for-byte as the old serial loop. See ADR 0029.
       const dayGroups = this.groupByDay(nonStrFiles);
       emit({ totalDayGroups: dayGroups.length, dayGroupsProcessed: 0 });
 
       const sessionBaselineStore = { value: 0 };
 
-      for (let i = 0; i < dayGroups.length; i++) {
-        const dayGroup = dayGroups[i];
-        if (!dayGroup) continue;
+      await this.runDayPipeline({
+        dayGroups,
+        runner,
+        fileHashes,
+        errors,
+        warnings,
+        dedup,
+        skipDuplicates,
+        strSettingsByDate,
+        strMaskIntervalsByDate,
+        sessionBaselineStore,
+        signal,
+        emit,
+        progress,
+        totalFiles,
+        addBytesRead: (delta) => {
+          bytesRead += delta;
+        },
+        getBytesRead: () => bytesRead,
+        onConsumed: (out) => {
+          filesSkippedEmpty += out.emptySkips;
+          sessionsCreated += out.created;
+          sessionsSkipped += out.skipped;
+          allBuildResults.push(...out.dayResults);
+          allSessionSourceHashes.push(...out.sourceHashes);
+        },
+        getSessionsCreated: () => sessionsCreated,
+      });
+    } finally {
+      runner.dispose();
+      // Finalize the gated profiler inside the finally so its pool-occupancy
+      // sampling interval is always cleared — including when the pipeline
+      // throws (e.g. on abort), which would otherwise skip a finish() placed
+      // after the try and leak the interval until the next import.
+      importProfiler.finish();
+    }
 
+    // --- 3. Report --------------------------------------------------------
+    emit({
+      status: 'complete',
+      errors: [...errors],
+      warnings: [...warnings],
+      filesSkippedEmpty,
+    });
+
+    const overallHash = await this.computeStringHash(allSessionSourceHashes.sort().join(':'));
+    return this.buildImportRecord(
+      allBuildResults,
+      sessionsCreated,
+      sessionsSkipped,
+      errors,
+      progress,
+      overallHash,
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Per-day pipeline (bounded look-ahead producer / single-flight consumer)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Drive the per-day phase as a bounded look-ahead pipeline (ADR 0029).
+   *
+   * ## Producer
+   * Parses day-groups in index order, eagerly running ahead of the consumer so
+   * the worker pool stays fed during the consumer's build/store tail. The
+   * producer admits the next day-group's parse only while the in-flight parsed-
+   * byte total is below {@link PIPELINE_BYTE_BUDGET}, with a guarantee that it
+   * always admits at least one day-group even if it alone exceeds the budget
+   * (so a single oversized night still progresses and the budget cannot
+   * deadlock). A day-group's parsed bytes count as "in flight" from the moment
+   * its parse RESOLVES until the consumer releases its buffers.
+   *
+   * ## Consumer
+   * Awaits each parsed day-group **in original day order**, one at a time, and
+   * runs build → validate → store exactly as the old serial loop did. Storing
+   * is therefore strictly single-flight and ordered: the shared dedup key sets
+   * are read-then-written by exactly one day-group at a time, so within-import
+   * duplicates across day-groups are detected identically to the serial loop.
+   *
+   * Only parsing — read-only over its inputs — runs ahead. No state is written
+   * by the producer; all mutation (dedup sets, IDB/OPFS, counters) happens in
+   * the consumer, in order.
+   *
+   * ## Cancellation
+   * `checkpoint(signal)` is awaited at the consumer's day boundaries (and inside
+   * the store loop) exactly as before, so an abort lands between fully-committed
+   * days. On abort the producer stops admitting parses and any queued/in-flight
+   * look-ahead parse tasks reject (the pool drops them via the forwarded
+   * signal); their rejections are swallowed at the producer boundary so abort
+   * does not surface as a spurious per-day error.
+   */
+  private async runDayPipeline(ctx: DayPipelineContext): Promise<void> {
+    const {
+      dayGroups,
+      runner,
+      fileHashes,
+      errors,
+      warnings,
+      dedup,
+      skipDuplicates,
+      strSettingsByDate,
+      strMaskIntervalsByDate,
+      sessionBaselineStore,
+      signal,
+      emit,
+      progress,
+      totalFiles,
+      addBytesRead,
+      getBytesRead,
+      onConsumed,
+      getSessionsCreated,
+    } = ctx;
+
+    const profiling = importProfiler.isEnabled();
+
+    // In-flight parsed-byte accounting. `inFlightBytes` is the sum of bytes
+    // CHARGED for day-groups that have been admitted to parse but not yet
+    // released by the consumer. Each day-group is charged a synchronously-known
+    // SOURCE-size estimate AT ADMISSION (so the budget gate is enforced before
+    // the parse resolves — preventing the producer from admitting all days at
+    // once), then reconciled to its actual parsed bytes when the parse resolves.
+    // The consumer decrements the same charged amount when it releases the
+    // day-group's buffers. The producer waits on `waitForByteSlot` whenever it
+    // is over budget; releases (and reconciliations) wake it.
+    let inFlightBytes = 0;
+    /** Per-slot bytes currently charged to `inFlightBytes` (for exact release). */
+    const chargedBytes = new Array<number>(dayGroups.length).fill(0);
+    let resolveSlot: (() => void) | null = null;
+    const waitForByteSlot = (): Promise<void> =>
+      new Promise<void>((resolve) => {
+        resolveSlot = resolve;
+      });
+    const signalByteSlot = (): void => {
+      const r = resolveSlot;
+      resolveSlot = null;
+      r?.();
+    };
+
+    // The producer fills this ordered array of slots; the consumer awaits each
+    // in turn. Each slot's promise resolves to a fully-parsed day-group (or a
+    // produced error marker). Slots are started lazily under the byte budget.
+    const slots: Array<Promise<ParsedDayGroup>> = new Array<Promise<ParsedDayGroup>>(
+      dayGroups.length,
+    );
+
+    let producerError: unknown = null;
+    let aborted = false;
+
+    // --- Producer ---------------------------------------------------------
+    const producer = (async (): Promise<void> => {
+      for (let i = 0; i < dayGroups.length; i++) {
+        // Stop admitting new parses once the job is aborted; the consumer's
+        // checkpoint will surface the abort. Already-started slots reject via
+        // the pool signal and are handled at consume time.
+        if (signal?.aborted) {
+          aborted = true;
+          return;
+        }
+
+        const dayGroup = dayGroups[i];
+        const slotIndex = i;
+        if (!dayGroup) {
+          slots[slotIndex] = Promise.resolve({ index: slotIndex, dayGroup: null });
+          continue;
+        }
+
+        // Byte-budget admission gate. Always admit when NOTHING is in flight
+        // (guarantees forward progress for a single oversized night that alone
+        // exceeds the budget, and so the gate can never deadlock); otherwise
+        // wait until releases bring the in-flight charge under budget.
+        while (inFlightBytes > PIPELINE_BYTE_BUDGET && inFlightBytes > 0 && !signal?.aborted) {
+          await waitForByteSlot();
+        }
+        if (signal?.aborted) {
+          aborted = true;
+          return;
+        }
+
+        // Charge this day-group's source-size estimate up front so the NEXT
+        // iteration's gate sees this admission immediately (before its parse
+        // resolves). Reconciled to actual parsed bytes on resolution below.
+        const estBytes = this.dayGroupSourceBytes(dayGroup);
+        chargedBytes[slotIndex] = estBytes;
+        inFlightBytes += estBytes;
+
+        // Start this day-group's parse. Parse errors are captured per-file
+        // inside parseDayGroup; an abort-driven rejection is caught here and
+        // recorded on the slot for the consumer.
+        slots[slotIndex] = (async (): Promise<ParsedDayGroup> => {
+          // Per-slot parse timing is measured LOCALLY (not via the shared
+          // profiler `open/lastSpanMs`), because look-ahead means several parse
+          // spans overlap and the singleton's `lastSpanMs` is not concurrency-
+          // safe. We fold each span's duration into the 'parse' phase total
+          // ourselves (a sum of concurrent spans = total parse work) and carry
+          // the per-day duration on the slot for the day-group record.
+          const t0 = profiling ? performanceNow() : 0;
+          try {
+            const parsed = await this.parseDayGroup(
+              runner,
+              dayGroup,
+              fileHashes,
+              errors,
+              warnings,
+              (delta) => addBytesRead(delta),
+              () => {
+                emit({
+                  status: 'parsing',
+                  filesProcessed: progress.filesProcessed + 1,
+                  bytesRead: getBytesRead(),
+                  currentStage: `Parsing file ${progress.filesProcessed + 1} of ${totalFiles}`,
+                });
+              },
+            );
+            const parseMs = profiling ? performanceNow() - t0 : 0;
+            if (profiling) importProfiler.addPhase('parse', parseMs);
+            // Reconcile the up-front estimate to the actual parsed bytes.
+            inFlightBytes += parsed.byteTotal - (chargedBytes[slotIndex] ?? 0);
+            chargedBytes[slotIndex] = parsed.byteTotal;
+            signalByteSlot();
+            return {
+              index: slotIndex,
+              dayGroup,
+              interpretations: parsed.interpretations,
+              byteTotal: parsed.byteTotal,
+              emptySkips: parsed.emptySkips,
+              parseMs,
+            };
+          } catch (err) {
+            if (profiling) importProfiler.addPhase('parse', performanceNow() - t0);
+            // Parse rejected: drop its charge so it cannot pin the budget.
+            inFlightBytes -= chargedBytes[slotIndex] ?? 0;
+            chargedBytes[slotIndex] = 0;
+            if (inFlightBytes < 0) inFlightBytes = 0;
+            signalByteSlot();
+            // An abort drops queued/in-flight parse tasks (pool rejects them).
+            // Surface as an abort marker so the consumer can stop cleanly; any
+            // genuine parse failure is already captured per-file in `errors`.
+            return { index: slotIndex, dayGroup, parseError: err };
+          }
+        })();
+      }
+    })().catch((err: unknown) => {
+      producerError = err;
+    });
+
+    // --- Consumer ---------------------------------------------------------
+    try {
+      for (let i = 0; i < dayGroups.length; i++) {
         // Loop-boundary checkpoint: abort lands here, between fully-committed
-        // days. The previous day's storage is complete and consistent; this
-        // day's parse/build/store has not started.
+        // days. The previous day's storage is complete and consistent.
         await checkpoint(signal);
 
-        // Parse every file in this day-group concurrently across the pool. The
-        // per-file callback keeps `status: 'parsing'` while files are in flight,
-        // even though parse/build/store now interleave per day.
-        const stopParse = importProfiler.open('parse');
-        const { interpretations, byteTotal, emptySkips } = await this.parseDayGroup(
-          runner,
-          dayGroup,
-          fileHashes,
-          errors,
-          warnings,
-          (delta) => {
-            bytesRead += delta;
-          },
-          () => {
-            emit({
-              status: 'parsing',
-              filesProcessed: progress.filesProcessed + 1,
-              bytesRead,
-              currentStage: `Parsing file ${progress.filesProcessed + 1} of ${totalFiles}`,
-            });
-          },
-        );
-        stopParse();
-        const dayParseMs = importProfiler.isEnabled() ? importProfiler.lastSpanMs : 0;
-        filesSkippedEmpty += emptySkips;
+        const parsed = await slots[i];
+        if (!parsed || parsed.dayGroup === null) {
+          emit({
+            dayGroupsProcessed: i + 1,
+            currentStage: `Processed day ${i + 1} of ${dayGroups.length}`,
+          });
+          continue;
+        }
+
+        // If this slot carried an abort/parse rejection, surface the abort via
+        // a checkpoint (which throws on abort) and stop; nothing was stored.
+        if (parsed.parseError !== undefined) {
+          await checkpoint(signal);
+          // Not an abort but a real rejection: record and skip this day.
+          errors.push({
+            fileName: parsed.dayGroup.dayFolder || '(root)',
+            error: `Parse failed: ${
+              parsed.parseError instanceof Error
+                ? parsed.parseError.message
+                : String(parsed.parseError)
+            }`,
+            recoverable: true,
+          });
+          // The slot body already dropped this day's charge from `inFlightBytes`
+          // on the rejection path (chargedBytes[i] is now 0), so there is nothing
+          // to decrement here — just drop any partial interpretations.
+          this.releaseDayGroup(parsed, () => undefined);
+          signalByteSlot();
+          continue;
+        }
+
+        // Past the `dayGroup === null` and `parseError` guards above, a slot is
+        // a successful parse and these fields are always present; default them
+        // only to satisfy the optional typing.
+        const dayGroup = parsed.dayGroup;
+        const interpretations = parsed.interpretations ?? new Map<string, ResMedInterpretation>();
+        const byteTotal = parsed.byteTotal ?? 0;
+        const emptySkips = parsed.emptySkips ?? 0;
+        const parseMs = parsed.parseMs ?? 0;
 
         // Build sessions for this day.
         let dayResults: BuildResult[] = [];
@@ -327,11 +603,11 @@ export class ImportService {
             });
           }
           stopBuild();
-          dayBuildMs = importProfiler.isEnabled() ? importProfiler.lastSpanMs : 0;
+          dayBuildMs = profiling ? importProfiler.lastSpanMs : 0;
         }
 
-        // Validate + store this day's sessions, then release its buffers.
-        const dayStoreTiming = {
+        // Validate + store this day's sessions (single-flight, in order).
+        const dayStoreTiming: StoreTiming = {
           validateMs: 0,
           storeMs: 0,
           storeIdbMs: 0,
@@ -353,12 +629,12 @@ export class ImportService {
           dayStoreTiming,
         );
 
-        // Record this day-group's timing breakdown (no-op when profiling is off).
+        // Record this day-group's timing breakdown (no-op when profiling off).
         importProfiler.recordCpapDayGroup({
           dayFolder: dayGroup.dayFolder || '(root)',
           files: this.countDayFiles(dayGroup),
           parsedBytes: byteTotal,
-          parseMs: dayParseMs,
+          parseMs,
           buildMs: dayBuildMs,
           validateMs: dayStoreTiming.validateMs,
           storeMs: dayStoreTiming.storeMs,
@@ -366,17 +642,28 @@ export class ImportService {
           storeOpfsMs: dayStoreTiming.storeOpfsMs,
           opfsChunks: dayStoreTiming.chunks,
         });
-        sessionsCreated += storeOutcome.created;
-        sessionsSkipped += storeOutcome.skipped;
-        allBuildResults.push(...dayResults);
-        allSessionSourceHashes.push(...storeOutcome.sourceHashes);
 
-        // Release this day's parsed buffers explicitly.
-        interpretations.clear();
+        onConsumed({
+          emptySkips,
+          created: storeOutcome.created,
+          skipped: storeOutcome.skipped,
+          dayResults,
+          sourceHashes: storeOutcome.sourceHashes,
+        });
+
+        // Release this day's parsed buffers and free its byte-budget charge, so
+        // the producer can admit further look-ahead parses. Decrement by the
+        // reconciled charged amount (the single source of truth), then signal.
+        this.releaseDayGroup(parsed, () => {
+          inFlightBytes -= chargedBytes[i] ?? 0;
+          chargedBytes[i] = 0;
+          if (inFlightBytes < 0) inFlightBytes = 0;
+        });
+        signalByteSlot();
 
         emit({
           dayGroupsProcessed: i + 1,
-          sessionsCreated,
+          sessionsCreated: getSessionsCreated(),
           currentStage: `Processed day ${i + 1} of ${dayGroups.length}`,
         });
 
@@ -385,28 +672,35 @@ export class ImportService {
         }
       }
     } finally {
-      runner.dispose();
+      // Ensure the producer can never wedge waiting on a byte slot after the
+      // consumer exits (normal completion OR an abort throw from checkpoint).
+      signalByteSlot();
+      // Drain the producer so its in-flight parse promises settle and any
+      // already-started look-ahead slots we never consumed are not left as
+      // unhandled rejections. Errors are captured into `producerError` above.
+      await producer;
+      // Drain any unconsumed slots (e.g. after an abort) so their parse promises
+      // settle and don't leak buffers or surface unhandled rejections.
+      await Promise.allSettled(slots.filter((s): s is Promise<ParsedDayGroup> => s !== undefined));
     }
 
-    // --- 3. Report --------------------------------------------------------
-    emit({
-      status: 'complete',
-      errors: [...errors],
-      warnings: [...warnings],
-      filesSkippedEmpty,
-    });
+    // A producer-level failure that was not an abort propagates so the import
+    // surfaces it (parse errors are already captured per-file; this is for
+    // unexpected producer faults only).
+    if (producerError && !aborted && !signal?.aborted) {
+      throw producerError;
+    }
+  }
 
-    importProfiler.finish();
-
-    const overallHash = await this.computeStringHash(allSessionSourceHashes.sort().join(':'));
-    return this.buildImportRecord(
-      allBuildResults,
-      sessionsCreated,
-      sessionsSkipped,
-      errors,
-      progress,
-      overallHash,
-    );
+  /**
+   * Release a parsed day-group's buffers and run a caller-supplied accounting
+   * hook (which decrements the in-flight byte budget). Clearing the
+   * interpretation map drops the only references to its transferred sample
+   * buffers so they become collectable before the next day is stored.
+   */
+  private releaseDayGroup(parsed: ParsedDayGroup, account: () => void): void {
+    parsed.interpretations?.clear();
+    account();
   }
 
   // -----------------------------------------------------------------------
@@ -532,6 +826,10 @@ export class ImportService {
         if (parsed.error) {
           errors.push(parsed.error);
         } else if (parsed.result) {
+          // `fileHashes` is shared across concurrently-parsing day-groups (the
+          // pipeline parses ahead), but every key is a unique relativePath, so
+          // these Map.set calls never collide — JS is single-threaded and
+          // distinct keys are independent.
           fileHashes.set(df.relativePath, parsed.result.fileHash);
           this.collectValidationMessages(df.relativePath, parsed.result, warnings);
           if (this.isEmptyParse(parsed.result)) {
@@ -749,6 +1047,24 @@ export class ImportService {
     let n = 0;
     for (const group of dayGroup.files.values()) n += group.length;
     return n;
+  }
+
+  /**
+   * Sum the on-disk source byte size of every file in a day-group.
+   *
+   * Used by the look-ahead producer as a *synchronously-known* estimate of the
+   * day-group's in-flight parsed-buffer footprint, so admission can be gated on
+   * the byte budget BEFORE the parse resolves (the parsed size is unknown until
+   * after parsing). It is reconciled to the actual parsed bytes once the parse
+   * completes. For EDF the parsed sample buffers track source size closely, and
+   * the per-file 100 MB cap bounds any single contribution.
+   */
+  private dayGroupSourceBytes(dayGroup: DayFileGroup): number {
+    let bytes = 0;
+    for (const group of dayGroup.files.values()) {
+      for (const df of group) bytes += df.file.size;
+    }
+    return bytes;
   }
 
   /** Group discovered files by day folder and timestamp. */
@@ -1101,6 +1417,66 @@ interface StoreTiming {
   storeIdbMs: number;
   storeOpfsMs: number;
   chunks: number;
+}
+
+/**
+ * A day-group that has finished parsing and is queued for the single-flight
+ * consumer. Either carries its parsed interpretations + sizing, or a
+ * `parseError` marker (abort / unexpected producer fault), or a null
+ * `dayGroup` (an empty slot that the consumer simply skips).
+ */
+interface ParsedDayGroup {
+  /** Day-group index in original day order (the consume order). */
+  readonly index: number;
+  /** The source day-group, or `null` for an empty slot. */
+  readonly dayGroup: DayFileGroup | null;
+  /** Parsed interpretations keyed by relative path (present on success). */
+  readonly interpretations?: InterpretationMap;
+  /** Sum of parsed source-buffer bytes for this day-group. */
+  readonly byteTotal?: number;
+  /** Files skipped as empty (header-only) stubs. */
+  readonly emptySkips?: number;
+  /** Wall time spent parsing this day's files, ms (gated profiling only). */
+  readonly parseMs?: number;
+  /** Set when the producer's parse promise rejected (abort or fault). */
+  readonly parseError?: unknown;
+}
+
+/** Outcome of consuming (building + validating + storing) one day-group. */
+interface ConsumedDayGroup {
+  readonly emptySkips: number;
+  readonly created: number;
+  readonly skipped: number;
+  readonly dayResults: BuildResult[];
+  readonly sourceHashes: string[];
+}
+
+/**
+ * All state and callbacks the per-day pipeline needs. Bundled into one object so
+ * the producer/consumer driver has a single, explicit dependency surface rather
+ * than a long positional parameter list. Mutable import counters are read/written
+ * exclusively through the supplied callbacks (kept on `runImport`'s closure), so
+ * the consumer remains the single writer.
+ */
+interface DayPipelineContext {
+  readonly dayGroups: DayFileGroup[];
+  readonly runner: ParseRunner;
+  readonly fileHashes: Map<string, string>;
+  readonly errors: ImportError[];
+  readonly warnings: string[];
+  readonly dedup: DedupKeys;
+  readonly skipDuplicates: boolean;
+  readonly strSettingsByDate: ReadonlyMap<string, MachineSettings>;
+  readonly strMaskIntervalsByDate: ReadonlyMap<string, readonly MaskInterval[]>;
+  readonly sessionBaselineStore: { value: number };
+  readonly signal: AbortSignal | undefined;
+  readonly emit: (patch: Partial<ImportProgress>) => void;
+  readonly progress: ImportProgress;
+  readonly totalFiles: number;
+  readonly addBytesRead: (delta: number) => void;
+  readonly getBytesRead: () => number;
+  readonly onConsumed: (out: ConsumedDayGroup) => void;
+  readonly getSessionsCreated: () => number;
 }
 
 /** Monotonic clock for the store IDB/OPFS split. */
