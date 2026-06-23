@@ -25,6 +25,7 @@
  */
 
 import type { IndexedDBService } from '@/services/storage/IndexedDBService';
+import { StorageError } from '@/services/storage/IndexedDBService';
 import type {
   GoogleHealthScanResult,
   GoogleHealthDataTypeInfo,
@@ -903,11 +904,32 @@ export class GoogleHealthImportService {
     let skipped = 0;
     const batch: IntegrationDailySummary[] = [];
 
+    // Tracks compound keys already queued during THIS import run. `source` is the
+    // constant SOURCE, so the key is `dataType:date`. Queueing two records with
+    // the same key into a single batch always violates the unique
+    // `source_dataType_date` index, so this in-memory de-dupe runs regardless of
+    // the `skipDuplicates` flag (which only governs cross-import DB de-dupe).
+    // First occurrence wins; later duplicates are skipped.
+    const seenKeys = new Set<string>();
+
     for (let i = 0; i < parsed.length; i++) {
       const rec = parsed[i];
       if (!rec) continue;
 
-      // Deduplication check.
+      const key = `${dataType}:${rec.date}`;
+
+      // Intra-import deduplication: skip records whose compound key was already
+      // queued earlier in this run, before the DB check or queueing.
+      if (seenKeys.has(key)) {
+        skipped++;
+        if ((i + 1) % YIELD_EVERY === 0) {
+          onBatchProgress(stored, skipped);
+          await checkpoint(signal);
+        }
+        continue;
+      }
+
+      // Cross-import deduplication check (DB-backed).
       if (skipDuplicates) {
         try {
           const existing = await this.db.getIntegrationDailySummaryByKey(
@@ -928,6 +950,8 @@ export class GoogleHealthImportService {
           // duplicate via the unique index constraint).
         }
       }
+
+      seenKeys.add(key);
 
       const record: IntegrationDailySummary = {
         id: crypto.randomUUID(),
@@ -985,11 +1009,11 @@ export class GoogleHealthImportService {
           await this.db.addIntegrationDailySummary(record);
           stored++;
         } catch (innerErr) {
-          // Likely a duplicate constraint error. Count as skipped.
-          const msg = innerErr instanceof Error ? innerErr.message : String(innerErr);
-          if (msg.includes('Constraint') || msg.includes('duplicate')) {
+          // A uniqueness violation means a duplicate already exists — skip it.
+          if (this.isConstraintError(innerErr)) {
             skipped++;
           } else {
+            const msg = innerErr instanceof Error ? innerErr.message : String(innerErr);
             errors.push({
               fileName: `${record.dataType}/${record.date}`,
               error: `Storage failed: ${msg}`,
@@ -1021,10 +1045,32 @@ export class GoogleHealthImportService {
     let skipped = 0;
     const batch: IntegrationTimeseries[] = [];
 
+    // Tracks compound keys already queued during THIS import run. `source` is the
+    // constant SOURCE, so the key is `dataType:date`. Queueing two records with
+    // the same key into a single batch always violates the unique
+    // `source_dataType_date` index, so this in-memory de-dupe runs regardless of
+    // the `skipDuplicates` flag (which only governs cross-import DB de-dupe).
+    // First occurrence wins; later duplicates are skipped.
+    const seenKeys = new Set<string>();
+
     for (let i = 0; i < parsed.length; i++) {
       const rec = parsed[i];
       if (!rec) continue;
 
+      const key = `${dataType}:${rec.date}`;
+
+      // Intra-import deduplication: skip records whose compound key was already
+      // queued earlier in this run, before the DB check or queueing.
+      if (seenKeys.has(key)) {
+        skipped++;
+        if ((i + 1) % YIELD_EVERY === 0) {
+          onBatchProgress(stored, skipped);
+          await checkpoint(signal);
+        }
+        continue;
+      }
+
+      // Cross-import deduplication check (DB-backed).
       if (skipDuplicates) {
         try {
           const existing = await this.db.getIntegrationTimeseriesByKey(SOURCE, dataType, rec.date);
@@ -1040,6 +1086,8 @@ export class GoogleHealthImportService {
           // Proceed with insert.
         }
       }
+
+      seenKeys.add(key);
 
       const record: IntegrationTimeseries = {
         id: crypto.randomUUID(),
@@ -1093,10 +1141,11 @@ export class GoogleHealthImportService {
           await this.db.addIntegrationTimeseries(record);
           stored++;
         } catch (innerErr) {
-          const msg = innerErr instanceof Error ? innerErr.message : String(innerErr);
-          if (msg.includes('Constraint') || msg.includes('duplicate')) {
+          // A uniqueness violation means a duplicate already exists — skip it.
+          if (this.isConstraintError(innerErr)) {
             skipped++;
           } else {
+            const msg = innerErr instanceof Error ? innerErr.message : String(innerErr);
             errors.push({
               fileName: `${record.dataType}/${record.date}`,
               error: `Storage failed: ${msg}`,
@@ -1112,6 +1161,29 @@ export class GoogleHealthImportService {
   // -----------------------------------------------------------------------
   // Utility
   // -----------------------------------------------------------------------
+
+  /**
+   * Detect whether an error represents a unique-index constraint violation
+   * (i.e. an attempt to insert a duplicate of an already-stored record).
+   *
+   * Robust against fragile message matching: a uniqueness violation surfaces as
+   * a `DOMException` with `.name === 'ConstraintError'` whose message is
+   * "...at least one key does not satisfy the uniqueness requirements" — which
+   * contains neither "Constraint" nor "duplicate". We therefore inspect the
+   * error `name` (including the `StorageError.originalCause` it wraps) and only
+   * fall back to substring matching defensively.
+   */
+  private isConstraintError(err: unknown): boolean {
+    if (err instanceof StorageError && err.originalCause?.name === 'ConstraintError') {
+      return true;
+    }
+    if (err instanceof Error && err.name === 'ConstraintError') {
+      return true;
+    }
+    // Defensive fallback: legacy/wrapped errors that only expose a message.
+    const msg = err instanceof Error ? err.message : String(err);
+    return msg.includes('Constraint') || msg.includes('duplicate') || msg.includes('uniqueness');
+  }
 
   /** Compute SHA-256 hash of a plain string, returned as hex string. */
   private async computeStringHash(input: string): Promise<string> {
