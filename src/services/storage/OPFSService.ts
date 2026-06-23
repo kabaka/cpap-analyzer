@@ -184,6 +184,21 @@ const CHUNK_DURATION_SECONDS = 300;
 /** Bytes per Float32 sample. */
 const BYTES_PER_SAMPLE = 4;
 
+/**
+ * Maximum number of chunk-file writes a single {@link OPFSService.writeSession}
+ * call keeps in flight at once.
+ *
+ * Chunk files are mutually independent (each is a self-contained slice of one
+ * channel-set), so they can be written concurrently — but opening an unbounded
+ * number of `FileSystemWritableFileStream`s at once risks file-handle / memory
+ * exhaustion on long sessions (a single night is ~96 chunks; a multi-day import
+ * is hundreds). This bound caps concurrency so at most this many chunk buffers
+ * and writables exist simultaneously, while still overlapping the per-chunk
+ * create → write → close latency that dominates OPFS storage cost. The manifest
+ * is always written LAST, only after every chunk write has resolved.
+ */
+const OPFS_CHUNK_WRITE_CONCURRENCY = 8;
+
 // ---------------------------------------------------------------------------
 // OPFSService
 // ---------------------------------------------------------------------------
@@ -348,10 +363,29 @@ export class OPFSService {
         physicalMax: ch.physicalMax,
       }));
 
-      // Write chunks and build chunk descriptors
-      const chunkDescriptors: ChunkDescriptor[] = [];
+      // Write chunks and build chunk descriptors.
+      //
+      // Each chunk file is independent (a self-contained slice of the channel
+      // set) with no ordering dependency on any other chunk, so the writes are
+      // issued with BOUNDED concurrency (`OPFS_CHUNK_WRITE_CONCURRENCY`) to
+      // overlap the per-chunk create → write → close latency that dominates OPFS
+      // storage cost. The manifest is still written strictly LAST, after every
+      // chunk write resolves. Descriptors are written into pre-sized slots keyed
+      // by chunk index, so the manifest's `chunks[]` order is identical to the
+      // old sequential loop regardless of completion order.
+      const chunkDescriptors: ChunkDescriptor[] = new Array<ChunkDescriptor>(chunkCount);
 
-      for (let ci = 0; ci < chunkCount; ci++) {
+      // Prepare one chunk's contiguous buffer + descriptor (pure CPU, no I/O).
+      // Kept inside the bounded worker below so at most
+      // `OPFS_CHUNK_WRITE_CONCURRENCY` chunk buffers exist at once — preserving
+      // the per-session memory profile despite parallel writes.
+      const prepareChunk = (
+        ci: number,
+      ): {
+        fileName: string;
+        chunkBuffer: Uint8Array<ArrayBuffer>;
+        descriptor: ChunkDescriptor;
+      } => {
         const chunkStartTime = startTime + ci * CHUNK_DURATION_SECONDS * 1000;
         const chunkEndTime = Math.min(
           startTime + (ci + 1) * CHUNK_DURATION_SECONDS * 1000,
@@ -399,24 +433,50 @@ export class OPFSService {
           offset += view.byteLength;
         }
 
-        // Write chunk file
+        return {
+          fileName,
+          chunkBuffer,
+          descriptor: {
+            index: ci,
+            fileName,
+            startTime: chunkStartTime,
+            endTime: chunkEndTime,
+            samples: chunkSamples,
+            byteSize: totalBytes,
+          },
+        };
+      };
+
+      // Prepare + write a single chunk file. Records its descriptor in the
+      // pre-sized slot at `ci` (index-keyed, so order is completion-independent).
+      const writeChunk = async (ci: number): Promise<void> => {
+        const { fileName, chunkBuffer, descriptor } = prepareChunk(ci);
         const fileHandle = await sessionDir.getFileHandle(fileName, { create: true });
         const writable = await fileHandle.createWritable();
         try {
-          await writable.write(chunkBuffer.buffer);
+          await writable.write(chunkBuffer);
         } finally {
           await writable.close();
         }
+        chunkDescriptors[ci] = descriptor;
+      };
 
-        chunkDescriptors.push({
-          index: ci,
-          fileName,
-          startTime: chunkStartTime,
-          endTime: chunkEndTime,
-          samples: chunkSamples,
-          byteSize: totalBytes,
-        });
-      }
+      // Bounded-concurrency driver: keep at most
+      // `OPFS_CHUNK_WRITE_CONCURRENCY` chunk writes in flight via a shared
+      // index cursor consumed by N parallel workers. If ANY chunk write rejects,
+      // `Promise.all` propagates the first rejection, which unwinds to
+      // `writeSession`'s catch and rejects the whole call exactly as the old
+      // sequential loop did — so the caller's IDB-then-OPFS compensation fires.
+      let nextChunkIndex = 0;
+      const writeWorker = async (): Promise<void> => {
+        for (;;) {
+          const ci = nextChunkIndex++;
+          if (ci >= chunkCount) return;
+          await writeChunk(ci);
+        }
+      };
+      const workerCount = Math.min(OPFS_CHUNK_WRITE_CONCURRENCY, chunkCount);
+      await Promise.all(Array.from({ length: workerCount }, () => writeWorker()));
 
       // Build and write manifest
       const manifest: SignalManifest = {
