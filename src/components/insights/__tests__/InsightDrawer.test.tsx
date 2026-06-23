@@ -483,6 +483,85 @@ describe('InsightDrawer stop control', () => {
   });
 });
 
+// ─── InsightDrawer — on-device model load (model-download-ux spec §4) ────────
+
+describe('InsightDrawer on-device model load (first-use)', () => {
+  function enableWebLLM(): void {
+    useSettingsStore.setState((s) => ({
+      integrations: {
+        ...s.integrations,
+        llm: {
+          ...s.integrations.llm,
+          enabled: true,
+          backend: 'webllm',
+          webllm: { modelId: 'Llama-3.2-3B-Instruct-q4f16_1-MLC' },
+        },
+      },
+    }));
+  }
+
+  it('renders the "Preparing the on-device model" block, NOT the empty prose/caret, while loading', () => {
+    enableWebLLM();
+    openDrawer();
+    renderDrawer(
+      makeInsight({
+        state: 'generating',
+        isGenerating: true,
+        phase: 'loading',
+        text: '',
+        progress: { phase: 'downloading', fraction: 0.42, text: 'Fetching param 12/38' },
+      }),
+    );
+
+    // The distinct download block heading + copy (spec §4.2 / §5).
+    expect(screen.getByText('Preparing the on-device model')).toBeInTheDocument();
+    expect(screen.getByText('Downloading model — 42%')).toBeInTheDocument();
+    expect(screen.getByText(/one-time download/i)).toBeInTheDocument();
+    expect(screen.getByText(/nothing is uploaded/i)).toBeInTheDocument();
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+
+    // The Cancel affordance (not "Stop") is shown during load (spec §4.3 / §5.5).
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^stop$/i })).toBeNull();
+  });
+
+  it('Cancel during the load block calls stop() (the hook returns to idle)', () => {
+    enableWebLLM();
+    openDrawer();
+    const insight = makeInsight({
+      state: 'generating',
+      isGenerating: true,
+      phase: 'loading',
+      text: '',
+      progress: { phase: 'downloading', fraction: 0.1, text: '' },
+    });
+    renderDrawer(insight);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(insight.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('switches to the streaming block (prose + caret + Stop) once a token arrives', () => {
+    enableWebLLM();
+    openDrawer();
+    renderDrawer(
+      makeInsight({
+        state: 'generating',
+        isGenerating: true,
+        phase: 'generating',
+        text: 'Your AHI was 4.2',
+        progress: { phase: 'loading', fraction: 1, text: '' },
+        sourceContext: FAKE_CONTEXT,
+      }),
+    );
+
+    // The download block is gone; streaming prose + Stop are present.
+    expect(screen.queryByText('Preparing the on-device model')).toBeNull();
+    expect(screen.getByText(/Your AHI was 4.2/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^stop$/i })).toBeInTheDocument();
+  });
+});
+
 // ─── InsightDrawer — Copy carries the caveat footer (UX §7.3) ────────────────
 
 describe('InsightDrawer copy carries the caveat', () => {

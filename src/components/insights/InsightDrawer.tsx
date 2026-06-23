@@ -41,7 +41,10 @@ import type { ErrorPrimaryAction, UseAiInsight } from '@/hooks/useAiInsight';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import type { LLMBackendId } from '@/types/settings';
 
+import { webllmModelById } from '@/views/Settings/ai/backends';
+
 import { chipsForInsight } from './chips';
+import { ModelDownloadProgress } from './ModelDownloadProgress';
 import { SourcePanel } from './SourcePanel';
 import { useInsightDrawerStore } from './useInsightDrawerStore';
 import styles from './InsightDrawer.module.css';
@@ -143,6 +146,7 @@ function InsightDrawerBody({
   const navigate = useNavigate();
   const backend = useSettingsStore((s) => s.integrations.llm.backend);
   const anthropicModel = useSettingsStore((s) => s.integrations.llm.anthropic.model);
+  const webllmModelId = useSettingsStore((s) => s.integrations.llm.webllm.modelId);
 
   const insight = insightHook();
   const {
@@ -165,6 +169,10 @@ function InsightDrawerBody({
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const triggerToRestore = useRef<HTMLElement | null>(null);
+  const generateButtonRef = useRef<HTMLButtonElement>(null);
+  // Tracks a model-load Cancel so we move focus to the Generate button once the
+  // drawer returns to idle (model-download-ux spec §4.3 focus move).
+  const focusGenerateOnIdle = useRef(false);
   const [copied, setCopied] = useState(false);
 
   // Remember the element that had focus when the drawer opened, and move focus
@@ -188,14 +196,46 @@ function InsightDrawerBody({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // After a model-load Cancel returns the drawer to idle, move focus to the
+  // Generate button (spec §4.3) — not the error screen.
+  useEffect(() => {
+    if (state === 'idle' && focusGenerateOnIdle.current) {
+      focusGenerateOnIdle.current = false;
+      generateButtonRef.current?.focus();
+    }
+  }, [state]);
+
   if (request === null) return null;
 
   const isCloud = backend === 'anthropic' || backend === 'openai-compatible';
+  const isOnDevice = backend === 'webllm' || backend === 'chrome-ai';
   const backendLabel = (backend && BACKEND_LABELS[backend]) ?? 'AI Insights';
+
+  // Surface B (model-download-ux spec §4.1): within `generating`, render the
+  // distinct "Preparing the on-device model" block — NOT the empty prose+caret —
+  // while an on-device model load is in flight and no token has streamed yet.
+  // The block disappears for good once the first token arrives (`text !== ''`),
+  // and never shows for a cloud backend (which emits no `progress`).
+  const isModelLoading =
+    state === 'generating' &&
+    isOnDevice &&
+    text === '' &&
+    (progress !== null || phase === 'loading');
+  const webllmSizeLabel =
+    backend === 'webllm' ? (webllmModelById(webllmModelId)?.sizeLabel ?? '') : '';
+  const webllmModelLabel =
+    backend === 'webllm' ? (webllmModelById(webllmModelId)?.label ?? undefined) : undefined;
 
   const startRun = (brief?: string): void => {
     setCopied(false);
     run(request.input, brief);
+  };
+
+  // Cancel during the model-load block: stop() returns to idle (the hook maps an
+  // abort-before-token to idle), and we flag the focus move to Generate.
+  const handleModelLoadCancel = (): void => {
+    focusGenerateOnIdle.current = true;
+    stop();
   };
 
   const handleCopy = (): void => {
@@ -270,6 +310,7 @@ function InsightDrawerBody({
         {state === 'idle' && (
           <>
             <button
+              ref={generateButtonRef}
               type="button"
               className={`${styles.actionButton} ${styles.primaryAction}`}
               onClick={() => startRun()}
@@ -294,8 +335,21 @@ function InsightDrawerBody({
           </>
         )}
 
-        {/* ── Generating (streaming) ─────────────────────────────────────── */}
-        {state === 'generating' && (
+        {/* ── Generating: on-device model load (first-use download block) ─── */}
+        {isModelLoading && (
+          <ModelDownloadProgress
+            variant="drawer"
+            phase={progress?.phase ?? 'loading'}
+            fraction={progress?.fraction ?? null}
+            statusText={progress?.text ?? ''}
+            sizeLabel={webllmSizeLabel}
+            {...(webllmModelLabel ? { modelLabel: webllmModelLabel } : {})}
+            onCancel={handleModelLoadCancel}
+          />
+        )}
+
+        {/* ── Generating: streaming (prose + caret + Stop) ─────────────────── */}
+        {state === 'generating' && !isModelLoading && (
           <>
             <p className={styles.statusLine}>
               <span>{phaseLabel(phase)}</span>

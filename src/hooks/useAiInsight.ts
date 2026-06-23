@@ -288,6 +288,14 @@ export function useAiInsight(runner: typeof runInsight = runInsight): UseAiInsig
   // The active run's AbortController and the last request (for regenerate).
   const abortRef = useRef<AbortController | null>(null);
   const lastRequestRef = useRef<{ input: InsightInput; userBrief?: string } | null>(null);
+  // Set by `stop()` so the terminal `aborted` outcome is recognised as a
+  // user-initiated stop (vs. a superseding run / unmount). A user stop that
+  // lands BEFORE any token streamed returns the drawer to `idle` rather than the
+  // "Generation stopped." error screen (model-download-ux spec §4.3).
+  const userStoppedRef = useRef(false);
+  // Mirror the latest streamed text in a ref so the abort handler can decide
+  // "before any token" without depending on a stale `text` closure.
+  const textRef = useRef('');
   // Monotonic run id so a stale run that resolves late cannot mutate state.
   const runIdRef = useRef(0);
   // Track mount so async state updates after unmount are dropped.
@@ -308,6 +316,8 @@ export function useAiInsight(runner: typeof runInsight = runInsight): UseAiInsig
       abortRef.current = controller;
       const myRunId = ++runIdRef.current;
       lastRequestRef.current = userBrief !== undefined ? { input, userBrief } : { input };
+      userStoppedRef.current = false;
+      textRef.current = '';
 
       // Reset the view-model for a new run.
       setState('generating');
@@ -324,6 +334,25 @@ export function useAiInsight(runner: typeof runInsight = runInsight): UseAiInsig
 
       const config = resolveConfig();
       const backendLabel = backendLabelFor(config.backend);
+
+      // True when an `aborted` outcome is the result of a user Stop that landed
+      // before any token streamed (the spec §4.3 "back out of the download"
+      // case). A non-user abort (superseded run / unmount) is handled by the
+      // run-id guard before we ever reach here, so this only needs the flag +
+      // the "no token yet" check.
+      const isUserStopBeforeToken = (err: LLMError): boolean =>
+        err.kind === 'aborted' && userStoppedRef.current && textRef.current === '';
+
+      // Return the drawer to a clean idle state (no error screen).
+      const resetToIdle = (): void => {
+        setState('idle');
+        setText('');
+        setError(null);
+        setProgress(null);
+        setPhase(null);
+        setUsedFallback(false);
+        setNeedsConsent(null);
+      };
 
       void (async () => {
         try {
@@ -343,6 +372,7 @@ export function useAiInsight(runner: typeof runInsight = runInsight): UseAiInsig
                 setProgress(event.progress);
                 break;
               case 'delta':
+                textRef.current = event.accumulated;
                 setText(event.accumulated);
                 break;
               case 'complete':
@@ -354,6 +384,13 @@ export function useAiInsight(runner: typeof runInsight = runInsight): UseAiInsig
                 setState('complete');
                 break;
               case 'error':
+                // A user-initiated Stop that lands BEFORE any token streamed is
+                // a deliberate back-out of a (possibly long) model load — return
+                // to idle rather than the "Generation stopped." error (spec §4.3).
+                if (isUserStopBeforeToken(event.error)) {
+                  resetToIdle();
+                  return;
+                }
                 setError(mapError(event.error, backendLabel));
                 setPhase(null);
                 setState('error');
@@ -390,6 +427,10 @@ export function useAiInsight(runner: typeof runInsight = runInsight): UseAiInsig
                   backend: config.backend,
                   cause: err,
                 });
+          if (isUserStopBeforeToken(llmError)) {
+            resetToIdle();
+            return;
+          }
           setError(mapError(llmError, backendLabel));
           setPhase(null);
           setState('error');
@@ -407,10 +448,13 @@ export function useAiInsight(runner: typeof runInsight = runInsight): UseAiInsig
   );
 
   const stop = useCallback((): void => {
+    // Mark this as a user-initiated stop so the terminal `aborted` outcome is
+    // distinguished from a superseding run/unmount. If it lands before any token
+    // streamed (a model-load cancel), the run loop returns to `idle` instead of
+    // the error screen (model-download-ux spec §4.3); after a token has streamed
+    // the existing partial-result behaviour is unchanged.
+    userStoppedRef.current = true;
     abortRef.current?.abort();
-    // `runInsight` emits a terminal `aborted` error, which transitions to
-    // `error`; partial text already in `text` is retained for the UI to label
-    // "Stopped — partial result" (UX §5.2).
   }, []);
 
   const regenerate = useCallback((): void => {
