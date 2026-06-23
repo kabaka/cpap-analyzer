@@ -1,6 +1,6 @@
 {
   "name": "cpap-analyzer",
-  "version": "2026.06.15",
+  "version": "2026.06.16",
   "private": true,
   "type": "module",
   "scripts": {
