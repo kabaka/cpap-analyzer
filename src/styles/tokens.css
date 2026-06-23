@@ -218,6 +218,22 @@
   --color-focus-ring: #3b82f6;
   --color-focus-ring-offset: #ffffff;
 
+  /* IMPORT / MULTI-STAGE PROGRESS STATUS
+     Semantic aliases for the multi-stage import flow (pending → active → done,
+     plus warning/error terminals). They alias the existing text/primary/
+     success/warning/error/surface tokens so the dark theme and any contrast
+     adjustments are inherited automatically — never hard-code a stage colour.
+     Colour is reinforcement only; consumers always pair a stage with a unique
+     icon shape + text label (WCAG 1.4.1). */
+  --color-stage-pending: var(--color-text-muted);
+  --color-stage-active: var(--color-primary);
+  --color-stage-done: var(--color-success);
+  --color-stage-warning: var(--color-warning);
+  --color-stage-error: var(--color-error);
+  --color-stage-active-bg: var(--color-surface-secondary);
+  --stage-status-size: var(--icon-size-sm);
+  --stage-row-indent: var(--space-6);
+
   /* SPACING SCALE (4px base) */
   --space-0: 0;
   --space-1: 4px;
@@ -457,6 +473,19 @@
 
   --color-focus-ring: #60a5fa;
   --color-focus-ring-offset: #0a0a0a;
+
+  /* IMPORT / MULTI-STAGE PROGRESS STATUS — dark. Pure aliases of the dark-theme
+     semantic tokens above; restated here for parity with the file's convention
+     of duplicating semantic aliases in the dark block (see --color-trend-neutral). */
+  --color-stage-pending: var(--color-text-muted);
+  --color-stage-active: var(--color-primary);
+  --color-stage-done: var(--color-success);
+  --color-stage-warning: var(--color-warning);
+  --color-stage-error: var(--color-error);
+  --color-stage-active-bg: var(--color-surface-secondary);
+  --stage-status-size: var(--icon-size-sm);
+  --stage-row-indent: var(--space-6);
+
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);

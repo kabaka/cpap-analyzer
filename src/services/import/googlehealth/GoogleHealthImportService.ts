@@ -39,6 +39,7 @@ import type {
 } from '@/types/storage';
 import type { ImportError as StorageImportError } from '@/types/storage';
 import type { GoogleHealthImportProgress, ImportError } from '../types';
+import { checkpoint } from '../types';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -64,6 +65,12 @@ export interface GoogleHealthImportOptions {
   readonly skipDuplicates?: boolean;
   /** Progress callback. */
   readonly onProgress?: (progress: GoogleHealthImportProgress) => void;
+  /**
+   * When aborted, the import stops at the next per-record/per-batch
+   * {@link checkpoint} boundary by throwing `ImportAbortedError`. Abort only
+   * lands between already-committed batches, so stored data stays consistent.
+   */
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -115,6 +122,7 @@ export class GoogleHealthImportService {
     options: GoogleHealthImportOptions,
   ): Promise<IntegrationImportRecord> {
     const skipDuplicates = options.skipDuplicates ?? true;
+    const signal = options.signal;
     const startTime = Date.now();
 
     // Resolve selected data types from the scan result, sorted by tier priority.
@@ -222,6 +230,10 @@ export class GoogleHealthImportService {
       const dtInfo = selectedInfos[i];
       if (!dtInfo) continue;
 
+      // Loop-boundary checkpoint: abort lands between fully-processed data
+      // types, before this type's files are read/parsed/stored.
+      await checkpoint(signal);
+
       emit({
         currentDataType: dtInfo.dataType,
         currentStage: `Processing ${dtInfo.label} (${String(i + 1)}/${String(selectedInfos.length)})`,
@@ -264,6 +276,7 @@ export class GoogleHealthImportService {
                 recordsSkipped: progress.recordsSkipped + skipped,
               });
             },
+            signal,
           );
           totalImported += outcome.stored;
           totalSkipped += outcome.skipped;
@@ -288,6 +301,7 @@ export class GoogleHealthImportService {
                 recordsSkipped: progress.recordsSkipped + skipped,
               });
             },
+            signal,
           );
           totalImported += outcome.stored;
           totalSkipped += outcome.skipped;
@@ -297,6 +311,11 @@ export class GoogleHealthImportService {
           }
         }
       } catch (err) {
+        // Cancellation must NOT be swallowed as a per-type error — rethrow so it
+        // unwinds the whole import. (Checked by name to be robust across realms.)
+        if (err instanceof Error && err.name === 'ImportAbortedError') {
+          throw err;
+        }
         // Per-data-type failure. Collect and continue with next type.
         errors.push({
           fileName: dtInfo.dataType,
@@ -307,8 +326,9 @@ export class GoogleHealthImportService {
 
       emit({ dataTypesProcessed: i + 1 });
 
-      // Yield between data types.
-      await this.yieldToEventLoop();
+      // Checkpoint between data types: abort lands here, between fully-stored
+      // types.
+      await checkpoint(signal);
     }
 
     // -----------------------------------------------------------------------
@@ -585,6 +605,7 @@ export class GoogleHealthImportService {
     skipDuplicates: boolean,
     errors: ImportError[],
     onBatchProgress: (processed: number, skipped: number) => void,
+    signal?: AbortSignal,
   ): Promise<{ stored: number; skipped: number }> {
     let stored = 0;
     let skipped = 0;
@@ -606,7 +627,7 @@ export class GoogleHealthImportService {
             skipped++;
             if ((i + 1) % YIELD_EVERY === 0) {
               onBatchProgress(stored, skipped);
-              await this.yieldToEventLoop();
+              await checkpoint(signal);
             }
             continue;
           }
@@ -634,11 +655,12 @@ export class GoogleHealthImportService {
         skipped += outcome.skipped;
         batch.length = 0;
         onBatchProgress(stored, skipped);
-        await this.yieldToEventLoop();
+        // Boundary AFTER a committed batch — safe to abort.
+        await checkpoint(signal);
       }
 
       if ((i + 1) % YIELD_EVERY === 0) {
-        await this.yieldToEventLoop();
+        await checkpoint(signal);
       }
     }
 
@@ -701,6 +723,7 @@ export class GoogleHealthImportService {
     skipDuplicates: boolean,
     errors: ImportError[],
     onBatchProgress: (processed: number, skipped: number) => void,
+    signal?: AbortSignal,
   ): Promise<{ stored: number; skipped: number }> {
     let stored = 0;
     let skipped = 0;
@@ -717,7 +740,7 @@ export class GoogleHealthImportService {
             skipped++;
             if ((i + 1) % YIELD_EVERY === 0) {
               onBatchProgress(stored, skipped);
-              await this.yieldToEventLoop();
+              await checkpoint(signal);
             }
             continue;
           }
@@ -743,11 +766,12 @@ export class GoogleHealthImportService {
         skipped += outcome.skipped;
         batch.length = 0;
         onBatchProgress(stored, skipped);
-        await this.yieldToEventLoop();
+        // Boundary AFTER a committed batch — safe to abort.
+        await checkpoint(signal);
       }
 
       if ((i + 1) % YIELD_EVERY === 0) {
-        await this.yieldToEventLoop();
+        await checkpoint(signal);
       }
     }
 
@@ -796,16 +820,6 @@ export class GoogleHealthImportService {
   // -----------------------------------------------------------------------
   // Utility
   // -----------------------------------------------------------------------
-
-  /** Yield control to the event loop so the UI can repaint. */
-  private async yieldToEventLoop(): Promise<void> {
-    const sched = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
-    if (sched?.yield) {
-      await sched.yield();
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
 
   /** Compute SHA-256 hash of a plain string, returned as hex string. */
   private async computeStringHash(input: string): Promise<string> {

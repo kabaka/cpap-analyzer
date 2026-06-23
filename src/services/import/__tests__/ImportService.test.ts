@@ -15,6 +15,7 @@ import {
   type EDFWorkerPoolFactory,
 } from '@/services/import/ImportService';
 import type { ImportOptions, ImportProgress } from '@/services/import/types';
+import { ImportAbortedError } from '@/services/import/types';
 import { EDFParser } from '@/parsers/edf/EDFParser';
 import { ResMedInterpreter } from '@/parsers/resmed/ResMedInterpreter';
 import { Validator } from '@/parsers/validation/Validator';
@@ -976,6 +977,44 @@ describe('ImportService', () => {
       // Per-file processed count is accurate despite out-of-order completion.
       const maxProcessed = Math.max(...progressUpdates.map((p) => p.filesProcessed));
       expect(maxProcessed).toBe(4);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Cancellation via AbortSignal (ADR 0026 checkpoint discipline)
+  // -----------------------------------------------------------------------
+
+  describe('cancellation', () => {
+    it('throws ImportAbortedError and writes nothing when the signal is pre-aborted', async () => {
+      const files = [
+        createMockFile(
+          '20241015_220145_BRP.edf',
+          loadFixtureBuffer('brp-airsense11.edf'),
+          'DATALOG/20241015/20241015_220145_BRP.edf',
+        ),
+        createMockFile(
+          '20241016_220145_BRP.edf',
+          loadFixtureBuffer('brp-airsense11.edf'),
+          'DATALOG/20241016/20241016_220145_BRP.edf',
+        ),
+      ];
+
+      const controller = new AbortController();
+      controller.abort();
+
+      const options: ImportOptions = {
+        sourceType: 'file',
+        signal: controller.signal,
+        onProgress: vi.fn(),
+      };
+
+      // The first per-day checkpoint fires before any session is built/stored,
+      // so the pipeline unwinds with the typed abort error and storage is
+      // untouched.
+      await expect(service.importFiles(files, options)).rejects.toBeInstanceOf(ImportAbortedError);
+
+      const internals = indexedDB as unknown as { _sessions: unknown[] };
+      expect(internals._sessions).toHaveLength(0);
     });
   });
 });
