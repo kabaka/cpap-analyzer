@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.11] — 2026-06-23
+
 ### Added
 
 - **Imports now run in the background, with a persistent progress indicator on every screen.** You no longer have to sit on the import wizard and wait. Once an import starts, it continues running while you navigate anywhere in the app — the Dashboard, Sessions, Trends, or Settings. A small **progress pill** appears bottom-left on every screen showing the live percentage; click it to expand a detail panel that lists each stage and its state, and gives you a **Cancel** button. When the import finishes, a completion **toast** announces how many sessions or records were added (and how many duplicates were skipped). The indicator is keyboard-accessible and announces progress to screen readers via a polite live region. Everything still runs entirely client-side; nothing leaves your browser. (See ADR 0026.)
