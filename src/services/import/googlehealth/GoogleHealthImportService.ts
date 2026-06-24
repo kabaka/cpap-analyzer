@@ -43,6 +43,7 @@ import * as Comlink from 'comlink';
 
 import type { GoogleHealthImportProgress, ImportError } from '../types';
 import { checkpoint, ImportAbortedError, isImportAbortedError } from '../types';
+import { importProfiler } from '../profiling/ImportProfiler';
 import type { WorkerPool } from '@/services/workers/WorkerPool';
 import type {
   FitbitParserWorkerAPI,
@@ -63,6 +64,28 @@ const YIELD_EVERY = 50;
 
 /** Integration source identifier for Fitbit data. */
 const SOURCE: IntegrationSource = 'fitbit';
+
+/**
+ * Bounded look-ahead budget for the heavy-type parse↔store overlap (ADR 0030).
+ *
+ * The producer parses upcoming files ahead of the single-flight store, but never
+ * more than this many files in flight (parsed-but-not-yet-stored + actively
+ * parsing). Hiding a single store window only requires the NEXT file to be ready
+ * when the current store finishes, so a tiny budget fully overlaps the idle
+ * window while keeping peak heap close to #67's O(one file) bound. The producer
+ * always admits at least the next file regardless of this cap, so an oversized
+ * file still makes progress and the budget never deadlocks.
+ */
+const LOOKAHEAD_FILE_CAP = 2;
+
+/**
+ * Soft in-flight parsed-byte budget for the look-ahead (ADR 0030). A second,
+ * size-aware brake so a run of large files cannot let {@link LOOKAHEAD_FILE_CAP}
+ * files pin a large heap. Sized to a couple of full-resolution intraday day-files
+ * (~a few MB of parsed records each). As with the file cap, the producer always
+ * admits at least one in-flight file even if it alone exceeds this budget.
+ */
+const LOOKAHEAD_BYTE_BUDGET = 16 * 1024 * 1024;
 
 /**
  * The heavy data types routed through the Fitbit parser worker pool (ADR 0027).
@@ -167,6 +190,11 @@ export class GoogleHealthImportService {
     const signal = options.signal;
     const startTime = Date.now();
 
+    // Gated, default-OFF profiling. `begin()` reads the live global switch; when
+    // off, every subsequent profiler call is a cheap no-op (see ImportProfiler).
+    // No PHI is recorded — only per-data-type timings and file/record counts.
+    importProfiler.begin('fitbit');
+
     // Resolve selected data types from the scan result, sorted by tier priority.
     const selectedInfos = scanResult.dataTypes
       .filter((dt) => options.selectedDataTypes.includes(dt.dataType))
@@ -239,6 +267,9 @@ export class GoogleHealthImportService {
         ],
         currentStage: 'Import failed',
       });
+      // Finalize the gated profiler so it does not stay enabled across imports
+      // (and any pool-occupancy interval is cleared). No-op when disabled.
+      importProfiler.finish();
       return importRecord;
     }
 
@@ -312,7 +343,17 @@ export class GoogleHealthImportService {
           //    ~O(one file) regardless of how many files/years the type spans.
           //    Light types parse fully inline (trivially small) then store.
           if (WORKER_PARSED_TYPES.has(dtInfo.dataType) && this.workerPoolFactory) {
-            pool ??= this.workerPoolFactory();
+            if (!pool) {
+              pool = this.workerPoolFactory();
+              // Gated occupancy sampling: when profiling is on, poll the pool's
+              // busy/size so the profile can show whether the worker idles during
+              // the store window. No-op when profiling is off.
+              const p = pool;
+              importProfiler.attachPoolSnapshot(() => ({
+                busy: p.busyWorkerCount,
+                size: p.maxPoolSize,
+              }));
+            }
             const outcome = await this.parseAndStoreDataTypeViaWorker(
               pool,
               dtInfo.dataType as FitbitWorkerDataType,
@@ -423,6 +464,12 @@ export class GoogleHealthImportService {
         await checkpoint(signal);
       }
     } finally {
+      // Finalize the gated profiler inside the finally so its pool-occupancy
+      // sampling interval is always cleared — including when the loop throws
+      // (e.g. on abort), which would otherwise skip a finish() placed after the
+      // try and leak the interval until the next import (mirrors ADR 0029's fix
+      // on the CPAP path). No-op when profiling is off.
+      importProfiler.finish();
       // Release the worker pool (if one was created) regardless of how the loop
       // exits — normal completion, per-type error, or abort.
       if (pool) {
@@ -569,43 +616,51 @@ export class GoogleHealthImportService {
   // -----------------------------------------------------------------------
 
   /**
-   * Parse AND store a heavy data type on the Fitbit parser worker pool,
-   * INTERLEAVING storage with parsing to bound peak main-thread memory.
+   * Parse AND store a heavy data type on the Fitbit parser worker pool, using a
+   * BOUNDED LOOK-AHEAD overlap of parse and store (ADR 0030).
    *
-   * Files are processed ONE AT A TIME per pool task: each file's bytes are read,
-   * its `ArrayBuffer` is TRANSFERRED into the worker (neutered on this thread so
-   * the clone is avoided and main-thread memory is released), parsed off-thread,
-   * and its `ParsedRecord[]` returned. The returned records are then stored
-   * IMMEDIATELY (daily + timeseries) and the per-file `result` is dropped before
-   * the next file is parsed. Peak accumulated-results heap is therefore ~O(one
-   * file) regardless of how many files/years the type spans — the previous path
-   * accumulated every file's records for the whole type before storing.
+   * A PRODUCER parses upcoming files eagerly in the worker pool, so that the
+   * parse of file _N+1_ (and a small bounded look-ahead beyond it) overlaps the
+   * store of file _N_. A single-flight CONSUMER then, in strict file order,
+   * stores each file's records and releases them. Only the read-only parse stage
+   * is pipelined; the store stage stays single-flight, so this reclaims the
+   * ~100%-idle worker window the profiler measured during the store tail without
+   * relaxing correctness.
    *
-   * Equivalence with the old parse-all-then-store path:
+   * Each file's `ArrayBuffer` is TRANSFERRED into the worker (neutered on this
+   * thread so the structured-clone copy is avoided and main-thread memory is
+   * released), parsed off-thread, and its `ParsedRecord[]` returned. The consumer
+   * stores the returned records (daily + timeseries) and drops them before the
+   * budget admits more parses, so peak accumulated-results heap stays bounded to
+   * the small look-ahead — O(look-ahead), a modest refinement of #67's O(one
+   * file), NOT the pre-#67 "hold everything" problem.
+   *
+   * Equivalence with the strict serial (#67) parse→store path — the persisted
+   * output is byte-for-byte identical:
    * - **Stored output** is identical: the same records are wrapped and written;
-   *   storing per-file vs. per-type does not change record contents.
-   * - **Dedup** is preserved, INCLUDING within-import duplicates: dedup is keyed
-   *   on `(source, dataType, date)` via {@link IndexedDBService} lookups, so once
-   *   file A's record for a date is committed, file B's duplicate finds it and is
-   *   skipped — exactly as when all files were stored in one pass. No in-memory
-   *   dedup set exists to reset, so nothing per-file can desynchronise it.
+   *   when parsing starts does not change record contents.
+   * - **Store is strictly single-flight, in file order.** File _N_ is fully
+   *   stored (committed) before file _N+1_ is stored. Dedup is keyed on
+   *   `(source, dataType, date)` via {@link IndexedDBService} lookups, so a
+   *   within-import cross-file duplicate finds file _N_'s already-committed
+   *   record and is skipped EXACTLY ONCE — exactly as in the serial loop. No
+   *   in-memory dedup set spans files, so nothing per-file can desynchronise it.
    * - **Progress counters** stay monotonic: the running base in `progress`
    *   (`recordsProcessed`/`recordsSkipped`) is advanced by each file's outcome
-   *   AFTER that file is stored, so the next file's store callbacks build on the
-   *   updated base and totals never go backwards or double-count.
+   *   AFTER that file is stored, in store order, so totals never go backwards or
+   *   double-count even though parsing runs ahead.
    * - **trackDate** is called for every stored record's date (both halves), so
    *   the import's date-range summary is unchanged.
    *
    * The job `signal` is forwarded to {@link WorkerPool.submit} so a cancelled
-   * job's still-queued parse tasks are dropped immediately. A cancel mid-type now
-   * leaves MORE already-stored data durable (the desired side benefit); this is
-   * consistent with the idempotent per-day dedup model — a re-import skips what
-   * was already committed.
+   * job's still-queued AND in-flight look-ahead parse tasks are dropped
+   * immediately. `checkpoint(signal)` still lands BETWEEN files in the consumer,
+   * so an abort leaves the database consistent (already-stored files complete, no
+   * half-stored file); a cancel mid-type leaves the already-committed prefix
+   * durable, consistent with the idempotent per-day dedup model.
    *
    * @param onParseProgress Receives `(recordsProcessedSoFar, recordsTotal)`
-   *   across the whole data type. `recordsTotal` is the summed entry count of
-   *   all files; it becomes known incrementally as each file is decoded, so it
-   *   is reported as a running floor (processed-so-far + current-file-total).
+   *   across the whole data type, emitted in STORE order so it stays monotonic.
    * @returns Aggregate `{ stored, skipped }` across all files of the type.
    */
   private async parseAndStoreDataTypeViaWorker(
@@ -623,7 +678,8 @@ export class GoogleHealthImportService {
     let totalStored = 0;
     let totalSkipped = 0;
 
-    // Records fully parsed in files completed BEFORE the current one.
+    // Records fully parsed in files completed (stored) BEFORE the current one.
+    // Advanced in STORE order so the across-type parse counter stays monotonic.
     let baseProcessed = 0;
 
     // Explicit, deterministic store-progress base for THIS type. Seeded from the
@@ -631,143 +687,451 @@ export class GoogleHealthImportService {
     // and advanced by each file's stored/skipped outcome AFTER it is stored. The
     // per-file store callbacks render `baseStored + processed` /
     // `baseSkipped + skipped`, so counters stay monotonic and end at the same
-    // totals as the old parse-all-then-store path — without depending on whether
-    // a fully-skipped file happens to emit a final batch callback.
+    // totals as the strict-serial path.
     let baseStored = progress.recordsProcessed;
     let baseSkipped = progress.recordsSkipped;
 
+    // --- Profiling accumulators (no-ops fold to zero when disabled) ----------
+    const profiling = importProfiler.isEnabled();
+    let parseMsTotal = 0;
+    let storeMsTotal = 0;
+    // Wall time spent storing while NO parse was in flight in the pool — the
+    // reclaimable idle the overlap targets. With look-ahead working this should
+    // trend toward zero (the producer keeps a parse running through the store).
+    let parseIdleDuringStoreMs = 0;
+    /** Files whose parse is queued/in flight in the pool right now. */
+    let inFlightParses = 0;
+
+    // --- Bounded look-ahead state -------------------------------------------
+    // Per-file parse outcome. The consumer awaits these slots in file order.
+    interface ParsedSlot {
+      readonly index: number;
+      readonly fileName: string;
+      readonly daily: ParsedDailyRecord[];
+      readonly timeseries: ParsedTimeseriesRecord[];
+      /** This file's exact entry count (for the monotonic parse counter). */
+      readonly fileTotal: number;
+      /** Approx parsed-record bytes, for the in-flight byte budget. */
+      readonly approxBytes: number;
+      /** A genuine (recoverable) per-file parse error, if any. */
+      readonly parseError?: unknown;
+    }
+
+    // Pre-allocate ONE deferred promise per file up front, so the consumer can
+    // always `await slots[i]` even before the producer has reached file i (e.g.
+    // while the producer is blocked on the admission gate). This removes the
+    // producer/consumer race entirely: the consumer never sees an "empty" slot
+    // and so never skips a file or wedges — it simply waits for the producer to
+    // settle that slot. Each resolver is called EXACTLY ONCE (parse result,
+    // parse/read error carried on the slot, or an abort marker on unwind).
+    const slots: Array<Promise<ParsedSlot> | undefined> = new Array(files.length);
+    const slotResolvers: Array<((s: ParsedSlot) => void) | undefined> = new Array(files.length);
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (!file) continue;
+      slots[i] = new Promise<ParsedSlot>((resolve) => {
+        slotResolvers[i] = resolve;
+      });
+    }
+    /** Approx in-flight parsed bytes (admitted-but-not-yet-released). */
+    let inFlightBytes = 0;
+    /** Files admitted (parse started) but not yet released by the consumer. */
+    let inFlightFiles = 0;
+    /** Charged byte estimate per slot, reconciled on parse resolution / release. */
+    const chargedBytes: number[] = new Array(files.length).fill(0);
+    /**
+     * Whether slot `i` was actually ADMITTED into flight (the producer ran
+     * `inFlightFiles += 1` for it). False for slots resolved WITHOUT admission —
+     * missing-file, read-error, and abort/teardown-marker slots. The consumer
+     * only releases an admitted slot, so the in-flight counters stay exact rather
+     * than relying on clamping.
+     */
+    const admitted: boolean[] = new Array(files.length).fill(false);
 
-      // Abort lands between files, before the next is read/transferred.
-      await checkpoint(signal);
-
-      let buffer: ArrayBuffer;
-      try {
-        buffer = await file.arrayBuffer();
-      } catch (err) {
-        errors.push({
-          fileName: file.name,
-          error: `Failed to read file: ${err instanceof Error ? err.message : String(err)}`,
-          recoverable: true,
-        });
-        continue;
+    // A tiny EDGE-SAFE notifier the producer awaits when the budget is full; the
+    // consumer (and parse resolutions) ping it after freeing budget so the
+    // producer can admit the next file. `pendingSignal` absorbs a signal that
+    // races AHEAD of the producer reaching its `await`, so a wakeup is never
+    // lost (the classic lost-wakeup deadlock when the consumer signals before the
+    // producer registers its waiter).
+    let wakeProducer: (() => void) | null = null;
+    let pendingSignal = false;
+    const waitForSlot = (): Promise<void> => {
+      // Consume a signal that already fired since the last wait — return at once.
+      if (pendingSignal) {
+        pendingSignal = false;
+        return Promise.resolve();
       }
+      return new Promise<void>((resolve) => {
+        wakeProducer = resolve;
+      });
+    };
+    const signalSlot = (): void => {
+      const w = wakeProducer;
+      if (w) {
+        wakeProducer = null;
+        w();
+      } else {
+        // No waiter registered yet — remember the signal so the next wait sees it.
+        pendingSignal = true;
+      }
+    };
 
-      // The bytes are TRANSFERRED into the worker (neutered here): the single
-      // source file becomes the worker's; the structured-clone copy is avoided
-      // and this thread's reference to the buffer is released.
-      const workerFile = Comlink.transfer<FitbitWorkerFile>({ name: file.name, buffer }, [buffer]);
+    let producerError: unknown;
+    let producerAborted = false;
+    // Set by the consumer's `finally` on ANY exit (normal, abort, or a non-abort
+    // throw such as the clone-failure hard-fail). The producer's admission gate
+    // tests this so a woken producer ALWAYS makes progress and returns, even when
+    // the consumer abandoned the loop without draining/releasing the remaining
+    // look-ahead files (which would otherwise leave the gate predicate saturated
+    // forever — the B1 deadlock). It is a teardown signal, NOT an abort: it never
+    // masks the consumer's original error.
+    let consumerDone = false;
 
-      // Determinate within-file progress proxied back from the worker. The
-      // last report's `samplesTotal` is this file's exact entry count, which we
-      // fold into `baseProcessed` once the file completes so the across-type
-      // counter stays monotonic.
-      let fileTotal = 0;
-      const onProgress = (p: FitbitWorkerProgress): void => {
-        fileTotal = Math.max(fileTotal, p.samplesTotal, p.samplesProcessed);
-        onParseProgress(baseProcessed + p.samplesProcessed, baseProcessed + fileTotal);
-      };
+    // Resolve a pre-allocated slot exactly once (defensive against double-calls).
+    const resolveSlot = (idx: number, s: ParsedSlot): void => {
+      const r = slotResolvers[idx];
+      if (r) {
+        slotResolvers[idx] = undefined;
+        r(s);
+      }
+    };
+    const abortMarker = (idx: number, fileName: string): ParsedSlot => ({
+      index: idx,
+      fileName,
+      daily: [],
+      timeseries: [],
+      fileTotal: 0,
+      approxBytes: 0,
+      parseError: new ImportAbortedError(),
+    });
 
-      // Parsed records for THIS file only; dropped before the next iteration.
-      let daily: ParsedDailyRecord[];
-      let timeseries: ParsedTimeseriesRecord[];
-      try {
-        const result = await pool.submit(
-          (proxy) => proxy.parseDataType(dataType, [workerFile], Comlink.proxy(onProgress)),
-          { signal },
-        );
-        // Copy out of the Comlink result so the proxied object can be released.
-        daily = result.daily.map((rec) => ({ date: rec.date, data: rec.data }));
-        timeseries = result.timeseries.map((rec) => ({ date: rec.date, data: rec.data }));
+    // --- Producer: parse upcoming files ahead of the store, bounded ----------
+    const producer = (async (): Promise<void> => {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file) {
+          // Resolve the slot for a missing file so the consumer never wedges.
+          resolveSlot(i, {
+            index: i,
+            fileName: '',
+            daily: [],
+            timeseries: [],
+            fileTotal: 0,
+            approxBytes: 0,
+          });
+          continue;
+        }
 
+        // Admission gate: wait while the look-ahead budget is full, BUT always
+        // admit at least the next file (when nothing is in flight) so an
+        // oversized file never deadlocks the budget. The gate ALSO breaks on
+        // abort OR consumer teardown so a woken producer can never re-park on a
+        // still-saturated predicate after the consumer has abandoned the loop.
+        while (
+          inFlightFiles > 0 &&
+          (inFlightFiles >= LOOKAHEAD_FILE_CAP || inFlightBytes >= LOOKAHEAD_BYTE_BUDGET) &&
+          !signal?.aborted &&
+          !consumerDone
+        ) {
+          await waitForSlot();
+        }
+        if (signal?.aborted || consumerDone) {
+          // Abort or consumer teardown: resolve this and all remaining slots with
+          // a marker so the consumer (if still iterating) unwinds promptly, and
+          // stop admitting so `await producer` resolves. `producerAborted` is set
+          // only for a genuine signal abort; teardown after a non-abort throw is
+          // NOT an abort — the consumer's original error still propagates.
+          if (signal?.aborted) producerAborted = true;
+          for (let j = i; j < files.length; j++) {
+            resolveSlot(j, abortMarker(j, files[j]?.name ?? ''));
+          }
+          return;
+        }
+
+        let buffer: ArrayBuffer;
+        try {
+          buffer = await file.arrayBuffer();
+        } catch (err) {
+          // A read failure is a recoverable per-file error; surface it on the
+          // slot so the consumer records it in file order and continues.
+          resolveSlot(i, {
+            index: i,
+            fileName: file.name,
+            daily: [],
+            timeseries: [],
+            fileTotal: 0,
+            approxBytes: 0,
+            parseError: new FileReadError(
+              `Failed to read file: ${err instanceof Error ? err.message : String(err)}`,
+            ),
+          });
+          continue;
+        }
+
+        // Charge this file's source size up front so the NEXT iteration's gate
+        // sees the admission immediately; reconciled to parsed bytes on resolve.
+        const estBytes = buffer.byteLength;
+        chargedBytes[i] = estBytes;
+        inFlightBytes += estBytes;
+        inFlightFiles += 1;
+        admitted[i] = true;
+
+        // TRANSFER the bytes into the worker (neutered here): the clone is
+        // avoided and this thread's reference to the source buffer is released.
+        const workerFile = Comlink.transfer<FitbitWorkerFile>({ name: file.name, buffer }, [
+          buffer,
+        ]);
+
+        // Determinate within-file progress proxied back from the worker. This
+        // fires DURING parse; the across-type counter it renders is bounded by
+        // `baseProcessed` (advanced in store order) so it can never run ahead of
+        // committed progress — staying monotonic with the consumer's emissions.
+        let fileTotal = 0;
+        const onProgress = (p: FitbitWorkerProgress): void => {
+          fileTotal = Math.max(fileTotal, p.samplesTotal, p.samplesProcessed);
+          onParseProgress(baseProcessed + p.samplesProcessed, baseProcessed + fileTotal);
+        };
+
+        const t0 = profiling ? Date.now() : 0;
+        if (profiling) inFlightParses += 1;
+        // Fire the parse and resolve this file's slot when it settles. We do NOT
+        // await it here — that is the whole point of the look-ahead: the loop
+        // continues to admit the next file (subject to the gate) while this parse
+        // runs in the pool.
+        void pool
+          .submit(
+            (proxy) => proxy.parseDataType(dataType, [workerFile], Comlink.proxy(onProgress)),
+            {
+              signal,
+            },
+          )
+          .then((result) => {
+            if (profiling) {
+              inFlightParses -= 1;
+              parseMsTotal += Date.now() - t0;
+            }
+            // Copy out of the Comlink result so the proxied object is released.
+            const daily = result.daily.map((rec) => ({ date: rec.date, data: rec.data }));
+            const timeseries = result.timeseries.map((rec) => ({ date: rec.date, data: rec.data }));
+            const approxBytes = approxParsedBytes(daily) + approxParsedBytes(timeseries);
+            // Reconcile the up-front estimate to the actual parsed-record bytes.
+            inFlightBytes += approxBytes - (chargedBytes[i] ?? 0);
+            chargedBytes[i] = approxBytes;
+            // A newly-resolved parse may have freed byte budget; let the producer
+            // re-evaluate admission.
+            signalSlot();
+            resolveSlot(i, {
+              index: i,
+              fileName: file.name,
+              daily,
+              timeseries,
+              fileTotal,
+              approxBytes,
+            });
+          })
+          .catch((err: unknown) => {
+            if (profiling) {
+              inFlightParses -= 1;
+              parseMsTotal += Date.now() - t0;
+            }
+            // Drop this file's byte charge so a failed parse cannot pin the
+            // budget; the consumer reconciles `inFlightFiles` on release.
+            inFlightBytes -= chargedBytes[i] ?? 0;
+            chargedBytes[i] = 0;
+            if (inFlightBytes < 0) inFlightBytes = 0;
+            signalSlot();
+            // Carry the rejection on the slot; the consumer classifies it in
+            // file order (abort / clone-failure / recoverable parse error).
+            resolveSlot(i, {
+              index: i,
+              fileName: file.name,
+              daily: [],
+              timeseries: [],
+              fileTotal: 0,
+              approxBytes: 0,
+              parseError: err,
+            });
+          });
+      }
+    })().catch((err: unknown) => {
+      producerError = err;
+      // A producer-level fault must not leave the consumer waiting on unsettled
+      // slots. Resolve any still-pending slots with an abort marker so the
+      // consumer unwinds; the fault is surfaced after the consumer loop.
+      for (let j = 0; j < files.length; j++) {
+        resolveSlot(j, abortMarker(j, files[j]?.name ?? ''));
+      }
+    });
+
+    // --- Consumer: single-flight store, strictly in file order ---------------
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file) continue;
+
+        // Abort lands BETWEEN files, before this file's store begins — never
+        // mid-write. The previous file's store is fully committed.
+        await checkpoint(signal);
+
+        // Every slot is pre-allocated, so this always resolves: with the parsed
+        // result, a per-file error carried on the slot, or an abort marker the
+        // producer set when unwinding. The consumer never races an empty slot.
+        const slotPromise = slots[i];
+        // Defensive: a pre-allocated slot is always present here.
+        if (!slotPromise) continue;
+        const parsed = await slotPromise;
+
+        // Account for this file leaving flight, then wake the producer so it can
+        // admit the next look-ahead file in place of this one. Only an ADMITTED
+        // slot ever charged the in-flight counters, so only it releases them;
+        // missing-file / read-error / abort-marker slots are no-ops here.
+        const releaseSlot = (): void => {
+          if (admitted[i]) {
+            admitted[i] = false;
+            inFlightFiles -= 1;
+            inFlightBytes -= chargedBytes[i] ?? 0;
+            if (inFlightFiles < 0) inFlightFiles = 0;
+            if (inFlightBytes < 0) inFlightBytes = 0;
+          }
+          chargedBytes[i] = 0;
+          signalSlot();
+        };
+
+        if (parsed.parseError !== undefined) {
+          const err = parsed.parseError;
+          releaseSlot();
+          // A mid-flight abort surfaces as our ImportAbortedError or the pool's
+          // TASK_ABORTED/POOL_SHUTDOWN; either unwinds the whole import.
+          if (isImportAbortedError(err) || isPoolAbort(err) || signal?.aborted) {
+            throw new ImportAbortedError();
+          }
+          // A structured-clone/serialisation failure is a PROGRAMMING bug, not
+          // bad input — hard-fail rather than silently importing zero records.
+          if (isCloneFailure(err)) {
+            throw err;
+          }
+          // Genuine recoverable per-file parse (or read) error: record and
+          // continue to the next file in order — exactly as the serial path did.
+          errors.push({
+            fileName: parsed.fileName,
+            error:
+              err instanceof FileReadError
+                ? err.message
+                : `Parser error: ${err instanceof Error ? err.message : String(err)}`,
+            recoverable: true,
+          });
+          continue;
+        }
+
+        const { daily, timeseries, fileTotal } = parsed;
+
+        // Advance the parse counter for this completed file (store order).
         baseProcessed += fileTotal;
         onParseProgress(baseProcessed, baseProcessed);
-      } catch (err) {
-        // A mid-flight abort surfaces as either our ImportAbortedError (thrown
-        // by a checkpoint that raced) or the pool's TASK_ABORTED/POOL_SHUTDOWN
-        // CPAPError. Both must unwind the import as a cancellation, not a
-        // per-file parser error.
-        if (isImportAbortedError(err) || isPoolAbort(err) || signal?.aborted) {
-          throw new ImportAbortedError();
+
+        // Was the pool idle (no parse in flight) as this store began? If so, the
+        // store window is reclaimable-idle time the overlap is meant to hide.
+        const storeT0 = profiling ? Date.now() : 0;
+        const idleAtStoreStart = profiling && inFlightParses === 0;
+
+        // Store THIS file's records (daily then timeseries), single-flight.
+        if (daily.length > 0) {
+          const dailyDataType = dataType as FitbitDailyType;
+          const outcome = await this.processDailyRecords(
+            daily,
+            dailyDataType,
+            skipDuplicates,
+            errors,
+            (processed, skipped) => {
+              emit({
+                status: 'storing',
+                currentDataTypePhase: 'storing',
+                recordsProcessed: baseStored + processed,
+                recordsSkipped: baseSkipped + skipped,
+              });
+            },
+            signal,
+          );
+          totalStored += outcome.stored;
+          totalSkipped += outcome.skipped;
+          baseStored += outcome.stored;
+          baseSkipped += outcome.skipped;
+          for (const rec of daily) {
+            trackDate(rec.date);
+          }
         }
-        // A structured-clone/serialisation failure is a PROGRAMMING bug (e.g. a
-        // non-cloneable argument crossing the worker boundary), not bad input.
-        // It must NOT be swallowed as a recoverable per-file parser error — that
-        // would silently import ZERO records while reporting success. Rethrow so
-        // it unwinds the import as a hard failure.
-        if (isCloneFailure(err)) {
-          throw err;
+
+        if (timeseries.length > 0) {
+          const tsDataType = dataType as FitbitTimeseriesType;
+          const outcome = await this.processTimeseriesRecords(
+            timeseries,
+            tsDataType,
+            skipDuplicates,
+            errors,
+            (processed, skipped) => {
+              emit({
+                status: 'storing',
+                currentDataTypePhase: 'storing',
+                recordsProcessed: baseStored + processed,
+                recordsSkipped: baseSkipped + skipped,
+              });
+            },
+            signal,
+          );
+          totalStored += outcome.stored;
+          totalSkipped += outcome.skipped;
+          baseStored += outcome.stored;
+          baseSkipped += outcome.skipped;
+          for (const rec of timeseries) {
+            trackDate(rec.date);
+          }
         }
-        errors.push({
-          fileName: file.name,
-          error: `Parser error: ${err instanceof Error ? err.message : String(err)}`,
-          recoverable: true,
-        });
-        continue;
+
+        if (profiling) {
+          const storeMs = Date.now() - storeT0;
+          storeMsTotal += storeMs;
+          // Attribute the store window to parse-idle only if the pool started it
+          // idle AND remained idle throughout (no producer parse covered it).
+          if (idleAtStoreStart && inFlightParses === 0) {
+            parseIdleDuringStoreMs += storeMs;
+          }
+        }
+
+        // Release this file's parsed records + budget charge so the producer can
+        // admit the next look-ahead file. Dropping the slot drops the only
+        // references to these records, so peak heap stays O(look-ahead).
+        slots[i] = undefined;
+        releaseSlot();
       }
+    } finally {
+      // Signal teardown BEFORE waking/draining the producer so a parked producer,
+      // once woken, sees `consumerDone`, breaks its admission gate, resolves any
+      // remaining slots, and returns — guaranteeing `await producer` resolves on
+      // ANY consumer exit, including a non-abort throw (e.g. the clone-failure
+      // hard-fail) while the gate was saturated. This is the B1 deadlock fix.
+      consumerDone = true;
+      signalSlot();
+      // Drain the producer so its in-flight parse promises settle and any
+      // already-started look-ahead slots we never consumed are not left as
+      // unhandled rejections. Producer-level faults are captured in producerError.
+      await producer;
+      // Settle any unconsumed slots (e.g. after an abort) so their parse promises
+      // resolve and don't leak buffers or surface unhandled rejections.
+      await Promise.allSettled(slots.filter((s): s is Promise<ParsedSlot> => s !== undefined));
 
-      // Store THIS file's records immediately, then release them.
-      if (daily.length > 0) {
-        const dailyDataType = dataType as FitbitDailyType;
-        const outcome = await this.processDailyRecords(
-          daily,
-          dailyDataType,
-          skipDuplicates,
-          errors,
-          (processed, skipped) => {
-            emit({
-              status: 'storing',
-              currentDataTypePhase: 'storing',
-              recordsProcessed: baseStored + processed,
-              recordsSkipped: baseSkipped + skipped,
-            });
-          },
-          signal,
-        );
-        totalStored += outcome.stored;
-        totalSkipped += outcome.skipped;
-        // Advance the running base so the next store builds on it.
-        baseStored += outcome.stored;
-        baseSkipped += outcome.skipped;
+      // Record this type's timing breakdown (no-op when profiling is off).
+      importProfiler.recordFitbitType({
+        dataType,
+        files: files.length,
+        parseMs: parseMsTotal,
+        storeMs: storeMsTotal,
+        parseIdleDuringStoreMs,
+      });
+    }
 
-        for (const rec of daily) {
-          trackDate(rec.date);
-        }
-      }
-
-      if (timeseries.length > 0) {
-        const tsDataType = dataType as FitbitTimeseriesType;
-        const outcome = await this.processTimeseriesRecords(
-          timeseries,
-          tsDataType,
-          skipDuplicates,
-          errors,
-          (processed, skipped) => {
-            emit({
-              status: 'storing',
-              currentDataTypePhase: 'storing',
-              recordsProcessed: baseStored + processed,
-              recordsSkipped: baseSkipped + skipped,
-            });
-          },
-          signal,
-        );
-        totalStored += outcome.stored;
-        totalSkipped += outcome.skipped;
-        baseStored += outcome.stored;
-        baseSkipped += outcome.skipped;
-
-        for (const rec of timeseries) {
-          trackDate(rec.date);
-        }
-      }
-
-      // Drop this file's parsed records before the next iteration so peak heap
-      // stays bounded to one file.
-      daily = [];
-      timeseries = [];
+    // A producer-level fault that was not an abort propagates so the import
+    // surfaces it (genuine parse errors are already captured per-file above).
+    if (producerError && !producerAborted && !signal?.aborted) {
+      throw producerError;
     }
 
     return { stored: totalStored, skipped: totalSkipped };
@@ -1217,6 +1581,44 @@ export class GoogleHealthImportService {
 // ---------------------------------------------------------------------------
 // Module-level helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Marker for a per-file source-read failure surfaced from the producer to the
+ * consumer. Distinguished from a parser rejection so the consumer can format its
+ * message identically to the strict-serial path ("Failed to read file: ...")
+ * without the "Parser error:" prefix.
+ */
+class FileReadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FileReadError';
+  }
+}
+
+/**
+ * Cheap upper-bound estimate of a parsed-record array's heap footprint, used to
+ * brake the look-ahead byte budget. Each record carries a date string plus a
+ * data payload; a fixed per-record charge plus the JSON length of `data` is a
+ * conservative, allocation-free-enough proxy (we only need order-of-magnitude
+ * accuracy to keep the budget from drifting toward "hold everything").
+ */
+function approxParsedBytes(
+  records: ReadonlyArray<{ readonly date: string; readonly data: unknown }>,
+): number {
+  let bytes = 0;
+  for (const rec of records) {
+    bytes += 64; // fixed per-record overhead (wrapper object + date string)
+    const data = rec.data;
+    if (data && typeof data === 'object') {
+      // Arrays of samples dominate; charge by element count when array-like.
+      const len = (data as { length?: unknown }).length;
+      bytes += typeof len === 'number' ? len * 16 : 256;
+    } else {
+      bytes += 16;
+    }
+  }
+  return bytes;
+}
 
 /**
  * Recognise the {@link WorkerPool}'s cancellation rejections.

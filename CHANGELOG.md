@@ -14,6 +14,7 @@ _Nothing yet._
 ### Performance
 
 - **CPAP (ResMed) imports are faster, especially for full-length nights.** The importer now parses upcoming days in the background while the current day is being saved — keeping the parsing workers busy instead of idle during the storage step — and writes each session's signal chunks in parallel rather than one at a time. In benchmarks, importing a set of long (8-hour) nights completed roughly **twice as fast**; imports made up of many short days see a smaller gain because they are limited by per-record storage rather than parsing. Imported data, duplicate detection, and on-disk results are unchanged; peak memory stays bounded by a fixed in-flight budget. (See ADR 0029.)
+- **Google Health (Fitbit) imports of the heavy intraday data types are faster.** While each parsed file's records are being saved, the next file is now parsed in the background (off the main thread) instead of waiting — so the worker is no longer idle during storage. On a representative intraday heart-rate import this cut total time by roughly a quarter (and scales with the number of files, so multi-year exports benefit most). Stored data and duplicate detection are unchanged, and peak memory stays bounded by a small fixed look-ahead. (See ADR 0030.)
 
 ## [2026.06.15] — 2026-06-23
 

@@ -537,6 +537,18 @@ export class ImportService {
       for (let i = 0; i < dayGroups.length; i++) {
         // Loop-boundary checkpoint: abort lands here, between fully-committed
         // days. The previous day's storage is complete and consistent.
+        //
+        // LOAD-BEARING for slot ordering — do not remove, reorder, or make this
+        // checkpoint conditional without re-deriving the invariant. `checkpoint`
+        // yields a MACROTASK (setTimeout 0 / scheduler.yield), whereas the
+        // producer is woken from its byte-budget gate via a microtask-scheduled
+        // `signalByteSlot()`. This macrotask boundary therefore guarantees the
+        // producer resumes and assigns `slots[i]` before the consumer awaits it
+        // below. Remove it and the consumer could `await` a not-yet-assigned slot
+        // (`undefined`), fall into the `!parsed` branch, and silently SKIP a
+        // day-group's storage. Verified safe for micro/macro/sync parse
+        // resolution (RCA 2026-06-24); the sibling Fitbit overlap lacks an
+        // interposed checkpoint and so instead pre-allocates slot deferreds.
         await checkpoint(signal);
 
         const parsed = await slots[i];
