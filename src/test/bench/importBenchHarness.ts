@@ -20,6 +20,7 @@ import { GoogleHealthImportService } from '@/services/import/googlehealth/Google
 import { WorkerPool } from '@/services/workers/WorkerPool';
 import { createWorker } from '@/services/workers/createWorker';
 import type { EDFParserWorkerAPI } from '@/services/workers/edfParser.worker';
+import type { FitbitParserWorkerAPI } from '@/services/workers/fitbitParser.worker';
 import { getDB, resetDB } from '@/services/storage/getDB';
 import { OPFSService } from '@/services/storage/OPFSService';
 import {
@@ -127,8 +128,9 @@ export async function runFitbitBenchInPage(
   }
   const dirHandle = makeDirHandle(root, 'root');
 
-  // Inline (no pool) — see the rationale in runImportBench's Fitbit branch.
-  const service = new GoogleHealthImportService(db);
+  // Drive the heavy types through the REAL Fitbit worker pool so the bench
+  // measures the genuine parse↔store overlap and pool occupancy (ADR 0030).
+  const service = new GoogleHealthImportService(db, fitbitPoolFactory());
   const scanResult = await service.scan(dirHandle);
   const selected = scanResult.dataTypes.map((d) => d.dataType);
   await service.import(dirHandle, scanResult, {
@@ -151,6 +153,35 @@ function b64ToBuffer(b64: string): ArrayBuffer {
 function poolSize(): number {
   const hw = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4;
   return Math.max(1, Math.min(hw, 8));
+}
+
+/**
+ * Build a REAL Fitbit parser worker pool — the same shape
+ * `ImportController.makeFitbitWorkerPoolFactory` uses in production. The `new
+ * Worker(new URL(...))` call is inline so Vite statically bundles the worker
+ * script. Injecting this drives the heavy `heart_rate_intraday` parse through the
+ * genuine worker boundary (real `Comlink.transfer` of the ArrayBuffer + a
+ * `Comlink.proxy(onProgress)` callback), so the bench measures the actual
+ * parse↔store overlap and pool occupancy — not an inline main-thread fallback.
+ *
+ * The earlier inline-only path here predated the PR #70 / ADR 0027 fix to the
+ * worker timeout wrapper's Comlink-proxy handling; with that fixed the pool path
+ * works, so the bench must use it to measure the thing the overlap change targets.
+ */
+function fitbitPoolFactory(): () => WorkerPool<FitbitParserWorkerAPI> {
+  const hw = poolSize();
+  return () =>
+    new WorkerPool<FitbitParserWorkerAPI>({
+      workerFactory: (name?: string) =>
+        new Worker(new URL('../../services/workers/fitbitParser.worker.ts', import.meta.url), {
+          type: 'module',
+          name: name ?? 'fitbit-parser',
+        }),
+      minWorkers: 1,
+      maxWorkers: hw,
+      // Intraday HR files can carry ~17k entries; match the production headroom.
+      taskTimeoutMs: 120_000,
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -265,19 +296,15 @@ export async function runImportBench(wire: WireDataset): Promise<ImportProfile> 
     }
     const dirHandle = makeDirHandle(root, 'root');
 
-    // Run the Fitbit import INLINE (no worker pool injected). The heavy parsers
-    // then execute on the main thread via the SAME worker-safe cores the pool
-    // path uses, so parse output is identical and the parse→store INTERLEAVE
-    // being measured (parse-all-then-store per type) is preserved. We avoid the
-    // worker pool here because `WorkerPool.submit` cannot transfer a
-    // `Comlink.proxy(progressCallback)` argument in the Vite environment
-    // (DataCloneError — see findings; raw `Comlink.wrap` works, the pool's
-    // `createWorker`/`withTimeout` wrapping does not). The parse-vs-store split
-    // and the parse-idle-during-store RATIO — the decision inputs — are
-    // unaffected by whether parse runs on a worker or the main thread; only the
-    // absolute parse-ms attribution differs (main-thread here), which the report
-    // flags in its machine caveat.
-    const service = new GoogleHealthImportService(db);
+    // Drive the Fitbit import through the REAL worker pool. The heavy parsers
+    // (chiefly heart_rate_intraday) then execute off-thread with a genuine
+    // `Comlink.transfer` of each file's ArrayBuffer and a `Comlink.proxy`
+    // progress callback — the exact path production uses. This is required to
+    // measure the parse↔store overlap and the worker-pool occupancy the ADR 0030
+    // change targets; the previous inline path could not (it had no pool to
+    // idle, and predated the PR #70 fix to the worker timeout wrapper's
+    // Comlink-proxy handling that the prior comment described as broken).
+    const service = new GoogleHealthImportService(db, fitbitPoolFactory());
     const scanResult = await service.scan(dirHandle);
     const selected = scanResult.dataTypes.map((d) => d.dataType);
     await service.import(dirHandle, scanResult, {
