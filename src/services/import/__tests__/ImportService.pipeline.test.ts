@@ -137,7 +137,11 @@ interface PoolStats {
  * look-ahead is observable, and tracks peak concurrent parses (the signal a
  * byte-budget violation would surface as).
  */
-function createPoolFactory(stats: PoolStats, delayMs = 4): { factory: EDFWorkerPoolFactory } {
+function createPoolFactory(
+  stats: PoolStats,
+  delayMs = 4,
+  resolveVia: 'macrotask' | 'microtask' = 'macrotask',
+): { factory: EDFWorkerPoolFactory } {
   const factory: EDFWorkerPoolFactory = () => {
     const parser = new EDFParser();
     const interpreter = new ResMedInterpreter();
@@ -152,7 +156,15 @@ function createPoolFactory(stats: PoolStats, delayMs = 4): { factory: EDFWorkerP
         stats.maxInFlight = Math.max(stats.maxInFlight, inFlight);
         const proxy = {
           async parseEDFFile(buffer: ArrayBuffer, includeEdf = false): Promise<ParseResult> {
-            await new Promise((r) => setTimeout(r, delayMs));
+            if (resolveVia === 'microtask') {
+              // Resolve across microtasks only (no macrotask boundary) — the
+              // interleaving most likely to expose a producer/consumer slot
+              // assignment race when the budget gate blocks.
+              await Promise.resolve();
+              await Promise.resolve();
+            } else {
+              await new Promise((r) => setTimeout(r, delayMs));
+            }
             const fileHash = await sha256Hex(buffer);
             const edf = parser.parse(buffer);
             const interpretation = interpreter.interpret(edf);
@@ -369,6 +381,44 @@ describe('ImportService — bounded look-ahead pipeline (ADR 0029)', () => {
     expect(result.sessionsImported).toBe(3);
     expect(stored).toHaveLength(3);
   });
+
+  it.each(['macrotask', 'microtask'] as const)(
+    'stores every day-group (none skipped, no hang) with %s-resolving parses when many days each exceed the budget',
+    async (resolveVia) => {
+      const stats: PoolStats = { maxInFlight: 0, shutdown: false };
+      const { factory } = createPoolFactory(stats, 1, resolveVia);
+      const { idb, stored } = createRecordingIDB();
+      const service = new ImportService(idb, createOPFS(), fallbackWorkerFactory(), factory);
+
+      // 5 days, EACH inflated past the 64 MB budget, so the producer's admission
+      // gate blocks on EVERY iteration (the always-admit-one path runs each time).
+      // The consumer must never await a not-yet-assigned slot and silently skip a
+      // day — guaranteed by the load-bearing per-iteration checkpoint macrotask.
+      // The `microtask` style (parses resolving with no macrotask boundary) is the
+      // interleaving most likely to expose a slot race and is otherwise uncovered
+      // (RCA 2026-06-24).
+      const files = makeDays(5, 70 * 1024 * 1024);
+
+      const run = service.importFiles(files, {
+        sourceType: 'file',
+        skipDuplicates: false,
+        onProgress: vi.fn(),
+      });
+      // Fail fast instead of hanging the suite if a slot-ordering regression
+      // deadlocks the pipeline.
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('TIMEOUT: pipeline did not settle — slot-ordering regressed')),
+          20000,
+        ),
+      );
+      const result = await Promise.race([run, timeout]);
+
+      expect(result.sessionsImported).toBe(5);
+      expect(stored).toHaveLength(5);
+    },
+    30000,
+  );
 
   // -----------------------------------------------------------------------
   // Cancellation mid-pipeline
