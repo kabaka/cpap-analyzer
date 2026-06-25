@@ -41,8 +41,11 @@ import type {
 import type { ImportError as StorageImportError } from '@/types/storage';
 import * as Comlink from 'comlink';
 
+import type { FitbitTimeseriesPayloadMap } from '@/types/fitbit';
+
 import type { GoogleHealthImportProgress, ImportError } from '../types';
 import { checkpoint, ImportAbortedError, isImportAbortedError } from '../types';
+import { mergeTimeseriesPayload } from './mergeTimeseries';
 import { importProfiler } from '../profiling/ImportProfiler';
 import type { WorkerPool } from '@/services/workers/WorkerPool';
 import type {
@@ -1270,6 +1273,15 @@ export class GoogleHealthImportService {
 
   /**
    * Deduplicate, wrap, and batch-store daily summary records.
+   *
+   * Note: daily summaries keep the first-occurrence-wins de-dupe (skip later
+   * same-key records) and are intentionally NOT merged like the intraday
+   * timeseries path. A daily record is a pre-aggregated scalar set (an AHI, a
+   * mean SpO2, a sleep score) with no per-sample identity to union — two records
+   * for one date are genuine duplicates (e.g. two CSV rows on the same calendar
+   * date), not complementary partial-day chunks, so skipping the later one is
+   * correct. Merging would require re-deriving aggregates from raw inputs the
+   * daily files do not carry. See `processTimeseriesRecords` for the merge path.
    */
   private async processDailyRecords(
     parsed: readonly ParsedDailyRecord[],
@@ -1410,7 +1422,40 @@ export class GoogleHealthImportService {
   // -----------------------------------------------------------------------
 
   /**
-   * Deduplicate, wrap, and batch-store timeseries records.
+   * Merge-on-conflict (upsert-merge), wrap, and store timeseries records.
+   *
+   * ## Why this is NOT a first-occurrence-wins de-dupe (unlike the daily path)
+   *
+   * Intraday timeseries records for a SINGLE local date are routinely produced by
+   * TWO different export files: real Fitbit `heart_rate-*.json` files span a 24h
+   * window offset from local midnight (the offset is the user's UTC offset, so it
+   * is DST-dependent), so a date's `00:00 → ~07:00` chunk comes from one file and
+   * its `~07:00 → 23:59` chunk from the next. The parser groups by each sample's
+   * own local date, emitting these as two same-key records; the streaming
+   * pipeline delivers them in separate per-file `processTimeseriesRecords` calls.
+   * A skip-the-duplicate strategy (or the unique `source_dataType_date` index)
+   * dropped the second chunk, truncating every day's signal. We therefore MERGE
+   * the two chunks into one record instead of skipping — see {@link
+   * module:services/import/googlehealth/mergeTimeseries} for the merge semantics.
+   *
+   * The merge is keyed by absolute timestamp and existing-wins on collision, so
+   * re-importing identical files is idempotent (records do not grow) and never
+   * errors. `skipDuplicates` no longer means "skip if it already exists" for
+   * timeseries — there is nothing safe to skip when partial-day chunks must be
+   * unioned — so when it is false we treat an existing record exactly as we do
+   * when true: as a base to merge into. (The flag still governs whether the
+   * costly DB lookup is attempted; with it false a same-date record from a prior
+   * import is overwritten by the unique index only if we add, so we always look
+   * up and merge to stay correct. The lookup is O(1) on the unique index.)
+   *
+   * ## Counting
+   *
+   * `stored` counts records WRITTEN (added or updated-in-place via merge);
+   * `skipped` counts records the writer genuinely declined (only the constraint
+   * fallback on a non-mergeable add race). A merge into an existing record counts
+   * as one `stored`, because it is a write that changed stored state — counting
+   * it as `skipped` would mislead the user into thinking their data was dropped,
+   * which is precisely the bug class this fix removes. Counts stay monotonic.
    */
   private async processTimeseriesRecords(
     parsed: readonly ParsedTimeseriesRecord[],
@@ -1422,89 +1467,133 @@ export class GoogleHealthImportService {
   ): Promise<{ stored: number; skipped: number }> {
     let stored = 0;
     let skipped = 0;
-    const batch: IntegrationTimeseries[] = [];
 
-    // Tracks compound keys already queued during THIS import run. `source` is the
-    // constant SOURCE, so the key is `dataType:date`. Queueing two records with
-    // the same key into a single batch always violates the unique
-    // `source_dataType_date` index, so this in-memory de-dupe runs regardless of
-    // the `skipDuplicates` flag (which only governs cross-import DB de-dupe).
-    // First occurrence wins; later duplicates are skipped.
-    const seenKeys = new Set<string>();
+    // Intra-call accumulator: collapse records sharing a date BEFORE any DB write
+    // by merging their payloads, so a single per-file call that itself contains
+    // two same-date chunks emits one record per date. `source` is the constant
+    // SOURCE, so the date alone is the in-call key. Insertion order is preserved
+    // (Map iteration order) so earlier-parsed records win on a timestamp tie,
+    // matching the existing-wins rule used cross-file.
+    const byDate = new Map<string, FitbitTimeseriesPayloadMap[FitbitTimeseriesType]>();
 
     for (let i = 0; i < parsed.length; i++) {
       const rec = parsed[i];
       if (!rec) continue;
 
-      const key = `${dataType}:${rec.date}`;
-
-      // Intra-import deduplication: skip records whose compound key was already
-      // queued earlier in this run, before the DB check or queueing.
-      if (seenKeys.has(key)) {
-        skipped++;
-        if ((i + 1) % YIELD_EVERY === 0) {
-          onBatchProgress(stored, skipped);
-          await checkpoint(signal);
-        }
-        continue;
-      }
-
-      // Cross-import deduplication check (DB-backed).
-      if (skipDuplicates) {
-        try {
-          const existing = await this.db.getIntegrationTimeseriesByKey(SOURCE, dataType, rec.date);
-          if (existing) {
-            skipped++;
-            if ((i + 1) % YIELD_EVERY === 0) {
-              onBatchProgress(stored, skipped);
-              await checkpoint(signal);
-            }
-            continue;
-          }
-        } catch {
-          // Proceed with insert.
-        }
-      }
-
-      seenKeys.add(key);
-
-      const record: IntegrationTimeseries = {
-        id: crypto.randomUUID(),
-        source: SOURCE,
-        dataType,
-        date: rec.date,
-        data: rec.data as IntegrationTimeseries['data'],
-        importedAt: new Date().toISOString(),
-      };
-
-      batch.push(record);
-
-      if (batch.length >= BATCH_SIZE) {
-        const outcome = await this.storeTimeseriesBatch(batch, errors);
-        stored += outcome.stored;
-        skipped += outcome.skipped;
-        batch.length = 0;
-        onBatchProgress(stored, skipped);
-        // Boundary AFTER a committed batch — safe to abort.
-        await checkpoint(signal);
-      }
+      const incoming = rec.data as FitbitTimeseriesPayloadMap[FitbitTimeseriesType];
+      const prior = byDate.get(rec.date);
+      byDate.set(
+        rec.date,
+        prior === undefined ? incoming : mergeTimeseriesPayload(dataType, prior, incoming),
+      );
 
       if ((i + 1) % YIELD_EVERY === 0) {
         await checkpoint(signal);
       }
     }
 
-    if (batch.length > 0) {
+    // Store/merge each accumulated date, in batches, with abort checkpoints
+    // AFTER each committed batch.
+    const dates = [...byDate.keys()];
+    const batch: IntegrationTimeseries[] = [];
+    let processedInBatch = 0;
+
+    const flush = async (): Promise<void> => {
+      if (batch.length === 0) return;
       const outcome = await this.storeTimeseriesBatch(batch, errors);
       stored += outcome.stored;
       skipped += outcome.skipped;
+      batch.length = 0;
       onBatchProgress(stored, skipped);
+      await checkpoint(signal);
+    };
+
+    for (let i = 0; i < dates.length; i++) {
+      const date = dates[i];
+      if (date === undefined) continue;
+      const payload = byDate.get(date) as FitbitTimeseriesPayloadMap[FitbitTimeseriesType];
+
+      // Cross-import / cross-file merge: fold the accumulated payload into any
+      // record already stored under this key and write it back in place by its
+      // existing `id`. This runs regardless of `skipDuplicates`: an existing
+      // partial-day record must be UNIONED with the new chunk, never skipped.
+      const recordToWrite: IntegrationTimeseries = {
+        id: crypto.randomUUID(),
+        source: SOURCE,
+        dataType,
+        date,
+        data: payload as IntegrationTimeseries['data'],
+        importedAt: new Date().toISOString(),
+      };
+
+      try {
+        const existing = await this.db.getIntegrationTimeseriesByKey(SOURCE, dataType, date);
+        if (existing) {
+          // Merge into the existing record and UPDATE it in place (same id) via a
+          // `put` upsert below — bypasses the batch `add` path so we do not trip
+          // the unique index. Counted as stored (a write that changed state).
+          const merged = mergeTimeseriesPayload(
+            dataType,
+            existing.data as FitbitTimeseriesPayloadMap[FitbitTimeseriesType],
+            payload,
+          );
+          const updated: IntegrationTimeseries = {
+            ...existing,
+            data: merged as IntegrationTimeseries['data'],
+            importedAt: new Date().toISOString(),
+          };
+          try {
+            await this.db.putIntegrationTimeseries(updated);
+            stored++;
+          } catch (putErr) {
+            const msg = putErr instanceof Error ? putErr.message : String(putErr);
+            errors.push({
+              fileName: `${dataType}/${date}`,
+              error: `Storage failed: ${msg}`,
+              recoverable: true,
+            });
+          }
+          processedInBatch++;
+          if (processedInBatch % BATCH_SIZE === 0) {
+            onBatchProgress(stored, skipped);
+            await checkpoint(signal);
+          }
+          continue;
+        }
+      } catch {
+        // Lookup failed: fall through and try to add as a new record. If a record
+        // actually exists, the unique index rejects the add and the fallback in
+        // `storeTimeseriesBatch` classifies it as a skip (a rare race; the next
+        // import will merge it correctly).
+      }
+
+      batch.push(recordToWrite);
+      processedInBatch++;
+      if (batch.length >= BATCH_SIZE) {
+        await flush();
+      }
+      if (processedInBatch % YIELD_EVERY === 0) {
+        await checkpoint(signal);
+      }
     }
+
+    await flush();
+
+    // `skipDuplicates` intentionally does not short-circuit the per-date merge:
+    // for timeseries there is never a duplicate that is safe to skip wholesale.
+    // The parameter is retained for signature/symmetry with the daily path.
+    void skipDuplicates;
 
     return { stored, skipped };
   }
 
-  /** Store a batch of timeseries records. */
+  /**
+   * Store a batch of brand-new timeseries records (no existing key collision was
+   * found during {@link processTimeseriesRecords}). Records that DO collide are
+   * handled by an in-place merge upsert before reaching this batch, so a
+   * `ConstraintError` here means a concurrent/raced insert; we classify it as a
+   * skip rather than an error (the next import merges it correctly).
+   */
   private async storeTimeseriesBatch(
     records: IntegrationTimeseries[],
     errors: ImportError[],
