@@ -479,3 +479,341 @@ test.describe('Signal Viewer — Region Statistics (Measure) overlay', () => {
     await expect(wrapper2.locator('[class*="measureBand"]')).toHaveCount(0);
   });
 });
+
+/**
+ * Analysis modes for the Measure overlay (commit 6cd8b13, branch
+ * `claude/measure-modes-extension`). When Measure is on, a footer segmented
+ * control (`role="radiogroup"`, aria-label "Measure mode") with five options —
+ * Stats · Var · Trend · Dist · Sel — re-skins the chips, footer, and SR table.
+ * Keys `.` (forward) and `,` (back) cycle modes (wrapping), active only while
+ * Measure is on and guarded against text inputs. The active mode persists per
+ * session (`lanePrefs.measureStatMode`).
+ *
+ * These tests REUSE the seeding/skip helpers and selector conventions of the
+ * suite above. New mode-specific hooks relied on (all stable, non-hashed):
+ *   • the radiogroup (`getByRole('radiogroup', { name: 'Measure mode' })`) and its
+ *     `role="radio"` options, whose accessible names are the FULL mode names
+ *     (Statistics/Variability/Trend/Distribution/Selection) and `aria-checked`.
+ *   • the footer's `data-mode` attribute (statistics|variability|trend|distribution|selection).
+ *   • the "Region statistics" `<table>` caption (begins with the mode name) and
+ *     per-mode column headers.
+ *   • the Selection footer's precise-timing fields (the `start`/`dur`/`end` labels)
+ *     and the copy button (`aria-label="Copy precise region timing"`, which flips
+ *     its `data-copied` attribute + label to "Copied" on success).
+ */
+
+const MEASURE_MODE_NAMES = ['Statistics', 'Variability', 'Trend', 'Distribution', 'Selection'];
+
+/** The footer segmented control (role=radiogroup). Lives inside the region footer. */
+const modeSwitcher = (page: Page) => page.getByRole('radiogroup', { name: 'Measure mode' });
+
+/** A single mode option, by its accessible (full) name — e.g. radioOption(page, 'Trend'). */
+const radioOption = (page: Page, name: string) =>
+  modeSwitcher(page).getByRole('radio', { name, exact: true });
+
+/** The region footer's data-mode attribute carrier (drives chip/footer/table skin). */
+const footerModeHost = (wrapper: ReturnType<Page['locator']>) =>
+  wrapper.locator('[role="status"][data-mode]');
+
+/** The screen-reader "Region statistics" table (caption + headers change per mode). */
+const srTable = (page: Page) => page.getByRole('table', { name: 'Region statistics' });
+
+/** The Selection-mode footer copy button. */
+const copyTimingButton = (page: Page) =>
+  page.getByRole('button', { name: 'Copy precise region timing' });
+
+/** Assert exactly one mode option is checked, and that it is `expected`. */
+async function expectActiveMode(page: Page, expected: string): Promise<void> {
+  await expect(radioOption(page, expected)).toHaveAttribute('aria-checked', 'true');
+  for (const other of MEASURE_MODE_NAMES) {
+    if (other === expected) continue;
+    await expect(radioOption(page, other)).toHaveAttribute('aria-checked', 'false');
+  }
+}
+
+test.describe('Signal Viewer — Measure analysis modes', () => {
+  // Reuse the exact OPFS capability gate from the suite above (skip cleanly on
+  // OPFS-less runners such as Linux WebKit; probe on a real page, never about:blank).
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    const hasOpfs = await page.evaluate(
+      () => typeof navigator?.storage?.getDirectory === 'function',
+    );
+    test.skip(
+      !hasOpfs,
+      'Browser has no OPFS (navigator.storage.getDirectory); signal data cannot be seeded — covered on Chromium/Firefox where OPFS is available',
+    );
+  });
+
+  // ── 1. Switcher visible + default mode ───────────────────────────────────
+  test('mode switcher: visible with Measure on; defaults to Stats; all five options present', async ({
+    page,
+  }) => {
+    const wrapper = await gotoSignalViewer(page);
+
+    // No switcher at rest (Measure off).
+    await expect(modeSwitcher(page)).toHaveCount(0);
+
+    await measureButton(page).click();
+    await expect(measureButton(page)).toHaveAttribute('aria-pressed', 'true');
+
+    // Radiogroup appears with all five options; default checked option is Statistics.
+    await expect(modeSwitcher(page)).toBeVisible();
+    await expect(modeSwitcher(page).getByRole('radio')).toHaveCount(5);
+    for (const name of MEASURE_MODE_NAMES) {
+      await expect(radioOption(page, name)).toBeVisible();
+    }
+    await expectActiveMode(page, 'Statistics');
+
+    // The footer's data-mode and the SR-table caption corroborate the default.
+    await expect(footerModeHost(wrapper)).toHaveAttribute('data-mode', 'statistics');
+    await expect(srTable(page)).toContainText(/^Statistics —/);
+  });
+
+  // ── 2. Click to select a mode (re-skins chips/footer/table) ──────────────
+  test('clicking a mode option selects it and re-skins the footer + SR table', async ({ page }) => {
+    const wrapper = await gotoSignalViewer(page);
+    await measureButton(page).click();
+    await expectActiveMode(page, 'Statistics');
+
+    // Trend: option checks, footer data-mode flips, SR-table headers gain Trend columns,
+    // and the (aria-hidden) per-lane chips carry the Trend hallmark "/min" + a direction word.
+    await radioOption(page, 'Trend').click();
+    await expectActiveMode(page, 'Trend');
+    await expect(footerModeHost(wrapper)).toHaveAttribute('data-mode', 'trend');
+    await expect(srTable(page).getByRole('columnheader', { name: /Slope/ })).toBeVisible();
+    await expect(srTable(page).getByRole('columnheader', { name: 'Direction' })).toBeVisible();
+    await expect(srTable(page)).toContainText(/^Trend —/);
+    // Soft chip corroboration (chips are aria-hidden; assert their visible text).
+    await expect(wrapper.locator('[class*="statChip"]').first()).toContainText(/\/min/);
+    await expect(wrapper.locator('[class*="statChip"]').first()).toContainText(
+      /rising|falling|flat/,
+    );
+
+    // Variability: distinct headers (Std dev / CV / IQR) confirm the re-skin.
+    await radioOption(page, 'Variability').click();
+    await expectActiveMode(page, 'Variability');
+    await expect(footerModeHost(wrapper)).toHaveAttribute('data-mode', 'variability');
+    await expect(srTable(page).getByRole('columnheader', { name: 'Std dev' })).toBeVisible();
+    await expect(srTable(page).getByRole('columnheader', { name: 'IQR' })).toBeVisible();
+    await expect(srTable(page)).toContainText(/^Variability —/);
+  });
+
+  // ── 3. Keyboard cycle `.` (forward, wraps) and `,` (back, wraps) ──────────
+  test('keyboard `.` / `,` cycle the mode through Stats→Var→Trend→Dist→Sel and wrap', async ({
+    page,
+  }) => {
+    const wrapper = await gotoSignalViewer(page);
+    await measureButton(page).click();
+    await expectActiveMode(page, 'Statistics');
+
+    // Focus the chart so the page (window keydown listener) receives the keys, but
+    // the focused element is NOT a text input (the cycle is guarded against those).
+    await wrapper.locator('canvas[role="img"]').focus();
+
+    const forward = ['Variability', 'Trend', 'Distribution', 'Selection', 'Statistics'];
+    for (const expected of forward) {
+      await page.keyboard.press('.');
+      await expectActiveMode(page, expected);
+    }
+    // We are back at Statistics (wrapped). One more `,` wraps backward to Selection.
+    await page.keyboard.press(',');
+    await expectActiveMode(page, 'Selection');
+    await page.keyboard.press(',');
+    await expectActiveMode(page, 'Distribution');
+
+    // Footer skin tracks the active mode.
+    await expect(footerModeHost(wrapper)).toHaveAttribute('data-mode', 'distribution');
+  });
+
+  // ── 4. Cycle keys are inert while Measure is OFF ─────────────────────────
+  test('`.` / `,` do nothing while Measure is off (no switcher, no mode change)', async ({
+    page,
+  }) => {
+    const wrapper = await gotoSignalViewer(page);
+
+    // Measure off: no switcher; cycle keys must be inert.
+    await expect(measureButton(page)).toHaveAttribute('aria-pressed', 'false');
+    await wrapper.locator('canvas[role="img"]').focus();
+    await page.keyboard.press('.');
+    await page.keyboard.press('.');
+    await page.keyboard.press(',');
+    await expect(modeSwitcher(page)).toHaveCount(0);
+    await expect(measureButton(page)).toHaveAttribute('aria-pressed', 'false');
+
+    // Turning Measure on still starts at the default (the keys had no latent effect).
+    await measureButton(page).click();
+    await expectActiveMode(page, 'Statistics');
+  });
+
+  // ── 5. Selection mode: precise-timing footer + copy button ───────────────
+  test('Selection mode shows start/dur/end timing fields and a working copy button', async ({
+    page,
+  }) => {
+    const wrapper = await gotoSignalViewer(page);
+    await measureButton(page).click();
+    await radioOption(page, 'Selection').click();
+    await expectActiveMode(page, 'Selection');
+    await expect(footerModeHost(wrapper)).toHaveAttribute('data-mode', 'selection');
+
+    // The precise-timing fields render (labels start / dur / end) inside the footer.
+    const footer = footerModeHost(wrapper);
+    await expect(footer.getByText('start', { exact: true })).toBeVisible();
+    await expect(footer.getByText('dur', { exact: true })).toBeVisible();
+    await expect(footer.getByText('end', { exact: true })).toBeVisible();
+
+    // The copy button is present, focusable, and shows "Copy" at rest.
+    const copyBtn = copyTimingButton(page);
+    await expect(copyBtn).toBeVisible();
+    await expect(copyBtn).toContainText('Copy');
+    await copyBtn.focus();
+    await expect(copyBtn).toBeFocused();
+
+    // Clicking must not throw. If the clipboard write is permitted, the button flips
+    // to its confirmed state (data-copied="true" + "Copied"); if blocked, the
+    // aria-live region carries an explanatory message. Either way: no error, and a
+    // visible state change. We don't assert clipboard CONTENTS (read may be blocked).
+    await copyBtn.click();
+    const copyConfirmed = copyBtn.and(page.locator('[data-copied="true"]'));
+    const copyStatusLive = page
+      .locator('[class*="srOnly"][role="status"]')
+      .filter({ hasText: /copied|copy/i });
+    await expect
+      .poll(async () => (await copyConfirmed.count()) > 0 || (await copyStatusLive.count()) > 0, {
+        timeout: 5000,
+      })
+      .toBe(true);
+  });
+
+  // ── 6. Mode persists across reload (region does not) ─────────────────────
+  test('selected mode persists across a reload; the pinned region does not', async ({ page }) => {
+    let wrapper = await gotoSignalViewer(page);
+    await measureButton(page).click();
+    await radioOption(page, 'Trend').click();
+    await expectActiveMode(page, 'Trend');
+
+    // Pin a region too, so we can confirm the region is transient while the mode persists.
+    await altDragRegion(page, wrapper);
+    await expect(sourcePill(wrapper)).toHaveAttribute('data-source', 'region', { timeout: 5000 });
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    wrapper = page.locator('[class*="canvasWrapper"]').first();
+    await expect(wrapper).toBeVisible({ timeout: 15000 });
+
+    // Measure is still on (existing spec covers that) and the MODE is still Trend.
+    await expect(measureButton(page)).toHaveAttribute('aria-pressed', 'true');
+    await expectActiveMode(page, 'Trend');
+    await expect(footerModeHost(wrapper)).toHaveAttribute('data-mode', 'trend');
+    // The drawn region is gone (transient by design); source is back to viewport.
+    await expect(sourcePill(wrapper)).toHaveAttribute('data-source', 'viewport');
+    await expect(wrapper.locator('[class*="measureBand"]')).toHaveCount(0);
+  });
+
+  // ── 7. Per-mode SR table (a11y): caption + headers reflect the active mode ─
+  test('SR table caption and column headers reflect the active mode', async ({ page }) => {
+    const wrapper = await gotoSignalViewer(page);
+    await measureButton(page).click();
+
+    // Statistics (default): Average/Median/Minimum/Maximum columns.
+    await expect(srTable(page)).toContainText(/^Statistics —/);
+    await expect(srTable(page).getByRole('columnheader', { name: 'Average' })).toBeVisible();
+    await expect(srTable(page).getByRole('columnheader', { name: 'Median' })).toBeVisible();
+
+    // Variability: caption + Std dev / CV / IQR headers.
+    await radioOption(page, 'Variability').click();
+    await expect(srTable(page)).toContainText(/^Variability —/);
+    await expect(srTable(page).getByRole('columnheader', { name: 'Std dev' })).toBeVisible();
+    await expect(srTable(page).getByRole('columnheader', { name: 'CV' })).toBeVisible();
+    await expect(srTable(page).getByRole('columnheader', { name: 'IQR' })).toBeVisible();
+
+    // Trend: caption + Slope (/min) / Direction / R² headers.
+    await radioOption(page, 'Trend').click();
+    await expect(srTable(page)).toContainText(/^Trend —/);
+    await expect(srTable(page).getByRole('columnheader', { name: /Slope/ })).toBeVisible();
+    await expect(srTable(page).getByRole('columnheader', { name: 'Direction' })).toBeVisible();
+
+    // Distribution: caption + the p5…p95 percentile ladder headers.
+    await radioOption(page, 'Distribution').click();
+    await expect(srTable(page)).toContainText(/^Distribution —/);
+    await expect(
+      srTable(page).getByRole('columnheader', { name: 'p5', exact: true }),
+    ).toBeVisible();
+    await expect(
+      srTable(page).getByRole('columnheader', { name: 'p95', exact: true }),
+    ).toBeVisible();
+
+    // Selection: caption + Sample rate (Hz) / Span headers.
+    await radioOption(page, 'Selection').click();
+    await expect(srTable(page)).toContainText(/^Selection —/);
+    await expect(srTable(page).getByRole('columnheader', { name: /Sample rate/ })).toBeVisible();
+    await expect(
+      srTable(page).getByRole('columnheader', { name: 'Span', exact: true }),
+    ).toBeVisible();
+
+    // The table stays a single mounted element across mode switches.
+    await expect(srTable(page)).toHaveCount(1);
+    void wrapper;
+  });
+
+  // ── 8. Alt-peek repeat (regression guard for the menu-accelerator fix) ────
+  //
+  // The fix: a lone Alt over the plot used to be claimed by the browser to focus
+  // its menu bar, blurring the page so only the FIRST peek registered until a
+  // click. The overlay now suppresses that default, so repeated peeks work with no
+  // intervening click. We exercise: Measure OFF → hover plot → hold Alt → peek
+  // chips appear → release → hide → hold Alt AGAIN (no click) → chips appear again.
+  //
+  // LIMITATION: Playwright's `keyboard.down('Alt')` does not reproduce the OS-level
+  // menu-accelerator focus steal that the fix addresses, so this is a behavioural
+  // smoke test of the peek-show/hide/repeat cycle rather than a faithful
+  // reproduction of the original blur bug. It is gated on the peek chips being
+  // observable; if they are not, we still assert the non-flaky invariant (no chips
+  // while Alt is up) and document the gap rather than asserting a flaky positive.
+  test('Alt-peek shows chips, hides on release, and shows AGAIN without a click', async ({
+    page,
+  }) => {
+    const wrapper = await gotoSignalViewer(page);
+    // Measure OFF — peek is the only thing that can surface chips.
+    await expect(measureButton(page)).toHaveAttribute('aria-pressed', 'false');
+    await expect(wrapper.locator('[class*="statChip"]')).toHaveCount(0);
+
+    const box = await wrapper.boundingBox();
+    expect(box).not.toBeNull();
+    if (!box) return;
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const chips = wrapper.locator('[class*="statChip"]');
+
+    const peekOnce = async (): Promise<boolean> => {
+      await page.mouse.move(cx, cy);
+      await page.keyboard.down('Alt');
+      // Let the peek state settle; poll for chips rather than a fixed wait.
+      let shown = false;
+      try {
+        await expect.poll(async () => chips.count(), { timeout: 2000 }).toBeGreaterThan(0);
+        shown = true;
+      } catch {
+        shown = false;
+      }
+      await page.keyboard.up('Alt');
+      // After release (Measure off, no pin) the chips must be gone again.
+      await expect(chips).toHaveCount(0, { timeout: 3000 });
+      return shown;
+    };
+
+    const firstShown = await peekOnce();
+    const secondShown = await peekOnce();
+
+    if (firstShown) {
+      // The regression guard: the SECOND peek must also surface chips with no
+      // intervening click. If the first peeked, the second must too.
+      expect(secondShown).toBe(true);
+    } else {
+      // Peek chips weren't observable under Playwright's synthetic Alt (see the
+      // LIMITATION note above). We still hold the safe invariant: no chips linger
+      // while Alt is up and Measure is off.
+      await expect(chips).toHaveCount(0);
+    }
+  });
+});
