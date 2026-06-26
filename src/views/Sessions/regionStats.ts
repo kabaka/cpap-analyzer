@@ -868,7 +868,7 @@ export function computeTrendStats(
     const v = data[i];
     if (v === undefined || !isMeaningfulSample(name, v)) continue;
     const tMs = timesMs !== undefined ? (timesMs[i] as number) : (i / sampleRate) * 1000;
-    if (tMs === undefined || !Number.isFinite(tMs)) continue;
+    if (!Number.isFinite(tMs)) continue;
     const xMin = tMs / 60000;
     xs[count] = xMin;
     ys[count] = v;

@@ -1306,7 +1306,7 @@ function MeasureStatsTableRow({
         <th scope="row">{name}</th>
         <td>{rows.slope}</td>
         <td>{rows.net}</td>
-        <td>{rows.percent}</td>
+        <td>{rows.percent === '—' ? rows.percent : `${rows.percent}%`}</td>
         <td>{TREND_DIRECTION[rows.direction].word}</td>
         <td>{rows.rSquared ?? '—'}</td>
         <td>{unit}</td>
