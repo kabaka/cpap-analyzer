@@ -169,7 +169,12 @@ interface Cell {
   /** Numeric value for value cells; null for partial; undefined for gaps. */
   value: number | null | undefined;
   state: CellStateType;
-  /** Week index (column), RELATIVE to this cell's calendar year. */
+  /**
+   * Week index (column), RELATIVE to this panel's first rendered (in-window)
+   * week. For a full-year panel this equals the absolute week-of-year (offset
+   * 0); for a window-clipped partial panel the first rendered week is 0, so the
+   * grid left-aligns to the origin with no empty leading columns.
+   */
   x: number;
   /** Day-of-week index 0–6 (row). */
   y: number;
@@ -330,9 +335,14 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
       .range([minColor ?? 'var(--color-surface-tertiary)', maxColor ?? colors.chart1])
       .clamp(true);
 
-    const buildCell = (day: Date, year: number): Cell => {
+    const buildCell = (day: Date, year: number, weekOffset: number): Cell => {
       const key = ISO_FORMAT(day);
-      const x = weekOfYear(day, year);
+      // Local week-column: the panel's first in-window week becomes column 0, so
+      // window-clipped partial panels (e.g. a May–June 30d window) left-align to
+      // the grid origin instead of floating at the absolute week-of-year. For
+      // full-year panels `weekOffset` is 0, so this is the absolute week-of-year
+      // and the multi-year Jan-aligned stack is unchanged.
+      const x = weekOfYear(day, year) - weekOffset;
       const dayOfWeek = day.getDay();
       const hasDatum = valueMap.has(key);
       const value = hasDatum ? valueMap.get(key) : undefined;
@@ -385,7 +395,14 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
       if (panelEnd < panelStart) continue;
 
       const days = d3.timeDays(panelStart, d3.timeDay.offset(panelEnd, 1));
-      const panelCells = days.map((day) => buildCell(day, year));
+
+      // Left-align this panel: the smallest in-window week-of-year becomes
+      // column 0. `panelStart` is the earliest rendered day, so its week-of-year
+      // is the minimum. For a full year (panelStart === Jan 1) this is 0 (the
+      // week containing Jan 1), leaving the clean Jan-aligned axis intact; only
+      // window-clipped partial panels get a non-zero offset that closes the gap.
+      const weekOffset = weekOfYear(panelStart, year);
+      const panelCells = days.map((day) => buildCell(day, year, weekOffset));
 
       // Month labels — first occurrence of each month in this panel.
       const months: { label: string; x: number }[] = [];
