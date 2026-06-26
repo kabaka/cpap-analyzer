@@ -202,6 +202,9 @@ export interface NoneRegionStats {
 /** Discriminated union the UI switches on. */
 export type RegionStats =
   | NumericRegionStats
+  | SpreadRegionStats
+  | TrendRegionStats
+  | DistributionRegionStats
   | CategoricalRegionStats
   | CountRegionStats
   | NoneRegionStats;
@@ -565,6 +568,494 @@ class P2MedianEstimator {
 }
 
 // ---------------------------------------------------------------------------
+// Extended numeric metrics (Measure-region "modes") — PROTOTYPE
+// ---------------------------------------------------------------------------
+//
+// These are additive, opt-in computations layered on top of the baseline
+// avg/median/min/max. The host computes a mode's metrics LAZILY — only when that
+// mode is the active tab — so a per-call cost is paid for one mode at a time, not
+// all of them at once. None of these mutate or replace {@link computeNumericStats};
+// they share its sentinel-filtering contract ({@link isMeaningfulSample}) and its
+// half-open `[startIndex, endIndex)` range convention.
+//
+// See the design catalog (delivered alongside this change) for the full rationale,
+// applicability matrix, and clinical-threshold citations.
+
+/**
+ * Variability / spread summary over a region. Sample (n−1) variants are used for
+ * SD/variance/CV because a measured region is a *sample* of the night, not its
+ * full population, and the data-savvy audience expects the unbiased estimator.
+ *
+ * `null` fields mean "not computable" (too few meaningful samples, or guarded —
+ * e.g. CV when |mean| is ~0). `count`/`mean` are echoed so the host can render
+ * the chip without a second pass.
+ */
+export interface SpreadRegionStats {
+  readonly kind: 'spread';
+  /** Meaningful (non-sentinel) sample count that fed the statistics. */
+  readonly count: number;
+  /** Arithmetic mean (echoed); `null` when `count === 0`. */
+  readonly mean: number | null;
+  /** Sample standard deviation (n−1, Welford); `null` when `count < 2`. Unit = channel unit. */
+  readonly sd: number | null;
+  /** Sample variance (n−1, Welford); `null` when `count < 2`. Unit = channel unit². */
+  readonly variance: number | null;
+  /**
+   * Coefficient of variation = SD / |mean|, dimensionless (reported as a %).
+   * `null` when `count < 2`, when |mean| is below {@link CV_MEAN_EPSILON}, or when
+   * the channel is not CV-valid (signed / zero-centred signals; see
+   * {@link isCvMeaningful}).
+   */
+  readonly cv: number | null;
+  /** Interquartile range p75 − p25 (exact sort); `null` when `count < 4`. Unit = channel unit. */
+  readonly iqr: number | null;
+  /** Channel unit, passed through for the UI to format. */
+  readonly unit: string;
+  /** Recommended decimal places for SD/IQR display (same scale as the channel). */
+  readonly decimals: number;
+}
+
+/**
+ * Trend / rate-of-change summary over a region, via ordinary least-squares
+ * regression of value on time. "Rate of change" is defined as the **OLS slope**
+ * (a robust, whole-region trend), NOT a noisy first-difference of endpoints: for a
+ * stochastic biosignal the regression slope is the defensible single number, and
+ * R² states how much of that signal is trend vs. noise.
+ *
+ * Time-derivative metrics REQUIRE per-sample timestamps to be correct. For
+ * uniformly-sampled CPAP channels the caller passes `sampleRate` and the times are
+ * synthesised as `i / sampleRate`. For irregularly-sampled wearable channels the
+ * caller MUST pass an explicit `timesMs` array (see {@link computeTrendStats});
+ * using a synthetic uniform Δt on wearable data yields a wrong slope.
+ */
+export interface TrendRegionStats {
+  readonly kind: 'trend';
+  /** Meaningful sample count that fed the regression. */
+  readonly count: number;
+  /** OLS slope in **channel-unit per minute**; `null` when `count < 2` or time span is 0. */
+  readonly slopePerMin: number | null;
+  /** Net change = fitted(last) − fitted(first) over the region, in channel units; `null` when slope is null. */
+  readonly netDelta: number | null;
+  /** Coefficient of determination R² in `[0, 1]`; `null` when `count < 2` or variance is 0. */
+  readonly rSquared: number | null;
+  /**
+   * Region mean ȳ of the meaningful samples, in channel units; `null` when `count < 2`.
+   *
+   * **Recommended base for percent-change.** For a noisy biosignal the mean is the most
+   * stable denominator: it uses all n samples and is insensitive to where the noisy
+   * endpoints land. The UI should compute
+   * `percentChange = (mean !== null && Math.abs(mean) >= TREND_BASE_EPSILON)
+   *   ? 100 * netDelta / Math.abs(mean) : null` (dash when null).
+   */
+  readonly mean: number | null;
+  /**
+   * Fitted start value of the trend line, `ŷ(x_first) = ȳ + slope·(x_first − x̄)`, in
+   * channel units; `null` when `count < 2` / slope is null.
+   *
+   * The denoised start of the regression line — a principled alternative percent-change
+   * base (vs the noisy raw first sample). Provided alongside {@link mean}; the mean is the
+   * recommended base because the fitted endpoint sits at the regression line's highest-
+   * leverage extreme. Same zero-guard semantics apply if the UI divides by it.
+   */
+  readonly firstFitted: number | null;
+  /** Channel unit, passed through for the UI to format. */
+  readonly unit: string;
+  /** Recommended decimal places for the channel-scale values. */
+  readonly decimals: number;
+}
+
+/**
+ * Below this absolute base value, percent-change (`100·netDelta/|base|`) is numerically
+ * unstable and clinically meaningless, so the UI should render a dash instead. Mirrors
+ * {@link CV_MEAN_EPSILON}; both guard a divide by a near-zero level.
+ */
+export const TREND_BASE_EPSILON = 1e-6;
+
+/**
+ * Below this absolute mean, CV (SD / |mean|) is numerically unstable and clinically
+ * meaningless, so it is reported as `null`. Chosen well above f64 noise but below
+ * any plausible meaningful mean for the CV-valid channels.
+ */
+export const CV_MEAN_EPSILON = 1e-6;
+
+/**
+ * Channels for which CV (SD / mean) is meaningful. CV requires a ratio scale with a
+ * true zero and strictly-positive values; it is meaningless for signed / zero-centred
+ * signals (e.g. `flow` oscillates around 0, so its mean ≈ 0 and CV explodes). This
+ * allowlist is the single gate — a channel absent here returns `cv: null`.
+ */
+const CV_VALID_CHANNELS: ReadonlySet<string> = new Set([
+  'leak',
+  'pressure',
+  'maskPressure',
+  'eprPressure',
+  'epap',
+  'ipap',
+  'minuteVent',
+  'tidalVolume',
+  'respRate',
+  'pulse',
+  'snore',
+  'heart_rate_intraday',
+  'hrv_detail',
+  'snoring_segments',
+  // NOTE: `spo2` is deliberately excluded — it lives in a narrow ~90–100% band, so
+  // its CV is tiny and uninformative; `flow` is excluded (zero-centred).
+]);
+
+/** Whether CV is a meaningful statistic for `channelName` (see {@link CV_VALID_CHANNELS}). */
+export function isCvMeaningful(channelName: string): boolean {
+  return CV_VALID_CHANNELS.has(channelName);
+}
+
+/**
+ * Compute the variability/spread mode for one continuous channel over a half-open
+ * sample-index range, excluding sentinels.
+ *
+ * ## Method & numerical stability
+ *
+ * - **SD / variance** use **Welford's online algorithm** (single pass, O(1) memory),
+ *   not the naive Σx² − (Σx)²/n form, which suffers catastrophic cancellation when
+ *   the mean is large relative to the spread (e.g. pulse ~60 bpm with SD ~3). Welford
+ *   accumulates the mean and the sum of squared deviations `M2` incrementally, so it
+ *   is stable across the full physiological range.
+ * - **IQR** needs order statistics, so it copies meaningful values into a compact
+ *   `Float32Array` and sorts (O(n log n)) — the only sorting metric in this mode.
+ *   p25/p75 use linear interpolation between closest ranks (the "type-7" / NumPy
+ *   default quantile). Reuses the same exact-sort machinery as the baseline median.
+ *
+ * Minimum-n: SD/variance/CV need `count ≥ 2`; IQR needs `count ≥ 4` (so both
+ * quartiles are interpolated from at least two points). Below those, the respective
+ * field is `null`.
+ *
+ * @param channel - Channel name/unit/data.
+ * @param range - Half-open sample-index range `[startIndex, endIndex)`.
+ */
+export function computeSpreadStats(
+  channel: NumericChannelInput,
+  range: IndexRange,
+): SpreadRegionStats {
+  const { name, unit, data } = channel;
+  const len = data.length;
+  const start = clampIndex(range.startIndex, len);
+  const end = Math.max(start, clampIndex(range.endIndex, len));
+  const decimals = decimalPlacesFor(channel);
+  const span = end - start;
+
+  // Welford accumulators (single pass), plus a compact buffer for the IQR sort.
+  let count = 0;
+  let mean = 0;
+  let m2 = 0;
+  const collected = new Float32Array(span);
+  for (let i = start; i < end; i++) {
+    const v = data[i];
+    if (v === undefined || !isMeaningfulSample(name, v)) continue;
+    count++;
+    const delta = v - mean;
+    mean += delta / count;
+    m2 += delta * (v - mean); // (v - newMean): the Welford cross term
+    collected[count - 1] = v;
+  }
+
+  if (count === 0) {
+    return {
+      kind: 'spread',
+      count: 0,
+      mean: null,
+      sd: null,
+      variance: null,
+      cv: null,
+      iqr: null,
+      unit,
+      decimals,
+    };
+  }
+
+  const variance = count >= 2 ? m2 / (count - 1) : null;
+  const sd = variance === null ? null : Math.sqrt(variance);
+
+  let cv: number | null = null;
+  if (sd !== null && isCvMeaningful(name) && Math.abs(mean) >= CV_MEAN_EPSILON) {
+    cv = sd / Math.abs(mean);
+  }
+
+  let iqr: number | null = null;
+  if (count >= 4) {
+    const view = collected.subarray(0, count);
+    view.sort();
+    const q1 = quantileSorted(view, 0.25);
+    const q3 = quantileSorted(view, 0.75);
+    iqr = q3 - q1;
+  }
+
+  return { kind: 'spread', count, mean, sd, variance, cv, iqr, unit, decimals };
+}
+
+/**
+ * Linear-interpolated quantile of an already-ascending typed array (NumPy/"type-7"
+ * convention): rank `h = (n − 1)·p`, value = `a[⌊h⌋] + (h − ⌊h⌋)·(a[⌈h⌉] − a[⌊h⌋])`.
+ * `p` is clamped to `[0, 1]`; `n ≥ 1` is required by the caller.
+ */
+export function quantileSorted(sorted: Float32Array, p: number): number {
+  const n = sorted.length;
+  if (n === 1) return sorted[0] as number;
+  const pp = p < 0 ? 0 : p > 1 ? 1 : p;
+  const h = (n - 1) * pp;
+  const lo = Math.floor(h);
+  const hi = Math.ceil(h);
+  const a = sorted[lo] as number;
+  if (lo === hi) return a;
+  const b = sorted[hi] as number;
+  return a + (h - lo) * (b - a);
+}
+
+/**
+ * Compute the trend / rate-of-change mode for one continuous channel over a region.
+ *
+ * Times are taken from `timesMs` when supplied (REQUIRED for irregular wearable
+ * cadence — one entry per element of `data`, session-relative ms), otherwise
+ * synthesised as `i / sampleRate` (valid ONLY for uniformly-sampled CPAP channels).
+ * When `timesMs` is given, `range` indexes into both `data` and `timesMs` in lockstep.
+ *
+ * ## Method & numerical stability
+ *
+ * Single-pass OLS with **mean-centring** of both x (time) and y (value) to avoid
+ * catastrophic cancellation in the cross/again sums when session-relative times are
+ * large (hours → millions of ms). slope = Σ(xᵢ−x̄)(yᵢ−ȳ) / Σ(xᵢ−x̄)². Time is
+ * converted to **minutes** so the slope is unit/min. R² = 1 − SS_res/SS_tot is
+ * derived from the same accumulated sums (no second pass).
+ *
+ * Minimum-n: `count ≥ 2` and a non-zero time span and non-zero Σ(x−x̄)²; otherwise
+ * every field is `null` (a flat-in-time or single-point region has no defined slope).
+ *
+ * @param channel - Channel name/unit/sampleRate/data.
+ * @param range - Half-open index range into `data` (and `timesMs` if given).
+ * @param timesMs - Optional per-sample session-relative timestamps (ms) for wearables.
+ */
+export function computeTrendStats(
+  channel: NumericChannelInput,
+  range: IndexRange,
+  timesMs?: Float64Array | readonly number[],
+): TrendRegionStats {
+  const { name, unit, sampleRate, data } = channel;
+  const len = data.length;
+  const start = clampIndex(range.startIndex, len);
+  const end = Math.max(start, clampIndex(range.endIndex, len));
+  const decimals = decimalPlacesFor(channel);
+
+  const nullResult: TrendRegionStats = {
+    kind: 'trend',
+    count: 0,
+    slopePerMin: null,
+    netDelta: null,
+    rSquared: null,
+    mean: null,
+    firstFitted: null,
+    unit,
+    decimals,
+  };
+
+  // First pass: collect meaningful (time, value) pairs and their means.
+  // Times are in MINUTES so the slope is directly unit/min.
+  let count = 0;
+  let meanX = 0;
+  let meanY = 0;
+  // Buffer x,y so a second mean-centred pass is exact; n here is region-bounded.
+  const span = end - start;
+  const xs = new Float64Array(span);
+  const ys = new Float64Array(span);
+  for (let i = start; i < end; i++) {
+    const v = data[i];
+    if (v === undefined || !isMeaningfulSample(name, v)) continue;
+    const tMs = timesMs !== undefined ? (timesMs[i] as number) : (i / sampleRate) * 1000;
+    if (tMs === undefined || !Number.isFinite(tMs)) continue;
+    const xMin = tMs / 60000;
+    xs[count] = xMin;
+    ys[count] = v;
+    count++;
+    meanX += (xMin - meanX) / count;
+    meanY += (v - meanY) / count;
+  }
+
+  if (count < 2) return { ...nullResult, count };
+
+  // Second pass: mean-centred sums (stable; both means subtracted before squaring).
+  let sxx = 0;
+  let sxy = 0;
+  let syy = 0;
+  for (let i = 0; i < count; i++) {
+    const dx = (xs[i] as number) - meanX;
+    const dy = (ys[i] as number) - meanY;
+    sxx += dx * dx;
+    sxy += dx * dy;
+    syy += dy * dy;
+  }
+
+  if (sxx <= 0) return { ...nullResult, count }; // all samples at one instant
+
+  const slopePerMin = sxy / sxx;
+  const xFirst = xs[0] as number;
+  const xLast = xs[count - 1] as number;
+  const netDelta = slopePerMin * (xLast - xFirst);
+  const rSquared = syy > 0 ? (sxy * sxy) / (sxx * syy) : null;
+  // Fitted start value ŷ(x_first) = ȳ + slope·(x_first − x̄): denoised trend-line start.
+  const firstFitted = meanY + slopePerMin * (xFirst - meanX);
+
+  return {
+    kind: 'trend',
+    count,
+    slopePerMin,
+    netDelta,
+    rSquared,
+    mean: meanY,
+    firstFitted,
+    unit,
+    decimals,
+  };
+}
+
+/**
+ * Distribution mode: the five-number percentile summary p5/p25/p50/p75/p95 over a
+ * region. Gives the data-savvy audience a sense of shape (skew, spread, tails) that
+ * a single mean/median cannot — e.g. a leak whose p95 spikes while its p50 stays low.
+ *
+ * All five percentiles are `null` when `count < 2` (no interpolation possible); the
+ * `count` is still reported so the chip can show "n too small". p50 here is the same
+ * quantity as the baseline Statistics median, computed via the same exact-sort path —
+ * the two will agree exactly below the approximation threshold.
+ */
+export interface DistributionRegionStats {
+  readonly kind: 'distribution';
+  /** Meaningful (non-sentinel) sample count that fed the percentiles. */
+  readonly count: number;
+  /** 5th percentile; `null` when `count < 2`. Unit = channel unit. */
+  readonly p5: number | null;
+  /** 25th percentile (lower quartile); `null` when `count < 2`. */
+  readonly p25: number | null;
+  /** 50th percentile (median); `null` when `count < 2`. */
+  readonly p50: number | null;
+  /** 75th percentile (upper quartile); `null` when `count < 2`. */
+  readonly p75: number | null;
+  /** 95th percentile; `null` when `count < 2`. Unit = channel unit. */
+  readonly p95: number | null;
+  /**
+   * True when the percentiles are an approximation rather than an exact order
+   * statistic. Set only on the pathological path (meaningful count exceeds
+   * {@link APPROX_MEDIAN_THRESHOLD}), mirroring {@link NumericRegionStats.medianIsApproximate}.
+   * For every realistic region this is `false` (the exact sort path runs).
+   */
+  readonly approximate: boolean;
+  /** Channel unit, passed through for the UI to format. */
+  readonly unit: string;
+  /** Recommended decimal places for display (same scale as the channel). */
+  readonly decimals: number;
+}
+
+/**
+ * Compute the distribution mode (p5/p25/p50/p75/p95) for one continuous channel over
+ * a half-open sample-index range, excluding sentinels.
+ *
+ * ## Method
+ *
+ * Meaningful values are copied into a compact `Float32Array` and sorted once
+ * (O(n log n), ascending numeric — the typed-array default), then each percentile is
+ * read with {@link quantileSorted} (linear-interpolated "type-7"/NumPy convention).
+ * A **single sort** yields all five percentiles, so the per-call cost is one sort, the
+ * same order as the baseline median — not five separate selections.
+ *
+ * Exactness mirrors the baseline median: exact for up to {@link APPROX_MEDIAN_THRESHOLD}
+ * meaningful samples. Above that threshold the compact buffer would be prohibitively
+ * large, so the result is flagged `approximate: true` and the percentiles are read from
+ * the largest exact prefix that fits the threshold. Because the threshold is set so high
+ * that no realistic whole-night region triggers it, this path is a safety valve, not the
+ * common case; for every realistic region the percentiles are exact.
+ *
+ * Edge cases:
+ * - empty / all-sentinel region → `count: 0` and all percentiles `null`.
+ * - `count === 1` → all percentiles `null` (interpolation needs ≥ 2 points), `count: 1`.
+ * - range is clamped defensively so it can never read out of bounds.
+ *
+ * @param channel - Channel name/unit/data.
+ * @param range - Half-open sample-index range `[startIndex, endIndex)`.
+ * @param threshold - Exact-percentile cutoff; defaults to {@link APPROX_MEDIAN_THRESHOLD}.
+ */
+export function computeDistributionStats(
+  channel: NumericChannelInput,
+  range: IndexRange,
+  threshold: number = APPROX_MEDIAN_THRESHOLD,
+): DistributionRegionStats {
+  const { name, unit, data } = channel;
+  const len = data.length;
+  const start = clampIndex(range.startIndex, len);
+  const end = Math.max(start, clampIndex(range.endIndex, len));
+  const decimals = decimalPlacesFor(channel);
+  const span = end - start;
+
+  // Cap the collection buffer at the exact-path threshold. If more meaningful samples
+  // exist than fit, we sort the first `threshold` of them and flag `approximate`.
+  const cap = Math.min(span, threshold);
+  const collected = new Float32Array(cap);
+  let count = 0; // total meaningful samples seen
+  let stored = 0; // samples actually retained in `collected` (≤ cap)
+  for (let i = start; i < end; i++) {
+    const v = data[i];
+    if (v === undefined || !isMeaningfulSample(name, v)) continue;
+    count++;
+    if (stored < cap) {
+      collected[stored] = v;
+      stored++;
+    }
+  }
+
+  const nullResult: DistributionRegionStats = {
+    kind: 'distribution',
+    count,
+    p5: null,
+    p25: null,
+    p50: null,
+    p75: null,
+    p95: null,
+    approximate: false,
+    unit,
+    decimals,
+  };
+
+  if (count < 2) return nullResult;
+
+  const view = collected.subarray(0, stored);
+  view.sort();
+  const approximate = stored < count;
+
+  return {
+    kind: 'distribution',
+    count,
+    p5: quantileSorted(view, 0.05),
+    p25: quantileSorted(view, 0.25),
+    p50: quantileSorted(view, 0.5),
+    p75: quantileSorted(view, 0.75),
+    p95: quantileSorted(view, 0.95),
+    approximate,
+    unit,
+    decimals,
+  };
+}
+
+/**
+ * Effective sample cadence (Hz) for an irregularly-sampled series over a region:
+ * `count / durationSeconds`. Pure helper for the Selection mode's wearable case,
+ * where there is no single nominal sample rate (CPAP lanes use the descriptor's
+ * `sampleRate` directly and should NOT use this). Returns `null` when the duration is
+ * non-positive or `count` is 0, so the host can render "n/a" rather than a divide-by-zero.
+ *
+ * @param count - Meaningful sample count in the region.
+ * @param durationMs - Region duration in milliseconds (`endMs − startMs`).
+ */
+export function effectiveCadenceHz(count: number, durationMs: number): number | null {
+  if (count <= 0 || !Number.isFinite(durationMs) || durationMs <= 0) return null;
+  return count / (durationMs / 1000);
+}
+
+// ---------------------------------------------------------------------------
 // Categorical statistics (hypnogram)
 // ---------------------------------------------------------------------------
 
@@ -792,7 +1283,21 @@ export function statsKindForGroup(group: string, isEventLane = false): StatsKind
  * For `numeric`, pass either an `indexRange` (already converted) OR a `timeRange`
  * (converted here via the channel's sample rate). `indexRange` wins if both are
  * given.
+ *
+ * The optional `mode` selects WHICH numeric statistic to compute, so the model can
+ * lazily compute only the active overlay mode's metrics (each mode is a distinct
+ * `RegionStats.kind`):
+ *   - `'stats'` (default) → {@link computeNumericStats} (`kind: 'numeric'`)
+ *   - `'spread'`          → {@link computeSpreadStats} (`kind: 'spread'`)
+ *   - `'trend'`           → {@link computeTrendStats} (`kind: 'trend'`)
+ *   - `'distribution'`    → {@link computeDistributionStats} (`kind: 'distribution'`)
+ * `mode` is ignored for non-numeric kinds. The per-mode functions are also exported
+ * directly; this dispatcher is a convenience wrapper over them. For `'trend'` on an
+ * irregularly-sampled wearable lane, pass `timesMs` (one per sample) so the slope is
+ * computed against true timestamps; omit it for uniform CPAP channels.
  */
+export type NumericMode = 'stats' | 'spread' | 'trend' | 'distribution';
+
 export function computeRegionStats(
   kind: StatsKind,
   input: {
@@ -802,11 +1307,13 @@ export function computeRegionStats(
     readonly categoricalSamples?: readonly CategoricalSample[];
     readonly events?: readonly EventInput[];
     readonly medianThreshold?: number;
+    readonly mode?: NumericMode;
+    readonly timesMs?: Float64Array | readonly number[];
   },
 ): RegionStats {
   switch (kind) {
     case 'numeric': {
-      const { channel, indexRange, timeRange, medianThreshold } = input;
+      const { channel, indexRange, timeRange, medianThreshold, mode, timesMs } = input;
       if (!channel) return { kind: 'none' };
       const range =
         indexRange ??
@@ -814,7 +1321,17 @@ export function computeRegionStats(
           ? timeRangeToIndexRange(timeRange, channel.sampleRate, channel.data.length)
           : undefined);
       if (!range) return { kind: 'none' };
-      return computeNumericStats(channel, range, medianThreshold);
+      switch (mode) {
+        case 'spread':
+          return computeSpreadStats(channel, range);
+        case 'trend':
+          return computeTrendStats(channel, range, timesMs);
+        case 'distribution':
+          return computeDistributionStats(channel, range, medianThreshold);
+        case 'stats':
+        default:
+          return computeNumericStats(channel, range, medianThreshold);
+      }
     }
     case 'categorical': {
       const { categoricalSamples, timeRange } = input;

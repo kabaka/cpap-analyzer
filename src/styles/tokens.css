@@ -211,6 +211,14 @@
   --color-trend-neutral: var(--color-text-secondary);
   --color-trend-neutral-bg: var(--color-surface-tertiary);
 
+  /* MEASURE-MODE FOOTER SWITCHER (Signal Viewer). Aliases so the segmented control
+     reads as a subtle inset track with an elevated selected segment. Selection is
+     conveyed by fill + weight + a ● marker + shadow, never colour alone. */
+  --color-mode-switcher-trough: var(--color-surface-tertiary);
+  --color-mode-switcher-selected-bg: var(--color-surface-elevated);
+  --color-mode-switcher-selected-fg: var(--color-text-primary);
+  --color-mode-switcher-rest-fg: var(--color-text-secondary);
+
   /* APP CHROME (sidebar / header / icons) */
   /* Sidebar geometry — theme-invariant. Expanded is the default desktop width;
      rail is the collapsed icon-only width (desktop ≥768px only). */
@@ -482,6 +490,12 @@
   /* NEUTRAL TREND (dark) — alias of secondary text / tertiary surface. */
   --color-trend-neutral: var(--color-text-secondary);
   --color-trend-neutral-bg: var(--color-surface-tertiary);
+
+  /* MEASURE-MODE FOOTER SWITCHER (dark) — same aliasing as the light theme. */
+  --color-mode-switcher-trough: var(--color-surface-tertiary);
+  --color-mode-switcher-selected-bg: var(--color-surface-elevated);
+  --color-mode-switcher-selected-fg: var(--color-text-primary);
+  --color-mode-switcher-rest-fg: var(--color-text-secondary);
 
   /* APP CHROME (sidebar / header / icons) — dark */
   --color-surface-sidebar: #121212;

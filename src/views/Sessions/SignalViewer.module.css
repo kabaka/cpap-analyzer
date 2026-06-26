@@ -1153,3 +1153,234 @@
   color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
+
+/* Muted trailing note inside the chip grid (e.g. the Trend r² caption). Spans all
+   three columns, right-aligned; muted is acceptable (it's a caveat, not a value). */
+.statChipNote {
+  grid-column: 1 / -1;
+  justify-self: end;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Measure-mode footer switcher (segmented radiogroup) ───────── */
+
+/* The radiogroup trough — a subtle inset track that holds the five segments. */
+.modeSwitcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 2px;
+  background: var(--color-mode-switcher-trough, var(--color-surface-tertiary));
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* One segment. Selected = fill + semibold + a leading ● marker + shadow (never
+   colour-only). The marker's width is reserved when hidden so segments don't shift. */
+.modeSwitcherOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-mode-switcher-rest-fg, var(--color-text-secondary));
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.modeSwitcherOption:hover {
+  background: var(--color-surface-secondary, var(--color-surface-tertiary));
+}
+
+.modeSwitcherOption[aria-checked='true'] {
+  background: var(--color-mode-switcher-selected-bg, var(--color-surface-elevated));
+  color: var(--color-mode-switcher-selected-fg, var(--color-text-primary));
+  font-weight: var(--font-weight-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+.modeSwitcherOption:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.modeSwitcherOption:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Leading ● marker — visible only when the segment is selected, but its width is
+   ALWAYS reserved (visibility:hidden, not display:none) so labels never shift. */
+.modeSwitcherOptionMarker {
+  font-size: 7px;
+  line-height: 1;
+  visibility: hidden;
+}
+
+.modeSwitcherOption[aria-checked='true'] .modeSwitcherOptionMarker,
+.modeSwitcherPopoverOption[data-selected='true'] .modeSwitcherOptionMarker {
+  visibility: visible;
+}
+
+/* ≥44px touch targets on coarse pointers (mirrors .regionStatsSheetToggle). */
+@media (pointer: coarse) {
+  .modeSwitcherOption,
+  .modeSwitcherDisclosure {
+    min-height: 44px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
+
+/* Collapsed variant — "active label + ▸" disclosure opening an upward popover. */
+.modeSwitcherCollapsed {
+  position: relative;
+  display: inline-flex;
+}
+
+.modeSwitcherDisclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px var(--space-2);
+  background: var(--color-mode-switcher-trough, var(--color-surface-tertiary));
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.modeSwitcherDisclosure:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Reuse the sheet chevron rotation; the disclosure rotates ▸→▾ when open. */
+.modeSwitcherDisclosure[aria-expanded='true'] .regionStatsSheetChevron {
+  transform: rotate(90deg);
+}
+
+/* Upward popover list of the five modes (opens above the footer). */
+.modeSwitcherPopover {
+  position: absolute;
+  bottom: calc(100% + var(--space-1));
+  left: 0;
+  z-index: var(--z-dropdown, var(--z-sticky));
+  min-width: 9rem;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.modeSwitcherPopoverOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.modeSwitcherPopoverOption:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.modeSwitcherPopoverOption[data-selected='true'] {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.modeSwitcherPopoverOption:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .modeSwitcherPopoverOption {
+    min-height: 44px;
+  }
+}
+
+/* ── Selection-mode precise footer timing + copy ──────────────── */
+
+.regionTimingPrecise {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+}
+
+.regionTimingField {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+}
+
+.regionTimingLabel {
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.regionTimingValue {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.regionTimingCopy {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: auto;
+  padding: 1px var(--space-1);
+  background: var(--color-surface-tertiary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.regionTimingCopy:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.regionTimingCopy[data-copied='true'] {
+  color: var(--color-text-primary);
+}
+
+@media (pointer: coarse) {
+  .regionTimingCopy {
+    min-height: 44px;
+    min-width: 44px;
+    justify-content: center;
+  }
+}

@@ -22,7 +22,15 @@
  * @module views/Sessions/SignalViewer
  */
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { HybridSignalRenderer } from '@/components/charts/HybridSignalRenderer';
@@ -87,11 +95,17 @@ import type { CategoricalSample, EventInput, NumericChannelInput } from './regio
 import {
   buildMeasureLaneStats,
   categoricalChipRows,
+  distributionChipRows,
   formatStatValue,
   laneStatSummary,
   numericChipRows,
+  selectionChipRows,
+  spreadChipRows,
+  trendChipRows,
   type MeasureDataSources,
   type MeasureLaneStat,
+  type MeasureMode,
+  type TrendDirection,
 } from './regionStatsModel';
 import {
   applyCursorAnchoredZoom,
@@ -255,6 +269,132 @@ const MEASURE_WORD = {
   min: 'minimum',
   max: 'maximum',
 } as const;
+
+// ── Measure mode catalogue ───────────────────────────────────────
+//
+// Five overlay lenses on the measured region (UI order = `.`/`,` cycle order):
+// Statistics → Variability → Trend → Distribution → Selection. Each re-skins the
+// per-lane chip + the SR table; the active mode is the single source of truth held
+// in `lanePrefs.measureStatMode` and surfaced by the footer segmented control.
+
+/** All overlay modes in UI / cycle order (mirrors {@link MEASURE_STAT_MODES}). */
+const MEASURE_MODE_ORDER: readonly MeasureMode[] = [
+  'statistics',
+  'variability',
+  'trend',
+  'distribution',
+  'selection',
+];
+
+/** Short segmented-control label per mode (the radiogroup options). */
+const MEASURE_MODE_SHORT: Record<MeasureMode, string> = {
+  statistics: 'Stats',
+  variability: 'Var',
+  trend: 'Trend',
+  distribution: 'Dist',
+  selection: 'Sel',
+};
+
+/** Full mode name for aria + the collapsed disclosure trigger. */
+const MEASURE_MODE_NAME: Record<MeasureMode, string> = {
+  statistics: 'Statistics',
+  variability: 'Variability',
+  trend: 'Trend',
+  distribution: 'Distribution',
+  selection: 'Selection',
+};
+
+/** One-line "what this mode shows", spoken in the debounced aria-live announcement. */
+const MEASURE_MODE_DESCRIPTION: Record<MeasureMode, string> = {
+  statistics: 'average, median, minimum and maximum',
+  variability: 'standard deviation, coefficient of variation and interquartile range',
+  trend: 'slope per minute, net change, percent change and direction',
+  distribution: 'the 5th, 25th, 50th, 75th and 95th percentiles',
+  selection: 'sample rate, sample count and precise region timing',
+};
+
+/** Cycle the active mode forward (`+1`) or back (`−1`), wrapping both ways. */
+function cycleMeasureMode(current: MeasureMode, delta: 1 | -1): MeasureMode {
+  const i = MEASURE_MODE_ORDER.indexOf(current);
+  const base = i < 0 ? 0 : i;
+  const n = MEASURE_MODE_ORDER.length;
+  const next = (base + delta + n) % n;
+  return MEASURE_MODE_ORDER[next] as MeasureMode;
+}
+
+/** Variability chip glyph/word columns. `σ`/`cv`/`iqr` are non-combining BMP glyphs. */
+const SPREAD_GLYPH = { sd: 'σ', cv: 'cv', iqr: 'iqr' } as const;
+const SPREAD_WORD = { sd: 'sd', cv: 'cv', iqr: 'iqr' } as const;
+
+/** Trend chip glyph/word columns (slope/net/percent + a direction row). */
+const TREND_GLYPH = { slope: 'Δ', net: 'Δ', percent: '%' } as const;
+const TREND_WORD = { slope: 'slope', net: 'net', percent: 'change' } as const;
+
+/** Direction arrow + word per {@link TrendDirection}. */
+const TREND_DIRECTION: Record<TrendDirection, { glyph: string; word: string }> = {
+  rising: { glyph: '↗', word: 'rising' },
+  falling: { glyph: '↘', word: 'falling' },
+  flat: { glyph: '→', word: 'flat' },
+};
+
+/** Distribution percentile rows (glyph is a ladder tick; label is the percentile). */
+const DISTRIBUTION_ROWS = [
+  { key: 'p5', label: 'p5' },
+  { key: 'p25', label: 'p25' },
+  { key: 'p50', label: 'p50' },
+  { key: 'p75', label: 'p75' },
+  { key: 'p95', label: 'p95' },
+] as const;
+
+/** Selection chip rows (rate/count/span). `fs`/`n`/`Δt` are non-combining BMP glyphs. */
+const SELECTION_GLYPH = { rate: 'fs', count: 'n', span: 'Δt' } as const;
+const SELECTION_WORD = { rate: 'rate', count: 'samples', span: 'span' } as const;
+
+/** Debounce (ms) for the spoken mode-switch announcement (aria-checked is instant). */
+const MEASURE_MODE_ANNOUNCE_DEBOUNCE_MS = 250;
+
+/**
+ * Format a precise wall-clock-or-relative timestamp WITH milliseconds for the
+ * Selection footer. Reuses the {@link formatWallClockLabel} HH:MM:SS form (UTC
+ * getters) and appends `.mmm`; falls back to a session-relative `mm:ss.mmm` when
+ * there is no wall-clock epoch (mirrors the footer's existing wall-clock fallback).
+ */
+function formatPreciseTime(wallClockEpoch: number, relMs: number): string {
+  const ms = String(Math.floor(((relMs % 1000) + 1000) % 1000)).padStart(3, '0');
+  if (!Number.isNaN(wallClockEpoch)) {
+    return `${formatWallClockLabel(wallClockEpoch, relMs, true)}.${ms}`;
+  }
+  // Session-relative fallback: H:MM:SS.mmm from session start.
+  const totalSec = Math.floor(relMs / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const hh = String(h).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return `${hh}:${mm}:${ss}.${ms}`;
+}
+
+/** Build the exact Selection-footer timing string (start · dur · end), ms-precise. */
+function buildPreciseTimingString(wallClockEpoch: number, startMs: number, endMs: number): string {
+  const start = formatPreciseTime(wallClockEpoch, startMs);
+  const end = formatPreciseTime(wallClockEpoch, endMs);
+  const durMs = Math.max(0, Math.round(endMs - startMs));
+  const dur = formatExactDuration(durMs);
+  return `start ${start} · dur ${dur} · end ${end}`;
+}
+
+/** Exact `H:MM:SS.mmm` duration for the Selection footer (millisecond precision). */
+function formatExactDuration(durMs: number): string {
+  const ms = String(durMs % 1000).padStart(3, '0');
+  const totalSec = Math.floor(durMs / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}.${ms}` : `${m}:${ss}.${ms}`;
+}
 
 /** Lane drawer presets — id → set of lane ids to show (others hidden). */
 interface LanePreset {
@@ -488,21 +628,76 @@ function MeasureChipNoData({ top, compact }: { top: number; compact: boolean }):
   );
 }
 
+/**
+ * "— not numeric" chip variant for hypnogram/categorical & event lanes under the
+ * numeric overlay modes (Variability/Trend/Distribution/Selection): those lanes
+ * have no continuous-metric to report, so the chip shows a labelled dash rather
+ * than a number (never fabricated).
+ */
+function MeasureChipNotNumeric({
+  top,
+  compact,
+  reason,
+}: {
+  top: number;
+  compact: boolean;
+  reason: string;
+}): JSX.Element {
+  return (
+    <div
+      className={`${styles.statChip} ${compact ? styles.statChipCompact : ''}`}
+      style={{ top: `${top}px` }}
+      aria-hidden="true"
+    >
+      <span className={styles.statChipNoData}>— {reason}</span>
+    </div>
+  );
+}
+
 function MeasureChip({
   stat,
   top,
   compact,
+  mode,
 }: {
   stat: MeasureLaneStat;
   top: number;
   compact: boolean;
+  mode: MeasureMode;
 }): JSX.Element | null {
   const { stats } = stat;
+
+  // Selection mode is metadata-driven (rate/count/span), independent of `stats.kind`.
+  if (mode === 'selection') {
+    return <MeasureSelectionChip stat={stat} top={top} compact={compact} />;
+  }
 
   if (stats.kind === 'none') {
     return <MeasureChipNoData top={top} compact={compact} />;
   }
 
+  // Numeric overlay modes re-skin the numeric chip; categorical/none lanes are
+  // "not numeric" under them (Statistics keeps the categorical stage chip).
+  if (mode === 'variability') {
+    if (stats.kind !== 'spread') {
+      return <MeasureChipNotNumeric top={top} compact={compact} reason="not numeric" />;
+    }
+    return <MeasureSpreadChip stats={stats} top={top} compact={compact} />;
+  }
+  if (mode === 'trend') {
+    if (stats.kind !== 'trend') {
+      return <MeasureChipNotNumeric top={top} compact={compact} reason="not numeric" />;
+    }
+    return <MeasureTrendChip stats={stats} top={top} compact={compact} />;
+  }
+  if (mode === 'distribution') {
+    if (stats.kind !== 'distribution') {
+      return <MeasureChipNotNumeric top={top} compact={compact} reason="not numeric" />;
+    }
+    return <MeasureDistributionChip stats={stats} top={top} compact={compact} />;
+  }
+
+  // ── Statistics mode (default, unchanged behaviour) ──
   if (stats.kind === 'numeric') {
     const rows = numericChipRows(stats);
     const unit = rows.unit;
@@ -607,6 +802,560 @@ function MeasureChip({
         </Fragment>
       ))}
     </div>
+  );
+}
+
+/** Variability chip: σ / cv / iqr rows (CV dashes for zero-mean / non-allowlisted). */
+function MeasureSpreadChip({
+  stats,
+  top,
+  compact,
+}: {
+  stats: Extract<MeasureLaneStat['stats'], { kind: 'spread' }>;
+  top: number;
+  compact: boolean;
+}): JSX.Element {
+  const rows = spreadChipRows(stats);
+  if (rows.empty) return <MeasureChipNoData top={top} compact={compact} />;
+  const unit = rows.unit;
+  const cvTitle = rows.cvUndefined ? 'CV undefined for a zero-mean signal' : undefined;
+  if (compact) {
+    return (
+      <div
+        className={`${styles.statChip} ${styles.statChipCompact}`}
+        style={{ top: `${top}px` }}
+        aria-hidden="true"
+      >
+        <span className={styles.statChipCompactRow}>
+          <span className={styles.statChipGlyph}>{SPREAD_GLYPH.sd}</span> {rows.sd}
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{SPREAD_GLYPH.cv}</span>
+          <span title={cvTitle}>
+            {rows.cv}
+            {rows.cv === '—' ? '' : '%'}
+          </span>
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{SPREAD_GLYPH.iqr}</span> {rows.iqr}
+          {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+      <span className={styles.statChipGlyph}>{SPREAD_GLYPH.sd}</span>
+      <span className={styles.statChipLabel}>{SPREAD_WORD.sd}</span>
+      <span className={styles.statChipValue}>
+        {rows.sd}
+        {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+      </span>
+      <span className={styles.statChipGlyph}>{SPREAD_GLYPH.cv}</span>
+      <span className={styles.statChipLabel}>{SPREAD_WORD.cv}</span>
+      <span className={styles.statChipValue} title={cvTitle}>
+        {rows.cv}
+        {rows.cv === '—' ? '' : <span className={styles.statChipUnit}> %</span>}
+      </span>
+      <span className={styles.statChipGlyph}>{SPREAD_GLYPH.iqr}</span>
+      <span className={styles.statChipLabel}>{SPREAD_WORD.iqr}</span>
+      <span className={styles.statChipValue}>
+        {rows.iqr}
+        {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+/** Trend chip: slope / net / % change + a direction row and a muted r² note. */
+function MeasureTrendChip({
+  stats,
+  top,
+  compact,
+}: {
+  stats: Extract<MeasureLaneStat['stats'], { kind: 'trend' }>;
+  top: number;
+  compact: boolean;
+}): JSX.Element {
+  const rows = trendChipRows(stats);
+  if (rows.empty) return <MeasureChipNoData top={top} compact={compact} />;
+  const unit = rows.unit;
+  const dir = TREND_DIRECTION[rows.direction];
+  if (compact) {
+    return (
+      <div
+        className={`${styles.statChip} ${styles.statChipCompact}`}
+        style={{ top: `${top}px` }}
+        aria-hidden="true"
+      >
+        <span className={styles.statChipCompactRow}>
+          <span className={styles.statChipGlyph}>{dir.glyph}</span> {rows.slope}
+          {unit ? `${unit}/min` : '/min'}
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{TREND_GLYPH.net}</span> {rows.net}
+          {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+      <span className={styles.statChipGlyph}>{TREND_GLYPH.slope}</span>
+      <span className={styles.statChipLabel}>{TREND_WORD.slope}</span>
+      <span className={styles.statChipValue}>
+        {rows.slope}
+        <span className={styles.statChipUnit}> {unit ? `${unit}/min` : '/min'}</span>
+      </span>
+      <span className={styles.statChipGlyph}>{TREND_GLYPH.net}</span>
+      <span className={styles.statChipLabel}>{TREND_WORD.net}</span>
+      <span className={styles.statChipValue}>
+        {rows.net}
+        {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+      </span>
+      <span className={styles.statChipGlyph}>{TREND_GLYPH.percent}</span>
+      <span className={styles.statChipLabel}>{TREND_WORD.percent}</span>
+      <span className={styles.statChipValue}>
+        {rows.percent}
+        {rows.percent === '—' ? '' : <span className={styles.statChipUnit}> %</span>}
+      </span>
+      <span className={styles.statChipGlyph} aria-hidden="true">
+        {dir.glyph}
+      </span>
+      <span className={styles.statChipLabel}>direction</span>
+      <span className={styles.statChipValue}>{dir.word}</span>
+      {rows.rSquared !== null ? (
+        <span className={styles.statChipNote}>r²={rows.rSquared}</span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Distribution chip: p5/p25/p50/p75/p95 rows (ladder tick glyph), unit once. */
+function MeasureDistributionChip({
+  stats,
+  top,
+  compact,
+}: {
+  stats: Extract<MeasureLaneStat['stats'], { kind: 'distribution' }>;
+  top: number;
+  compact: boolean;
+}): JSX.Element {
+  const rows = distributionChipRows(stats);
+  if (rows.empty) return <MeasureChipNoData top={top} compact={compact} />;
+  const unit = rows.unit;
+  if (compact) {
+    return (
+      <div
+        className={`${styles.statChip} ${styles.statChipCompact}`}
+        style={{ top: `${top}px` }}
+        aria-hidden="true"
+      >
+        <span className={styles.statChipCompactRow}>
+          {DISTRIBUTION_ROWS.map((r, i) => (
+            <Fragment key={r.key}>
+              {i > 0 ? <span className={styles.legendSeparatorInline}>·</span> : null}
+              {rows[r.key]}
+            </Fragment>
+          ))}
+          {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+      {DISTRIBUTION_ROWS.map((r) => (
+        <Fragment key={r.key}>
+          <span className={styles.statChipGlyph} aria-hidden="true">
+            ▏
+          </span>
+          <span className={styles.statChipLabel}>{r.label}</span>
+          <span className={styles.statChipValue}>
+            {rows[r.key]}
+            {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+          </span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** Selection chip: fs rate / n samples / Δt span (per-lane facts). */
+function MeasureSelectionChip({
+  stat,
+  top,
+  compact,
+}: {
+  stat: MeasureLaneStat;
+  top: number;
+  compact: boolean;
+}): JSX.Element {
+  const info = stat.selection;
+  if (!info) return <MeasureChipNoData top={top} compact={compact} />;
+  const rows = selectionChipRows(info);
+  if (rows.empty) return <MeasureChipNoData top={top} compact={compact} />;
+  const rateTitle = rows.rateEstimated ? 'mean cadence; wearable sampling is irregular' : undefined;
+  if (compact) {
+    return (
+      <div
+        className={`${styles.statChip} ${styles.statChipCompact}`}
+        style={{ top: `${top}px` }}
+        aria-hidden="true"
+      >
+        <span className={styles.statChipCompactRow}>
+          <span className={styles.statChipGlyph}>{SELECTION_GLYPH.rate}</span>
+          <span title={rateTitle}>
+            {rows.rate}
+            {info.stepped ? '' : ' Hz'}
+          </span>
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{SELECTION_GLYPH.count}</span> {rows.count}
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{SELECTION_GLYPH.span}</span> {rows.span}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+      <span className={styles.statChipGlyph}>{SELECTION_GLYPH.rate}</span>
+      <span className={styles.statChipLabel}>{SELECTION_WORD.rate}</span>
+      <span className={styles.statChipValue} title={rateTitle}>
+        {rows.rate}
+        {info.stepped ? '' : <span className={styles.statChipUnit}> Hz</span>}
+      </span>
+      <span className={styles.statChipGlyph}>{SELECTION_GLYPH.count}</span>
+      <span className={styles.statChipLabel}>{SELECTION_WORD.count}</span>
+      <span className={styles.statChipValue}>{rows.count}</span>
+      <span className={styles.statChipGlyph}>{SELECTION_GLYPH.span}</span>
+      <span className={styles.statChipLabel}>{SELECTION_WORD.span}</span>
+      <span className={styles.statChipValue}>{rows.span}</span>
+    </div>
+  );
+}
+
+// ── Measure-mode footer switcher ─────────────────────────────────
+
+/**
+ * The footer segmented control: the visible mode switcher AND the mode indicator
+ * (single source of truth). A standard `role="radiogroup"` of 5 options
+ * (Stats · Var · Trend · Dist · Sel) with roving tabindex, Arrow Left/Right to move,
+ * and Space/Enter to select; clicking an option selects it directly. The selected
+ * option is marked by a fill + a leading `●` marker + weight + shadow (never colour
+ * alone). On a tight footer (`collapsed`) it folds to "active label + ▸" that opens
+ * an upward popover list of the five modes.
+ */
+function MeasureModeSwitcher({
+  mode,
+  onChange,
+  collapsed,
+}: {
+  mode: MeasureMode;
+  onChange: (next: MeasureMode) => void;
+  collapsed: boolean;
+}): JSX.Element {
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const optionRefs = useRef<Map<MeasureMode, HTMLButtonElement | null>>(new Map());
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = cycleMeasureMode(mode, 1);
+      onChange(next);
+      optionRefs.current.get(next)?.focus();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = cycleMeasureMode(mode, -1);
+      onChange(next);
+      optionRefs.current.get(next)?.focus();
+    }
+  };
+
+  if (collapsed) {
+    return (
+      <div className={styles.modeSwitcherCollapsed}>
+        <button
+          type="button"
+          className={styles.modeSwitcherDisclosure}
+          aria-haspopup="listbox"
+          aria-expanded={popoverOpen}
+          aria-label={`Measure mode: ${MEASURE_MODE_NAME[mode]}. Change mode`}
+          onClick={() => setPopoverOpen((o) => !o)}
+        >
+          {MEASURE_MODE_SHORT[mode]}
+          <span className={styles.regionStatsSheetChevron} aria-hidden="true">
+            ▸
+          </span>
+        </button>
+        {popoverOpen && (
+          <ul className={styles.modeSwitcherPopover} role="listbox" aria-label="Measure mode">
+            {MEASURE_MODE_ORDER.map((m) => (
+              <li key={m} role="option" aria-selected={m === mode}>
+                <button
+                  type="button"
+                  className={styles.modeSwitcherPopoverOption}
+                  data-selected={m === mode ? 'true' : undefined}
+                  onClick={() => {
+                    onChange(m);
+                    setPopoverOpen(false);
+                  }}
+                >
+                  <span className={styles.modeSwitcherOptionMarker} aria-hidden="true">
+                    ●
+                  </span>
+                  {MEASURE_MODE_NAME[m]}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={styles.modeSwitcher}
+      role="radiogroup"
+      aria-label="Measure mode"
+      onKeyDown={onKeyDown}
+    >
+      {MEASURE_MODE_ORDER.map((m) => {
+        const selected = m === mode;
+        return (
+          <button
+            key={m}
+            type="button"
+            ref={(el) => {
+              optionRefs.current.set(m, el);
+            }}
+            className={styles.modeSwitcherOption}
+            role="radio"
+            aria-checked={selected}
+            aria-label={MEASURE_MODE_NAME[m]}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(m)}
+          >
+            <span className={styles.modeSwitcherOptionMarker} aria-hidden="true">
+              ●
+            </span>
+            {MEASURE_MODE_SHORT[m]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Measure-region SR table (per-mode) ───────────────────────────
+
+/** Column headers per mode (Lane is always the first row-header column). */
+const MEASURE_TABLE_HEADERS: Record<MeasureMode, readonly string[]> = {
+  statistics: ['Lane', 'Average', 'Median', 'Minimum', 'Maximum', 'Unit', 'Samples'],
+  variability: ['Lane', 'Std dev', 'CV', 'IQR', 'Unit', 'Samples'],
+  trend: ['Lane', 'Slope (/min)', 'Net Δ', '% change', 'Direction', 'R²', 'Unit', 'Samples'],
+  distribution: ['Lane', 'p5', 'p25', 'p50', 'p75', 'p95', 'Unit', 'Samples'],
+  selection: ['Lane', 'Sample rate (Hz)', 'Samples', 'Span'],
+};
+
+/** Number of data columns (excluding the Lane row-header) for an inapplicable lane's colSpan. */
+function measureTableDataColumns(mode: MeasureMode): number {
+  return MEASURE_TABLE_HEADERS[mode].length - 1;
+}
+
+/**
+ * The screen-reader structured path for the Measure overlay: a real, focusable
+ * `<table>` whose caption, column headers, and cells swap per active mode while the
+ * element stays mounted (only contents change). Inapplicable lanes render an explicit
+ * `—` summary cell with a `title` reason; numeric/categorical-empty lanes fall back to
+ * {@link laneStatSummary}.
+ */
+function MeasureStatsTable({
+  mode,
+  laneStats,
+  region,
+  wallClockEpoch,
+  eventCount,
+}: {
+  mode: MeasureMode;
+  laneStats: readonly MeasureLaneStat[];
+  region: { startMs: number; endMs: number; source: MeasureRegionSource };
+  wallClockEpoch: number;
+  eventCount: number;
+}): JSX.Element {
+  const headers = MEASURE_TABLE_HEADERS[mode];
+  const dataCols = measureTableDataColumns(mode);
+  const sourceWord = region.source === 'selection' ? 'pinned region' : 'viewport';
+  const modeName = MEASURE_MODE_NAME[mode];
+  const clockClause = Number.isNaN(wallClockEpoch)
+    ? ''
+    : mode === 'selection'
+      ? `, ${formatPreciseTime(wallClockEpoch, region.startMs)} to ${formatPreciseTime(
+          wallClockEpoch,
+          region.endMs,
+        )}`
+      : `, ${formatWallClockLabel(wallClockEpoch, region.startMs, true)} to ${formatWallClockLabel(
+          wallClockEpoch,
+          region.endMs,
+          true,
+        )}`;
+  const durLabel =
+    mode === 'selection'
+      ? formatExactDuration(Math.max(0, Math.round(region.endMs - region.startMs)))
+      : formatDuration(Math.round((region.endMs - region.startMs) / 1000));
+
+  return (
+    <table className={styles.srOnly} tabIndex={0} aria-label="Region statistics">
+      <caption>
+        {modeName} — Region statistics, {sourceWord}, {durLabel}
+        {clockClause}
+      </caption>
+      <thead>
+        <tr>
+          {headers.map((h, i) => (
+            <th key={h} scope="col">
+              {i === 0 ? 'Lane' : h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {laneStats.map((laneStat) => (
+          <MeasureStatsTableRow
+            key={laneStat.laneId}
+            mode={mode}
+            laneStat={laneStat}
+            dataCols={dataCols}
+          />
+        ))}
+        {eventCount > 0 && (
+          <tr>
+            <th scope="row">Events</th>
+            <td colSpan={dataCols}>
+              {eventCount.toLocaleString()} event{eventCount === 1 ? '' : 's'} in region
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+/** One lane row of the per-mode SR table. */
+function MeasureStatsTableRow({
+  mode,
+  laneStat,
+  dataCols,
+}: {
+  mode: MeasureMode;
+  laneStat: MeasureLaneStat;
+  dataCols: number;
+}): JSX.Element {
+  const s = laneStat.stats;
+  const name = laneStat.laneName;
+  const unit = laneStat.unit || '—';
+
+  // A single explicit "—" summary cell for an inapplicable / empty lane.
+  const notApplicable = (reason: string) => (
+    <tr>
+      <th scope="row">{name}</th>
+      <td colSpan={dataCols} title={reason}>
+        —<span className={styles.srOnly}> {reason}</span>
+      </td>
+    </tr>
+  );
+
+  if (mode === 'selection') {
+    const info = laneStat.selection;
+    if (!info) return notApplicable('no data');
+    if (info.stepped) return notApplicable('stepped lane (no single sample rate)');
+    const rows = selectionChipRows(info);
+    if (rows.empty) return notApplicable('no meaningful samples in region');
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{rows.rate}</td>
+        <td>{rows.count}</td>
+        <td>{rows.span}</td>
+      </tr>
+    );
+  }
+
+  if (mode === 'variability') {
+    if (s.kind !== 'spread' || s.count === 0) return notApplicable('not numeric / no data');
+    const rows = spreadChipRows(s);
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{rows.sd}</td>
+        <td title={rows.cvUndefined ? 'CV undefined for a zero-mean signal' : undefined}>
+          {rows.cv === '—' ? '—' : `${rows.cv}%`}
+        </td>
+        <td>{rows.iqr}</td>
+        <td>{unit}</td>
+        <td>{s.count.toLocaleString()}</td>
+      </tr>
+    );
+  }
+
+  if (mode === 'trend') {
+    if (s.kind !== 'trend' || s.count < 2 || s.slopePerMin === null) {
+      return notApplicable('not numeric / no defined trend');
+    }
+    const rows = trendChipRows(s);
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{rows.slope}</td>
+        <td>{rows.net}</td>
+        <td>{rows.percent}</td>
+        <td>{TREND_DIRECTION[rows.direction].word}</td>
+        <td>{rows.rSquared ?? '—'}</td>
+        <td>{unit}</td>
+        <td>{s.count.toLocaleString()}</td>
+      </tr>
+    );
+  }
+
+  if (mode === 'distribution') {
+    if (s.kind !== 'distribution' || s.count < 2) return notApplicable('not numeric / no data');
+    const rows = distributionChipRows(s);
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{rows.p5}</td>
+        <td>{rows.p25}</td>
+        <td>{rows.p50}</td>
+        <td>{rows.p75}</td>
+        <td>{rows.p95}</td>
+        <td>{unit}</td>
+        <td>{s.count.toLocaleString()}</td>
+      </tr>
+    );
+  }
+
+  // ── Statistics mode (default) ──
+  if (s.kind === 'numeric' && s.count > 0) {
+    const d = s.decimals;
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{formatStatValue(s.mean, d)}</td>
+        <td>
+          {s.medianIsApproximate ? '~' : ''}
+          {formatStatValue(s.median, d)}
+        </td>
+        <td>{formatStatValue(s.min, d)}</td>
+        <td>{formatStatValue(s.max, d)}</td>
+        <td>{unit}</td>
+        <td>{s.count.toLocaleString()}</td>
+      </tr>
+    );
+  }
+  // Categorical / count / none / empty-numeric: a single summary cell.
+  return (
+    <tr>
+      <th scope="row">{name}</th>
+      <td colSpan={dataCols}>{laneStatSummary(laneStat) ?? 'No data'}</td>
+    </tr>
   );
 }
 
@@ -877,6 +1626,13 @@ export default function SignalViewer() {
   /** Polite aria-live summary pushed on region change (span + first lanes). */
   const [measureAnnouncement, setMeasureAnnouncement] = useState('');
 
+  /**
+   * Debounced polite aria-live text announcing the active Measure mode (name + what
+   * it shows). `aria-checked` on the segmented control updates immediately; only this
+   * spoken text debounces (~250ms) so fast `,`/`.` cycling doesn't spam the SR.
+   */
+  const [measureModeAnnouncement, setMeasureModeAnnouncement] = useState('');
+
   // Canvas dimensions
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({
     width: 0,
@@ -897,6 +1653,24 @@ export default function SignalViewer() {
    * footer are shown for the active region even with no pointer interaction.
    */
   const measureMode = lanePrefs.measureMode ?? false;
+
+  /**
+   * Which statistic the Measure overlay renders (Statistics / Variability / Trend /
+   * Distribution / Selection), persisted per session. Single source of truth for the
+   * footer segmented control, the `.`/`,` cycle, the per-lane chips, and the SR table.
+   * Defaults to `'statistics'` when unset.
+   */
+  const measureStatMode: MeasureMode = lanePrefs.measureStatMode ?? 'statistics';
+
+  /** Set the active Measure stat mode (persisted in lane prefs). */
+  const setMeasureStatMode = useCallback(
+    (next: MeasureMode) => {
+      setLanePrefs((prev) =>
+        (prev.measureStatMode ?? 'statistics') === next ? prev : { ...prev, measureStatMode: next },
+      );
+    },
+    [setLanePrefs],
+  );
 
   /** Drawer open state. */
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -3162,7 +3936,10 @@ export default function SignalViewer() {
     }
 
     const categorical = new Map<string, readonly CategoricalSample[]>();
-    const wearableNumeric = new Map<string, NumericChannelInput>();
+    const wearableNumeric = new Map<
+      string,
+      { channel: NumericChannelInput; timesMs: Float64Array }
+    >();
     if (Number.isFinite(wallClockEpoch)) {
       for (const spec of WEARABLE_LANE_SPECS) {
         const series = wearableSeries[spec.dataType];
@@ -3178,11 +3955,17 @@ export default function SignalViewer() {
           );
         } else {
           // Clip to the active region and pack the in-region values compactly.
+          // Carry the PARALLEL session-relative time of each kept sample so the
+          // model can fit a correct Trend slope against true (irregular) cadence —
+          // a synthetic uniform Δt would yield a wrong wearable slope. The clip
+          // already computes `t` per sample, so retaining it is free.
           const values: number[] = [];
+          const times: number[] = [];
           for (const s of series.samples) {
             const t = s.timestampMs - wallClockEpoch;
             if (t >= measureRegionRange.startMs && t < measureRegionRange.endMs) {
               values.push(s.value);
+              times.push(t);
             }
           }
           // NOTE — intentional divergence from the CPAP path's sentinel handling:
@@ -3194,10 +3977,13 @@ export default function SignalViewer() {
           // this buffer. A future reader should NOT assume range filtering runs on
           // these lanes the way it does for CPAP channels.
           wearableNumeric.set(laneId, {
-            name: spec.dataType,
-            unit: spec.unit,
-            sampleRate: 1,
-            data: Float32Array.from(values),
+            channel: {
+              name: spec.dataType,
+              unit: spec.unit,
+              sampleRate: 1,
+              data: Float32Array.from(values),
+            },
+            timesMs: Float64Array.from(times),
           });
         }
       }
@@ -3238,8 +4024,12 @@ export default function SignalViewer() {
       renderLanes,
       { startMs: measureRegionRange.startMs, endMs: measureRegionRange.endMs },
       measureSources,
+      measureStatMode,
     );
-  }, [measureActive, measureRegionRange, renderLanes, measureSources]);
+    // Keyed additionally on the active mode: only the active mode's metrics are
+    // computed lazily (each mode is a distinct `RegionStats.kind`), recomputed on a
+    // settled viewport / region pin / mode change — never per wheel/drag frame.
+  }, [measureActive, measureRegionRange, renderLanes, measureSources, measureStatMode]);
 
   /** Event count in the active region (surfaced once in the footer/table). */
   const measureEventCount = useMemo(() => {
@@ -3299,6 +4089,27 @@ export default function SignalViewer() {
         `Open the Region statistics table for all lanes.`,
     );
   }, [measureActive, measureLaneStats, measureRegionRange, measureEventCount, wallClockEpoch]);
+
+  /**
+   * Debounced spoken announcement of the active Measure mode. Fires ~250ms after the
+   * last mode switch (so cycling fast with `,`/`.` announces once, not per step),
+   * announcing the mode name + what it shows + the region descriptor. The visible
+   * segmented control's `aria-checked` is the immediate indicator; this is the spoken
+   * confirmation. Cleared when the overlay is inactive.
+   */
+  useEffect(() => {
+    if (!measureActive) {
+      setMeasureModeAnnouncement('');
+      return;
+    }
+    const name = MEASURE_MODE_NAME[measureStatMode];
+    const desc = MEASURE_MODE_DESCRIPTION[measureStatMode];
+    const sourceWord = measureRegionRange.source === 'selection' ? 'pinned region' : 'viewport';
+    const handle = window.setTimeout(() => {
+      setMeasureModeAnnouncement(`${name} mode: showing ${desc} for the ${sourceWord}.`);
+    }, MEASURE_MODE_ANNOUNCE_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [measureActive, measureStatMode, measureRegionRange.source]);
 
   /**
    * Pixel rect ({left,width} CSS px in the canvas wrapper) of a PINNED measure
@@ -3374,6 +4185,70 @@ export default function SignalViewer() {
     setViewport({ startTime: start, endTime: end });
   }, [measureRegion, viewport.startTime, viewport.endTime, totalDurationMs]);
 
+  // ── Selection-mode precise timing + copy ─────────────────────
+
+  /**
+   * The precise (ms-resolution) GLOBAL timing string for the active region, shown in
+   * the footer ONLY in Selection mode: `start <…> · dur <…> · end <…>`. Wall-clock
+   * when available, else session-relative (mirrors the footer's wall-clock fallback).
+   */
+  const measurePreciseTiming = useMemo(
+    () =>
+      buildPreciseTimingString(
+        wallClockEpoch,
+        measureRegionRange.startMs,
+        measureRegionRange.endMs,
+      ),
+    [wallClockEpoch, measureRegionRange.startMs, measureRegionRange.endMs],
+  );
+
+  /** Whether the "Copied" confirmation is currently shown on the copy button. */
+  const [timingCopied, setTimingCopied] = useState(false);
+  /** aria-live confirmation text for the copy action (cleared shortly after). */
+  const [timingCopyStatus, setTimingCopyStatus] = useState('');
+  const timingCopyTimerRef = useRef<number | null>(null);
+
+  /**
+   * Copy the precise region-timing string to the clipboard. Shows a brief "Copied"
+   * confirmation (icon swap + aria-live). The clipboard promise can reject (denied
+   * permission / insecure context); that is handled gracefully with a spoken error
+   * and no thrown rejection.
+   */
+  const copyPreciseTiming = useCallback(() => {
+    const reset = () => {
+      if (timingCopyTimerRef.current !== null) window.clearTimeout(timingCopyTimerRef.current);
+      timingCopyTimerRef.current = window.setTimeout(() => {
+        setTimingCopied(false);
+        setTimingCopyStatus('');
+      }, 1800);
+    };
+    const clipboard = navigator.clipboard;
+    if (!clipboard || typeof clipboard.writeText !== 'function') {
+      setTimingCopyStatus('Copy unavailable in this browser.');
+      reset();
+      return;
+    }
+    clipboard.writeText(measurePreciseTiming).then(
+      () => {
+        setTimingCopied(true);
+        setTimingCopyStatus('Region timing copied to the clipboard.');
+        reset();
+      },
+      () => {
+        setTimingCopied(false);
+        setTimingCopyStatus('Could not copy region timing.');
+        reset();
+      },
+    );
+  }, [measurePreciseTiming]);
+
+  // Clean up a pending copy-confirmation timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (timingCopyTimerRef.current !== null) window.clearTimeout(timingCopyTimerRef.current);
+    };
+  }, []);
+
   // ── Global keyboard shortcuts: 'L' lanes drawer, 'M' measure ─
 
   useEffect(() => {
@@ -3386,11 +4261,18 @@ export default function SignalViewer() {
         setDrawerOpen((o) => !o);
       } else if (e.key === 'm' || e.key === 'M') {
         toggleMeasureMode();
+      } else if (e.key === '.' || e.key === ',') {
+        // Cycle the Measure mode forward (`.`) / back (`,`) — only while the overlay
+        // is active. Ignore autorepeat so a held key doesn't spin through modes.
+        if (e.repeat) return;
+        if (!measureActive) return;
+        const delta = e.key === '.' ? 1 : -1;
+        setMeasureStatMode(cycleMeasureMode(measureStatMode, delta));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [toggleMeasureMode]);
+  }, [toggleMeasureMode, measureActive, measureStatMode, setMeasureStatMode]);
 
   // ── Alt-peek + Escape (two-step clear) for the measure overlay ─
   //
@@ -3410,6 +4292,15 @@ export default function SignalViewer() {
         // marquee is unaffected: it starts from a pointerdown over the plot, so the
         // ref is already true there.
         if (!pointerOverPlotRef.current) return;
+        // BUGFIX (Alt-peek only firing once): a lone Alt keydown is the browser's
+        // "focus the menu bar" accelerator (Chromium/Firefox). Without
+        // preventDefault the first Alt focuses browser chrome and blurs the page —
+        // `onWindowBlur` then clears the peek and subsequent Alt keydowns never reach
+        // the window until the user clicks back. We only capture Alt for the peek
+        // when the pointer is over the plot (checked above), so suppressing the
+        // accelerator here is safe and scoped: Alt-Tab and Alt elsewhere are
+        // untouched (the early return above leaves their default behaviour intact).
+        e.preventDefault();
         setAltPeek(true);
         return;
       }
@@ -3430,7 +4321,15 @@ export default function SignalViewer() {
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Alt') setAltPeek(false);
+      if (e.key === 'Alt') {
+        // Firefox (and some Chromium configs) activate the menu bar on Alt KEYUP,
+        // not keydown. If we captured this Alt for the peek (pointer over the plot),
+        // also suppress the keyup default so focus stays on the page across repeated
+        // Alt presses. Scoped identically to the keydown guard — Alt elsewhere keeps
+        // its native behaviour.
+        if (pointerOverPlotRef.current) e.preventDefault();
+        setAltPeek(false);
+      }
     };
     // Releasing focus / leaving the window can swallow the Alt keyup; clear on blur.
     const onWindowBlur = () => setAltPeek(false);
@@ -3568,7 +4467,7 @@ export default function SignalViewer() {
             size="sm"
             onClick={toggleMeasureMode}
             aria-pressed={measureMode}
-            title="Measure region (M)"
+            title="Measure region (M) · switch modes: , ."
           >
             <span aria-hidden="true" className={styles.measureGlyph}>
               ⊢⊣
@@ -3888,6 +4787,7 @@ export default function SignalViewer() {
                   stat={laneStat}
                   top={entry.top + r.height / 2}
                   compact={compact}
+                  mode={measureStatMode}
                 />
               );
             })}
@@ -3937,11 +4837,23 @@ export default function SignalViewer() {
         )}
 
         {/* ── Region footer ──────────────────────────────────────
-            Sticky at the bottom of the plot while the overlay is active. Source
-            pill + clock span + sample count. An off-screen pinned region adds a
-            directional chevron pill that scrolls it back into view. */}
+            Sticky at the bottom of the plot while the overlay is active. Mode
+            switcher (first child + single source of truth) → source pill → clock
+            span → sample count. An off-screen pinned region adds a directional
+            chevron pill. In Selection mode the footer expands to carry precise
+            (ms) GLOBAL timing + a copy button. */}
         {measureActive && (
-          <div className={styles.regionFooter} role="status" aria-live="off">
+          <div
+            className={styles.regionFooter}
+            role="status"
+            aria-live="off"
+            data-mode={measureStatMode}
+          >
+            <MeasureModeSwitcher
+              mode={measureStatMode}
+              onChange={setMeasureStatMode}
+              collapsed={measureUseSheet}
+            />
             <span
               className={styles.regionSourcePill}
               data-source={measureRegionRange.source === 'selection' ? 'region' : 'viewport'}
@@ -3951,16 +4863,54 @@ export default function SignalViewer() {
               </span>
               {measureRegionRange.source === 'selection' ? 'REGION' : 'VIEWPORT'}
             </span>
-            {!Number.isNaN(wallClockEpoch) && (
-              <span className={styles.regionFooterSpan}>
-                {formatWallClockLabel(wallClockEpoch, measureRegionRange.startMs, true)}
-                <span className={styles.legendSeparator}>·</span>~
-                {formatDuration(
-                  Math.round((measureRegionRange.endMs - measureRegionRange.startMs) / 1000),
-                )}
-                <span className={styles.legendSeparator}>·</span>
-                {formatWallClockLabel(wallClockEpoch, measureRegionRange.endMs, true)}
+            {measureStatMode === 'selection' ? (
+              <span className={styles.regionTimingPrecise}>
+                <span className={styles.regionTimingField}>
+                  <span className={styles.regionTimingLabel}>start</span>
+                  <span className={styles.regionTimingValue}>
+                    {formatPreciseTime(wallClockEpoch, measureRegionRange.startMs)}
+                  </span>
+                </span>
+                <span className={styles.regionTimingField}>
+                  <span className={styles.regionTimingLabel}>dur</span>
+                  <span className={styles.regionTimingValue}>
+                    {formatExactDuration(
+                      Math.max(
+                        0,
+                        Math.round(measureRegionRange.endMs - measureRegionRange.startMs),
+                      ),
+                    )}
+                  </span>
+                </span>
+                <span className={styles.regionTimingField}>
+                  <span className={styles.regionTimingLabel}>end</span>
+                  <span className={styles.regionTimingValue}>
+                    {formatPreciseTime(wallClockEpoch, measureRegionRange.endMs)}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className={styles.regionTimingCopy}
+                  aria-label="Copy precise region timing"
+                  data-copied={timingCopied ? 'true' : undefined}
+                  onClick={copyPreciseTiming}
+                >
+                  <span aria-hidden="true">{timingCopied ? '✓' : '⧉'}</span>
+                  {timingCopied ? 'Copied' : 'Copy'}
+                </button>
               </span>
+            ) : (
+              !Number.isNaN(wallClockEpoch) && (
+                <span className={styles.regionFooterSpan}>
+                  {formatWallClockLabel(wallClockEpoch, measureRegionRange.startMs, true)}
+                  <span className={styles.legendSeparator}>·</span>~
+                  {formatDuration(
+                    Math.round((measureRegionRange.endMs - measureRegionRange.startMs) / 1000),
+                  )}
+                  <span className={styles.legendSeparator}>·</span>
+                  {formatWallClockLabel(wallClockEpoch, measureRegionRange.endMs, true)}
+                </span>
+              )
             )}
             {measureOffscreen !== null && (
               <button
@@ -3999,76 +4949,29 @@ export default function SignalViewer() {
         {measureAnnouncement}
       </div>
 
+      {/* Polite live region: debounced Measure-mode switch announcement. */}
+      <div className={styles.srOnly} aria-live="polite" role="status">
+        {measureModeAnnouncement}
+      </div>
+
+      {/* Polite live region: precise-timing copy confirmation (Selection mode). */}
+      <div className={styles.srOnly} aria-live="polite" role="status">
+        {timingCopyStatus}
+      </div>
+
       {/* ── Region statistics table (screen-reader structured path) ──
           A real, focusable <table> so AT users get the full per-lane statistics
           the (aria-hidden) canvas chips show visually. Visually hidden but in the
-          a11y + tab order whenever the overlay is active. Caption = the region
-          descriptor; rows = lanes; cols = avg/med/min/max/unit/n. */}
+          a11y + tab order whenever the overlay is active. Caption + columns + cells
+          swap with the active mode; the element stays mounted across mode changes. */}
       {measureActive && measureLaneStats && (
-        <table className={styles.srOnly} tabIndex={0} aria-label="Region statistics">
-          <caption>
-            Region statistics —{' '}
-            {measureRegionRange.source === 'selection' ? 'pinned region' : 'viewport'},{' '}
-            {formatDuration(
-              Math.round((measureRegionRange.endMs - measureRegionRange.startMs) / 1000),
-            )}
-            {!Number.isNaN(wallClockEpoch) &&
-              `, ${formatWallClockLabel(
-                wallClockEpoch,
-                measureRegionRange.startMs,
-                true,
-              )} to ${formatWallClockLabel(wallClockEpoch, measureRegionRange.endMs, true)}`}
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Lane</th>
-              <th scope="col">Average</th>
-              <th scope="col">Median</th>
-              <th scope="col">Minimum</th>
-              <th scope="col">Maximum</th>
-              <th scope="col">Unit</th>
-              <th scope="col">Samples</th>
-            </tr>
-          </thead>
-          <tbody>
-            {measureLaneStats.map((laneStat) => {
-              const s = laneStat.stats;
-              if (s.kind === 'numeric' && s.count > 0) {
-                const d = s.decimals;
-                return (
-                  <tr key={laneStat.laneId}>
-                    <th scope="row">{laneStat.laneName}</th>
-                    <td>{formatStatValue(s.mean, d)}</td>
-                    <td>
-                      {s.medianIsApproximate ? '~' : ''}
-                      {formatStatValue(s.median, d)}
-                    </td>
-                    <td>{formatStatValue(s.min, d)}</td>
-                    <td>{formatStatValue(s.max, d)}</td>
-                    <td>{laneStat.unit || '—'}</td>
-                    <td>{s.count.toLocaleString()}</td>
-                  </tr>
-                );
-              }
-              // Categorical / count / none / empty-numeric: a single summary cell.
-              return (
-                <tr key={laneStat.laneId}>
-                  <th scope="row">{laneStat.laneName}</th>
-                  <td colSpan={6}>{laneStatSummary(laneStat) ?? 'No data'}</td>
-                </tr>
-              );
-            })}
-            {measureEventCount > 0 && (
-              <tr>
-                <th scope="row">Events</th>
-                <td colSpan={6}>
-                  {measureEventCount.toLocaleString()} event
-                  {measureEventCount === 1 ? '' : 's'} in region
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <MeasureStatsTable
+          mode={measureStatMode}
+          laneStats={measureLaneStats}
+          region={measureRegionRange}
+          wallClockEpoch={wallClockEpoch}
+          eventCount={measureEventCount}
+        />
       )}
 
       {/* ── Status bar ────────────────────────────────────────── */}
