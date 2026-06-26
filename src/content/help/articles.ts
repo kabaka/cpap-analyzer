@@ -238,7 +238,7 @@ export const helpArticles: readonly HelpArticle[] = [
     slug: 'sessions',
     title: 'Sessions Guide',
     summary:
-      'How to browse sessions, view session details, explore signal data, and compare nights.',
+      'How to browse sessions, view session details, explore signal data, measure per-lane statistics over a region, and compare nights.',
     icon: 'sessions',
     sections: [
       {
@@ -260,6 +260,15 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           'The signal viewer displays high-resolution waveform data recorded by your CPAP machine. Available channels include flow (breathing pattern), mask pressure, and leak rate. The viewer uses LTTB downsampling for smooth rendering of hundreds of thousands of data points.',
           'Click and drag to zoom into any time region. At full zoom, individual breaths are visible — you can identify apneas (flat-line flow), hypopneas (reduced amplitude), and flow limitation (flattened inspiratory shape). The signal viewer marks scored events with colored overlays.',
+        ],
+      },
+      {
+        heading: 'Measuring a region (per-lane statistics)',
+        paragraphs: [
+          "Measure mode summarises every lane over a time region at once. Turn it on with the Measure button in the toolbar, the M key, or by momentarily holding Alt while the pointer is over the plot to peek; it is off by default. Each numeric lane then gains a small chip showing four descriptive statistics of that lane over the region: the average (mean, $\\bar{x}$), the median ($\\tilde{x}$), the minimum, and the maximum. The hypnogram (sleep-stage) lane instead shows per-stage occupancy — the percentage of the region spent in each stage — and event-marker lanes show a count. A footer reports whether the figures describe the VIEWPORT or a pinned REGION, the region's clock span, and the sample count n.",
+          'By default the region is the visible viewport — whatever is currently on screen — and the figures recompute once each time you finish panning or zooming (on settle, never mid-gesture, so scrolling stays smooth). To pin a fixed region instead, Alt(Option)+drag horizontally across the plot; a neutral dashed band marks it (distinct from the blue Shift+drag zoom band), and the statistics stay locked to that time span even as you pan and zoom away. Press Esc to clear a pinned region (a second Esc turns Measure off). Keyboard and screen-reader users can define a region without the mouse: move the data cursor (arrow keys) and press [ to set the start and ] to set the end. The per-lane figures are also exposed in a focusable "Region statistics" table for screen readers, and a concise summary is announced whenever the region changes.',
+          'Why both mean and median? For symmetric, well-behaved signals the two nearly coincide. For right-skewed signals such as leak rate they diverge, and the difference is informative: the median is robust to brief spikes (a few seconds of mask-off or a cough barely move it), whereas the mean is pulled toward those extremes. The minimum and maximum bound the range — the most extreme valid samples seen in the region — and are useful for spotting a single excursion, but by construction they are the least robust figures shown. The sample count n is the statistical weight behind the figures: a region with very few samples (in the limit, n = 1) gives a median you should not over-read, while a region spanning many minutes at the recording rate gives a stable summary. For an extremely long region the median may be reported as a high-accuracy approximation (marked with a leading ~); the average, minimum, and maximum are always exact.',
+          'Only physiologically valid samples are counted. Sensor dropouts, probe-off readings, and other non-physiological sentinel values are excluded from every statistic, so they cannot distort the mean or fake a minimum of zero. A lane with no valid samples in the region shows "—" rather than 0 — the em dash means "nothing to measure here," whereas a genuine measured zero is shown as 0. These are descriptive statistics of your own recorded data; the figures describe what was recorded over the region you chose and nothing more — this tool does not diagnose.',
         ],
       },
       {
