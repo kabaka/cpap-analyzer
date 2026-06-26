@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.18] — 2026-06-26
+
 ### Fixed
 
 - **The crosshair time readout on the session signal viewer now stays visible while you scroll through the stacked graphs.** Previously the hover time/clock readout was drawn once at the very top of the graph stack, so after scrolling down to inspect a lower signal it scrolled out of view — leaving no way to read the exact time of an event on that lane without scrolling back up. The readout is now pinned to the top of the visible area and stays aligned with the crosshair as you move and scroll, so the precise timestamp (and duration into the session) is always in view above the cursor.
