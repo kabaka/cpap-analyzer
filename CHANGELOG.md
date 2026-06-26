@@ -15,6 +15,12 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 - **Holding Alt(Option) to peek at the Measure overlay now works every time, not just the first.** Pressing Alt while the pointer is over the plot is meant to momentarily reveal the region statistics, but a lone Alt press is also the browser's "focus the menu bar" shortcut. Because the viewer did not suppress that shortcut, the first Alt press quietly shifted focus to the browser's chrome and blurred the page — which cleared the peek and stopped any further Alt presses from reaching the viewer until you clicked back into the page. The viewer now suppresses the menu-bar shortcut **only** when it is actually capturing Alt for the peek (pointer over the plot), so you can hold Alt, release, and hold it again to peek repeatedly without any intervening click. Alt elsewhere — including Alt-Tab to switch windows and Alt+drag to pin a measure region — is unaffected.
 
+## [2026.06.21] — 2026-06-26
+
+### Changed
+
+- **The Sessions calendar now stacks one labelled panel per calendar year, so long date ranges stay legible.** The calendar previously rendered a single horizontal week-grid scaled to fit the page width, which broke for ranges longer than about a year — the **All time** preset (spanning 2000 → today) collapsed into an unreadable sliver — and made short ranges look oversized. It now draws a GitHub-style panel per calendar year, **stacked vertically with the oldest year at the top** and each panel labelled with its year, at a **fixed cell size** that does not stretch: short ranges show a small neat grid and multi-year ranges stack cleanly. **All time** now shows only the years that actually contain data (empty leading and trailing years are trimmed), while interior empty years are kept because a multi-year therapy gap is itself meaningful. Each year panel scrolls horizontally on narrow or mobile viewports with the year and weekday labels held in view. The colour bands, legend, tooltip, the three cell states (data / gap / partial), and keyboard navigation are unchanged; arrow keys now move across year boundaries.
+
 ## [2026.06.20] — 2026-06-26
 
 ### Added

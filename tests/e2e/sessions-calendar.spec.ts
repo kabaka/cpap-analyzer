@@ -192,7 +192,34 @@ const viewToggle = (page: Page) => page.getByRole('radiogroup', { name: 'View' }
 const metricToggle = (page: Page) => page.getByRole('radiogroup', { name: 'Metric' });
 const sizeToggle = (page: Page) => page.getByRole('radiogroup', { name: 'Rows per page' });
 
-const calendarGrid = (page: Page) => page.getByRole('grid', { name: /Calendar heatmap/i });
+/**
+ * The calendar renders one `role="grid"` PANEL per calendar year (aria-label
+ * "<year> nightly <metric> calendar"). For the recent-data test fixtures these
+ * sessions land within a single calendar year, so a single panel renders; we
+ * scope to the first grid to keep gridcell queries unambiguous.
+ */
+const calendarGrid = (page: Page) =>
+  page.getByRole('grid', { name: /nightly .* calendar/i }).first();
+/** Count of year-panel grids (for assertions that the calendar is absent). */
+const calendarGrids = (page: Page) => page.getByRole('grid', { name: /nightly .* calendar/i });
+
+/** The "<year> nightly … calendar" panel grid for a specific calendar year. */
+const calendarGridForYear = (page: Page, year: number) =>
+  page.getByRole('grid', { name: new RegExp(`^${year} nightly .* calendar`, 'i') });
+
+/**
+ * Set the global date range via the "Date range" preset selector (a Radix
+ * combobox, mirroring dashboard.spec.ts). The calendar renders the FULL selected
+ * window (one panel per calendar year it spans), so multi-year coverage needs a
+ * window wider than the default 30 days.
+ */
+async function selectDateRange(
+  page: Page,
+  label: 'All time' | 'Last year' | 'Last 30 days',
+): Promise<void> {
+  await page.getByRole('combobox', { name: 'Date range' }).click();
+  await page.getByRole('option', { name: label }).click();
+}
 
 // ── Shared data builders ──
 
@@ -232,7 +259,7 @@ test.describe('Sessions view toggle (Table ⇄ Calendar)', () => {
     // Default: Table view — the table is present, the calendar grid is not, and
     // the URL carries no `view` param.
     await expect(page.locator('tbody tr')).toHaveCount(3);
-    await expect(calendarGrid(page)).toHaveCount(0);
+    await expect(calendarGrids(page)).toHaveCount(0);
     await expect(page).not.toHaveURL(/[?&]view=/);
     await expect(viewToggle(page).getByRole('radio', { name: 'Table view' })).toHaveAttribute(
       'aria-checked',
@@ -255,7 +282,7 @@ test.describe('Sessions view toggle (Table ⇄ Calendar)', () => {
     // dropped (Table is the default → clean URL).
     await viewToggle(page).getByRole('radio', { name: 'Table view' }).click();
     await expect(page.locator('tbody tr')).toHaveCount(3);
-    await expect(calendarGrid(page)).toHaveCount(0);
+    await expect(calendarGrids(page)).toHaveCount(0);
     await expect(page).not.toHaveURL(/[?&]view=/);
   });
 });
@@ -523,7 +550,7 @@ test.describe('Sessions view URL deep-link & history', () => {
     await page.goBack();
     await expect(page).not.toHaveURL(/[?&]view=/);
     await expect(page.locator('tbody tr')).toHaveCount(3);
-    await expect(calendarGrid(page)).toHaveCount(0);
+    await expect(calendarGrids(page)).toHaveCount(0);
 
     // Forward → calendar restored.
     await page.goForward();
@@ -600,5 +627,103 @@ test.describe('Sessions view a11y smoke', () => {
     const afterLabel = await focused.getAttribute('aria-label');
     expect(afterLabel).not.toBeNull();
     expect(afterLabel).not.toEqual(beforeLabel);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 8. Multi-year calendar — one grid panel PER calendar year
+// ────────────────────────────────────────────────────────────────────────────
+
+test.describe('Sessions calendar multi-year stacking', () => {
+  // Fixed absolute dates spanning THREE calendar years (2024 → 2026), with an
+  // adjacent pair straddling the 2025/2026 boundary (Dec 31 2025 ↔ Jan 1 2026)
+  // so the keyboard cross-year test has guaranteed neighbour cells. All dates
+  // sit comfortably inside the "All time" window (2000-01-01 → today).
+  const D_2024 = '2024-06-15';
+  const D_2025_MID = '2025-07-20';
+  const D_2025_END = '2025-12-31';
+  const D_2026_START = '2026-01-01';
+  const D_2026_MID = '2026-05-10';
+
+  function createMultiYearData() {
+    const dates = [D_2024, D_2025_MID, D_2025_END, D_2026_START, D_2026_MID];
+    const sessions = dates.map((date, i) => makeSession(`my-sess-${i}`, date));
+    const aggregates = dates.map((date, i) =>
+      makeAggregate(`my-agg-${i}`, `my-sess-${i}`, date, 4.0 + i, 4.5, 7.0),
+    );
+    return { sessions, aggregates, dates };
+  }
+
+  test('renders one grid per calendar year with year-bearing labels and cells in each', async ({
+    page,
+  }) => {
+    const { sessions, aggregates } = createMultiYearData();
+    await setupWithData(page, sessions, aggregates, '/sessions?view=calendar');
+
+    // Default 30-day window → at most the current year renders. Widen to All time
+    // so the full 2024–2026 span is in view.
+    await selectDateRange(page, 'All time');
+
+    // One grid PER calendar year that contains data → at least three panels.
+    await expect(calendarGrids(page).first()).toBeVisible();
+    expect(await calendarGrids(page).count()).toBeGreaterThanOrEqual(3);
+
+    // Each year has its own year-labelled panel grid.
+    await expect(calendarGridForYear(page, 2024)).toBeVisible();
+    await expect(calendarGridForYear(page, 2025)).toBeVisible();
+    await expect(calendarGridForYear(page, 2026)).toBeVisible();
+
+    // A value cell exists in the earliest AND latest year's grid (scoped to the
+    // per-year panel, proving cells land in the right panel — not all in one).
+    await expect(
+      calendarGridForYear(page, 2024).locator('[role="gridcell"][data-date="2024-06-15"]'),
+    ).toBeVisible();
+    await expect(
+      calendarGridForYear(page, 2026).locator('[role="gridcell"][data-date="2026-05-10"]'),
+    ).toBeVisible();
+
+    // Sanity: those cells are AHI value cells (default metric), not gaps.
+    await expect(
+      calendarGridForYear(page, 2024)
+        .getByRole('gridcell', { name: /AHI \(events\/h\)/ })
+        .first(),
+    ).toBeVisible();
+    await expect(
+      calendarGridForYear(page, 2026)
+        .getByRole('gridcell', { name: /AHI \(events\/h\)/ })
+        .first(),
+    ).toBeVisible();
+  });
+
+  test('arrow keys cross the year-panel boundary (Dec 31 → Jan 1)', async ({ page }) => {
+    const { sessions, aggregates } = createMultiYearData();
+    await setupWithData(page, sessions, aggregates, '/sessions?view=calendar');
+    await selectDateRange(page, 'All time');
+
+    await expect(calendarGridForYear(page, 2025)).toBeVisible();
+    await expect(calendarGridForYear(page, 2026)).toBeVisible();
+
+    // Focus the Dec 31 2025 cell (which lives in the 2025 panel) …
+    const dec31 = page.locator('[role="gridcell"][data-date="2025-12-31"]');
+    await expect(dec31).toBeVisible();
+    // It belongs to the 2025 grid, not the 2026 grid.
+    await expect(
+      calendarGridForYear(page, 2025).locator('[role="gridcell"][data-date="2025-12-31"]'),
+    ).toHaveCount(1);
+    await dec31.focus();
+
+    // ArrowRight advances one day → Jan 1 2026, which lives in the 2026 panel.
+    // The single roving tab stop crosses the year boundary, so focus moves to a
+    // gridcell in the adjacent panel. We assert on observable focus + the
+    // focused cell's data-date (engine-agnostic, like the existing a11y test).
+    await page.keyboard.press('ArrowRight');
+
+    const focused = page.locator('[role="gridcell"]:focus');
+    await expect(focused).toHaveCount(1);
+    await expect(focused).toHaveAttribute('data-date', '2026-01-01');
+    // And that focused cell is inside the LATER year's panel — focus genuinely
+    // crossed the boundary, it did not stay in the 2025 grid.
+    await expect(calendarGridForYear(page, 2026).locator('[role="gridcell"]:focus')).toHaveCount(1);
+    await expect(calendarGridForYear(page, 2025).locator('[role="gridcell"]:focus')).toHaveCount(0);
   });
 });
