@@ -1,8 +1,25 @@
 /**
  * Calendar heatmap — GitHub-contribution-style grid for daily data.
  *
- * Renders a week-columns × weekday-rows calendar where each day is coloured by
- * a metric. Supports two colouring modes:
+ * Renders one ≤53-column × 7-row week-grid panel per CALENDAR YEAR, stacked
+ * vertically (oldest at top → newest at bottom). Each panel's week-column index
+ * is relative to its own Jan 1, so all panels left-align into a clean rail. The
+ * left gutter holds the year label; weekday labels appear on the top panel only;
+ * month labels run along each panel's top band.
+ *
+ * Empty leading/trailing years are trimmed (the visible span is
+ * [firstDataYear, lastDataYear] derived from dates that actually have a datum),
+ * while interior empty years are kept — a multi-year therapy gap is meaningful.
+ * The first/last panels are clipped to the requested `[rangeStart, rangeEnd]`
+ * window so we never draw out-of-window days. This is what collapses an
+ * "all time" 2000→today window down to just the years that contain data.
+ *
+ * Cells use a fixed size (no width-stretch), so short ranges render as a small,
+ * neat, left-aligned grid and multi-year ranges stay readable. Panels overflow
+ * horizontally on narrow viewports: the gutter (year + weekday labels) stays
+ * fixed while the week grid scrolls.
+ *
+ * Supports two colouring modes:
  *
  * - **Continuous** (default, backward compatible): a `d3.scaleLinear` between
  *   `minColor` and `maxColor`.
@@ -19,8 +36,9 @@
  * - **gap** — no session that night (date absent from `data`, but inside the
  *   rendered window). Secondary-surface fill + a dashed outline.
  *
- * The grid is a single tab stop with roving `tabindex` and arrow-key
- * navigation; tooltips appear on hover and keyboard focus.
+ * The whole calendar is a single tab stop with roving `tabindex` and arrow-key
+ * navigation that crosses year-panel boundaries (date arithmetic + a
+ * container-scoped lookup); tooltips appear on hover and keyboard focus.
  *
  * Uses D3 for colour scales and date maths, React SVG for rendering.
  *
@@ -59,8 +77,7 @@ export interface CalendarBand {
 
 export interface CalendarHeatmapProps {
   data: CalendarDatum[];
-  width?: number;
-  /** Cell size in px (default 14). */
+  /** Cell size in px (default 13). */
   cellSize?: number;
   /** Minimum colour (continuous mode only). */
   minColor?: string;
@@ -96,7 +113,25 @@ export interface CalendarHeatmapProps {
   showLegend?: boolean;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
+// ── Layout constants ─────────────────────────────────────────────
+// Fixed cell geometry — no width-stretch. Pitch = cell + gap.
+// Cells are a fixed size by design: narrow viewports scroll the week grid
+// horizontally (the gutter stays pinned) rather than shrinking cells. A
+// responsive step-down (e.g. smaller cells on tablet/mobile via a
+// ResizeObserver) could be a future enhancement.
+const DEFAULT_CELL_SIZE = 13;
+const CELL_GAP = 3;
+const CELL_RADIUS = 2;
+/** Vertical band above each grid for month labels. */
+const TOP_PAD = 20;
+/** 7-row weekday block height in px (used to centre the year label). */
+const GRID_ROWS = 7;
+/**
+ * Left-rail width in px. Holds the year label and (top panel only) weekday
+ * labels. Mirrors the `--cal-gutter` CSS token so the SVG coordinate space and
+ * the flex box agree; the legend's `padding-left` references the same token.
+ */
+const GUTTER_WIDTH = 36;
 
 const DAY_LABELS = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
 const MONTH_NAMES = [
@@ -134,7 +169,12 @@ interface Cell {
   /** Numeric value for value cells; null for partial; undefined for gaps. */
   value: number | null | undefined;
   state: CellStateType;
-  /** Week index (column). */
+  /**
+   * Week index (column), RELATIVE to this panel's first rendered (in-window)
+   * week. For a full-year panel this equals the absolute week-of-year (offset
+   * 0); for a window-clipped partial panel the first rendered week is 0, so the
+   * grid left-aligns to the origin with no empty leading columns.
+   */
   x: number;
   /** Day-of-week index 0–6 (row). */
   y: number;
@@ -144,6 +184,23 @@ interface Cell {
   band: CalendarBand | null;
   /** Whether this cell is actionable (has a session). */
   actionable: boolean;
+}
+
+/** One calendar-year grid. */
+interface YearPanel {
+  year: number;
+  cells: Cell[];
+  /**
+   * Cells bucketed by week-column: index = week-column (0…weeks-1) → that
+   * column's cells, in row (day-of-week) order. Precomputed once when the panel
+   * is built so render never re-filters `cells` per column (avoids O(weeks ×
+   * cells) work on every render, including frequent tooltip-hover re-renders).
+   * Empty columns are `[]`.
+   */
+  weekColumns: Cell[][];
+  monthLabels: { label: string; x: number }[];
+  /** Number of week-columns in this panel (≤ 53). */
+  weeks: number;
 }
 
 /**
@@ -168,12 +225,21 @@ function formatFullDate(date: string): string {
   return d3.timeFormat('%a, %b %-d, %Y')(d);
 }
 
+/**
+ * Week-column index of a day RELATIVE to Jan 1 of its own calendar year.
+ * Week 0 is the (Sunday-aligned) week containing Jan 1 of `year`.
+ */
+function weekOfYear(day: Date, year: number): number {
+  const jan1 = new Date(year, 0, 1);
+  const yearStart = d3.timeWeek.floor(jan1);
+  return d3.timeWeek.count(yearStart, day);
+}
+
 // ── Component ────────────────────────────────────────────────────
 
 const CalendarHeatmap = React.memo(function CalendarHeatmap({
   data,
-  width: widthProp,
-  cellSize = 14,
+  cellSize = DEFAULT_CELL_SIZE,
   minColor,
   maxColor,
   bands,
@@ -194,6 +260,8 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
     lines: string[];
   } | null>(null);
 
+  const pitch = cellSize + CELL_GAP;
+
   const discrete = !!bands && bands.length > 0;
   const showLegendResolved = showLegend ?? discrete;
   const formatValue = useMemo(
@@ -210,34 +278,50 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
     return map;
   }, [data]);
 
-  const { cells, monthLabels, weeks } = useMemo(() => {
-    const empty = {
-      cells: [] as Cell[],
-      monthLabels: [] as { label: string; x: number }[],
-      weeks: 0,
-    };
+  const { panels, cells } = useMemo(() => {
+    const empty = { panels: [] as YearPanel[], cells: [] as Cell[] };
 
-    // Determine the window: explicit range wins, else derive from data.
-    let minDate: Date;
-    let maxDate: Date;
+    // Determine the requested window: explicit range wins, else derive from data.
+    let windowStart: Date;
+    let windowEnd: Date;
     if (rangeStart && rangeEnd) {
-      minDate = parseISO(rangeStart);
-      maxDate = parseISO(rangeEnd);
-      if (Number.isNaN(minDate.getTime()) || Number.isNaN(maxDate.getTime())) return empty;
+      windowStart = parseISO(rangeStart);
+      windowEnd = parseISO(rangeEnd);
+      if (Number.isNaN(windowStart.getTime()) || Number.isNaN(windowEnd.getTime())) return empty;
     } else {
       if (data.length === 0) return empty;
       const dates = data.map((d) => parseISO(d.date));
-      minDate = d3.min(dates) ?? new Date();
-      maxDate = d3.max(dates) ?? new Date();
+      windowStart = d3.min(dates) ?? new Date();
+      windowEnd = d3.max(dates) ?? new Date();
     }
-    if (maxDate < minDate) return empty;
+    if (windowEnd < windowStart) return empty;
 
-    // Align to week boundaries (Sunday-start, matching getDay()).
-    const startDate = d3.timeWeek.floor(minDate);
-    const endDate = d3.timeWeek.ceil(d3.timeDay.offset(maxDate, 1));
+    // Trim empty leading/trailing years: clamp the rendered span to the years
+    // that actually contain a datum (value OR partial — gaps don't count), but
+    // never outside the requested window. Interior empty years stay.
+    let firstDataYear = Infinity;
+    let lastDataYear = -Infinity;
+    for (const d of data) {
+      const dt = parseISO(d.date);
+      if (Number.isNaN(dt.getTime())) continue;
+      if (dt < windowStart || dt > windowEnd) continue; // datum outside the window
+      const y = dt.getFullYear();
+      if (y < firstDataYear) firstDataYear = y;
+      if (y > lastDataYear) lastDataYear = y;
+    }
 
-    const allDays = d3.timeDays(startDate, endDate);
-    const numWeeks = d3.timeWeek.count(startDate, endDate) + 1;
+    let startYear: number;
+    let endYear: number;
+    if (firstDataYear === Infinity) {
+      // No data inside the window — render a single frame for the window's
+      // start year so empty/loading states still have a panel (safety net;
+      // SessionList routes true all-gaps to its own EmptyState).
+      startYear = windowStart.getFullYear();
+      endYear = startYear;
+    } else {
+      startYear = firstDataYear;
+      endYear = lastDataYear;
+    }
 
     // Continuous-mode colour scale (only used when not discrete).
     const numericValues = data
@@ -251,9 +335,14 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
       .range([minColor ?? 'var(--color-surface-tertiary)', maxColor ?? colors.chart1])
       .clamp(true);
 
-    const cellData: Cell[] = allDays.map((day) => {
+    const buildCell = (day: Date, year: number, weekOffset: number): Cell => {
       const key = ISO_FORMAT(day);
-      const weekIndex = d3.timeWeek.count(startDate, day);
+      // Local week-column: the panel's first in-window week becomes column 0, so
+      // window-clipped partial panels (e.g. a May–June 30d window) left-align to
+      // the grid origin instead of floating at the absolute week-of-year. For
+      // full-year panels `weekOffset` is 0, so this is the absolute week-of-year
+      // and the multi-year Jan-aligned stack is unchanged.
+      const x = weekOfYear(day, year) - weekOffset;
       const dayOfWeek = day.getDay();
       const hasDatum = valueMap.has(key);
       const value = hasDatum ? valueMap.get(key) : undefined;
@@ -286,30 +375,72 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
         date: key,
         value: value ?? (hasDatum ? null : undefined),
         state,
-        x: weekIndex,
+        x,
         y: dayOfWeek,
         fill,
         band,
         actionable,
       };
-    });
+    };
 
-    // Month labels — first week where a month starts.
-    const months: { label: string; x: number }[] = [];
-    let lastMonth = -1;
-    for (const c of cellData) {
-      const d = parseISO(c.date);
-      const m = d.getMonth();
-      if (m !== lastMonth) {
-        months.push({ label: MONTH_NAMES[m] ?? '', x: c.x });
-        lastMonth = m;
+    const builtPanels: YearPanel[] = [];
+    const allCells: Cell[] = [];
+
+    for (let year = startYear; year <= endYear; year++) {
+      // The panel's day span: the calendar year, CLIPPED to the requested window.
+      const yearStart = new Date(year, 0, 1);
+      const yearEnd = new Date(year, 11, 31);
+      const panelStart = yearStart < windowStart ? windowStart : yearStart;
+      const panelEnd = yearEnd > windowEnd ? windowEnd : yearEnd;
+      if (panelEnd < panelStart) continue;
+
+      const days = d3.timeDays(panelStart, d3.timeDay.offset(panelEnd, 1));
+
+      // Left-align this panel: the smallest in-window week-of-year becomes
+      // column 0. `panelStart` is the earliest rendered day, so its week-of-year
+      // is the minimum. For a full year (panelStart === Jan 1) this is 0 (the
+      // week containing Jan 1), leaving the clean Jan-aligned axis intact; only
+      // window-clipped partial panels get a non-zero offset that closes the gap.
+      const weekOffset = weekOfYear(panelStart, year);
+      const panelCells = days.map((day) => buildCell(day, year, weekOffset));
+
+      // Month labels — first occurrence of each month in this panel.
+      const months: { label: string; x: number }[] = [];
+      let lastMonth = -1;
+      for (const c of panelCells) {
+        const m = parseISO(c.date).getMonth();
+        if (m !== lastMonth) {
+          months.push({ label: MONTH_NAMES[m] ?? '', x: c.x });
+          lastMonth = m;
+        }
       }
+
+      const maxWeek = panelCells.reduce((acc, c) => Math.max(acc, c.x), 0);
+      const weeks = maxWeek + 1;
+
+      // Bucket cells by week-column once. `panelCells` is in chronological
+      // order, so each column ends up in row (day-of-week) order — matching the
+      // previous per-column filter exactly.
+      const weekColumns: Cell[][] = Array.from({ length: weeks }, () => []);
+      for (const c of panelCells) {
+        weekColumns[c.x]?.push(c);
+      }
+
+      builtPanels.push({
+        year,
+        cells: panelCells,
+        weekColumns,
+        monthLabels: months,
+        weeks,
+      });
+      allCells.push(...panelCells);
     }
 
-    return { cells: cellData, monthLabels: months, weeks: numWeeks };
+    if (builtPanels.length === 0) return empty;
+    return { panels: builtPanels, cells: allCells };
   }, [data, valueMap, minColor, maxColor, colors.chart1, bands, discrete, rangeStart, rangeEnd]);
 
-  // Map of date → cell for O(1) lookup during keyboard nav.
+  // Map of date → cell for O(1) lookup during keyboard nav (spans all panels).
   const cellByDate = useMemo(() => {
     const map = new Map<string, Cell>();
     for (const c of cells) map.set(c.date, c);
@@ -318,7 +449,7 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
 
   // ── Roving focus ──────────────────────────────────────────────
   // The cell holding tabIndex=0: selectedDate if present, else last day with
-  // data, else first day.
+  // data, else first day. A SINGLE roving tab stop spans ALL panels.
   const defaultFocusDate = useMemo(() => {
     if (cells.length === 0) return null;
     if (selectedDate && cellByDate.has(selectedDate)) return selectedDate;
@@ -357,10 +488,11 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
   );
 
   // Move DOM focus to the newly active cell AFTER React commits the roving
-  // tabindex update. useLayoutEffect runs synchronously post-commit (before
-  // paint), which focuses the target reliably across engines — notably WebKit,
-  // where the previous requestAnimationFrame-deferred focus() on the SVG <g>
-  // raced and was dropped, breaking keyboard navigation.
+  // tabindex update. The container-scoped querySelector finds the cell in
+  // whichever panel SVG holds it, so focus crosses year-panel boundaries
+  // (e.g. Dec 31 → Jan 1 of the next panel) seamlessly. useLayoutEffect runs
+  // synchronously post-commit (before paint), which focuses the target
+  // reliably across engines — notably WebKit.
   useLayoutEffect(() => {
     if (!pendingFocusRef.current || focusedDate == null) return;
     pendingFocusRef.current = false;
@@ -463,125 +595,151 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
   // ── "Today" ───────────────────────────────────────────────────
   const todayISO = useMemo(() => ISO_FORMAT(new Date()), []);
 
-  if (cells.length === 0) {
+  if (panels.length === 0) {
     return <div className={styles.empty}>No data</div>;
   }
 
-  const leftPad = 32;
-  const topPad = 20;
-  const svgWidth = widthProp ?? leftPad + weeks * (cellSize + 2) + 8;
-  const svgHeight = topPad + 7 * (cellSize + 2) + 8;
+  const gridHeight = GRID_ROWS * pitch - CELL_GAP;
+  const svgHeight = TOP_PAD + gridHeight;
 
-  const svgAriaLabel = discrete
-    ? `Calendar heatmap of nightly ${metricName}; colour indicates severity band — see legend.`
-    : `Calendar heatmap of nightly ${metricName}.`;
+  const svgAriaLabelFor = (year: number): string =>
+    discrete
+      ? `${year} nightly ${metricName} calendar; colour indicates severity band — see legend.`
+      : `${year} nightly ${metricName} calendar.`;
+
+  /** Render the cell groups for one panel, grouped by week-column for ARIA rows. */
+  const renderPanelCells = (panel: YearPanel) =>
+    panel.weekColumns.map((weekCells, weekIndex) => {
+      if (weekCells.length === 0) return null;
+      return (
+        <g key={weekIndex} role="row">
+          {weekCells.map((cell) => {
+            const cx = cell.x * pitch;
+            const cy = TOP_PAD + cell.y * pitch;
+            const isFocusTarget = cell.date === activeTabDate;
+            const isSelected = !!selectedDate && cell.date === selectedDate;
+            const isToday = cell.date === todayISO;
+            const groupClass = [
+              styles.cell,
+              cell.state === CellState.Gap ? styles.cellGap : '',
+              cell.state === CellState.Partial ? styles.cellPartial : '',
+              isSelected ? styles.cellSelected : '',
+              isToday ? styles.cellToday : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+
+            return (
+              <g
+                key={cell.date}
+                className={groupClass}
+                data-date={cell.date}
+                data-state={cell.state}
+                role="gridcell"
+                tabIndex={isFocusTarget ? 0 : -1}
+                aria-label={cellAriaLabel(cell)}
+                aria-selected={isSelected || undefined}
+                onMouseEnter={(e) => showTooltip(e.currentTarget, cell)}
+                onMouseLeave={hideTooltip}
+                onFocus={(e) => {
+                  setFocusedDate(cell.date);
+                  showTooltip(e.currentTarget, cell);
+                }}
+                onBlur={hideTooltip}
+                onClick={() => activate(cell)}
+                onKeyDown={(e) => handleKeyDown(e, cell)}
+              >
+                <rect
+                  className={styles.dayCell}
+                  x={cx}
+                  y={cy}
+                  width={cellSize}
+                  height={cellSize}
+                  rx={CELL_RADIUS}
+                  ry={CELL_RADIUS}
+                  fill={cell.fill}
+                />
+                {cell.state === CellState.Partial && (
+                  <circle
+                    className={styles.partialGlyph}
+                    cx={cx + cellSize / 2}
+                    cy={cy + cellSize / 2}
+                    r={Math.max(1.5, cellSize * 0.16)}
+                    aria-hidden="true"
+                  />
+                )}
+                <title>{cellAriaLabel(cell)}</title>
+              </g>
+            );
+          })}
+        </g>
+      );
+    });
 
   return (
     <div className={styles.container} ref={containerRef}>
-      <svg
-        className={styles.svg}
-        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-        preserveAspectRatio="xMidYMid meet"
-        role="grid"
-        aria-label={svgAriaLabel}
-      >
-        {/* Day-of-week labels */}
-        {DAY_LABELS.map((label, i) =>
-          label ? (
-            <text
-              key={i}
-              className={styles.dayLabel}
-              x={leftPad - 4}
-              y={topPad + i * (cellSize + 2) + cellSize / 2}
-              aria-hidden="true"
-            >
-              {label}
-            </text>
-          ) : null,
-        )}
-
-        {/* Month labels */}
-        {monthLabels.map((m, i) => (
-          <text
-            key={i}
-            className={styles.monthLabel}
-            x={leftPad + m.x * (cellSize + 2)}
-            y={topPad - 6}
-            aria-hidden="true"
-          >
-            {m.label}
-          </text>
-        ))}
-
-        {/* Day cells, grouped by week (column) into rows for ARIA. */}
-        {Array.from({ length: weeks }, (_, weekIndex) => {
-          const weekCells = cells.filter((c) => c.x === weekIndex);
-          if (weekCells.length === 0) return null;
+      <div className={styles.panels}>
+        {panels.map((panel, panelIndex) => {
+          const isTopPanel = panelIndex === 0;
+          const svgWidth = panel.weeks * pitch - CELL_GAP + 1;
           return (
-            <g key={weekIndex} role="row">
-              {weekCells.map((cell) => {
-                const cx = leftPad + cell.x * (cellSize + 2);
-                const cy = topPad + cell.y * (cellSize + 2);
-                const isFocusTarget = cell.date === activeTabDate;
-                const isSelected = !!selectedDate && cell.date === selectedDate;
-                const isToday = cell.date === todayISO;
-                const groupClass = [
-                  styles.cell,
-                  cell.state === CellState.Gap ? styles.cellGap : '',
-                  cell.state === CellState.Partial ? styles.cellPartial : '',
-                  isSelected ? styles.cellSelected : '',
-                  isToday ? styles.cellToday : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ');
+            <div className={styles.panel} key={panel.year}>
+              {/* Fixed gutter: year label (+ weekday labels on the top panel). */}
+              <svg
+                className={styles.gutter}
+                width={GUTTER_WIDTH}
+                height={svgHeight}
+                viewBox={`0 0 ${GUTTER_WIDTH} ${svgHeight}`}
+                aria-hidden="true"
+              >
+                <text className={styles.yearLabel} x={0} y={TOP_PAD + gridHeight / 2}>
+                  {panel.year}
+                </text>
+                {isTopPanel &&
+                  DAY_LABELS.map((label, i) =>
+                    label ? (
+                      <text
+                        key={i}
+                        className={styles.dayLabel}
+                        x={GUTTER_WIDTH - 4}
+                        y={TOP_PAD + i * pitch + cellSize / 2}
+                      >
+                        {label}
+                      </text>
+                    ) : null,
+                  )}
+              </svg>
 
-                return (
-                  <g
-                    key={cell.date}
-                    className={groupClass}
-                    data-date={cell.date}
-                    data-state={cell.state}
-                    role="gridcell"
-                    tabIndex={isFocusTarget ? 0 : -1}
-                    aria-label={cellAriaLabel(cell)}
-                    aria-selected={isSelected || undefined}
-                    onMouseEnter={(e) => showTooltip(e.currentTarget, cell)}
-                    onMouseLeave={hideTooltip}
-                    onFocus={(e) => {
-                      setFocusedDate(cell.date);
-                      showTooltip(e.currentTarget, cell);
-                    }}
-                    onBlur={hideTooltip}
-                    onClick={() => activate(cell)}
-                    onKeyDown={(e) => handleKeyDown(e, cell)}
-                  >
-                    <rect
-                      className={styles.dayCell}
-                      x={cx}
-                      y={cy}
-                      width={cellSize}
-                      height={cellSize}
-                      rx={2}
-                      ry={2}
-                      fill={cell.fill}
-                    />
-                    {cell.state === CellState.Partial && (
-                      <circle
-                        className={styles.partialGlyph}
-                        cx={cx + cellSize / 2}
-                        cy={cy + cellSize / 2}
-                        r={Math.max(1.5, cellSize * 0.16)}
-                        aria-hidden="true"
-                      />
-                    )}
-                    <title>{cellAriaLabel(cell)}</title>
-                  </g>
-                );
-              })}
-            </g>
+              {/* Scrollable week grid. */}
+              <div className={styles.scrollport}>
+                <svg
+                  className={styles.svg}
+                  width={svgWidth}
+                  height={svgHeight}
+                  viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                  role="grid"
+                  aria-label={svgAriaLabelFor(panel.year)}
+                >
+                  {/* Month labels */}
+                  {panel.monthLabels.map((m, i) => (
+                    <text
+                      key={i}
+                      className={styles.monthLabel}
+                      x={m.x * pitch}
+                      y={TOP_PAD - 6}
+                      aria-hidden="true"
+                    >
+                      {m.label}
+                    </text>
+                  ))}
+
+                  {renderPanelCells(panel)}
+                </svg>
+              </div>
+            </div>
           );
         })}
-      </svg>
+      </div>
 
       {tooltip && (
         <div

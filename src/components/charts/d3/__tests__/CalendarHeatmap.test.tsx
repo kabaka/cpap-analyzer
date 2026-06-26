@@ -122,6 +122,129 @@ describe('CalendarHeatmap', () => {
     });
   });
 
+  describe('per-calendar-year panels', () => {
+    /** All grid panels' aria-labels, in render order (oldest → newest). */
+    function panelYears(): string[] {
+      return screen
+        .getAllByRole('grid')
+        .map((g) => g.getAttribute('aria-label') ?? '')
+        .map((label) => label.match(/^(\d{4})/)?.[1] ?? '')
+        .filter(Boolean);
+    }
+
+    it('renders one grid panel per calendar year across a multi-year range', () => {
+      const data: CalendarDatum[] = [
+        { date: '2023-12-30', value: 4 },
+        { date: '2024-06-15', value: 8 },
+        { date: '2025-02-01', value: 12 },
+      ];
+      render(
+        <CalendarHeatmap data={data} bands={BANDS} rangeStart="2023-01-01" rangeEnd="2025-12-31" />,
+      );
+      expect(panelYears()).toEqual(['2023', '2024', '2025']);
+    });
+
+    it('trims empty leading/trailing years but keeps interior empty years', () => {
+      // Data only in 2023 and 2025; 2024 is an interior empty (therapy gap) year.
+      const data: CalendarDatum[] = [
+        { date: '2023-11-10', value: 4 },
+        { date: '2025-03-20', value: 9 },
+      ];
+      render(
+        <CalendarHeatmap
+          data={data}
+          bands={BANDS}
+          // Window is far wider than the data on both ends.
+          rangeStart="2000-01-01"
+          rangeEnd="2026-12-31"
+        />,
+      );
+      // Leading (2000–2022) and trailing (2026) empty years are dropped; the
+      // interior empty year (2024) is kept.
+      expect(panelYears()).toEqual(['2023', '2024', '2025']);
+    });
+
+    it('collapses an "all time" window to only the years that contain data', () => {
+      // The classic bug: rangeStart deep in the past, data only recently.
+      const data: CalendarDatum[] = [
+        { date: '2025-05-01', value: 3 },
+        { date: '2026-01-15', value: 7 },
+      ];
+      render(
+        <CalendarHeatmap data={data} bands={BANDS} rangeStart="2000-01-01" rangeEnd="2026-06-26" />,
+      );
+      // ~26 years requested, but only 2 panels render.
+      expect(panelYears()).toEqual(['2025', '2026']);
+    });
+
+    it('left-aligns a window-clipped partial panel to column 0 (no empty left gap)', () => {
+      // A short window spanning only May–June of one year. The absolute
+      // week-of-year of May 1 is ~18, so without the offset the grid would
+      // float ~18 columns to the right with a large empty gutter. After the
+      // left-align fix the FIRST rendered cell sits at the grid origin (x===0)
+      // and the panel's column count equals the in-window week span — not the
+      // absolute week-of-year of the last day (~26).
+      const data: CalendarDatum[] = [{ date: '2026-05-15', value: 8 }];
+      render(
+        <CalendarHeatmap data={data} bands={BANDS} rangeStart="2026-05-01" rangeEnd="2026-06-30" />,
+      );
+
+      // The very first in-window day is the leftmost cell at local column 0.
+      const first = cellFor('2026-05-01').querySelector('rect');
+      expect(first).toHaveAttribute('x', '0');
+
+      // The single grid panel's width reflects only the in-window week span.
+      // May 1 (Fri) → Jun 30 spans 10 Sunday-aligned weeks (cols 0–9), not ~27.
+      const grid = screen.getByRole('grid');
+      // svgWidth = weeks * pitch - CELL_GAP + 1; pitch = 13 + 3 = 16.
+      // 10 weeks → 10*16 - 3 + 1 = 158. (A non-offset render would be far wider.)
+      expect(Number(grid.getAttribute('width'))).toBe(158);
+    });
+
+    it('keeps Jan-aligned full-year panels at column 0 across a multi-year render', () => {
+      // Three full calendar years (all-time style window, no clipping of the
+      // interior years). Every full-year panel must keep Jan 1 at column 0 so
+      // the panels share one Jan-aligned axis — the multi-year look is intact.
+      const data: CalendarDatum[] = [
+        { date: '2023-06-15', value: 4 },
+        { date: '2024-06-15', value: 8 },
+        { date: '2025-06-15', value: 12 },
+      ];
+      render(
+        <CalendarHeatmap data={data} bands={BANDS} rangeStart="2023-01-01" rangeEnd="2025-12-31" />,
+      );
+      // Jan 1 of each full year is the leftmost cell (local column 0).
+      for (const year of ['2023', '2024', '2025']) {
+        const jan1 = cellFor(`${year}-01-01`).querySelector('rect');
+        expect(jan1).toHaveAttribute('x', '0');
+      }
+    });
+
+    it('left-aligns each side of a 1-year window that splits into two partial panels', () => {
+      // A "last year" window (Jun 2025 → Jun 2026) splits into a 2025 partial
+      // and a 2026 partial. Each panel left-aligns to ITS OWN first week, so
+      // both start at column 0 — the intended cleaner result.
+      const data: CalendarDatum[] = [
+        { date: '2025-07-10', value: 5 },
+        { date: '2026-02-20', value: 9 },
+      ];
+      render(
+        <CalendarHeatmap data={data} bands={BANDS} rangeStart="2025-06-26" rangeEnd="2026-06-26" />,
+      );
+      // 2025 panel: first in-window day (Jun 26, 2025) at column 0.
+      expect(cellFor('2025-06-26').querySelector('rect')).toHaveAttribute('x', '0');
+      // 2026 panel: first in-window day (Jan 1, 2026) at column 0.
+      expect(cellFor('2026-01-01').querySelector('rect')).toHaveAttribute('x', '0');
+    });
+
+    it('renders a single frame for the window year when no data falls in the window', () => {
+      render(
+        <CalendarHeatmap data={[]} bands={BANDS} rangeStart="2026-01-01" rangeEnd="2026-12-31" />,
+      );
+      expect(panelYears()).toEqual(['2026']);
+    });
+  });
+
   describe('onSelectDate activation', () => {
     const data: CalendarDatum[] = [
       { date: '2026-06-22', value: 3 },
@@ -263,6 +386,32 @@ describe('CalendarHeatmap', () => {
       expect(cellFor('2026-06-10')).toHaveAttribute('tabindex', '0');
     });
 
+    it('moves focus across a year-panel boundary (Dec 31 → Jan 1 of next panel)', () => {
+      const crossYear: CalendarDatum[] = [
+        { date: '2024-12-31', value: 5 },
+        { date: '2025-01-01', value: 6 },
+      ];
+      render(
+        <CalendarHeatmap
+          data={crossYear}
+          bands={BANDS}
+          rangeStart="2024-12-01"
+          rangeEnd="2025-01-31"
+          selectedDate="2024-12-31"
+        />,
+      );
+      // The two dates live in DIFFERENT grid panels (2024 vs 2025).
+      const dec31 = cellFor('2024-12-31');
+      const jan1 = cellFor('2025-01-01');
+      expect(dec31.closest('[role="grid"]')).not.toBe(jan1.closest('[role="grid"]'));
+
+      // ArrowRight from Dec 31 lands the roving tab stop on Jan 1 (next panel).
+      expect(dec31).toHaveAttribute('tabindex', '0');
+      fireEvent.keyDown(dec31, { key: 'ArrowRight' });
+      expect(cellFor('2025-01-01')).toHaveAttribute('tabindex', '0');
+      expect(cellFor('2024-12-31')).toHaveAttribute('tabindex', '-1');
+    });
+
     it('does not move focus past the rendered window edge', () => {
       render(
         <CalendarHeatmap
@@ -273,19 +422,15 @@ describe('CalendarHeatmap', () => {
           selectedDate="2026-06-22"
         />,
       );
-      // The window is aligned to whole weeks, so the first rendered cell is the
-      // Sunday before rangeStart (2026-06-21). Arrowing left from there must not
-      // escape the window — focus stays on the first cell.
-      const firstCell = cellFor('2026-06-21');
-      expect(firstCell).toHaveAttribute('data-state', 'gap');
-      fireEvent.keyDown(firstCell, { key: 'ArrowLeft' });
-      // The cell before 2026-06-21 (2026-06-20) is not rendered.
-      expect(document.querySelector('[data-date="2026-06-20"]')).toBeNull();
-      // Focus stayed: arrowing left was a no-op, 2026-06-21 keeps its tab stop
-      // once focused.
+      // Days are clipped to the requested window (no week-alignment padding),
+      // so the first rendered cell is exactly rangeStart (2026-06-22). Arrowing
+      // left from there must not escape the window — focus stays on the cell.
+      const firstCell = cellFor('2026-06-22');
+      // The day before rangeStart (2026-06-21) is not rendered.
+      expect(document.querySelector('[data-date="2026-06-21"]')).toBeNull();
       fireEvent.focus(firstCell);
       fireEvent.keyDown(firstCell, { key: 'ArrowLeft' });
-      expect(cellFor('2026-06-21')).toHaveAttribute('tabindex', '0');
+      expect(cellFor('2026-06-22')).toHaveAttribute('tabindex', '0');
     });
   });
 
@@ -321,7 +466,7 @@ describe('CalendarHeatmap', () => {
   });
 
   describe('accessibility scaffolding', () => {
-    it('exposes grid / row / gridcell roles and an svg aria-label', () => {
+    it('exposes grid / row / gridcell roles and a per-year grid aria-label', () => {
       render(
         <CalendarHeatmap
           data={[{ date: '2026-06-22', value: 3 }]}
@@ -329,8 +474,10 @@ describe('CalendarHeatmap', () => {
           metricLabel="AHI"
         />,
       );
+      // Single-year data → one panel → one grid, named for its year + metric.
       const grid = screen.getByRole('grid');
-      expect(grid).toHaveAttribute('aria-label', expect.stringContaining('Calendar heatmap'));
+      expect(grid).toHaveAttribute('aria-label', expect.stringContaining('2026'));
+      expect(grid).toHaveAttribute('aria-label', expect.stringContaining('AHI'));
       expect(screen.getAllByRole('row').length).toBeGreaterThan(0);
       expect(screen.getAllByRole('gridcell').length).toBeGreaterThan(0);
     });

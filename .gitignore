@@ -64,3 +64,4 @@ release-notes.md
 # Misc
 *.tgz
 .cache/
+.playwright-artifacts/

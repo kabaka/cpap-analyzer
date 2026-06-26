@@ -7,7 +7,9 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+
+- **The Sessions calendar now stacks one labelled panel per calendar year, so long date ranges stay legible.** The calendar previously rendered a single horizontal week-grid scaled to fit the page width, which broke for ranges longer than about a year — the **All time** preset (spanning 2000 → today) collapsed into an unreadable sliver — and made short ranges look oversized. It now draws a GitHub-style panel per calendar year, **stacked vertically with the oldest year at the top** and each panel labelled with its year, at a **fixed cell size** that does not stretch: short ranges show a small neat grid and multi-year ranges stack cleanly. **All time** now shows only the years that actually contain data (empty leading and trailing years are trimmed), while interior empty years are kept because a multi-year therapy gap is itself meaningful. Each year panel scrolls horizontally on narrow or mobile viewports with the year and weekday labels held in view. The colour bands, legend, tooltip, the three cell states (data / gap / partial), and keyboard navigation are unchanged; arrow keys now move across year boundaries.
 
 ## [2026.06.20] — 2026-06-26
 
