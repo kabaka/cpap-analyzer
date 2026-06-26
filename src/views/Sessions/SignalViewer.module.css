@@ -148,12 +148,16 @@
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
   padding: var(--space-1) var(--space-2);
-  /* Single line: yield/shrink before forcing the legend to wrap (the inner text
-     span carries the ellipsis truncation). */
+  /* Single line: grow to consume the row space the left-aligned legend leaves
+     free (no arbitrary cap), but yield/shrink + ellipsis before forcing the
+     legend to wrap or overflowing the bar. `flex-grow: 1` claims the leftover
+     width when the legend is short; `flex-shrink: 1` + `min-width: 0` lets it
+     give that width back (the inner text span carries the ellipsis truncation)
+     when the legend is long. `margin-left: auto` keeps it trailing-edge even
+     when it does not grow. */
   white-space: nowrap;
   min-width: 0;
-  flex: 0 1 auto;
-  max-width: 42ch;
+  flex: 1 1 auto;
   /* Reserve a one-line height so the empty state holds its row position. */
   min-height: 1.4em;
 }
@@ -826,4 +830,326 @@
 .detectionPopoverLink:hover,
 .detectionPopoverLink:focus-visible {
   text-decoration: underline;
+}
+
+/* ── Region statistics ("Measure region" overlay) ─────────────── */
+
+/* Leading ruler-ish glyph on the toolbar Measure toggle (aria-hidden; the word
+   "Measure" carries the meaning, so colour/glyph are reinforcement only). */
+.measureGlyph {
+  margin-right: var(--space-1);
+  letter-spacing: -0.1em;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Persistent measure band on the canvas — neutral slate fill + DASHED L/R edges
+   so it is unmistakable from the transient blue, solid-edged shift-zoom band
+   (.selectionBand). Same positioning contract: absolute, full content height,
+   inline left/width px. pointer-events:none. Only painted while measuring. */
+.measureBand {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  pointer-events: none;
+  background: var(--color-stat-band-bg);
+  border-left: 1px dashed var(--color-stat-band-edge);
+  border-right: 1px dashed var(--color-stat-band-edge);
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+/* Per-lane chip overlay host. Lives in the scroll box (like .laneHeaders) so the
+   chips track vertical scroll. pointer-events:none — purely decorative. */
+.statChips {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* One per-lane stat chip, docked to the lane's LEFT inner edge and vertically
+   centred (top set inline to the lane centre). Near-opaque surface so the small
+   text holds AA contrast over a bright waveform; the blur is progressive
+   enhancement only (contrast holds without it). */
+.statChip {
+  position: absolute;
+  left: var(--space-2);
+  transform: translateY(-50%);
+  width: clamp(150px, 38%, 190px);
+  pointer-events: none;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  column-gap: var(--space-2);
+  row-gap: 2px;
+  align-items: baseline;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-stat-chip-bg);
+  -webkit-backdrop-filter: blur(6px) saturate(1.1);
+  backdrop-filter: blur(6px) saturate(1.1);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--font-size-xs);
+  transition: opacity var(--transition-fast);
+}
+
+/* Glyph column (avg/med/min/max). --color-text-secondary (not muted) for AA. */
+.statChipGlyph {
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Label column ("average"/… or a stage name). Secondary for AA. */
+.statChipLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+}
+
+/* Value column — right-aligned, tabular figures so live updates don't jitter.
+   Value text is --color-text-secondary for AA; only the unit is muted. */
+.statChipValue {
+  justify-self: end;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.statChipUnit {
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text-muted);
+}
+
+/* No-data dash — muted is acceptable here (it's a placeholder, not a value). */
+.statChipNoData {
+  grid-column: 1 / -1;
+  color: var(--color-text-muted);
+}
+
+/* Single-sample caveat row (avg shows the value; others collapse to this). */
+.statChipSingle {
+  grid-column: 1 / -1;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.statChipSingle::after {
+  content: ' *';
+}
+
+/* Compact single-row variant — short/collapsed lanes (< ~64px, the 28px stub).
+   Glyphs only, unit once at the end, dot separators, smaller radius + a drop
+   shadow so the chip reads over the thin stub. */
+.statChipCompact {
+  display: block;
+  width: clamp(150px, 38%, 190px);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statChipCompactRow {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Inline dot separator inside the compact chip (styled like .legendSeparator). */
+.legendSeparatorInline {
+  margin: 0 var(--space-1);
+  color: var(--color-text-muted);
+  opacity: 0.5;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── Region footer (sticky, below the plot while measuring) ───── */
+
+.regionFooter {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4);
+  background: var(--color-surface-elevated);
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  min-height: 1.4em;
+}
+
+.regionFooterSpan {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.regionFooterCount {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+/* Source pill — distinguished by SHAPE + WORD, never colour. VIEWPORT is squared
+   with a leading ⟦; REGION is a stadium with a leading band glyph. Both use the
+   neutral .lanePill DNA. */
+.regionSourcePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.03em;
+  padding: 1px var(--space-1);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-tertiary);
+  border: 1px solid var(--color-border-default);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.regionSourcePill[data-source='viewport'] {
+  border-radius: var(--radius-sm);
+}
+
+.regionSourcePill[data-source='region'] {
+  border-radius: var(--radius-full);
+}
+
+/* Off-screen pinned-region pill — clickable; scrolls the region into view. */
+.regionOffscreenPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: auto;
+  font-size: 9px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.03em;
+  padding: 1px var(--space-1);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-tertiary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.regionOffscreenPill:focus-visible,
+.regionSourcePill:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Responsive "Region statistics" bottom sheet (narrow plots) ── */
+
+.regionStatsSheet {
+  position: sticky;
+  bottom: 1.4em; /* sits just above the footer */
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-elevated);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.regionStatsSheetToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-2) var(--space-4);
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.regionStatsSheetToggle:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.regionStatsSheetChevron {
+  display: inline-block;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .regionStatsSheetChevron {
+    transition: transform var(--transition-fast);
+  }
+  .regionStatsSheetToggle[aria-expanded='true'] .regionStatsSheetChevron {
+    transform: rotate(90deg);
+  }
+}
+
+/* Reduced motion: no rotation transition; show the open state statically. */
+.regionStatsSheetToggle[aria-expanded='true'] .regionStatsSheetChevron {
+  transform: rotate(90deg);
+}
+
+.regionStatsSheetCount {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.regionStatsSheetList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.regionStatsSheetRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: var(--space-1) var(--space-4);
+  border-top: 1px solid var(--color-border-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.regionStatsSheetSwatch {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  opacity: 0.8;
+}
+
+.regionStatsSheetName {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.regionStatsSheetStat {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
 }

@@ -43,6 +43,32 @@ describe('parseLanePrefs', () => {
       preset: 'cardio',
     });
   });
+
+  it('round-trips measureMode: true through serialize → parse', () => {
+    const raw = JSON.stringify({ order: [], hidden: [], collapsed: [], measureMode: true });
+    expect(parseLanePrefs(raw).measureMode).toBe(true);
+  });
+
+  it('round-trips measureMode: false through serialize → parse', () => {
+    const raw = JSON.stringify({ order: [], hidden: [], collapsed: [], measureMode: false });
+    expect(parseLanePrefs(raw).measureMode).toBe(false);
+  });
+
+  it('leaves measureMode undefined when the field is absent (back-compat)', () => {
+    // Prefs stored before the Measure-region feature existed have no field.
+    const raw = JSON.stringify({ order: ['cpap:flow'], hidden: [], collapsed: [] });
+    expect(parseLanePrefs(raw).measureMode).toBeUndefined();
+  });
+
+  it('ignores a non-boolean stored measureMode defensively', () => {
+    // Matches how the parser type-guards every other field: anything not a
+    // boolean (a string, a number, null) is dropped to undefined rather than
+    // trusted, so corrupt/legacy storage cannot force the overlay on.
+    for (const bad of ['yes', 1, 0, null, [], {}]) {
+      const raw = JSON.stringify({ order: [], hidden: [], collapsed: [], measureMode: bad });
+      expect(parseLanePrefs(raw).measureMode).toBeUndefined();
+    }
+  });
 });
 
 describe('lanePrefsKey', () => {
