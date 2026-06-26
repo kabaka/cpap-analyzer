@@ -6,6 +6,27 @@
  * @module views/Sessions/laneState
  */
 
+/**
+ * Which statistic the Measure overlay shows. Orthogonal to the on/off
+ * {@link LanePrefs.measureMode} flag and to the (transient) pinned region. The UI
+ * order is also the `.`/`,` cycle order. Mirrors the model's `MeasureMode`.
+ */
+export type MeasureStatMode = 'statistics' | 'variability' | 'trend' | 'distribution' | 'selection';
+
+/** All Measure stat modes in UI / cycle order. */
+export const MEASURE_STAT_MODES: readonly MeasureStatMode[] = [
+  'statistics',
+  'variability',
+  'trend',
+  'distribution',
+  'selection',
+];
+
+/** Type guard for a persisted `measureStatMode` string. */
+function isMeasureStatMode(x: unknown): x is MeasureStatMode {
+  return typeof x === 'string' && (MEASURE_STAT_MODES as readonly string[]).includes(x);
+}
+
 /** Persisted, per-session lane preferences. */
 export interface LanePrefs {
   /** Explicit lane order by lane id; ids absent here fall back to catalogue order. */
@@ -30,6 +51,14 @@ export interface LanePrefs {
    * feature existed.
    */
   readonly measureMode?: boolean;
+  /**
+   * Which statistic the Measure overlay shows (Statistics / Variability / Trend /
+   * Distribution / Selection). Persisted per session so the chosen lens survives a
+   * reload; orthogonal to {@link measureMode} (on/off) and to the transient pinned
+   * region. Defaults to `'statistics'` when undefined for back-compat with prefs
+   * stored before the multi-mode overlay existed.
+   */
+  readonly measureStatMode?: MeasureStatMode;
 }
 
 export const EMPTY_LANE_PREFS: LanePrefs = { order: [], hidden: [], collapsed: [] };
@@ -58,6 +87,9 @@ export function parseLanePrefs(raw: string | null): LanePrefs {
       showDetections:
         typeof parsed.showDetections === 'boolean' ? parsed.showDetections : undefined,
       measureMode: typeof parsed.measureMode === 'boolean' ? parsed.measureMode : undefined,
+      measureStatMode: isMeasureStatMode(parsed.measureStatMode)
+        ? parsed.measureStatMode
+        : undefined,
     };
   } catch {
     return EMPTY_LANE_PREFS;
