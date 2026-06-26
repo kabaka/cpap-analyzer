@@ -910,6 +910,51 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['median', 'standard-deviation'],
   },
   {
+    id: 'interquartile-range',
+    term: 'IQR (Interquartile Range)',
+    category: 'statistics',
+    aliases: ['Interquartile Range', 'IQR'],
+    quick:
+      'The spread of the middle 50% of values — the 75th percentile minus the 25th percentile (P75 − P25).',
+    standard:
+      'The interquartile range is the distance between the first quartile (P25) and the third quartile (P75), so it describes the spread of the central half of the data while ignoring the extreme quarter at each end. Because it is built from percentiles, the IQR is robust: a few extreme samples — a cough, a brief mask-off spike — do not change it, whereas they would inflate the standard deviation. It is the natural spread measure to read alongside the median, and the two together summarise a skewed distribution far better than a mean ± SD pair.',
+    detailed:
+      'IQR = P75 − P25, the width of the box in a box plot. Robustness: the IQR has a breakdown point of 0.25, meaning up to a quarter of the data can be arbitrarily corrupted without changing it — far more resistant to outliers than the standard deviation, whose breakdown point is 0. For a normal distribution IQR ≈ 1.349 σ, so the two convey similar information when the data are symmetric and well-behaved; they diverge precisely when the distribution is skewed or spike-prone, which is the common case for CPAP signals such as leak. The IQR also underlies Tukey’s outlier fences (values below P25 − 1.5·IQR or above P75 + 1.5·IQR). In the signal viewer’s Measure overlay, the IQR is offered as the spike-robust companion to the standard deviation in the Variability mode.',
+    formula: '\\text{IQR} = P_{75} - P_{25}',
+    relatedTerms: ['percentile', 'median', 'standard-deviation', 'outlier'],
+    references: [
+      'Tukey, J. W. (1977). Exploratory Data Analysis. Reading, MA: Addison-Wesley. — Quartiles, the box plot, and the 1.5·IQR outlier fences.',
+    ],
+  },
+  {
+    id: 'coefficient-of-variation',
+    term: 'CV (Coefficient of Variation)',
+    category: 'statistics',
+    aliases: ['Coefficient of Variation', 'Relative Standard Deviation', 'RSD'],
+    quick:
+      'The standard deviation expressed as a fraction of the mean — a unitless, scale-free measure of relative variability, usually shown as a percentage.',
+    standard:
+      'The coefficient of variation divides the standard deviation by the mean, so it answers "how big is the scatter relative to the typical value?" rather than "how big is the scatter in absolute units?". Because it is dimensionless, it lets you compare the relative stability of signals measured on completely different scales and units — for example whether your pressure is more or less variable, in proportional terms, than your respiratory rate. It is conventionally reported as a percentage (CV × 100%). The CV is only meaningful for ratio-scale signals with a true, meaningful zero and a mean comfortably away from zero.',
+    detailed:
+      'CV = σ / |μ| (sample form: s / |x̄|), usually multiplied by 100 to give a percent. Interpretation: a CV of 10% means the standard deviation is one-tenth of the mean. The CV is undefined or unstable when the mean approaches zero — the ratio blows up and tiny changes in the mean swing it wildly — and it is meaningless for interval-scale signals whose zero is an arbitrary offset rather than a true absence. For this reason CPAP Analyzer suppresses the CV (showing a dash) for zero-mean signals such as raw flow, which is held symmetric about zero so its mean is near zero by construction, and for SpO₂, whose 0–100% scale makes a percent-of-mean figure clinically meaningless (saturation never approaches zero, and proportional variation around ~95% is not a useful quantity). Where it does apply — leak, pressure, tidal volume, minute ventilation, respiratory rate, pulse rate — the CV is a compact way to compare relative steadiness across lanes. It is not a probability or a clinical threshold; it is a descriptive ratio.',
+    formula: 'CV = \\frac{\\sigma}{|\\mu|} \\times 100\\%',
+    relatedTerms: ['standard-deviation', 'mean'],
+  },
+  {
+    id: 'coefficient-of-determination',
+    term: 'R² (Coefficient of Determination)',
+    category: 'statistics',
+    aliases: ['Coefficient of Determination', 'R-squared', 'R2'],
+    quick:
+      'The fraction of a signal’s variation that a fitted line explains — from 0 (the line explains nothing) to 1 (the line passes through every point).',
+    standard:
+      'R² measures how well a straight-line fit accounts for the variation in the data. It ranges from 0 to 1: an R² near 1 means almost all the up-and-down movement falls on the fitted line (a clean, real trend), while an R² near 0 means the line explains almost none of the movement (the points scatter around it as noise). R² is what tells you whether a slope is trustworthy: a steep slope with a low R² is dominated by noise and should not be read as a genuine trend, whereas a modest slope with a high R² is a reliable direction.',
+    detailed:
+      'R² = 1 − SS_res / SS_tot, where SS_res is the sum of squared residuals about the fitted line and SS_tot is the total sum of squared deviations about the mean. Equivalently, for simple linear regression, R² is the square of the Pearson correlation between the predictor and the response. Properties and caveats: R² never decreases when predictors are added, so it is only a fair goodness-of-fit summary for a fixed model; it says nothing about whether the linear form is correct (a curved relationship can have low R² despite being perfectly deterministic), and it is sensitive to the range of the data. In the signal viewer’s Measure overlay, R² accompanies the per-minute slope in the Trend mode specifically as a "is this trend real or just noise?" guard: a high |slope| with low R² is flagged, in effect, as untrustworthy. R² is a descriptive measure of fit, not a significance test.',
+    formula: 'R^2 = 1 - \\frac{\\sum_i (y_i - \\hat{y}_i)^2}{\\sum_i (y_i - \\bar{y})^2}',
+    relatedTerms: ['regression', 'trend', 'correlation'],
+  },
+  {
     id: 'p-value',
     term: 'P-value',
     category: 'statistics',
