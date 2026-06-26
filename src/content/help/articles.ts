@@ -238,7 +238,7 @@ export const helpArticles: readonly HelpArticle[] = [
     slug: 'sessions',
     title: 'Sessions Guide',
     summary:
-      'How to browse sessions, view session details, explore signal data, measure per-lane statistics over a region, and compare nights.',
+      'How to browse sessions in the table or calendar view, read the calendar severity bands, view session details, explore signal data, measure per-lane statistics over a region, and compare nights.',
     icon: 'sessions',
     sections: [
       {
@@ -246,6 +246,38 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           'The Sessions view shows all imported therapy sessions in a sortable, filterable table. Each row displays the date, usage hours, AHI, leak rate, and pressure summary. Click any column header to sort. Use the search bar to filter by date range or metric thresholds.',
           'Color indicators on each row reflect clinical status: green (excellent control), yellow (mild concerns), orange (moderate concerns), red (significant concerns). These thresholds follow AASM severity classifications.',
+          'A page-size control lets you show 25, 50, or 100 nights per page; with more pages, a page jumper moves between them. Your choice of page size — like the calendar view and metric described below — is written into the URL, so a particular Sessions view is bookmarkable and shareable (the link reproduces the same view, metric, and page size when reopened) and survives a reload or browser back/forward.',
+        ],
+      },
+      {
+        heading: 'Calendar view',
+        paragraphs: [
+          'A Table ⇄ Calendar toggle at the top of the Sessions page switches between the table above and a calendar grid. The calendar lays out one cell per night in a GitHub-contribution-style grid (weeks as columns, days as rows), so months and years of therapy are visible at a glance and patterns — a run of bad nights, a stretch of missed nights, a seasonal drift — stand out spatially in a way a paginated table cannot show. Click any night to open its session detail, exactly as clicking a table row does. The grid is keyboard-navigable: focus a cell and use the arrow keys to move between nights, and press Enter to open the focused night.',
+          "Each cell is coloured by one metric, which you choose from a selector: AHI, Usage hours, or Leak median. Switching the metric recolours the whole grid; the chosen metric is part of the URL (for example `/sessions?view=calendar&metric=leak`), so the view is shareable and is restored on reload. The colours are discrete clinical severity bands — a fixed green → amber → orange → red scale anchored to clinically meaningful thresholds — not a relative gradient stretched to fit the data on screen. This is deliberate: because the band edges are fixed (and are the same constants used by the table's AHI badges and the Trends severity zones), a given colour means the same thing on every night and across every date range, so you can compare nights directly by eye and a single colour always carries a clinical, not merely relative, meaning. A legend below the grid names each band and its numeric range, plus the two non-data markers described further down.",
+        ],
+      },
+      {
+        heading: 'Calendar — reading the colour bands',
+        paragraphs: [
+          'AHI (events per hour) — higher is worse. The bands follow the AASM / ICSD-3 severity classification used throughout the app: Normal, AHI < 5 (green); Mild, 5 to < 15 (amber); Moderate, 15 to < 30 (orange); Severe, ≥ 30 (red). AHI is the Apnea–Hypopnea Index, the number of apneas and hypopneas the machine scored per hour of recorded therapy; see the "AHI (Apnea-Hypopnea Index)" glossary entry for what it measures and its limitations. As always, a single night\'s AHI is statistically noisy — the calendar is best read for the pattern across many cells rather than any one night; the Trends AHI chart adds the rolling median and typical-nightly-range band for that purpose.',
+          'Usage (hours per night) — higher is better, so this metric\'s colour ramp is inverted relative to the other two: low usage is red and high usage is green. The bands are: under 2h (red); 2 to < 4h (orange); 4 to < 6h (amber); and ≥ 6h (green). The 4-hour edge is the CMS compliance floor — the United States Medicare definition of an adherent night is at least 4 hours of use — and the 6-hour edge is the commonly recommended adherence target associated with fuller symptomatic benefit. See the "Usage Hours" and "Compliance" glossary entries for the precise definitions (usage measures mask-on therapy time, which is not the same as time asleep).',
+          'Why missed nights matter, and why the calendar makes them visible: adherence is not only about how good your good nights are, but about how many nights you treat at all. A green AHI on the nights you use the machine tells you nothing about the nights you skip — and untreated nights carry the full, unmitigated apnea burden. Insurers and clinicians frequently assess adherence over a window (a common benchmark is use on at least 70% of nights, for at least 4 hours, over 30 consecutive days), so a scatter of missed nights can matter as much as the usage hours on the nights you do record. The calendar deliberately draws missed nights as a distinct, visible state (see below) precisely so these gaps are not invisible the way they are in a table that only lists the nights you have data for.',
+          'Leak median (litres per minute) — lower is better. The bands are: < 6 (green); 6 to < 12 (amber); 12 to < 24 (orange); and ≥ 24 (red). The red edge is anchored on the ResMed large-leak threshold of roughly 24 L/min — a device convention (mask-dependent, not an AASM standard) above which leak is high enough to compromise both therapy delivery and the reliability of the machine\'s own event detection. The 6 and 12 edges are display subdivisions of the acceptable region and carry no formal clinical authority. See the "Mask Leak" glossary entry for what unintentional leak is and why it matters.',
+        ],
+      },
+      {
+        heading: 'Calendar — the leak-median caveat',
+        paragraphs: [
+          'The leak cell colours a night by its median (typical) leak, not by its worst moment. This makes the cell a robust summary of the night as a whole, but it has a specific blind spot you should know about: a night can be quiet for most of its duration and still have brief, severe leak spikes — a mask shifting during a position change, a few minutes of mouth leak — and those short excursions may not move the median enough to change the band. A green or amber leak cell therefore means the typical leak was fine, not that there were no large-leak episodes.',
+          "When you want spike-level detail, do not rely on the calendar colour. Open the night's session detail and read the per-session leak chart, which shows leak over the course of the night, and the higher-percentile and exposure statistics — the P95 (the level exceeded only 5% of the night) and the time spent in large leak — which are designed precisely to surface brief excursions that a median hides. The calendar is for spotting nights and patterns; the per-session leak view is for understanding what happened within a night.",
+        ],
+      },
+      {
+        heading: 'Calendar — gaps and partial nights',
+        paragraphs: [
+          'Cells come in three states, each with a cue that does not rely on colour, so the calendar stays readable for colour-blind users and in any theme (WCAG 1.4.1). A filled cell — coloured in one of the severity bands above — is a night that has a value for the selected metric. The other two states are deliberately not coloured, because they are not "good" or "bad" values but the absence of one, and colouring them would be misleading.',
+          'A gap (dashed, empty cell) is a missed night: there is no recorded session for that date at all — you did not use the machine, or its data was not imported. Gaps are drawn distinctly, rather than simply left blank, so that the holes in your adherence are visible (see "why missed nights matter," above). A gap is never coloured and never counted as a value; it is the absence of a night, not a night with a metric of zero.',
+          'A partial night (neutral cell with a small glyph) is a night that has a recorded session, but for which the selected metric is unavailable. The most common reason is a too-short recording: AHI is a rate (events per hour), and on a recording too brief to compute a trustworthy rate the app declines to report an AHI rather than divide a tiny event count by a tiny duration and emit a wild or misleading figure. Crucially, an unavailable metric is shown as exactly that — unavailable — and never silently rendered as 0. A zero would read as a perfect night (no events, in the green Normal band) and would be a false reassurance; "no valid measurement" and "a measured value of zero" are different facts, and the calendar keeps them distinct. Hover or focus a partial cell to see why the metric is unavailable for that night.',
         ],
       },
       {

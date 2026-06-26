@@ -12,6 +12,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Card,
   Input,
+  SegmentedControl,
   Skeleton,
   Table,
   TableHeader,
@@ -20,11 +21,26 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui';
+import type { SegmentedControlOption } from '@/components/ui';
 import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
+import CalendarHeatmap, { type CalendarDatum } from '@/components/charts/d3/CalendarHeatmap';
 import { useAppStore } from '@/stores/useAppStore';
 import { useDataStore } from '@/stores/useDataStore';
 import { classifyAhiSeverity, type AhiSeverity } from '@/analysis/clinical';
+import { formatDate } from '@/utils/formatDate';
 import { PAGE_PARAM, parsePageParam } from './paginationParams';
+import {
+  METRIC_PARAM,
+  SIZE_PARAM,
+  VIEW_PARAM,
+  parseMetricParam,
+  parseSizeParam,
+  parseViewParam,
+  type CalendarMetric,
+  type PageSize,
+  type SessionView,
+} from './viewParams';
+import { CALENDAR_METRIC_CONFIG } from './calendarBands';
 import styles from './SessionList.module.css';
 
 // ---------------------------------------------------------------------------
@@ -55,7 +71,31 @@ type SortDirection = 'asc' | 'desc';
 // Constants
 // ---------------------------------------------------------------------------
 
-const PAGE_SIZE = 25;
+/**
+ * View-toggle options (Table | Calendar). `SegmentedControl` renders a text
+ * `label`; the spelled-out `ariaLabel` ("Table view" / "Calendar view") is the
+ * full accessible name announced to screen-reader users. (Icon glyphs would
+ * require `SegmentedControl` to accept a ReactNode label — flagged as a gap
+ * rather than changing the shared component here.)
+ */
+const VIEW_OPTIONS: ReadonlyArray<SegmentedControlOption<SessionView>> = [
+  { value: 'table', label: 'Table', ariaLabel: 'Table view' },
+  { value: 'calendar', label: 'Calendar', ariaLabel: 'Calendar view' },
+];
+
+/** Calendar metric options (Calendar view only). */
+const METRIC_OPTIONS: ReadonlyArray<SegmentedControlOption<CalendarMetric>> = [
+  { value: 'ahi', label: 'AHI', ariaLabel: 'Apnea–Hypopnea Index' },
+  { value: 'usage', label: 'Usage', ariaLabel: 'Usage hours' },
+  { value: 'leak', label: 'Leak', ariaLabel: 'Median leak' },
+];
+
+/** Page-size options (Table view only). Values mirror {@link PageSize}. */
+const PAGE_SIZE_OPTIONS: ReadonlyArray<SegmentedControlOption<`${PageSize}`>> = [
+  { value: '25', label: '25', ariaLabel: '25 rows per page' },
+  { value: '50', label: '50', ariaLabel: '50 rows per page' },
+  { value: '100', label: '100', ariaLabel: '100 rows per page' },
+];
 
 interface ColumnDef {
   key: SortField;
@@ -185,6 +225,22 @@ function LoadingSkeleton() {
   );
 }
 
+/**
+ * Calendar-shaped loading placeholder. Distinct from the table {@link
+ * LoadingSkeleton}: a single muted grid-sized block plus a legend bar, sized to
+ * roughly match the rendered heatmap so the layout does not jump on load.
+ */
+function CalendarLoadingSkeleton() {
+  return (
+    <Card>
+      <div className={styles.calendarSkeleton} aria-hidden="true">
+        <Skeleton width="100%" height="132px" />
+        <Skeleton width="60%" height="20px" />
+      </div>
+    </Card>
+  );
+}
+
 function EmptyState({ hasFilter }: { hasFilter: boolean }) {
   return (
     <div className={styles.emptyState} role="status">
@@ -222,15 +278,17 @@ function PaginationControls({
   currentPage,
   totalPages,
   totalItems,
+  pageSize,
   onPageChange,
 }: {
   currentPage: number;
   totalPages: number;
   totalItems: number;
+  pageSize: number;
   onPageChange: (page: number) => void;
 }) {
-  const startItem = (currentPage - 1) * PAGE_SIZE + 1;
-  const endItem = Math.min(currentPage * PAGE_SIZE, totalItems);
+  const startItem = (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, totalItems);
 
   // Build visible page numbers (max 7 buttons)
   const pageNumbers = useMemo(() => {
@@ -307,6 +365,7 @@ export default function SessionList() {
 
   // Global state
   const dateRange = useAppStore((s) => s.dateRange);
+  const selectedSessionId = useAppStore((s) => s.selectedSessionId);
   const sessions = useDataStore((s) => s.sessions);
   const sessionsLoading = useDataStore((s) => s.sessionsLoading);
   const sessionsError = useDataStore((s) => s.sessionsError);
@@ -317,11 +376,16 @@ export default function SessionList() {
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  // The current page lives in the URL query string (`?page=N`) rather than in
-  // React state so that browser Back/Forward restores it. Opening a session
-  // detail unmounts this view; returning via Back remounts it and we recover
-  // the page from the URL instead of snapping back to page 1.
+  // View mode (table | calendar), calendar metric, table page, and table page
+  // size all live in the URL query string rather than React state so that
+  // browser Back/Forward and deep links restore them. Opening a session detail
+  // unmounts this view; returning via Back remounts it and recovers all of this
+  // state from the URL. Each control's DEFAULT is the ABSENCE of its param, so
+  // URLs stay clean (mirrors the `?page=N` pattern below).
   const [searchParams, setSearchParams] = useSearchParams();
+  const view = parseViewParam(searchParams.get(VIEW_PARAM));
+  const metric = parseMetricParam(searchParams.get(METRIC_PARAM));
+  const pageSize = parseSizeParam(searchParams.get(SIZE_PARAM));
   const currentPage = parsePageParam(searchParams.get(PAGE_PARAM));
 
   /**
@@ -349,6 +413,72 @@ export default function SessionList() {
     [setSearchParams],
   );
 
+  /**
+   * Switch the view mode. `table` is the default → drop the `view` param
+   * (clean URLs). Same `{ replace: true }` + preserve-other-params conventions
+   * as {@link setPage}: switching views should not push a history entry, and
+   * the active date range / selected session / page are kept verbatim.
+   */
+  const setView = useCallback(
+    (next: SessionView) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next === 'table') {
+            params.delete(VIEW_PARAM);
+          } else {
+            params.set(VIEW_PARAM, next);
+          }
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  /** Switch the calendar metric. `ahi` is the default → drop the `metric` param. */
+  const setMetric = useCallback(
+    (next: CalendarMetric) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next === 'ahi') {
+            params.delete(METRIC_PARAM);
+          } else {
+            params.set(METRIC_PARAM, next);
+          }
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  /**
+   * Set the table page size. `25` is the default → drop the `size` param. The
+   * page-reset on size change is handled by the change-detection effect below
+   * (which tracks `pageSize`), so we only write the size here.
+   */
+  const setPageSize = useCallback(
+    (next: PageSize) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next === 25) {
+            params.delete(SIZE_PARAM);
+          } else {
+            params.set(SIZE_PARAM, String(next));
+          }
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
   // Load sessions when dateRange changes
   useEffect(() => {
     void loadSessions(dateRange);
@@ -367,18 +497,22 @@ export default function SessionList() {
   // and snap the page back to 1.
   const setPageRef = useRef(setPage);
   setPageRef.current = setPage;
-  const prevFilterSortRef = useRef({ searchFilter, sortField, sortDirection });
+  const prevFilterSortRef = useRef({ searchFilter, sortField, sortDirection, pageSize });
   useEffect(() => {
     const prev = prevFilterSortRef.current;
     const changed =
       prev.searchFilter !== searchFilter ||
       prev.sortField !== sortField ||
-      prev.sortDirection !== sortDirection;
-    prevFilterSortRef.current = { searchFilter, sortField, sortDirection };
+      prev.sortDirection !== sortDirection ||
+      // A page-size change can strand the user on a now-out-of-range page
+      // (e.g. page 3 at 25/page becomes empty at 100/page). Resetting to page 1
+      // is cleaner than relying on the `safePage` clamp alone.
+      prev.pageSize !== pageSize;
+    prevFilterSortRef.current = { searchFilter, sortField, sortDirection, pageSize };
     if (changed) {
       setPageRef.current(1);
     }
-  }, [searchFilter, sortField, sortDirection]);
+  }, [searchFilter, sortField, sortDirection, pageSize]);
 
   // Convert Map to array
   const allRows: SessionRow[] = useMemo(() => Array.from(sessions.values()), [sessions]);
@@ -415,12 +549,63 @@ export default function SessionList() {
   }, [filteredRows, sortField, sortDirection]);
 
   // Paginate
-  const totalPages = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const safePage = Math.min(currentPage, totalPages);
   const pageRows = useMemo(
-    () => sortedRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    [sortedRows, safePage],
+    () => sortedRows.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [sortedRows, safePage, pageSize],
   );
+
+  // ── Calendar data ────────────────────────────────────────────────
+  // Build one CalendarDatum per session date for the selected metric, plus a
+  // date → session-id map so a cell click can navigate to that session's detail
+  // (mirrors handleRowClick). Only dates WITH a session get an entry; gap days
+  // never fire onSelectDate. AHI may be null (too-short recording) — pass it
+  // through as null so the heatmap renders the PARTIAL state, never coercing to 0.
+  // Depends on filteredRows (not sortedRows): cell position is keyed by date, so
+  // table sort order is irrelevant here and depending on it would rebuild this on
+  // every sort toggle for an identical result.
+  const { calendarData, dateToSessionId } = useMemo(() => {
+    const valueByDate = new Map<string, number | null>();
+    const idByDate = new Map<string, string>();
+    for (const row of filteredRows) {
+      let value: number | null;
+      switch (metric) {
+        case 'usage':
+          value = row.usageMinutes / 60;
+          break;
+        case 'leak':
+          value = row.leakMedian;
+          break;
+        case 'ahi':
+        default:
+          value = row.ahi;
+          break;
+      }
+      // Last-wins if two sessions share a date (rare); the Map keeps the value
+      // and id consistent in O(1) without an inner array scan.
+      valueByDate.set(row.date, value);
+      idByDate.set(row.date, row.id);
+    }
+    const data: CalendarDatum[] = Array.from(valueByDate, ([date, value]) => ({
+      date,
+      value,
+    }));
+    return { calendarData: data, dateToSessionId: idByDate };
+  }, [filteredRows, metric]);
+
+  // ISO bounds of the global date range so the calendar renders the FULL window
+  // (gaps across the whole span show, not just the min/max of present sessions).
+  const rangeStartISO = useMemo(() => formatDate(dateRange.start), [dateRange.start]);
+  const rangeEndISO = useMemo(() => formatDate(dateRange.end), [dateRange.end]);
+
+  // Highlight the globally-selected session's cell when its date is in range.
+  const selectedDate = useMemo(() => {
+    if (selectedSessionId == null) return undefined;
+    return sessions.get(selectedSessionId)?.date ?? undefined;
+  }, [selectedSessionId, sessions]);
+
+  const metricConfig = CALENDAR_METRIC_CONFIG[metric];
 
   // Handlers
   const handleSort = useCallback(
@@ -456,6 +641,31 @@ export default function SessionList() {
     void loadSessions(dateRange);
   }, [loadSessions, dateRange]);
 
+  // Calendar cell activation → navigate to that day's session (mirrors
+  // handleRowClick). Only fires for dates with a session (gaps never call it),
+  // but we still guard the lookup.
+  const handleSelectDate = useCallback(
+    (date: string) => {
+      const id = dateToSessionId.get(date);
+      if (id) void navigate(`/sessions/${id}`);
+    },
+    [dateToSessionId, navigate],
+  );
+
+  // On view switch, move focus to the revealed content region so keyboard users
+  // land in the new content rather than being stranded on the toggle. The panel
+  // carries tabIndex={-1} to be a programmatic focus target. We skip the very
+  // first render (mount) so an initial deep-link to ?view=calendar does not
+  // steal focus on page load.
+  const contentPanelRef = useRef<HTMLDivElement>(null);
+  const prevViewRef = useRef<SessionView | null>(null);
+  useEffect(() => {
+    if (prevViewRef.current !== null && prevViewRef.current !== view) {
+      contentPanelRef.current?.focus();
+    }
+    prevViewRef.current = view;
+  }, [view]);
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -473,33 +683,89 @@ export default function SessionList() {
           </span>
         </div>
 
-        {/* Toolbar: search + date range */}
+        {/*
+         * Toolbar. The leading slot is view-dependent: in Table view it holds
+         * the free-text date search; in Calendar view (which has no row-text
+         * filter) it holds the Metric selector. The DateRangeSelector and the
+         * View toggle stay mounted in BOTH views; the View toggle is pinned to
+         * the right (margin-left:auto) as a peer of the search/metric + range.
+         */}
         <div className={styles.toolbar}>
-          <div className={styles.searchWrapper}>
-            <Input
-              placeholder="Filter by date…"
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              aria-label="Filter sessions by date"
-              type="search"
-            />
-          </div>
+          {view === 'table' ? (
+            <div className={styles.searchWrapper}>
+              <Input
+                placeholder="Filter by date…"
+                value={searchFilter}
+                onChange={(e) => setSearchFilter(e.target.value)}
+                aria-label="Filter sessions by date"
+                type="search"
+              />
+            </div>
+          ) : (
+            <div className={styles.metricWrapper}>
+              <SegmentedControl<CalendarMetric>
+                label="Metric"
+                options={METRIC_OPTIONS}
+                value={metric}
+                onChange={setMetric}
+              />
+            </div>
+          )}
           <div className={styles.dateRangeWrapper}>
             <DateRangeSelector />
+          </div>
+          <div className={styles.viewToggleWrapper}>
+            <SegmentedControl<SessionView>
+              label="View"
+              options={VIEW_OPTIONS}
+              value={view}
+              onChange={setView}
+            />
           </div>
         </div>
       </div>
 
-      {/* Error state */}
+      {/* Error state (shared by both views) */}
       {sessionsError && <ErrorState message={sessionsError} onRetry={handleRetry} />}
 
-      {/* Loading state */}
-      {sessionsLoading && !sessionsError && <LoadingSkeleton />}
+      {/* Loading state — view-shaped skeleton */}
+      {sessionsLoading &&
+        !sessionsError &&
+        (view === 'calendar' ? <CalendarLoadingSkeleton /> : <LoadingSkeleton />)}
 
-      {/* Data table */}
+      {/*
+       * Content. State precedence stays error → loading → empty → content. The
+       * panel is a programmatic focus target (tabIndex={-1}) so a view switch
+       * can move focus here; it is labelled by the live session-count text in
+       * the header.
+       */}
       {!sessionsLoading && !sessionsError && (
-        <>
-          {sortedRows.length === 0 ? (
+        <div ref={contentPanelRef} tabIndex={-1} className={styles.contentPanel}>
+          {view === 'calendar' ? (
+            sortedRows.length === 0 ? (
+              // All-gaps-in-range (the window spans dates but holds no sessions)
+              // shows the empty state rather than a grid of only gap cells.
+              <Card>
+                <EmptyState hasFilter={searchFilter.trim().length > 0} />
+              </Card>
+            ) : (
+              <Card>
+                <div className={styles.calendarWrapper}>
+                  <CalendarHeatmap
+                    data={calendarData}
+                    bands={[...metricConfig.bands]}
+                    rangeStart={rangeStartISO}
+                    rangeEnd={rangeEndISO}
+                    selectedDate={selectedDate}
+                    metricLabel={metricConfig.metricLabel}
+                    metricFormatter={metricConfig.metricFormatter}
+                    partialLabel={metricConfig.partialLabel}
+                    onSelectDate={handleSelectDate}
+                  />
+                </div>
+              </Card>
+            )
+          ) : sortedRows.length === 0 ? (
             <Card>
               <EmptyState hasFilter={searchFilter.trim().length > 0} />
             </Card>
@@ -573,16 +839,25 @@ export default function SessionList() {
                 </Table>
               </div>
               <div className={styles.paginationWrapper}>
+                <div className={styles.pageSizeRow}>
+                  <SegmentedControl<`${PageSize}`>
+                    label="Rows per page"
+                    options={PAGE_SIZE_OPTIONS}
+                    value={`${pageSize}`}
+                    onChange={(next) => setPageSize(Number(next) as PageSize)}
+                  />
+                </div>
                 <PaginationControls
                   currentPage={safePage}
                   totalPages={totalPages}
                   totalItems={sortedRows.length}
+                  pageSize={pageSize}
                   onPageChange={setPage}
                 />
               </div>
             </Card>
           )}
-        </>
+        </div>
       )}
     </div>
   );
