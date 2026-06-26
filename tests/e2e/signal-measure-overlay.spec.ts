@@ -263,6 +263,26 @@ async function altDragRegion(
 }
 
 test.describe('Signal Viewer — Region Statistics (Measure) overlay', () => {
+  // ── OPFS capability gate ─────────────────────────────────────────────────
+  // This suite seeds signal data into OPFS (navigator.storage.getDirectory) so
+  // the waveform chart renders. Some Playwright browser builds — notably the
+  // Linux WebKit runner — do not implement OPFS, so seeding (and therefore the
+  // chart) is impossible there. We feature-detect rather than match on browser
+  // name so any current/future OPFS-less runner (e.g. Firefox) skips cleanly
+  // instead of failing. The probe needs a loaded document, so we navigate to a
+  // real page first (never probe on about:blank) and run it BEFORE any
+  // seedOpfsSignals/gotoSignalViewer call.
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    const hasOpfs = await page.evaluate(
+      () => typeof navigator?.storage?.getDirectory === 'function',
+    );
+    test.skip(
+      !hasOpfs,
+      'Browser has no OPFS (navigator.storage.getDirectory); signal data cannot be seeded — covered on Chromium/Firefox where OPFS is available',
+    );
+  });
+
   // ── 1. Toggle discoverability & default-off ──────────────────────────────
   test('Measure toggle: discoverable, default-off, toggles chips + footer on/off', async ({
     page,
