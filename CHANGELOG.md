@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.06.20] — 2026-06-26
+
 ### Added
 
 - **Measure a region in the session signal viewer to get its summary statistics across every lane.** A new **Measure** toggle in the toolbar (or the **M** key) turns on a statistics overlay: each lane gains a small chip showing the region's average, median, minimum, and maximum (continuous CPAP and wearable lanes), the per-stage time breakdown (the hypnogram), or "— no data" where a lane has no meaningful samples — and a footer reports the region's clock span and total sample count. By default the region is the **visible viewport**, recomputed once each time you finish panning or zooming (never mid-gesture, so scrolling stays smooth). To pin a fixed region, **Alt(Option)+drag** horizontally across the plot — this draws a neutral, dashed measure band (distinct from the blue Shift+drag zoom band) and locks the statistics to that time span even as you pan and zoom away; a footer chevron scrolls an off-screen pinned region back into view. Press **Esc** to clear a pinned region (then again to turn Measure off), and **hold Alt** to momentarily peek at the viewport's statistics without toggling the mode on. The median is computed exactly for any realistic region (a whole night is well within an interaction-latency budget). The statistics are computed entirely in your browser; no data leaves the device. Keyboard and screen-reader users can define a region with **[** and **]** at the data cursor and read all per-lane figures from a dedicated, focusable "Region statistics" table; a concise spoken summary is announced whenever the region changes. Whether Measure is on is remembered per session; a drawn region is transient and never persisted.
