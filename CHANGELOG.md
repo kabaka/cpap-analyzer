@@ -7,7 +7,11 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+
+- **The Sessions page has a new Calendar view, alongside the existing table.** A Table ⇄ Calendar toggle switches the Sessions index between the sortable table and a GitHub-contribution-style grid with one cell per night, coloured by a metric you choose — **AHI**, **Usage hours**, or **Leak median**. Colours use **discrete clinical severity bands** (green → amber → orange → red) rather than a relative gradient, so a cell speaks the same colour language as the table's AHI badges and the clinically meaningful boundaries stay fixed and comparable across the whole grid: AHI at the AASM/ICSD-3 cutoffs (Normal <5, Mild 5–<15, Moderate 15–<30, Severe ≥30 events/h); usage against the CMS 4 h compliance floor and the 6 h recommended-adherence target (worst <2h, then 2–<4h, 4–<6h, ≥6h, with higher being better); and leak median against the ResMed 24 L/min large-leak threshold (<6, 6–<12, 12–<24, ≥24 L/min, lower being better). Each cell has a **non-colour cue** for its state so colour is never the only signal (WCAG 1.4.1): a filled cell is a night with data, a **dashed/empty cell is a gap** (a missed night with no recorded session — made visible because adherence holes matter), and a **neutral cell with a small glyph is a partial night** (a session that exists but whose metric is unavailable — for example AHI on a too-short recording, which is shown as unavailable and **never as 0**). A legend explains the bands and the no-data/partial markers, clicking a night opens its session detail, and the grid is keyboard-navigable. The leak metric colours by the night's **median** leak, so brief high-leak spikes that do not move the median are not reflected by the cell colour — the per-session leak chart, P95, and time-in-large-leak remain the place to find spikes. The Sessions Guide help article gains a "Calendar view" section documenting the views, every band and its clinical thresholds, the gap/partial states, and the leak-median caveat.
+- **A page-size toggle (25 / 50 / 100 rows) on the Sessions table.** Choose how many nights to show per page.
+- **The Sessions view, calendar metric, and page size are now part of the URL**, so a specific view is shareable and bookmarkable — for example `/sessions?view=calendar&metric=leak` opens straight into the calendar coloured by leak median. The selections survive reloads and browser back/forward, mirroring the existing `?page` convention.
 
 ## [2026.06.18] — 2026-06-26
 
