@@ -142,6 +142,18 @@
   --color-selection-band-bg: rgba(37, 99, 235, 0.16);
   --color-selection-band-border: rgba(37, 99, 235, 0.6);
 
+  /* SIGNAL VIEWER REGION STATISTICS
+     The "Measure region" overlay (per-lane stat chips + measure band + region
+     footer). Chip surface is near-OPAQUE so the small chip text holds AA
+     contrast over a bright waveform underneath. The band fill/edge are a NEUTRAL
+     slate — deliberately distinct (dashed edge + neutral, not the primary-blue
+     solid SHIFT-drag zoom band) so the persistent measure region never reads as
+     the transient zoom rubber-band. Colour is reinforcement only; the band also
+     carries a dashed edge and the footer/pill carry text + shape cues. */
+  --color-stat-chip-bg: rgba(255, 255, 255, 0.94);
+  --color-stat-band-bg: rgba(100, 116, 139, 0.1);
+  --color-stat-band-edge: rgba(100, 116, 139, 0.55);
+
   /* SIGNAL VIEWER LANE METRICS */
   --signal-lane-height: 150px;
   --signal-lane-height-hero: 200px;
@@ -429,6 +441,13 @@
      accent + slightly higher fill alpha so it stays visible over dark waveforms. */
   --color-selection-band-bg: rgba(96, 165, 250, 0.2);
   --color-selection-band-border: rgba(96, 165, 250, 0.7);
+
+  /* SIGNAL VIEWER REGION STATISTICS — dark. Near-opaque dark chip surface so
+     chip text holds AA over a bright waveform; band fill/edge brightened slate
+     to stay visible over dark waveforms (see :root for rationale). */
+  --color-stat-chip-bg: rgba(31, 31, 31, 0.94);
+  --color-stat-band-bg: rgba(148, 163, 184, 0.14);
+  --color-stat-band-edge: rgba(148, 163, 184, 0.6);
 
   /* SIGNAL VIEWER LANE METRICS — dark-mode lane-name halo */
   --signal-lane-name-shadow: rgba(0, 0, 0, 0.95);

@@ -22,6 +22,14 @@ export interface LanePrefs {
    * back-compat with prefs stored before the detection lane existed.
    */
   readonly showDetections?: boolean;
+  /**
+   * Whether the "Measure region" statistics overlay is stuck on. Persisted so
+   * the toggle survives a reload, but the DRAWN region itself is transient and
+   * never stored (see the Signal Viewer's region-stats wiring). Defaults to
+   * `false`/`undefined` (off) for back-compat with prefs stored before the
+   * feature existed.
+   */
+  readonly measureMode?: boolean;
 }
 
 export const EMPTY_LANE_PREFS: LanePrefs = { order: [], hidden: [], collapsed: [] };
@@ -49,6 +57,7 @@ export function parseLanePrefs(raw: string | null): LanePrefs {
       preset: typeof parsed.preset === 'string' ? parsed.preset : undefined,
       showDetections:
         typeof parsed.showDetections === 'boolean' ? parsed.showDetections : undefined,
+      measureMode: typeof parsed.measureMode === 'boolean' ? parsed.measureMode : undefined,
     };
   } catch {
     return EMPTY_LANE_PREFS;
