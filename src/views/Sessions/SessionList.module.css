@@ -54,6 +54,54 @@
   min-width: 160px;
 }
 
+/* Calendar metric selector occupies the slot the search box vacates. */
+.metricWrapper {
+  display: flex;
+  align-items: flex-end;
+}
+
+/* View toggle (Table | Calendar), pinned to the right of the toolbar. */
+.viewToggleWrapper {
+  margin-left: auto;
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Programmatic focus target for the content region (focused on view switch). */
+.contentPanel {
+  outline: none;
+}
+
+.contentPanel:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 4px;
+  border-radius: var(--radius-lg);
+}
+
+/* Calendar view */
+.calendarWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-x: auto;
+}
+
+/* Calendar loading placeholder — a grid-sized block + a legend bar. */
+.calendarSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Rows-per-page selector, sitting above the pagination controls. */
+.pageSizeRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+}
+
 /* Table wrapper */
 .tableWrapper {
   overflow-x: auto;
