@@ -1,13 +1,59 @@
 .container {
+  /* Left-rail width in px. Kept in sync with GUTTER_WIDTH in CalendarHeatmap.tsx
+     so the SVG coordinate space, the flex gutter box, and the legend agree. */
+  --cal-gutter: 36px;
+
   width: 100%;
   font-family: var(--font-family-sans);
   position: relative;
 }
 
+/* ── Per-year panel stack ─────────────────────────────────────── */
+
+/* One column of year panels, oldest (top) → newest (bottom). */
+.panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* A panel is a fixed gutter + a horizontally scrollable week grid. */
+.panel {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Fixed-width left rail: year label + (top panel) weekday labels. Never shrinks
+   or scrolls, so labels stay put while weeks scroll horizontally. */
+.gutter {
+  display: block;
+  flex: 0 0 var(--cal-gutter);
+  width: var(--cal-gutter);
+  overflow: visible;
+}
+
+/* The scrolling viewport for the week grid. The gutter stays visible while the
+   weeks scroll. Independent per-panel scroll (no cross-panel sync). */
+.scrollport {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+}
+
 .svg {
   display: block;
-  width: 100%;
   overflow: visible;
+}
+
+/* Year label in the gutter, vertically centred on the 7-row block. */
+.yearLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  fill: var(--color-text-secondary);
+  text-anchor: start;
+  dominant-baseline: central;
 }
 
 /* ── Cell groups (gridcells) ─────────────────────────────────── */
@@ -102,8 +148,9 @@
 /* ── Legend ───────────────────────────────────────────────────── */
 
 .legend {
-  margin-top: var(--space-2);
-  padding-left: var(--space-8);
+  margin-top: var(--space-3);
+  /* Align under the week grid, past the year-label gutter. */
+  padding-left: var(--cal-gutter);
 }
 
 .legendCaption {
@@ -174,6 +221,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* One-panel min-height so toggling presets doesn't collapse the card. */
+  min-height: calc(20px + 7 * 16px);
   padding: var(--space-8);
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
