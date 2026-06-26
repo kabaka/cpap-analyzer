@@ -7,7 +7,9 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Google Health (Fitbit) intraday data is no longer silently truncated each day at the export's file boundary (~7–8 AM for a US user).** Fitbit splits the intraday export into per-day files whose 24-hour window is offset from your local midnight by your UTC offset, so each calendar day's samples are spread across **two** files (e.g. a night's pre-midnight samples land in one file and the post-midnight samples in the next). The importer grouped samples by their own local calendar date but then treated the second file's contribution to an already-seen date as a duplicate and **dropped it** — so every day's intraday record was cut off at the file boundary. On the session signal viewer this showed up most visibly as the **heart-rate lane stopping at 7 AM in summer / 8 AM in winter** (the cutoff tracks daylight-saving time because it equals your UTC offset); the other intraday types (SpO₂, HRV detail, snoring, sleep stages) were affected in principle too but rarely visibly, since they are recorded only during sleep and usually fall within a single file. The two partial-day chunks are now **merged** into one full-day record instead of one being discarded. **If you imported Fitbit/Google Health data previously, please re-import** to restore the missing samples; re-importing is safe — overlapping samples are de-duplicated by timestamp, so nothing is doubled.
 
 ## [2026.06.16] — 2026-06-23
 

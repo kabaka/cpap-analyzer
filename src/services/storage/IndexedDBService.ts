@@ -1490,6 +1490,36 @@ export class IndexedDBService {
     }
   }
 
+  /**
+   * Upsert an existing integration timeseries record in place by `id`.
+   *
+   * Unlike {@link addIntegrationTimeseries} (which uses `add` and throws
+   * `ConstraintError` on a duplicate key), this uses `put`, replacing the record
+   * stored under the same `id`. It is the write half of the merge-on-conflict
+   * upsert: the import service reads the existing record for a `(source,
+   * dataType, date)` key, folds the incoming payload in via
+   * {@link module:services/import/googlehealth/mergeTimeseries}, and writes the
+   * merged record back under the SAME `id` — so the unique `source_dataType_date`
+   * index is not violated (the key is unchanged) and the two partial-day chunks
+   * coexist as one record.
+   *
+   * @param data - The full record to store, carrying the existing record's `id`.
+   */
+  async putIntegrationTimeseries(data: IntegrationTimeseries): Promise<void> {
+    try {
+      const store = this.writeStore('integration_timeseries');
+      await this.wrapRequest(store.put(data));
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        'put integration timeseries',
+        'integration_timeseries',
+        data.id,
+        error,
+      );
+    }
+  }
+
   /** Retrieve integration timeseries records within a date range (inclusive, YYYY-MM-DD). */
   async getIntegrationTimeseriesByDateRange(
     start: string,

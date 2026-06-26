@@ -149,6 +149,13 @@ function createMockDB(preexistingTsKeys: Set<string> = new Set()): MockDB {
       timeseries.set(tsKey(record.dataType, record.date), record);
       return Promise.resolve();
     },
+    // Merge upsert (put-by-id): the merge path replaces the existing record in
+    // place. The compound key is unchanged, so we model it as a keyed overwrite.
+    putIntegrationTimeseries: (record: IntegrationTimeseries) => {
+      events.push('store');
+      timeseries.set(tsKey(record.dataType, record.date), record);
+      return Promise.resolve();
+    },
     bulkAddIntegrationDailySummaries: (records: IntegrationDailySummary[]) => {
       events.push('store');
       for (const r of records) daily.set(dKey(r.dataType, r.date), r);
@@ -286,9 +293,13 @@ describe('GoogleHealthImportService — interleaved store for worker-parsed heav
     expect(parsedFiles).toEqual(fileNames);
   });
 
-  it('skips a within-import duplicate that spans two files exactly once', async () => {
-    // Two files for the SAME day. First file stores the record; the second
-    // file's identical-date record must be skipped via the shared DB dedup.
+  it('MERGES two same-day chunks spanning two files into one record (no longer skips)', async () => {
+    // Behaviour change (Fitbit heart-rate-timing fix): two files contributing to
+    // the SAME local date are no longer treated as a "duplicate" where the second
+    // is dropped — that was the data-loss bug (a real HR file straddles local
+    // midnight, so a day's morning vs. evening samples arrive in DIFFERENT files
+    // and BOTH must be kept). Here two same-day chunks at disjoint hours (09:xx vs
+    // 14:xx) must MERGE into one record carrying BOTH, with no skip.
     const dupDay = '02/10/24';
     const files = new Map<string, File>([
       ['hr-a.json', makeFile('hr-a.json', hrIntradayFixtureForDay(dupDay, 9, 30))],
@@ -305,11 +316,15 @@ describe('GoogleHealthImportService — interleaved store for worker-parsed heav
       skipDuplicates: true,
     });
 
-    // Stored exactly once; the duplicate from file B is skipped exactly once.
+    // Exactly one record for the day, holding BOTH chunks (60 = 30 + 30 samples).
     expect(mock.timeseries.size).toBe(1);
-    expect(record.recordsImported).toBe(1);
-    expect(record.recordsSkipped).toBe(1);
-    expect([...mock.timeseries.values()][0]?.date).toBe('2024-02-10');
+    const merged = [...mock.timeseries.values()][0];
+    expect(merged?.date).toBe('2024-02-10');
+    expect((merged?.data as { sampleCount: number }).sampleCount).toBe(60);
+    // The second chunk was MERGED in (a write that changed state), not skipped.
+    expect(record.recordsImported).toBe(2);
+    expect(record.recordsSkipped).toBe(0);
+    expect(record.recordsErrored).toBe(0);
   });
 
   it('keeps progress counters monotonic and ending at the correct totals', async () => {

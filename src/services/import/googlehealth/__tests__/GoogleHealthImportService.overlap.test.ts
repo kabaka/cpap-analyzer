@@ -153,6 +153,15 @@ function createMockDB(opts: { storeDelayMs?: number } = {}): MockDB {
       await delay();
       timeseries.set(tsKey(record.dataType, record.date), record);
     },
+    // Merge upsert (put-by-id): replaces the existing record in place. The
+    // compound key is unchanged, so model it as a keyed overwrite. Logged as a
+    // store window so the single-flight assertions still see it.
+    putIntegrationTimeseries: async (record: IntegrationTimeseries) => {
+      events.push('store:start');
+      await delay();
+      timeseries.set(tsKey(record.dataType, record.date), record);
+      events.push('store:end');
+    },
     bulkAddIntegrationDailySummaries: async (records: IntegrationDailySummary[]) => {
       events.push('store:start');
       await delay();
@@ -382,9 +391,13 @@ describe('GoogleHealthImportService — bounded look-ahead parse↔store overlap
     expect(recA.dateRangeEnd).toBe(recB.dateRangeEnd);
   });
 
-  it('skips a within-import cross-file duplicate exactly once (single-flight ordering)', async () => {
-    // Two files for the SAME day, separated by a third distinct day BETWEEN them
-    // so the duplicate genuinely spans the look-ahead window.
+  it('MERGES a cross-file same-day chunk in place, preserving single-flight ordering', async () => {
+    // Behaviour change (Fitbit heart-rate-timing fix): two files contributing to
+    // the SAME local date are MERGED, not de-duped — both chunks must survive
+    // (the bug dropped the second). hrFixtureForDay starts at 00:00 and spans
+    // `count` minutes, so file a and file b for 02/10 cover the SAME minutes;
+    // merging by absolute timestamp dedupes them, so the day's record stays at 30
+    // samples but is written twice (add then merge-put). The mid day is separate.
     const files = new Map<string, File>([
       ['hr-a.json', makeFile('hr-a.json', hrFixtureForDay('02/10/24', 30))],
       ['hr-mid.json', makeFile('hr-mid.json', hrFixtureForDay('02/11/24', 30))],
@@ -401,13 +414,25 @@ describe('GoogleHealthImportService — bounded look-ahead parse↔store overlap
       skipDuplicates: true,
     });
 
-    // 02/10 stored once (from file a), 02/11 stored once; file b's 02/10 skipped.
+    // Two dates stored; 02/10 is ONE merged record (file b folded into file a's).
     expect([...mock.timeseries.values()].map((r) => r.date).sort()).toEqual([
       '2024-02-10',
       '2024-02-11',
     ]);
-    expect(record.recordsImported).toBe(2);
-    expect(record.recordsSkipped).toBe(1);
+    const day = mock.timeseries.get('fitbit|heart_rate_intraday|2024-02-10');
+    // Identical minutes from both files dedupe by absolute timestamp → no growth.
+    expect((day?.data as { sampleCount: number }).sampleCount).toBe(30);
+    // All three records are writes (a write that changed state), none skipped.
+    expect(record.recordsImported).toBe(3);
+    expect(record.recordsSkipped).toBe(0);
+
+    // Single-flight store still holds: every 'store:start' is followed by its
+    // matching 'store:end' (the merge put logs the same window shape).
+    const storeEvents = mock.events.filter((e) => e === 'store:start' || e === 'store:end');
+    for (let i = 0; i < storeEvents.length; i += 2) {
+      expect(storeEvents[i]).toBe('store:start');
+      expect(storeEvents[i + 1]).toBe('store:end');
+    }
   });
 
   it('stops promptly on mid-import abort with a consistent partial commit', async () => {
@@ -446,8 +471,11 @@ describe('GoogleHealthImportService — bounded look-ahead parse↔store overlap
     // Prefix property: stored dates are exactly the first K of the file order.
     expect(storedDates).toEqual(isoDays.slice(0, storedDates.length));
 
-    // Idempotent: re-importing skips the already-committed prefix and completes
-    // the rest (no duplicates, no errors).
+    // Idempotent: re-importing folds the already-committed prefix in place (a
+    // merge that dedupes by absolute timestamp, so no growth) and adds the rest,
+    // ending with all six days and no errors. With merge-on-conflict the prefix
+    // days count as writes (stored), not skips — re-import never errors and the
+    // record set is unchanged in content.
     const mock2 = mock; // same DB instance — already has the committed prefix
     const probe2 = createAsyncPoolProbe(mock2.events, { parseDelayMs: 0 });
     const service2 = new GoogleHealthImportService(mock2.db, probe2.factory);
@@ -456,8 +484,14 @@ describe('GoogleHealthImportService — bounded look-ahead parse↔store overlap
       skipDuplicates: true,
     });
     expect([...mock2.timeseries.values()].map((r) => r.date).sort()).toEqual(isoDays);
-    expect(rec2.recordsImported).toBe(6 - storedDates.length);
-    expect(rec2.recordsSkipped).toBe(storedDates.length);
+    // All six are writes (prefix via merge-put, remainder via add); none skipped.
+    expect(rec2.recordsImported).toBe(6);
+    expect(rec2.recordsSkipped).toBe(0);
+    expect(rec2.recordsErrored).toBe(0);
+    // Idempotent in content: each day's sample count is unchanged by the re-merge.
+    for (const r of mock2.timeseries.values()) {
+      expect((r.data as { sampleCount: number }).sampleCount).toBe(60);
+    }
   });
 
   it('continues past a recoverable per-file parse error, in order', async () => {
