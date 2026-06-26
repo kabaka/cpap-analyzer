@@ -287,6 +287,15 @@ export interface RenderOptions {
    * {@link module:views/Sessions/signalLanes}.sessionWallClockEpoch.
    */
   readonly axisWallClockEpochMs?: number;
+  /**
+   * CSS-px vertical scroll offset of the scroll container (`.canvasWrapper`) that
+   * holds the stacked lanes. The overlay canvas is the full content height and
+   * scrolls WITH the content, so a canvas-fixed Y scrolls out of view. We add this
+   * offset to the crosshair TIME-badge Y so the badge stays pinned to the top of
+   * the VISIBLE viewport as the user scrolls down to inspect lower lanes. Treated
+   * as `0` when `undefined` (i.e. not scrolled / no scroll container).
+   */
+  readonly viewportScrollTopPx?: number;
 }
 
 /** Result from a positional value lookup. */
@@ -2059,7 +2068,16 @@ export class SignalRenderer {
       const label = useWallClock
         ? `${formatWallClockLabel(wallClockEpoch, time, true)} (${formatDurationClock(time)})`
         : formatTimeLabel(time);
-      this.drawReadoutBadge(crosshairX, padding.top - 2, label, 'bottom');
+      // Pin the time badge to the top of the VISIBLE viewport. The overlay canvas is
+      // the full stack height and scrolls with the content, so without this offset
+      // the single time readout scrolls out of view once the user scrolls down to a
+      // lower lane (the per-lane value badges/dots stay visible because they ride
+      // their lanes, but the time readout is drawn once at canvas-top). Adding the
+      // scroll offset keeps it at the top of the visible area; at scrollTop=0 the
+      // position is identical to before. The badge's opaque background keeps it
+      // legible where it overlaps a waveform.
+      const scrollTop = options.viewportScrollTopPx ?? 0;
+      this.drawReadoutBadge(crosshairX, scrollTop + (padding.top - 2), label, 'bottom');
     }
 
     // Value readouts + intersection dots for ALL channels

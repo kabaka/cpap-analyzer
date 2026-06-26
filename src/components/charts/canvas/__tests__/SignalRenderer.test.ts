@@ -863,6 +863,170 @@ describe('SignalRenderer', () => {
   });
 });
 
+// ── Crosshair time-badge scroll pinning ──────────────────────────
+//
+// The crosshair TIME badge (the clock/duration readout drawn once near the top
+// of the stack) must be pinned to the top of the VISIBLE viewport when the
+// scroll container has scrolled down — otherwise it scrolls out of view on the
+// full-height overlay canvas. `RenderOptions.viewportScrollTopPx` shifts ONLY
+// that badge's Y by the scroll offset; the crosshair X, the per-lane value
+// badges, and the intersection dots are unaffected.
+//
+// We reach into the renderer's own mock 2D context (the global getContext stub
+// installed at the top of this file) and read the recorded fillText/roundRect
+// calls. The mock's measureText returns width 0, so badge geometry is fully
+// deterministic.
+
+describe('SignalRenderer crosshair time-badge scroll pinning', () => {
+  // A roomy top padding so the badge's bottom-anchored box (boxH = 15) lands
+  // well below y=0 at scrollTop=0 and never hits the `Math.max(0, …)` clamp in
+  // drawReadoutBadge — so the +N shift is observable as an exact delta.
+  const padding = { top: 40, right: 20, bottom: 30, left: 40 } as const;
+
+  function ctxOf(r: SignalRenderer): CanvasRenderingContext2D {
+    return (r as unknown as { ctx: CanvasRenderingContext2D }).ctx;
+  }
+
+  /** Render synchronously by invoking the rAF callback immediately. */
+  function renderSync(r: SignalRenderer, viewport: ViewportState, options: RenderOptions): void {
+    const rafSpy = vi
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((cb: FrameRequestCallback) => {
+        cb(0);
+        return 0;
+      });
+    try {
+      r.render(viewport, options);
+    } finally {
+      rafSpy.mockRestore();
+    }
+  }
+
+  function makeRenderer(): SignalRenderer {
+    const r = new SignalRenderer(document.createElement('canvas'));
+    r.resize(800, 400);
+    return r;
+  }
+
+  const channel: SignalChannel = {
+    name: 'Flow',
+    data: new Float32Array([0, 1, 2, 3, 4]),
+    sampleRate: 25,
+    unit: 'L/min',
+    color: '#0000ff',
+    physicalMin: -20,
+    physicalMax: 60,
+  };
+
+  const viewport: ViewportState = { startTime: 0, endTime: 10_000, channels: [channel] };
+
+  // Crosshair at the plot midpoint → time 5_000 ms → time label "00:05" (no
+  // wall-clock epoch supplied). The lane value badge uses toFixed(2) + unit, so
+  // it can never collide with this text.
+  const crosshairX = (padding.left + (800 - padding.right)) / 2;
+  const TIME_LABEL = formatTimeLabel(5_000);
+
+  function options(scrollTop?: number): RenderOptions {
+    return {
+      showCrosshair: true,
+      crosshairX,
+      showGrid: false,
+      eventMarkers: [],
+      channelHeight: 100,
+      padding,
+      ...(scrollTop !== undefined ? { viewportScrollTopPx: scrollTop } : {}),
+    };
+  }
+
+  /** The Y passed to the fillText call that rendered the time-label badge text. */
+  function timeBadgeTextY(ctx: CanvasRenderingContext2D): number {
+    const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls;
+    const match = calls.filter((c) => c[0] === TIME_LABEL);
+    expect(match).toHaveLength(1);
+    return match[0]![2] as number;
+  }
+
+  it('draws the time badge at the unscrolled Y when viewportScrollTopPx is unset', () => {
+    const r = makeRenderer();
+    renderSync(r, viewport, options());
+    const y = timeBadgeTextY(ctxOf(r));
+    // y = (padding.top - 2) - boxH + ph = 38 - 15 + 2 = 25. Captured as a
+    // regression guard for the unscrolled baseline.
+    expect(y).toBe(25);
+    r.dispose();
+  });
+
+  it('treats viewportScrollTopPx of 0 identically to unset', () => {
+    const a = makeRenderer();
+    renderSync(a, viewport, options());
+    const yUnset = timeBadgeTextY(ctxOf(a));
+    a.dispose();
+
+    const b = makeRenderer();
+    renderSync(b, viewport, options(0));
+    const yZero = timeBadgeTextY(ctxOf(b));
+    b.dispose();
+
+    expect(yZero).toBe(yUnset);
+  });
+
+  it('shifts the time badge down by exactly viewportScrollTopPx', () => {
+    const a = makeRenderer();
+    renderSync(a, viewport, options(0));
+    const yBase = timeBadgeTextY(ctxOf(a));
+    a.dispose();
+
+    const N = 200;
+    const b = makeRenderer();
+    renderSync(b, viewport, options(N));
+    const yScrolled = timeBadgeTextY(ctxOf(b));
+    b.dispose();
+
+    expect(yScrolled - yBase).toBe(N);
+  });
+
+  it('does not move the crosshair X line when scrolled', () => {
+    const a = makeRenderer();
+    renderSync(a, viewport, options(0));
+    const movesA = (ctxOf(a).moveTo as ReturnType<typeof vi.fn>).mock.calls;
+    a.dispose();
+
+    const b = makeRenderer();
+    renderSync(b, viewport, options(200));
+    const movesB = (ctxOf(b).moveTo as ReturnType<typeof vi.fn>).mock.calls;
+    b.dispose();
+
+    // The vertical crosshair line is moved to (crosshairX, padding.top) in both
+    // cases — its X is independent of the scroll offset.
+    const lineMoveA = movesA.find((c) => c[0] === crosshairX && c[1] === padding.top);
+    const lineMoveB = movesB.find((c) => c[0] === crosshairX && c[1] === padding.top);
+    expect(lineMoveA).toBeDefined();
+    expect(lineMoveB).toBeDefined();
+    expect(lineMoveB![0]).toBe(lineMoveA![0]);
+  });
+
+  it('does not shift the per-lane value badge or intersection dot by the scroll offset', () => {
+    // The intersection dot is drawn with ctx.arc(crosshairX, v.y, …); v.y is a
+    // lane-relative position that must NOT pick up the time badge's scroll shift.
+    const a = makeRenderer();
+    renderSync(a, viewport, options(0));
+    const arcsA = (ctxOf(a).arc as ReturnType<typeof vi.fn>).mock.calls;
+    a.dispose();
+
+    const b = makeRenderer();
+    renderSync(b, viewport, options(200));
+    const arcsB = (ctxOf(b).arc as ReturnType<typeof vi.fn>).mock.calls;
+    b.dispose();
+
+    // One lane → one intersection dot. Its X (crosshairX) and Y are identical
+    // regardless of the scroll offset.
+    expect(arcsA).toHaveLength(1);
+    expect(arcsB).toHaveLength(1);
+    expect(arcsB[0]![0]).toBe(arcsA[0]![0]); // X unchanged
+    expect(arcsB[0]![1]).toBe(arcsA[0]![1]); // Y unchanged (not scroll-shifted)
+  });
+});
+
 // ── resolveRibbonPattern (pattern selection + hatch back-compat) ──
 //
 // Pure selection logic for the ribbon non-colour encoding. Pixel output is

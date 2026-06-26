@@ -1744,6 +1744,11 @@ export default function SignalViewer() {
       // recording device's then-current local wall clock), not duration. NaN when
       // the session start is unparseable → renderer falls back to duration labels.
       axisWallClockEpochMs: wallClockEpoch,
+      // Live vertical scroll offset of the lane scroll container, so the renderer
+      // can pin the crosshair time badge to the top of the VISIBLE area instead of
+      // letting it scroll out of view with the full-height overlay canvas. Read
+      // fresh per paint so every direct render/overlay uses the current offset.
+      viewportScrollTopPx: canvasWrapperRef.current?.scrollTop ?? 0,
     };
   }, [eventMarkers, detectionMarkers, wearableRibbonBands, wallClockEpoch]);
 
@@ -2130,6 +2135,50 @@ export default function SignalViewer() {
       }
     };
   }, [totalDurationMs, renderRangeDirect, commitLiveViewport, getPaintScheduler]);
+
+  // ── Crosshair time-badge scroll-pin (overlay re-paint on scroll) ──
+  //
+  // The lane stack lives in a scrollable container and the overlay canvas is the
+  // full content height, so the crosshair time badge — drawn once at the top of the
+  // visible area — must be REPOSITIONED as the user scrolls, or it drifts. The
+  // badge Y already folds in `viewportScrollTopPx` (read live in buildRenderOptions),
+  // so we just need to re-paint the overlay when the scroll offset changes WHILE a
+  // crosshair is active. This follows the same direct-paint, ref-driven model as the
+  // hover path (no React state, no base-layer re-render) and coalesces bursts of
+  // scroll events into at most one overlay paint per animation frame.
+  useEffect(() => {
+    const wrapper = canvasWrapperRef.current;
+    if (!wrapper) return;
+
+    let rafId: number | null = null;
+    const paint = () => {
+      rafId = null;
+      const renderer = rendererRef.current;
+      const viewport = lastViewportRef.current;
+      const crosshairX = crosshairXRef.current;
+      // Nothing to reposition when no crosshair is showing (cheap early return).
+      if (!renderer || !viewport || crosshairX === null) return;
+      renderer.renderOverlay(viewport, {
+        ...buildRenderOptions(),
+        showCrosshair: true,
+        crosshairX,
+      });
+    };
+
+    const onScroll = () => {
+      // Skip entirely when no crosshair is active — scrolling without a hover does
+      // not need an overlay paint.
+      if (crosshairXRef.current === null) return;
+      if (rafId !== null) return; // already scheduled this frame
+      rafId = requestAnimationFrame(paint);
+    };
+
+    wrapper.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      wrapper.removeEventListener('scroll', onScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [buildRenderOptions]);
 
   // ── Shift-key cursor affordance (window-level keyup) ─────────
   //
