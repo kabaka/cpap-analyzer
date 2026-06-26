@@ -379,19 +379,23 @@ test.describe('Sessions calendar metric selector', () => {
     await expect(metricToggle(page)).toBeVisible();
     await expect(page.getByRole('searchbox', { name: /filter/i })).toHaveCount(0);
 
-    // Default metric AHI → no `metric` param; legend caption shows the AHI label.
+    // Default metric AHI → no `metric` param; the heatmap legend is the AHI
+    // legend. We assert on the legend LIST's accessible name (`<metric> legend`)
+    // rather than getByText — the metric string also appears inside SVG <title>
+    // / gridcell aria-labels (hidden nodes), and getByText would resolve to one
+    // of those. The legend list name is unique and visible.
     await expect(page).not.toHaveURL(/[?&]metric=/);
-    await expect(page.getByText('AHI (events/h)').first()).toBeVisible();
+    await expect(page.getByRole('list', { name: 'AHI (events/h) legend' })).toBeVisible();
 
-    // Switch to Usage → ?metric=usage and the usage legend caption.
+    // Switch to Usage → ?metric=usage and the usage legend.
     await metricToggle(page).getByRole('radio', { name: 'Usage hours' }).click();
     await expect(page).toHaveURL(/[?&]metric=usage(&|$)/);
-    await expect(page.getByText('Usage (hours)').first()).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Usage (hours) legend' })).toBeVisible();
 
-    // Switch to Leak → ?metric=leak and the leak legend caption.
+    // Switch to Leak → ?metric=leak and the leak legend.
     await metricToggle(page).getByRole('radio', { name: 'Median leak' }).click();
     await expect(page).toHaveURL(/[?&]metric=leak(&|$)/);
-    await expect(page.getByText('Leak median (L/min)').first()).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Leak median (L/min) legend' })).toBeVisible();
 
     // Switch back to AHI → the `metric` param is dropped (AHI is the default).
     await metricToggle(page).getByRole('radio', { name: 'Apnea–Hypopnea Index' }).click();
@@ -489,7 +493,7 @@ test.describe('Sessions view URL deep-link & history', () => {
       'aria-checked',
       'true',
     );
-    await expect(page.getByText('Leak median (L/min)').first()).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Leak median (L/min) legend' })).toBeVisible();
     // Calendar cells reflect the leak metric in their aria-labels.
     await expect(
       calendarGrid(page)
@@ -538,15 +542,25 @@ test.describe('Sessions view a11y smoke', () => {
     const { sessions, aggregates } = createTestSessions();
     await setupWithData(page, sessions, aggregates, '/sessions');
 
-    // The selected "Table view" radio is the group's single tab stop. Focus it
-    // directly, then ArrowRight selects "Calendar view" (roving-tabindex
-    // radiogroup pattern), which flips the view.
+    // The selected "Table view" radio is the group's single tab stop (roving
+    // tabindex): it carries tabindex=0 while the unselected segment is -1.
     const tableRadio = viewToggle(page).getByRole('radio', { name: 'Table view' });
-    await tableRadio.focus();
-    await expect(tableRadio).toBeFocused();
+    const calendarRadio = viewToggle(page).getByRole('radio', { name: 'Calendar view' });
+    await expect(tableRadio).toHaveAttribute('tabindex', '0');
+    await expect(calendarRadio).toHaveAttribute('tabindex', '-1');
 
+    // Focus the tab stop and drive selection with the keyboard. ArrowRight in the
+    // radiogroup pattern selects "Calendar view", which flips the view. We assert
+    // on the OBSERVABLE effects (selection state, the revealed calendar, the URL)
+    // rather than DOM `:focus`, keeping the check independent of OS-level window
+    // activation across the Chromium/Firefox/WebKit matrix.
+    await tableRadio.focus();
     await page.keyboard.press('ArrowRight');
-    await expect(viewToggle(page).getByRole('radio', { name: 'Calendar view' })).toBeFocused();
+
+    await expect(calendarRadio).toHaveAttribute('aria-checked', 'true');
+    await expect(tableRadio).toHaveAttribute('aria-checked', 'false');
+    // Roving tabindex moved with the selection.
+    await expect(calendarRadio).toHaveAttribute('tabindex', '0');
     await expect(calendarGrid(page)).toBeVisible();
     await expect(page).toHaveURL(/[?&]view=calendar(&|$)/);
   });
