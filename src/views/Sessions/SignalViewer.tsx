@@ -472,6 +472,22 @@ function DetectionChip({
  * `compact` flag switches to the single-row inline variant for short/collapsed
  * lanes. Stats text swaps in place (tabular figures prevent jitter).
  */
+/**
+ * The "— no data" chip variant, shared by the three empty-stats branches in
+ * {@link MeasureChip} (no stats, empty numeric, empty categorical).
+ */
+function MeasureChipNoData({ top, compact }: { top: number; compact: boolean }): JSX.Element {
+  return (
+    <div
+      className={`${styles.statChip} ${compact ? styles.statChipCompact : ''}`}
+      style={{ top: `${top}px` }}
+      aria-hidden="true"
+    >
+      <span className={styles.statChipNoData}>—</span>
+    </div>
+  );
+}
+
 function MeasureChip({
   stat,
   top,
@@ -484,30 +500,14 @@ function MeasureChip({
   const { stats } = stat;
 
   if (stats.kind === 'none') {
-    return (
-      <div
-        className={`${styles.statChip} ${compact ? styles.statChipCompact : ''}`}
-        style={{ top: `${top}px` }}
-        aria-hidden="true"
-      >
-        <span className={styles.statChipNoData}>—</span>
-      </div>
-    );
+    return <MeasureChipNoData top={top} compact={compact} />;
   }
 
   if (stats.kind === 'numeric') {
     const rows = numericChipRows(stats);
     const unit = rows.unit;
     if (rows.empty) {
-      return (
-        <div
-          className={`${styles.statChip} ${compact ? styles.statChipCompact : ''}`}
-          style={{ top: `${top}px` }}
-          aria-hidden="true"
-        >
-          <span className={styles.statChipNoData}>—</span>
-        </div>
-      );
+      return <MeasureChipNoData top={top} compact={compact} />;
     }
     if (compact) {
       // Single inline row: glyphs only, unit once at the end.
@@ -575,15 +575,7 @@ function MeasureChip({
   // Categorical (hypnogram): per-stage occupancy summary.
   const stageRows = categoricalChipRows(stats);
   if (stageRows.length === 0) {
-    return (
-      <div
-        className={`${styles.statChip} ${compact ? styles.statChipCompact : ''}`}
-        style={{ top: `${top}px` }}
-        aria-hidden="true"
-      >
-        <span className={styles.statChipNoData}>—</span>
-      </div>
-    );
+    return <MeasureChipNoData top={top} compact={compact} />;
   }
   if (compact) {
     return (
@@ -844,6 +836,16 @@ export default function SignalViewer() {
    * viewport even when sticky mode is off. Released → hidden (unless pinned/sticky).
    */
   const [altPeek, setAltPeek] = useState(false);
+
+  /**
+   * Whether the pointer is currently inside the plot area. A ref (not state) so it
+   * stays off the hot render path — it is read synchronously by the Alt-keydown
+   * handler to gate the peek. Set `true` while the pointer moves over the canvas
+   * wrapper and `false` on pointer leave. The whole point of this gate: a bare Alt
+   * keydown (e.g. Alt-Tab) must do NOTHING unless the pointer is over the plot, so
+   * the overlay never flips on — and stats never compute — at rest.
+   */
+  const pointerOverPlotRef = useRef(false);
 
   /**
    * Active ALT-DRAG measure marquee (the persistent sibling of the shift-zoom
@@ -2515,6 +2517,10 @@ export default function SignalViewer() {
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
 
+      // A press over the wrapper means the pointer is over the plot — keep the
+      // Alt-peek gate in sync even if no pointermove preceded this down.
+      pointerOverPlotRef.current = true;
+
       // SHIFT+drag starts a zoom-to-range SELECTION instead of a pan. The band is
       // drawn as a cheap DOM element; on release the pixel range is converted to a
       // time range and applied as the viewport. A plain drag (no Shift) pans.
@@ -2619,6 +2625,10 @@ export default function SignalViewer() {
     (e: React.PointerEvent<HTMLDivElement>) => {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
+
+      // The pointer is over the plot — gate for the Alt-peek handler (so bare Alt
+      // outside the plot, e.g. Alt-Tab, never activates the overlay).
+      pointerOverPlotRef.current = true;
 
       const x = e.clientX - rect.left;
       crosshairXRef.current = x;
@@ -2743,6 +2753,14 @@ export default function SignalViewer() {
 
   const handlePointerLeave = useCallback(() => {
     crosshairXRef.current = null;
+    // The pointer has left the plot — close the Alt-peek gate.
+    pointerOverPlotRef.current = false;
+    // If a bare-Alt peek was the ONLY reason the overlay was showing (sticky off,
+    // nothing pinned), clear it so the overlay doesn't linger after the pointer
+    // leaves — even if Alt is still physically held.
+    if (!measureMode && measureRegion === null) {
+      setAltPeek(false);
+    }
     // Drop the shift-cursor affordance once the pointer leaves the plot.
     setShiftZoomArmed(false);
     // A selection in flight when the pointer leaves WITHOUT pointer-capture (the
@@ -2783,7 +2801,14 @@ export default function SignalViewer() {
         crosshairX: null,
       });
     }
-  }, [isPanning, commitLiveViewport, finishSelection, finishMeasureMarquee]);
+  }, [
+    isPanning,
+    commitLiveViewport,
+    finishSelection,
+    finishMeasureMarquee,
+    measureMode,
+    measureRegion,
+  ]);
 
   // ── Keyboard data cursor (arrow keys move crosshair) ─────────
 
@@ -3160,6 +3185,14 @@ export default function SignalViewer() {
               values.push(s.value);
             }
           }
+          // NOTE — intentional divergence from the CPAP path's sentinel handling:
+          // wearable intraday channel names (`heart_rate_intraday`, `spo2_intraday`,
+          // …) are NOT keys in MEANINGFUL_SAMPLE_RANGES, so downstream
+          // `isMeaningfulSample` applies only its non-zero rule for them (the
+          // physiologic range-filter is a no-op). That is safe here: wearable samples
+          // are range-validated upstream at import, so no out-of-range sentinels reach
+          // this buffer. A future reader should NOT assume range filtering runs on
+          // these lanes the way it does for CPAP channels.
           wearableNumeric.set(laneId, {
             name: spec.dataType,
             unit: spec.unit,
@@ -3369,6 +3402,14 @@ export default function SignalViewer() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Alt') {
+        // Ignore keyboard autorepeat (cleanliness — the set is idempotent anyway).
+        if (e.repeat) return;
+        // Gate the peek on the pointer being OVER THE PLOT (the spec's intent:
+        // "hold Alt over the plot"). A bare Alt elsewhere — most commonly Alt-Tab —
+        // must NOT activate the overlay or trigger a stats pass. The Alt+drag
+        // marquee is unaffected: it starts from a pointerdown over the plot, so the
+        // ref is already true there.
+        if (!pointerOverPlotRef.current) return;
         setAltPeek(true);
         return;
       }
@@ -3376,6 +3417,10 @@ export default function SignalViewer() {
         const target = e.target as HTMLElement | null;
         const tag = target?.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+        // Yield Esc to other overlays this component owns that also handle Esc (the
+        // lanes drawer): if one is open, let it consume Esc rather than clobbering a
+        // pinned measure region the user didn't mean to clear.
+        if (drawerOpen) return;
         if (measureRegion !== null) {
           clearMeasureRegion();
           setMeasureAnnouncement('Region cleared. Measuring the viewport.');
@@ -3397,7 +3442,7 @@ export default function SignalViewer() {
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onWindowBlur);
     };
-  }, [measureRegion, measureMode, clearMeasureRegion, toggleMeasureMode]);
+  }, [measureRegion, measureMode, clearMeasureRegion, toggleMeasureMode, drawerOpen]);
 
   // ── Conditional rendering ────────────────────────────────────
 
