@@ -7,7 +7,9 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **The hovered-region readout in the session signal viewer's pinned legend bar is no longer prematurely truncated.** The right-aligned readout (showing the device event or detection region under your pointer) previously had a fixed width cap that cut off all but the shortest labels with an ellipsis, even when there was plenty of empty space in the row. It now expands to fit its content and uses whatever width is left over after the left-aligned legend items, only truncating with an ellipsis when the legend and readout together would exceed the row — keeping the full text visible far more often (and still available in full via hover tooltip when it does have to shorten).
 
 ## [2026.06.18] — 2026-06-26
 

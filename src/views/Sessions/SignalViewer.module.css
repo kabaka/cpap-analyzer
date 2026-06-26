@@ -148,12 +148,16 @@
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
   padding: var(--space-1) var(--space-2);
-  /* Single line: yield/shrink before forcing the legend to wrap (the inner text
-     span carries the ellipsis truncation). */
+  /* Single line: grow to consume the row space the left-aligned legend leaves
+     free (no arbitrary cap), but yield/shrink + ellipsis before forcing the
+     legend to wrap or overflowing the bar. `flex-grow: 1` claims the leftover
+     width when the legend is short; `flex-shrink: 1` + `min-width: 0` lets it
+     give that width back (the inner text span carries the ellipsis truncation)
+     when the legend is long. `margin-left: auto` keeps it trailing-edge even
+     when it does not grow. */
   white-space: nowrap;
   min-width: 0;
-  flex: 0 1 auto;
-  max-width: 42ch;
+  flex: 1 1 auto;
   /* Reserve a one-line height so the empty state holds its row position. */
   min-height: 1.4em;
 }
