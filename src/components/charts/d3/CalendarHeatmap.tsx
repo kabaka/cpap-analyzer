@@ -27,7 +27,7 @@
  * @module components/charts/d3/CalendarHeatmap
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useChartColors } from '../useChartColors';
 import styles from './CalendarHeatmap.module.css';
@@ -338,6 +338,11 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
 
   const activeTabDate = focusedDate ?? defaultFocusDate;
 
+  // Set true when an arrow-key move requests DOM focus, so the layout effect
+  // below only steals focus on keyboard navigation — never on mount or when the
+  // window/data changes (which also update `focusedDate`).
+  const pendingFocusRef = useRef(false);
+
   const moveFocus = useCallback(
     (fromDate: string, deltaDays: number) => {
       const from = parseISO(fromDate);
@@ -345,15 +350,23 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
       const key = ISO_FORMAT(target);
       const cell = cellByDate.get(key);
       if (!cell) return; // outside the rendered window — stay put.
+      pendingFocusRef.current = true;
       setFocusedDate(key);
-      // Move DOM focus to the newly focused cell.
-      requestAnimationFrame(() => {
-        const el = containerRef.current?.querySelector<SVGGElement>(`[data-date="${key}"]`);
-        el?.focus();
-      });
     },
     [cellByDate],
   );
+
+  // Move DOM focus to the newly active cell AFTER React commits the roving
+  // tabindex update. useLayoutEffect runs synchronously post-commit (before
+  // paint), which focuses the target reliably across engines — notably WebKit,
+  // where the previous requestAnimationFrame-deferred focus() on the SVG <g>
+  // raced and was dropped, breaking keyboard navigation.
+  useLayoutEffect(() => {
+    if (!pendingFocusRef.current || focusedDate == null) return;
+    pendingFocusRef.current = false;
+    const el = containerRef.current?.querySelector<SVGGElement>(`[data-date="${focusedDate}"]`);
+    el?.focus();
+  }, [focusedDate]);
 
   // ── Tooltip helpers ───────────────────────────────────────────
   const tooltipLines = useCallback(
