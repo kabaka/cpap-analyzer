@@ -562,10 +562,13 @@ export default function SessionList() {
   // (mirrors handleRowClick). Only dates WITH a session get an entry; gap days
   // never fire onSelectDate. AHI may be null (too-short recording) — pass it
   // through as null so the heatmap renders the PARTIAL state, never coercing to 0.
+  // Depends on filteredRows (not sortedRows): cell position is keyed by date, so
+  // table sort order is irrelevant here and depending on it would rebuild this on
+  // every sort toggle for an identical result.
   const { calendarData, dateToSessionId } = useMemo(() => {
-    const data: CalendarDatum[] = [];
+    const valueByDate = new Map<string, number | null>();
     const idByDate = new Map<string, string>();
-    for (const row of sortedRows) {
+    for (const row of filteredRows) {
       let value: number | null;
       switch (metric) {
         case 'usage':
@@ -579,18 +582,17 @@ export default function SessionList() {
           value = row.ahi;
           break;
       }
-      // Last-wins if two sessions share a date (rare); keep the data array and
-      // the id map consistent by overwriting both.
+      // Last-wins if two sessions share a date (rare); the Map keeps the value
+      // and id consistent in O(1) without an inner array scan.
+      valueByDate.set(row.date, value);
       idByDate.set(row.date, row.id);
-      const existingIndex = data.findIndex((d) => d.date === row.date);
-      if (existingIndex >= 0) {
-        data[existingIndex] = { date: row.date, value };
-      } else {
-        data.push({ date: row.date, value });
-      }
     }
+    const data: CalendarDatum[] = Array.from(valueByDate, ([date, value]) => ({
+      date,
+      value,
+    }));
     return { calendarData: data, dateToSessionId: idByDate };
-  }, [sortedRows, metric]);
+  }, [filteredRows, metric]);
 
   // ISO bounds of the global date range so the calendar renders the FULL window
   // (gaps across the whole span show, not just the min/max of present sessions).
