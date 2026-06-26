@@ -77,7 +77,6 @@ export interface CalendarBand {
 
 export interface CalendarHeatmapProps {
   data: CalendarDatum[];
-  width?: number;
   /** Cell size in px (default 13). */
   cellSize?: number;
   /** Minimum colour (continuous mode only). */
@@ -116,9 +115,10 @@ export interface CalendarHeatmapProps {
 
 // ── Layout constants ─────────────────────────────────────────────
 // Fixed cell geometry — no width-stretch. Pitch = cell + gap.
-// TODO(data-visualization): optional responsive step-down (tablet 12/gap2,
-// mobile 11/gap2) via a ResizeObserver. Deferred for robustness; horizontal
-// scroll handles narrow viewports today.
+// Cells are a fixed size by design: narrow viewports scroll the week grid
+// horizontally (the gutter stays pinned) rather than shrinking cells. A
+// responsive step-down (e.g. smaller cells on tablet/mobile via a
+// ResizeObserver) could be a future enhancement.
 const DEFAULT_CELL_SIZE = 13;
 const CELL_GAP = 3;
 const CELL_RADIUS = 2;
@@ -185,6 +185,14 @@ interface Cell {
 interface YearPanel {
   year: number;
   cells: Cell[];
+  /**
+   * Cells bucketed by week-column: index = week-column (0…weeks-1) → that
+   * column's cells, in row (day-of-week) order. Precomputed once when the panel
+   * is built so render never re-filters `cells` per column (avoids O(weeks ×
+   * cells) work on every render, including frequent tooltip-hover re-renders).
+   * Empty columns are `[]`.
+   */
+  weekColumns: Cell[][];
   monthLabels: { label: string; x: number }[];
   /** Number of week-columns in this panel (≤ 53). */
   weeks: number;
@@ -226,7 +234,6 @@ function weekOfYear(day: Date, year: number): number {
 
 const CalendarHeatmap = React.memo(function CalendarHeatmap({
   data,
-  width: widthProp,
   cellSize = DEFAULT_CELL_SIZE,
   minColor,
   maxColor,
@@ -392,12 +399,22 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
       }
 
       const maxWeek = panelCells.reduce((acc, c) => Math.max(acc, c.x), 0);
+      const weeks = maxWeek + 1;
+
+      // Bucket cells by week-column once. `panelCells` is in chronological
+      // order, so each column ends up in row (day-of-week) order — matching the
+      // previous per-column filter exactly.
+      const weekColumns: Cell[][] = Array.from({ length: weeks }, () => []);
+      for (const c of panelCells) {
+        weekColumns[c.x]?.push(c);
+      }
 
       builtPanels.push({
         year,
         cells: panelCells,
+        weekColumns,
         monthLabels: months,
-        weeks: maxWeek + 1,
+        weeks,
       });
       allCells.push(...panelCells);
     }
@@ -575,8 +592,7 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
 
   /** Render the cell groups for one panel, grouped by week-column for ARIA rows. */
   const renderPanelCells = (panel: YearPanel) =>
-    Array.from({ length: panel.weeks }, (_, weekIndex) => {
-      const weekCells = panel.cells.filter((c) => c.x === weekIndex);
+    panel.weekColumns.map((weekCells, weekIndex) => {
       if (weekCells.length === 0) return null;
       return (
         <g key={weekIndex} role="row">
@@ -648,8 +664,7 @@ const CalendarHeatmap = React.memo(function CalendarHeatmap({
       <div className={styles.panels}>
         {panels.map((panel, panelIndex) => {
           const isTopPanel = panelIndex === 0;
-          const gridWidth = panel.weeks * pitch - CELL_GAP + 1;
-          const svgWidth = widthProp ?? gridWidth;
+          const svgWidth = panel.weeks * pitch - CELL_GAP + 1;
           return (
             <div className={styles.panel} key={panel.year}>
               {/* Fixed gutter: year label (+ weekday labels on the top panel). */}
