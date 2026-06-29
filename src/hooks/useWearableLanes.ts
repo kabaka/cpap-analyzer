@@ -13,15 +13,32 @@
  *
  * ## Time base
  *
- * All wearable intraday timestamps in the Google Health export are local
- * wall-clock with no timezone. To align cleanly with CPAP session timestamps —
- * which are also wall-clock — we interpret every wearable timestamp as
- * wall-clock-as-UTC (the same convention {@link parseFitbitLegacyDateTime}
- * uses). `timestampMs` in the returned samples is therefore directly comparable
- * to `Date.parse(session.startTime)` parsed the same way; the viewer subtracts
- * the session start to get session-relative offsets. This is intentionally
- * timezone-independent so a record imported on one machine renders identically
- * on another (and in CI).
+ * Most wearable intraday timestamps in the Google Health export are local
+ * wall-clock with no timezone (heart rate, HRV detail, snoring, sleep stages).
+ * To align cleanly with CPAP session timestamps — which are also wall-clock —
+ * we interpret every such timestamp as wall-clock-as-UTC (the same convention
+ * {@link parseFitbitLegacyDateTime} and {@link localIsoToWallClockEpoch} use).
+ * `timestampMs` in the returned samples is therefore in the same frame as
+ * `sessionWallClockEpoch(session.startTime)` (see `signalLanes.ts`); the viewer
+ * subtracts that base to get session-relative offsets. Do NOT compare against
+ * `new Date(session.startTime).getTime()` / `Date.parse(...)` for wearable
+ * alignment: those interpret a timezone-less string in the runtime's local
+ * zone, which shifts the overlay by the browser's UTC offset (e.g. 7–8 h for a
+ * US-Pacific user) and differs between machines and CI. The wall-clock-as-UTC
+ * base is intentionally timezone-independent so a record imported on one
+ * machine renders identically on another.
+ *
+ * ## Known caveat — SpO₂ intraday is UTC-sourced
+ *
+ * Unlike the local-time sources above, the Minute SpO₂ export carries a `Z`
+ * (UTC) suffix (see `parsers.ts`). {@link normaliseSpO2} currently reuses the
+ * wall-clock-as-UTC path, so under that documented UTC assumption SpO₂ samples
+ * render at their UTC clock face rather than the user's local wall-clock —
+ * displacing the SpO₂ lane by the user's UTC offset. Heart rate and the other
+ * local-time lanes are unaffected. A correct fix needs a real-export
+ * confirmation of the SpO₂ timezone plus a captured local UTC offset; until
+ * then the SpO₂ overlay's absolute clock position is unreliable away from UTC.
+ * See `docs/accuracy/wearables.md` §10.
  *
  * Follows the useState + useEffect pattern with monotonic request sequencing
  * used across the wearable hooks (see {@link useWearableData}); a stale slow
