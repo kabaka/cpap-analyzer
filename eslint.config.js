@@ -50,6 +50,7 @@ export default tseslint.config(
     ],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
+      'react-refresh/only-export-components': 'off',
     },
   },
   // Release tooling runs under Node (process, node:* imports, console output for
@@ -61,6 +62,15 @@ export default tseslint.config(
         ...globals.node,
       },
     },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  // The fixture generator is a CLI script whose console output is legitimate
+  // progress feedback (same reasoning as the release-tooling override). Allow
+  // console use there.
+  {
+    files: ['tests/fixtures/generators/**/*.ts'],
     rules: {
       'no-console': 'off',
     },
