@@ -13,15 +13,28 @@
  *
  * ## Time base
  *
- * All wearable intraday timestamps in the Google Health export are local
- * wall-clock with no timezone. To align cleanly with CPAP session timestamps —
- * which are also wall-clock — we interpret every wearable timestamp as
- * wall-clock-as-UTC (the same convention {@link parseFitbitLegacyDateTime}
- * uses). `timestampMs` in the returned samples is therefore directly comparable
- * to `Date.parse(session.startTime)` parsed the same way; the viewer subtracts
- * the session start to get session-relative offsets. This is intentionally
- * timezone-independent so a record imported on one machine renders identically
- * on another (and in CI).
+ * Wearable intraday lanes split into two timestamp conventions:
+ *
+ * - **Local wall-clock (no timezone):** `hrv_detail`, `snoring_segments`,
+ *   `sleep_stages`. These are interpreted as wall-clock-as-UTC (the same
+ *   convention {@link localIsoToWallClockEpoch} uses) and align to CPAP for
+ *   free, since CPAP session timestamps are also local wall-clock.
+ * - **UTC-sourced:** `heart_rate_intraday` AND `spo2_intraday`. Fitbit stamps
+ *   both in UTC, so under the wall-clock-as-UTC convention their samples land at
+ *   their UTC clock face — a 1:00 AM PDT reading would otherwise render at
+ *   8:00 AM (a 7–8 h shift for a US-Pacific user). These two lanes are converted
+ *   to LOCAL time by adding a per-night signed UTC offset via
+ *   {@link applyOffset}, using the shared offset table from
+ *   {@link useWearableOffsets} (derived from CPAP overlap; DST/browser-zone
+ *   fallback). See `docs/accuracy/wearables.md` §10.
+ *
+ * After conversion every lane's `timestampMs` is in the same frame as
+ * `sessionWallClockEpoch(session.startTime)` (see `signalLanes.ts`); the viewer
+ * subtracts that base to get session-relative offsets, so no SignalViewer change
+ * is needed. Do NOT compare against `new Date(session.startTime).getTime()` /
+ * `Date.parse(...)` for wearable alignment: those interpret a timezone-less
+ * string in the runtime's local zone, reintroducing exactly the shift the UTC
+ * conversion removes.
  *
  * Follows the useState + useEffect pattern with monotonic request sequencing
  * used across the wearable hooks (see {@link useWearableData}); a stale slow
@@ -41,6 +54,8 @@ import type {
 } from '@/types';
 import { getDB } from '@/services/storage/getDB';
 import { localIsoToWallClockEpoch } from '@/utils/wallClock';
+import { applyOffset } from '@/analysis/crossSource/wearableTimezone';
+import { useWearableOffsets, offsetForDate } from '@/hooks/useWearableOffsets';
 
 // ---------------------------------------------------------------------------
 // Public types — the frontend lane work builds against these.
@@ -162,20 +177,33 @@ function neighbourDates(date: string): string[] {
 // Per-type normalisers — each maps a stored payload to WearableSample[].
 // ---------------------------------------------------------------------------
 
-function normaliseHeartRate(data: FitbitHeartRateIntraday): WearableSample[] {
+/**
+ * Heart rate is UTC-sourced: each sample's wall-clock-as-UTC timestamp is shifted
+ * into the local frame by `offsetMinutes` (the resolved per-night offset for this
+ * record's date). With `offsetMinutes = 0` (unknown date) samples are left in
+ * place — the pre-fix behaviour — so a missing offset degrades gracefully.
+ */
+function normaliseHeartRate(
+  data: FitbitHeartRateIntraday,
+  offsetMinutes: number,
+): WearableSample[] {
   const base = data.baseTimestampMs;
   return data.samples.map((s) => ({
-    timestampMs: base + s.offsetSec * 1000,
+    timestampMs: applyOffset(base + s.offsetSec * 1000, offsetMinutes),
     value: s.bpm,
     confidence: s.confidence,
   }));
 }
 
-function normaliseSpO2(data: FitbitSpO2Intraday): WearableSample[] {
+/**
+ * SpO₂ is UTC-sourced (the Minute SpO₂ export carries a `Z`): each sample is
+ * shifted into the local frame by `offsetMinutes` exactly like heart rate.
+ */
+function normaliseSpO2(data: FitbitSpO2Intraday, offsetMinutes: number): WearableSample[] {
   const base = localIsoToWallClockEpoch(data.sleepStartTime);
   if (Number.isNaN(base)) return [];
   return data.samples.map((s) => ({
-    timestampMs: base + s.minuteOffset * 60_000,
+    timestampMs: applyOffset(base + s.minuteOffset * 60_000, offsetMinutes),
     value: s.value,
   }));
 }
@@ -213,13 +241,21 @@ function normaliseSnoring(data: FitbitSnoringSegments): WearableSample[] {
 /**
  * Dispatch a stored timeseries payload to its normaliser. Returns `null` for
  * data types this hook does not render.
+ *
+ * `offsetMinutes` is the resolved per-night UTC→local offset for the record's own
+ * date; it is applied ONLY to the two UTC-sourced lanes (heart rate, SpO₂). The
+ * three local lanes ignore it (they are already local wall-clock).
  */
-function normalise(dataType: FitbitTimeseriesType, data: unknown): WearableSample[] | null {
+function normalise(
+  dataType: FitbitTimeseriesType,
+  data: unknown,
+  offsetMinutes: number,
+): WearableSample[] | null {
   switch (dataType) {
     case 'heart_rate_intraday':
-      return normaliseHeartRate(data as FitbitHeartRateIntraday);
+      return normaliseHeartRate(data as FitbitHeartRateIntraday, offsetMinutes);
     case 'spo2_intraday':
-      return normaliseSpO2(data as FitbitSpO2Intraday);
+      return normaliseSpO2(data as FitbitSpO2Intraday, offsetMinutes);
     case 'hrv_detail':
       return normaliseHrvDetail(data as FitbitHRVDetail);
     case 'sleep_stages':
@@ -292,6 +328,12 @@ export function useWearableLanes(
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
 
+  // Shared per-date UTC→local offset table for the two UTC lanes (HR, SpO₂).
+  // Every consumer of these lanes reads the same table, so the lanes never
+  // diverge. Local lanes ignore it. Re-running when the table changes is safe:
+  // the offsets are near-constant, so this re-fetch is rare (import or first load).
+  const { table: offsetTable } = useWearableOffsets(source);
+
   // Stable dependency key so identical requests don't re-fetch.
   const typesKey = dataTypes.slice().sort().join(',');
 
@@ -336,7 +378,11 @@ export function useWearableLanes(
           for (let d = 0; d < dates.length; d++) {
             const record = records[i * dates.length + d];
             if (!record) continue; // Missing neighbour date — normal.
-            const samples = normalise(record.dataType, record.data);
+            // Offset is keyed on the record's OWN date (a cross-midnight night
+            // maps its evening tail and morning bulk to their own dates' offsets;
+            // within a night these are equal barring a DST boundary).
+            const offsetMinutes = offsetForDate(offsetTable, record.date);
+            const samples = normalise(record.dataType, record.data, offsetMinutes);
             if (!samples) continue;
             hadRecord = true;
             for (const s of samples) merged.push(s);
@@ -359,7 +405,7 @@ export function useWearableLanes(
         }
       }
     })();
-  }, [date, typesKey, source]);
+  }, [date, typesKey, source, offsetTable]);
 
   return { series, loading, error };
 }

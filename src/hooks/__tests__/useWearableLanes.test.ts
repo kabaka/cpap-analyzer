@@ -28,6 +28,20 @@ vi.mock('@/services/storage/getDB', () => ({
   getDB: () => Promise.resolve({ getIntegrationTimeseriesByKey: mockGetByKey }),
 }));
 
+// Mock the shared offset provider so these tests are deterministic and
+// TZ-independent: we inject an explicit `date → offsetMinutes` table rather than
+// depending on the runtime zone or a seeded DB. The default table is empty (no
+// shift), so existing assertions on un-shifted timestamps still hold; individual
+// tests override it to assert the UTC lanes ARE shifted.
+const mockOffsetTable = { current: new Map<string, number>() };
+vi.mock('@/hooks/useWearableOffsets', () => ({
+  useWearableOffsets: () => ({ table: mockOffsetTable.current, loading: false }),
+  // Reproduce the trivial "unknown date ⇒ 0" rule so the hook applies the same
+  // offset the real provider would; avoids importActual (which would pull in a
+  // circular import chain via signalLanes at mock-hoist time).
+  offsetForDate: (table: ReadonlyMap<string, number>, date: string) => table.get(date) ?? 0,
+}));
+
 import { useWearableLanes, SLEEP_STAGE_CODES } from '@/hooks/useWearableLanes';
 
 function tsRecord(dataType: string, date: string, data: unknown): IntegrationTimeseries {
@@ -44,6 +58,9 @@ function tsRecord(dataType: string, date: string, data: unknown): IntegrationTim
 describe('useWearableLanes', () => {
   beforeEach(() => {
     mockGetByKey.mockReset();
+    // Default: empty table ⇒ no shift, so the pre-existing timestamp assertions
+    // (which predate the UTC→local fix) remain valid.
+    mockOffsetTable.current = new Map<string, number>();
   });
 
   describe('skip conditions', () => {
@@ -104,6 +121,70 @@ describe('useWearableLanes', () => {
       { timestampMs: base, value: 96 },
       { timestampMs: base + 120_000, value: 95 },
     ]);
+  });
+
+  describe('UTC → local offset application', () => {
+    it('shifts heart-rate timestamps by the resolved per-date offset', async () => {
+      // PST offset for the record's date: add -480 min to the UTC clock face.
+      mockOffsetTable.current = new Map([['2024-01-15', -480]]);
+      const base = Date.UTC(2024, 0, 15, 7, 0, 0); // 07:00 UTC clock face
+      const hr: FitbitHeartRateIntraday = {
+        baseTimestampMs: base,
+        samples: [
+          { offsetSec: 0, bpm: 60, confidence: 3 },
+          { offsetSec: 5, bpm: 62, confidence: 2 },
+        ],
+        sampleCount: 2,
+      };
+      mockGetByKey.mockResolvedValue(tsRecord('heart_rate_intraday', '2024-01-15', hr));
+
+      const { result } = renderHook(() => useWearableLanes('2024-01-15', ['heart_rate_intraday']));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const shifted = base - 480 * 60_000; // 07:00Z → 23:00 local (prev day)
+      expect(result.current.series.heart_rate_intraday!.samples).toEqual([
+        { timestampMs: shifted, value: 60, confidence: 3 },
+        { timestampMs: shifted + 5000, value: 62, confidence: 2 },
+      ]);
+    });
+
+    it('shifts SpO₂ timestamps by the resolved per-date offset', async () => {
+      mockOffsetTable.current = new Map([['2024-01-15', -480]]);
+      const spo2: FitbitSpO2Intraday = {
+        sleepStartTime: '2024-01-15T07:00:00', // UTC clock face
+        samples: [
+          { minuteOffset: 0, value: 96 },
+          { minuteOffset: 2, value: 95 },
+        ],
+        sampleCount: 2,
+      };
+      mockGetByKey.mockResolvedValue(tsRecord('spo2_intraday', '2024-01-15', spo2));
+
+      const { result } = renderHook(() => useWearableLanes('2024-01-15', ['spo2_intraday']));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const shifted = Date.UTC(2024, 0, 15, 7, 0, 0) - 480 * 60_000;
+      expect(result.current.series.spo2_intraday!.samples).toEqual([
+        { timestampMs: shifted, value: 96 },
+        { timestampMs: shifted + 120_000, value: 95 },
+      ]);
+    });
+
+    it('does NOT shift a local lane (hrv_detail) even when an offset is present', async () => {
+      mockOffsetTable.current = new Map([['2024-01-15', -480]]);
+      const hrv: FitbitHRVDetail = {
+        intervals: [{ timestamp: '2024-01-15T23:00:00', rmssd: 38, coverage: 0.8, hf: 1, lf: 2 }],
+      };
+      mockGetByKey.mockResolvedValue(tsRecord('hrv_detail', '2024-01-15', hrv));
+
+      const { result } = renderHook(() => useWearableLanes('2024-01-15', ['hrv_detail']));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // Unchanged: local lanes ignore the offset entirely.
+      expect(result.current.series.hrv_detail!.samples[0]!.timestampMs).toBe(
+        Date.UTC(2024, 0, 15, 23, 0, 0),
+      );
+    });
   });
 
   it('normalises hrv_detail absolute local-time timestamps and exposes coverage', async () => {

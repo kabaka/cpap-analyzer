@@ -29,6 +29,7 @@ import { OPFSService } from '@/services/storage/OPFSService';
 import { clearAllUserData } from '@/services/storage/clearAllUserData';
 import { downloadBlob, encryptBuffer } from '@/services/reports';
 import { useDataStore } from '@/stores/useDataStore';
+import { resetWearableOffsets } from '@/hooks/useWearableOffsets';
 import type { ImportRecord, Session } from '@/types';
 import { formatBytes } from '@/utils/formatBytes';
 import styles from './DataManagement.module.css';
@@ -401,6 +402,11 @@ function CleanupTab() {
       }
 
       clearCache();
+      // Deleting the CPAP sessions that anchor wearable timezone-offset
+      // derivation must invalidate the offset cache: `clearCache()` only bumps
+      // `lastImportAt`, which does not force a recompute when it was already
+      // null (offsets built on first load before any import this session).
+      resetWearableOffsets();
       setDeleteRangeOpen(false);
       setStatus({
         type: 'success',
@@ -849,6 +855,9 @@ function BackupRestoreTab() {
       }
 
       clearCache();
+      // A restore replaces all sessions/wearable data; drop derived offsets too
+      // (same null-import-token rationale as the range-delete path above).
+      resetWearableOffsets();
       setRestoreFile(null);
       setRestorePassword('');
       setStatus({ type: 'success', message: 'Backup restored successfully.' });

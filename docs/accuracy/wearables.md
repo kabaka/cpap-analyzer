@@ -1,7 +1,7 @@
 # Wearable & Pulse-Oximeter Measurement Accuracy
 
 **Part of the [Measurement Accuracy & Uncertainty](./README.md) reference series.**
-**Audience:** Patients with a data-science, mathematics, or bioinformatics background (and motivated laypersons) · **Last updated:** 2026-06-15
+**Audience:** Patients with a data-science, mathematics, or bioinformatics background (and motivated laypersons) · **Last updated:** 2026-07-01
 
 **Related:** [CPAP/PAP device accuracy](./cpap-devices.md) · [Measurement uncertainty & statistics](./measurement-uncertainty.md) · [ADR 0018](../decisions/0018-measurement-uncertainty-reliability-display.md)
 
@@ -197,6 +197,112 @@ From **most** to **least** defensible for a CPAP patient overlaying external sig
 - **Never let a wearable override the flow data.** CPAP-reported respiratory events are the primary signal; wearables are context, not arbiters.
 - **Surface the skin-pigment caveat for SpO₂.** Given directional overestimation, a "normal" consumer SpO₂ should never be presented as reassurance, particularly for darker-skinned users — framed descriptively and cited.
 - **Confirm clinical thresholds with the `resmed-specialist`** before encoding any rule that combines wearable SpO₂ with CPAP events.
+
+---
+
+## 10. Timezone handling of imported wearable signals (engineering audit)
+
+> **Why this section exists.** A user in US-Pacific reported that wearable vitals
+> in the CPAP Analyzer appeared offset by ~7–8 hours from the same data in the
+> Fitbit app. 7–8 hours is exactly the US-Pacific UTC offset (UTC−7 PDT /
+> UTC−8 PST), the classic signature of a local-vs-UTC timestamp mismatch. This
+> section records the audit of how each imported wearable signal is timestamped
+> and rendered, and documents the fix, so the conclusion is verifiable and
+> protected against regression.
+>
+> **Correction (2026-07-01).** An earlier revision of this section concluded
+> "heart rate is correct; only SpO₂ is suspect." That was **wrong**. A verified
+> real export shows the intraday `heart_rate` **and** `spo2` lanes are BOTH
+> stamped in **UTC**, so both were displaced by the user's UTC offset. Both are
+> now converted to local time. The rest of this section reflects the verified
+> truth and the implemented fix.
+
+### 10.1 The wall-clock-as-UTC convention
+
+CPAP session timestamps are **local wall-clock with no timezone**. To overlay
+wearable signals on the session timeline without any timezone arithmetic (which
+would otherwise make a record render differently on different machines and in
+CI), the app uses a single convention everywhere: a timezone-less wall-clock
+timestamp is interpreted **as if it were UTC** — its literal calendar/clock
+components are fed straight to `Date.UTC`. The session's alignment base
+(`sessionWallClockEpoch`) is derived the same way, so a wearable sample and a
+CPAP sample that occurred at the same wall-clock instant land at the same
+session-relative offset, independent of the viewing browser's timezone.
+
+This is correct **only for sources that are themselves in local wall-clock
+time.** A source in true UTC violates the premise and is displaced by the user's
+UTC offset — which is exactly what happened to the heart-rate and SpO₂ lanes.
+
+### 10.2 Per-source timezone inventory
+
+| Wearable source (intraday)              | Export timestamp format       | Timezone      | Rendering (after fix)                | Status                |
+| --------------------------------------- | ----------------------------- | ------------- | ------------------------------------ | --------------------- |
+| **Heart rate** (`heart_rate-*.json`)    | UTC epoch / ISO               | **UTC**       | UTC → **local** via per-night offset | **Fixed — see §10.3** |
+| **SpO₂ minute** (`Minute SpO2 - *.csv`) | `YYYY-MM-DDTHH:MM:SSZ`        | **UTC** (`Z`) | UTC → **local** via per-night offset | **Fixed — see §10.3** |
+| HRV detail                              | `YYYY-MM-DDTHH:MM:SS` (no TZ) | Local         | wall-clock-as-UTC (untouched)        | Correct               |
+| Snoring segments                        | `YYYY-MM-DDTHH:MM:SS` (no TZ) | Local         | wall-clock-as-UTC (untouched)        | Correct               |
+| Sleep stages                            | local ISO (no TZ)             | Local         | wall-clock-as-UTC (untouched)        | Correct               |
+
+Daily/date-keyed sources (sleep score, stress, resting HR, readiness,
+temperature, activity, daily SpO₂) only use the calendar date, so a sub-day
+timezone shift cannot move them onto the wrong night except within a few hours of
+midnight; they are out of scope for the intraday-offset issue. Date-keyed
+**correlations** (`useCorrelationData`, `crossSource`) join CPAP nightly
+aggregates to wearable daily summaries by date and never touch intraday
+time-of-day, so they are unaffected by the offset in either direction.
+
+### 10.3 The fix — CPAP-overlap-derived per-night offset (both UTC lanes)
+
+Both UTC lanes are converted to local time by adding a **signed per-night UTC
+offset** (minutes to ADD to a UTC clock to obtain the local clock; PDT = −420),
+via `applyOffset(utcEpoch, offsetMinutes)`.
+
+The offset is **derived from the data**, not requested from the user. The
+overlapping CPAP session is local-time ground truth (a session happens during
+sleep). The estimator aligns the wearable sleep feature to that session:
+
+1. **Per-night estimate.** For each night, the wearable sleep-onset edge is
+   aligned to the CPAP session start; the raw offset is snapped to the 15-minute
+   civil-offset grid (`src/analysis/crossSource/wearableTimezone.ts`).
+2. **SpO₂-first anchoring (performance).** SpO₂ minute data is UTC, inherently
+   sleep-only, and small, so it aligns to the CPAP window directly and is the
+   preferred anchor. The 24/7 heart-rate trough is used to anchor a night ONLY
+   where that night has no SpO₂ — so multi-year, full-resolution HR arrays are
+   not loaded merely to build the table (principle #3, performance).
+3. **Cross-night stabilisation.** A windowed mode vote overrides single-night
+   noise while still letting a genuine DST/travel step-change flip within a few
+   nights of the boundary; nearest-neighbour fill covers nights with no estimate.
+4. **Fallback zone.** For any date the CPAP path cannot resolve, the offset is
+   derived from the browser's IANA zone (`Intl.DateTimeFormat().resolvedOptions()`)
+   **for that specific date**, so DST is respected (`ianaZoneOffsetForDate`). When
+   even the fallback yields nothing, the sample is left in place (offset 0) rather
+   than mis-shifted.
+
+The resulting `date → offset` table is computed **once per source** and shared by
+every consumer (`useWearableOffsets`), so the heart-rate and SpO₂ lanes can never
+diverge. It is recomputed only when the underlying data changes (import), never
+per render. No offset is persisted beyond this derived in-memory map, and no
+network call is made — the derivation is entirely local (privacy principle #1).
+
+After conversion, an HR or SpO₂ sample lands at its original **local** wall-clock
+time — matching what the Fitbit app shows and aligning to the CPAP session and to
+`Event.timestamp` — in any browser timezone.
+
+The two previously-misleading docstrings (`useWearableLanes`, which claimed most
+intraday timestamps including HR were local; and `useSleepStageEventContext`,
+which claimed wearable HR was directly comparable to `Event.timestamp`) have been
+corrected to describe the UTC-source-plus-offset reality.
+
+### 10.4 Follow-up — Profile.csv IANA zone override
+
+The fallback currently reads the **browser's** IANA zone. A user viewing data
+recorded in a different zone (travel, or analysis on another machine) should have
+that recording zone take precedence. Fitbit's `Profile.csv` carries an IANA zone
+that would provide it. Parsing `Profile.csv` and having it **override** the
+browser zone in the fallback is a documented follow-up; the single seam to change
+is `buildFallbackOffsetForDate` in `src/hooks/useWearableOffsets.ts`. The
+CPAP-overlap path (the primary source of offsets) already works without it; the
+follow-up only improves the last-resort fallback for dates with no CPAP overlap.
 
 ---
 

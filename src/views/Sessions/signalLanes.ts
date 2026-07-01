@@ -142,39 +142,11 @@ export const WEARABLE_DATA_TYPES: readonly WearableIntradayType[] = WEARABLE_LAN
 // Alignment
 // ---------------------------------------------------------------------------
 
-/**
- * Reduce a session start ISO timestamp to the wall-clock-as-UTC epoch used by
- * wearable samples. See the module docstring for why local getters are used.
- *
- * @param sessionStartIso - The session's `startTime` ISO 8601 string.
- * @returns Epoch ms in the wall-clock-as-UTC convention, or `NaN` if unparseable.
- */
-export function sessionWallClockEpoch(sessionStartIso: string): number {
-  const d = new Date(sessionStartIso);
-  if (Number.isNaN(d.getTime())) return NaN;
-  return Date.UTC(
-    d.getFullYear(),
-    d.getMonth(),
-    d.getDate(),
-    d.getHours(),
-    d.getMinutes(),
-    d.getSeconds(),
-    d.getMilliseconds(),
-  );
-}
-
-/**
- * Derive the calendar date (YYYY-MM-DD) to query the wearable hook with, from a
- * session start ISO string, using the same local-wall-clock interpretation.
- */
-export function sessionDateKey(sessionStartIso: string): string | null {
-  const d = new Date(sessionStartIso);
-  if (Number.isNaN(d.getTime())) return null;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+// `sessionWallClockEpoch` and `sessionDateKey` now live in the dependency-free
+// `@/utils/wallClock` util (so the wearable-timezone layer can consume them
+// without importing this view module, which would form an import cycle). They
+// are re-exported here to preserve existing import sites.
+export { sessionWallClockEpoch, sessionDateKey } from '@/utils/wallClock';
 
 /**
  * Convert one wearable series to session-relative arrays.

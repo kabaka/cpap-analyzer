@@ -12,10 +12,19 @@
  *
  * ## Time base
  *
- * Wearable timestamps are local wall-clock with no timezone. We interpret them
- * as wall-clock-as-UTC (see {@link localIsoToWallClockEpoch}) so segment/sample
- * times are directly comparable to {@link Event.timestamp}, exactly as
+ * Sleep-stage timestamps are LOCAL wall-clock with no timezone; we interpret
+ * them as wall-clock-as-UTC (see {@link localIsoToWallClockEpoch}) so segments
+ * are directly comparable to {@link Event.timestamp}, exactly as
  * {@link useWearableLanes} does for the per-session signal viewer.
+ *
+ * Intraday **heart rate is UTC-sourced**, NOT local — Fitbit stamps it in UTC.
+ * Its raw wall-clock-as-UTC timestamps are therefore displaced from
+ * {@link Event.timestamp} (local) by the user's UTC offset (7–8 h for
+ * US-Pacific). We convert each HR sample to the local frame with
+ * {@link applyOffset}, using the shared per-night offset table from
+ * {@link useWearableOffsets} (CPAP-overlap-derived; browser-zone fallback), so
+ * that after conversion HR IS comparable to `Event.timestamp`. Sleep stages are
+ * left untouched. See `docs/accuracy/wearables.md` §10.
  *
  * ## Date widening
  *
@@ -35,9 +44,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
+import { useDataStore } from '@/stores/useDataStore';
 import { getDB } from '@/services/storage/getDB';
 import { localIsoToWallClockEpoch } from '@/utils/wallClock';
 import { formatDate } from '@/utils/formatDate';
+import { applyOffset } from '@/analysis/crossSource/wearableTimezone';
+import { getWearableOffsetTable, offsetForDate } from '@/hooks/useWearableOffsets';
 import type { HrSample, StageSegment } from '@/analysis/sleepStages';
 import type { FitbitHeartRateIntraday, FitbitSleepStages } from '@/types';
 
@@ -148,17 +160,22 @@ function buildNight(date: string, data: FitbitSleepStages): SleepNight | null {
 }
 
 /**
- * Convert one stored heart_rate_intraday record into absolute-time HR samples.
+ * Convert one stored heart_rate_intraday record into absolute-time HR samples in
+ * the LOCAL frame. HR is UTC-sourced, so each sample's wall-clock-as-UTC time is
+ * shifted by `offsetMinutes` (this record's resolved per-night UTC→local offset)
+ * via {@link applyOffset}, making it comparable to the local `Event.timestamp`.
+ * With `offsetMinutes = 0` (unknown date) samples are left in place.
+ *
  * Samples whose computed `timestampMs` or `bpm` is not finite are dropped (a
  * garbage/NaN sample must not silently bias the event-triggered average),
  * mirroring the defensive parsing in {@link buildNight}. `confidence` is kept
  * only when finite, else omitted.
  */
-function buildHrSamples(data: FitbitHeartRateIntraday): HrSample[] {
+function buildHrSamples(data: FitbitHeartRateIntraday, offsetMinutes: number): HrSample[] {
   const baseTimestampMs = data.baseTimestampMs;
   const out: HrSample[] = [];
   for (const s of data.samples) {
-    const timestampMs = baseTimestampMs + s.offsetSec * 1000;
+    const timestampMs = applyOffset(baseTimestampMs + s.offsetSec * 1000, offsetMinutes);
     const bpm = s.bpm;
     if (!Number.isFinite(timestampMs) || !Number.isFinite(bpm)) continue;
     out.push(
@@ -197,6 +214,8 @@ const EMPTY: SleepStageContextState = {
  */
 export function useSleepStageEventContext(includeHr: boolean): SleepStageContextState {
   const dateRange = useAppStore((s) => s.dateRange);
+  // Data-freshness token: re-derive HR (and the shared offset table) after import.
+  const importToken = useDataStore((s) => s.lastImportAt);
   const [state, setState] = useState<SleepStageContextState>({ ...EMPTY, loading: true });
   const requestIdRef = useRef(0);
 
@@ -219,8 +238,10 @@ export function useSleepStageEventContext(includeHr: boolean): SleepStageContext
         if (cancelled || requestId !== requestIdRef.current) return;
 
         const nights: SleepNight[] = [];
-        // Collect HR records first so we can bound their total before flattening.
-        const hrRecords: FitbitHeartRateIntraday[] = [];
+        // Collect HR records first (keeping each record's date so the correct
+        // per-night UTC→local offset can be applied) so we can bound their total
+        // before flattening.
+        const hrRecords: { date: string; data: FitbitHeartRateIntraday }[] = [];
 
         for (const record of records) {
           if (record.source !== 'fitbit') continue;
@@ -229,7 +250,7 @@ export function useSleepStageEventContext(includeHr: boolean): SleepStageContext
             const night = buildNight(record.date, record.data as FitbitSleepStages);
             if (night) nights.push(night);
           } else if (includeHr && record.dataType === 'heart_rate_intraday') {
-            hrRecords.push(record.data as FitbitHeartRateIntraday);
+            hrRecords.push({ date: record.date, data: record.data as FitbitHeartRateIntraday });
           }
         }
 
@@ -249,8 +270,13 @@ export function useSleepStageEventContext(includeHr: boolean): SleepStageContext
         if (hrRecords.length > MAX_HR_NIGHTS) {
           hrRangeTooLarge = true;
         } else {
-          for (const data of hrRecords) {
-            for (const sample of buildHrSamples(data)) hrSamples.push(sample);
+          // Shared per-date offset table (same numbers as the Signal Viewer), used
+          // to convert each UTC HR sample into the local frame before pooling.
+          const offsetTable = await getWearableOffsetTable('fitbit', importToken);
+          if (cancelled || requestId !== requestIdRef.current) return;
+          for (const { date, data } of hrRecords) {
+            const offsetMinutes = offsetForDate(offsetTable, date);
+            for (const sample of buildHrSamples(data, offsetMinutes)) hrSamples.push(sample);
           }
           hrSamples.sort((a, b) => a.timestampMs - b.timestampMs);
           // Derive availability AFTER filtering: a record full of NaN samples
@@ -281,7 +307,7 @@ export function useSleepStageEventContext(includeHr: boolean): SleepStageContext
     return () => {
       cancelled = true;
     };
-  }, [startStr, endStr, includeHr]);
+  }, [startStr, endStr, includeHr, importToken]);
 
   return state;
 }
