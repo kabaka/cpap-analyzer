@@ -34,7 +34,7 @@ import { parseCSV, buildColumnIndex, getColumn } from './csv-utils';
  */
 const PROFILE_FILE_PATTERN = /^profile\.csv$/i;
 
-/** localStorage/settings key prefix under which each source's profile zone lives. */
+/** IndexedDB `settings`-store key prefix under which each source's profile zone lives. */
 export const PROFILE_TIMEZONE_SETTING_PREFIX = 'integration.profileTimeZone.';
 
 /**
@@ -56,8 +56,10 @@ export function isPlausibleIanaTimeZone(zone: string): boolean {
   const z = zone.trim();
   if (z === '') return false;
   try {
-    // Constructing a formatter with an unknown/invalid IANA zone throws.
-    return Boolean(new Intl.DateTimeFormat('en-US', { timeZone: z }));
+    // Constructing a formatter with an unknown/invalid IANA zone throws RangeError;
+    // reaching the next line means the zone resolved.
+    new Intl.DateTimeFormat('en-US', { timeZone: z });
+    return true;
   } catch {
     return false;
   }
@@ -82,19 +84,43 @@ export function parseProfileTimeZone(text: string): string | null {
 }
 
 /**
- * Locate the account `Profile.csv` at the top level of a Google Health export
- * root, returning its `File` (or `null` when absent/unreadable). The match is by
- * exact name, case-insensitive; `Sleep Profile.csv` is deliberately excluded.
+ * Locate the account `Profile.csv` within a Google Health / Fitbit export,
+ * returning its `File` (or `null` when absent/unreadable).
+ *
+ * The exact location of `Profile.csv` varies across export layouts (it may sit at
+ * the export root or one level down, e.g. under a `Fitbit/` folder), so this does
+ * a **breadth-first** scan bounded to {@link maxDepth} levels rather than
+ * assuming a fixed path: a root-level file is found first, and the walk descends
+ * only if needed. First match wins. Bounded depth keeps a large export tree from
+ * causing an unbounded traversal. The match is by exact name, case-insensitive;
+ * `Sleep Profile.csv` is deliberately excluded. An unreadable directory is
+ * skipped rather than aborting the scan.
  */
-export async function findProfileCsvFile(root: FileSystemDirectoryHandle): Promise<File | null> {
-  for await (const entry of root.values()) {
-    if (entry.kind === 'file' && PROFILE_FILE_PATTERN.test(entry.name)) {
+export async function findProfileCsvFile(
+  root: FileSystemDirectoryHandle,
+  maxDepth = 4,
+): Promise<File | null> {
+  let level: FileSystemDirectoryHandle[] = [root];
+  for (let depth = 0; depth <= maxDepth && level.length > 0; depth++) {
+    const next: FileSystemDirectoryHandle[] = [];
+    for (const dir of level) {
       try {
-        return await entry.getFile();
+        for await (const entry of dir.values()) {
+          if (entry.kind === 'file' && PROFILE_FILE_PATTERN.test(entry.name)) {
+            try {
+              return await entry.getFile();
+            } catch {
+              return null;
+            }
+          } else if (entry.kind === 'directory') {
+            next.push(entry);
+          }
+        }
       } catch {
-        return null;
+        // Unreadable directory — skip it and keep scanning siblings.
       }
     }
+    level = next;
   }
   return null;
 }

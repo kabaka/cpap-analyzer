@@ -338,6 +338,10 @@ async function computeOffsetTable(source: string): Promise<Map<string, number>> 
   // 2. HR-anchored nights ONLY for dates SpO₂ did not cover. The full HR sample
   //    blob is fetched (by key) for these dates ALONE, never for SpO₂-covered
   //    dates — the compact SpO₂ already resolved those nights (principle #3).
+  //    NOTE(perf follow-up): for a device with NO SpO₂ at all, every HR night is
+  //    fetched here in a separate keyed transaction. Correct and off the render
+  //    path (memoized per import), but a future optimisation could bulk-load HR
+  //    via getIntegrationTimeseriesBySourceAndType in that all-HR case.
   for (const date of hrDates) {
     if (seen.has(date)) continue;
     seen.add(date); // idempotent guard (the compound key is unique anyway)
