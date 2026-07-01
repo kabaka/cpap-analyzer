@@ -338,7 +338,7 @@ export function useWearableLanes(
   const typesKey = dataTypes.slice().sort().join(',');
 
   useEffect(() => {
-    if (date === null || dataTypes.length === 0) {
+    if (date === null || typesKey === '') {
       setSeries({});
       setLoading(false);
       setError(null);

@@ -53,6 +53,7 @@ export function ImportToastProvider({ children }: { children: ReactNode }): JSX.
 }
 
 /** Access the app-level toast dispatcher (no-op when no provider is mounted). */
+// eslint-disable-next-line react-refresh/only-export-components -- hook intentionally colocated with its provider; fast-refresh is dev-only and these exports are stable
 export function useImportToast(): (request: ToastRequest) => void {
   return useContext(ImportToastContext).toast;
 }

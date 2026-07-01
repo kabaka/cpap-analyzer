@@ -32,6 +32,7 @@ export class ComponentErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // eslint-disable-next-line no-console -- intentional error-boundary logging; stays in-browser (no telemetry)
     console.error('[ComponentErrorBoundary] Uncaught error:', error, errorInfo);
   }
 

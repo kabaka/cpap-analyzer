@@ -20,6 +20,7 @@ interface ToastState {
 
 let toastCounter = 0;
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook intentionally colocated with its provider; fast-refresh is dev-only and these exports are stable
 export function useToast(): ToastState {
   const [toasts, setToasts] = useState<ToastData[]>([]);
 

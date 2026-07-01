@@ -156,6 +156,7 @@ export function useWearableSummary(): UseWearableSummaryResult {
     // here makes those guards bail, preventing a "window is not defined"
     // setState-after-teardown rejection (surfaced as a flaky unit-test error).
     return () => {
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: bump the live ref at cleanup to invalidate in-flight requests; copying to a local would defeat the request-id guard
       requestIdRef.current++;
     };
   }, [lastImportAt, cpapDateRange]);
