@@ -40,3 +40,44 @@ export function localIsoToWallClockEpoch(iso: string): number {
     ms ? Number(ms.padEnd(3, '0')) : 0,
   );
 }
+
+/**
+ * Reduce a session start ISO timestamp to the wall-clock-as-UTC epoch used by
+ * wearable samples: parse in the runtime zone, then re-stamp the LOCAL calendar
+ * and clock components through {@link Date.UTC}. This round-trips the literal
+ * wall-clock numbers of a timezone-less string, so the result is
+ * timezone-independent (a session recorded at 22:00 local yields the same epoch
+ * on any machine).
+ *
+ * Lives here (a dependency-free util) rather than in the Sessions view so the
+ * wearable-timezone layer can consume it without importing the view layer.
+ *
+ * @param sessionStartIso - The session's `startTime` ISO 8601 string.
+ * @returns Epoch ms in the wall-clock-as-UTC convention, or `NaN` if unparseable.
+ */
+export function sessionWallClockEpoch(sessionStartIso: string): number {
+  const d = new Date(sessionStartIso);
+  if (Number.isNaN(d.getTime())) return NaN;
+  return Date.UTC(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+    d.getMilliseconds(),
+  );
+}
+
+/**
+ * Derive the calendar date (YYYY-MM-DD) of a session start ISO string using the
+ * same local-wall-clock interpretation as {@link sessionWallClockEpoch}.
+ */
+export function sessionDateKey(sessionStartIso: string): string | null {
+  const d = new Date(sessionStartIso);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}

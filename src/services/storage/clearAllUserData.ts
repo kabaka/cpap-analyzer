@@ -27,6 +27,7 @@
  */
 
 import { clearBreathingDetectionMemoryCache } from '@/hooks/breathingDetectionCache';
+import { resetWearableOffsets } from '@/hooks/useWearableOffsets';
 import { useDataStore } from '@/stores/useDataStore';
 import { useLLMCredentialStore } from '@/stores/useLLMCredentialStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
@@ -135,6 +136,11 @@ export async function clearAllUserData(): Promise<void> {
   //     lifetime; without this it would survive the wipe and be re-served from
   //     memory on a later mount.
   clearBreathingDetectionMemoryCache();
+
+  // 5b-ii. In-memory wearable timezone-offset cache (derived health-adjacent
+  //     metadata: a per-date offset map). Drop it so a later mount recomputes
+  //     from the now-empty database rather than serving stale offsets.
+  resetWearableOffsets();
 
   // 5c. In-memory LLM credential store (privacy-critical). BYO provider API keys
   //     live in memory by default and are NOT covered by the localStorage sweep;

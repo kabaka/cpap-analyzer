@@ -19,12 +19,24 @@
  * @module hooks/__tests__/useSleepStageEventContext.test
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { getDB, resetDB } from '@/services/storage/getDB';
 import { useAppStore } from '@/stores/useAppStore';
 import { parseLocalDate } from '@/utils/formatDate';
 import type { FitbitHeartRateIntraday, FitbitSleepStages, IntegrationTimeseries } from '@/types';
+
+// Mock the shared offset provider so HR conversion is deterministic and
+// TZ-independent (these tests seed no CPAP sessions, so the real provider would
+// fall back to the runtime browser zone). The default table is empty (no shift),
+// preserving the pre-fix assertions; individual tests override it to prove HR IS
+// shifted while sleep stages are NOT.
+const mockOffsetTable = { current: new Map<string, number>() };
+vi.mock('@/hooks/useWearableOffsets', () => ({
+  getWearableOffsetTable: () => Promise.resolve(mockOffsetTable.current),
+  offsetForDate: (table: ReadonlyMap<string, number>, date: string) => table.get(date) ?? 0,
+}));
+
 import { useSleepStageEventContext } from '@/hooks/useSleepStageEventContext';
 
 // ---------------------------------------------------------------------------
@@ -86,6 +98,9 @@ async function teardownDB(): Promise<void> {
 describe('useSleepStageEventContext', () => {
   beforeEach(async () => {
     await teardownDB();
+    // Default: empty offset table ⇒ HR unshifted (pre-fix behaviour), so the
+    // existing HR-timestamp assertions remain valid.
+    mockOffsetTable.current = new Map<string, number>();
     // Default range that brackets the fixtures' canonical 2024-01-15 night.
     setRange('2024-01-15', '2024-01-15');
   });
@@ -189,6 +204,25 @@ describe('useSleepStageEventContext', () => {
         { timestampMs: hr.baseTimestampMs, bpm: 60, confidence: 3 },
         { timestampMs: hr.baseTimestampMs + 5000, bpm: 61, confidence: 2 },
       ]);
+    });
+
+    it('shifts UTC HR samples by the resolved per-date offset, leaving sleep stages unshifted', async () => {
+      // -480 (PST): HR (UTC-sourced) must move by -480 min; sleep stages (local)
+      // must stay exactly where they were parsed.
+      mockOffsetTable.current = new Map([['2024-01-15', -480]]);
+      await seed([stagesRecord('2024-01-15', stages), hrRecord('2024-01-15', hr)]);
+
+      const { result } = renderHook(() => useSleepStageEventContext(true));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      const shift = -480 * 60_000;
+      // HR shifted:
+      expect(result.current.hrSamples).toEqual([
+        { timestampMs: hr.baseTimestampMs + shift, bpm: 60, confidence: 3 },
+        { timestampMs: hr.baseTimestampMs + 5000 + shift, bpm: 61, confidence: 2 },
+      ]);
+      // Sleep stages NOT shifted (still on the raw wall-clock-as-UTC base):
+      expect(result.current.allSegments[0]!.startMs).toBe(Date.UTC(2024, 0, 15, 23, 0, 0));
     });
   });
 

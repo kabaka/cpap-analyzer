@@ -13,6 +13,13 @@
  * and reuses the SAME session-derived overnight window the dashboard panel uses,
  * so a metric never shows two different "last-night" numbers.
  *
+ * ## Timezone note
+ *
+ * This join is purely by calendar DATE against wearable DAILY summaries; it never
+ * touches intraday time-of-day, so the UTC→local intraday offset applied to the
+ * heart-rate / SpO₂ lanes (see `useWearableOffsets`) does NOT affect it and is
+ * intentionally handled upstream in the intraday retrieval hooks only.
+ *
  * @module hooks/useCorrelationData
  */
 
