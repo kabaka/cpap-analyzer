@@ -267,16 +267,21 @@ sleep). The estimator aligns the wearable sleep feature to that session:
 2. **SpO₂-first anchoring (performance).** SpO₂ minute data is UTC, inherently
    sleep-only, and small, so it aligns to the CPAP window directly and is the
    preferred anchor. The 24/7 heart-rate trough is used to anchor a night ONLY
-   where that night has no SpO₂ — so multi-year, full-resolution HR arrays are
-   not loaded merely to build the table (principle #3, performance).
+   where that night has no SpO₂. The load path enforces this: SpO₂ records are
+   read in full, heart-rate record **dates** are enumerated with a keys-only
+   index cursor (no sample blobs), and a single heart-rate night is fetched by
+   key only for a date SpO₂ did not cover — so multi-year, full-resolution HR
+   arrays are never bulk-loaded merely to build the table (principle #3,
+   performance).
 3. **Cross-night stabilisation.** A windowed mode vote overrides single-night
    noise while still letting a genuine DST/travel step-change flip within a few
    nights of the boundary; nearest-neighbour fill covers nights with no estimate.
 4. **Fallback zone.** For any date the CPAP path cannot resolve, the offset is
-   derived from the browser's IANA zone (`Intl.DateTimeFormat().resolvedOptions()`)
-   **for that specific date**, so DST is respected (`ianaZoneOffsetForDate`). When
-   even the fallback yields nothing, the sample is left in place (offset 0) rather
-   than mis-shifted.
+   derived from an IANA zone **for that specific date**, so DST is respected
+   (`ianaZoneOffsetForDate`). The zone is the account's `Profile.csv` IANA zone
+   when one was captured at import (see §10.4), otherwise the browser's zone
+   (`Intl.DateTimeFormat().resolvedOptions()`). When even the fallback yields
+   nothing, the sample is left in place (offset 0) rather than mis-shifted.
 
 The resulting `date → offset` table is computed **once per source** and shared by
 every consumer (`useWearableOffsets`), so the heart-rate and SpO₂ lanes can never
@@ -293,16 +298,31 @@ intraday timestamps including HR were local; and `useSleepStageEventContext`,
 which claimed wearable HR was directly comparable to `Event.timestamp`) have been
 corrected to describe the UTC-source-plus-offset reality.
 
-### 10.4 Follow-up — Profile.csv IANA zone override
+### 10.4 Profile.csv IANA zone override (implemented)
 
-The fallback currently reads the **browser's** IANA zone. A user viewing data
-recorded in a different zone (travel, or analysis on another machine) should have
-that recording zone take precedence. Fitbit's `Profile.csv` carries an IANA zone
-that would provide it. Parsing `Profile.csv` and having it **override** the
-browser zone in the fallback is a documented follow-up; the single seam to change
-is `buildFallbackOffsetForDate` in `src/hooks/useWearableOffsets.ts`. The
-CPAP-overlap path (the primary source of offsets) already works without it; the
-follow-up only improves the last-resort fallback for dates with no CPAP overlap.
+The last-resort fallback now **prefers the account's `Profile.csv` IANA zone**
+over the browser's zone. A user viewing data recorded in a different zone
+(travel, or analysis on another machine) should have that recording zone take
+precedence, and Fitbit's `Profile.csv` (a two-row CSV with a `timezone` column,
+e.g. `America/Los_Angeles`) carries it.
+
+- **Capture.** During a Google Health import the pipeline locates `Profile.csv`
+  at the export root (matched by exact name, case-insensitively — `Sleep
+Profile.csv` is excluded), parses the `timezone` column, validates it as a
+  resolvable IANA id via `Intl.DateTimeFormat`, and persists it per source in the
+  IndexedDB `settings` store
+  (`src/services/import/googlehealth/profile.ts`). Capture is best-effort: a
+  missing, malformed, or unreadable `Profile.csv` never affects the import.
+- **Use.** `buildFallbackOffsetForDate` in `src/hooks/useWearableOffsets.ts`
+  prefers the stored profile zone (when present and resolvable) and otherwise
+  falls back to the browser zone. This changes **only** dates the CPAP-overlap
+  path could not resolve; CPAP-anchored nights are unaffected.
+- **Scope.** The export carries a single, **current** account zone — not a
+  per-night travel history — so the override refines fallback dates uniformly and
+  does not reconstruct historical timezone changes.
+- **Privacy (principle #1).** The captured zone is derived location metadata:
+  stored **locally only**, never transmitted, and wiped by `clearAllUserData`'s
+  whole-database destroy (it lives in the same IndexedDB the wipe deletes).
 
 ---
 

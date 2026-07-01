@@ -1571,6 +1571,83 @@ export class IndexedDBService {
   }
 
   /**
+   * Retrieve every integration timeseries record for a `(source, dataType)` pair.
+   *
+   * Ranges over the `source_dataType_date` compound index, so ONLY records with
+   * the matching source AND dataType are visited — the store's other lanes are
+   * never touched. Intended for small, sleep-only lanes such as `spo2_intraday`.
+   *
+   * ⚠️ Do NOT use this for `heart_rate_intraday`: every visited record's value is
+   * deserialised, and HR nights carry large (~17k-sample) blobs. To learn which
+   * HR dates exist without paying that cost, enumerate keys with
+   * {@link getIntegrationTimeseriesDatesBySourceAndType} and fetch the few needed
+   * records individually via {@link getIntegrationTimeseriesByKey}.
+   *
+   * @param source   - Integration source (e.g. `'fitbit'`).
+   * @param dataType - Timeseries data type (e.g. `'spo2_intraday'`).
+   * @returns Matching records in ascending `date` order.
+   */
+  async getIntegrationTimeseriesBySourceAndType(
+    source: string,
+    dataType: string,
+  ): Promise<IntegrationTimeseries[]> {
+    try {
+      // `[source, dataType]` (length 2) sorts before any `[source, dataType, date]`
+      // key; an array (`[]`) sorts AFTER any string date, so the bound captures
+      // exactly the `(source, dataType, *)` slice of the compound index.
+      return await this.cursorQuery<IntegrationTimeseries>(
+        'integration_timeseries',
+        'source_dataType_date',
+        IDBKeyRange.bound([source, dataType], [source, dataType, []]),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration timeseries by source and type',
+        'integration_timeseries',
+        `${source}:${dataType}`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Enumerate the dates of every `(source, dataType)` timeseries record WITHOUT
+   * materialising their value blobs.
+   *
+   * Walks the `source_dataType_date` compound index with a KEY-ONLY cursor
+   * ({@link IDBIndex.openKeyCursor}), which yields each entry's
+   * `[source, dataType, date]` index key but never loads the record value — so a
+   * full night of ~17k heart-rate samples is not deserialised. Lets a caller
+   * discover which dates exist for the cost of an index walk, then fetch only the
+   * few records it actually needs via {@link getIntegrationTimeseriesByKey}.
+   *
+   * @param source   - Integration source (e.g. `'fitbit'`).
+   * @param dataType - Timeseries data type (e.g. `'heart_rate_intraday'`).
+   * @returns The record dates (YYYY-MM-DD), in ascending index order.
+   */
+  async getIntegrationTimeseriesDatesBySourceAndType(
+    source: string,
+    dataType: string,
+  ): Promise<string[]> {
+    try {
+      return await this.keyCursorDates(
+        'integration_timeseries',
+        'source_dataType_date',
+        IDBKeyRange.bound([source, dataType], [source, dataType, []]),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration timeseries dates by source and type',
+        'integration_timeseries',
+        `${source}:${dataType}`,
+        error,
+      );
+    }
+  }
+
+  /**
    * Atomically insert multiple integration timeseries records in a single transaction.
    *
    * @param records - Records to insert. Uses `add`, so duplicates throw ConstraintError.
@@ -2084,6 +2161,43 @@ export class IndexedDBService {
           cursor.continue();
         } else {
           resolve(results);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Walk an index range with a KEY-ONLY cursor and collect the `date` component
+   * of each compound `[source, dataType, date]` index key.
+   *
+   * Uses {@link IDBIndex.openKeyCursor}, which visits index entries WITHOUT
+   * loading the underlying record value — so large payloads (e.g. full
+   * heart-rate nights) are never deserialised. Assumes a three-element compound
+   * key whose third element is the date string; entries not matching that shape
+   * are skipped defensively.
+   */
+  private keyCursorDates(
+    storeName: StoreName,
+    indexName: string,
+    range: IDBKeyRange,
+  ): Promise<string[]> {
+    return new Promise<string[]>((resolve, reject) => {
+      const store = this.readStore(storeName);
+      const index = store.index(indexName);
+      const dates: string[] = [];
+      const request = index.openKeyCursor(range);
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          const key = cursor.key;
+          if (Array.isArray(key) && typeof key[2] === 'string') {
+            dates.push(key[2]);
+          }
+          cursor.continue();
+        } else {
+          resolve(dates);
         }
       };
       request.onerror = () => reject(request.error);

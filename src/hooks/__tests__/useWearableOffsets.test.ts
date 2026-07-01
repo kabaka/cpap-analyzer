@@ -14,8 +14,9 @@
  * @module hooks/__tests__/useWearableOffsets.test
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getDB, resetDB } from '@/services/storage/getDB';
+import { profileTimeZoneSettingKey } from '@/services/import/googlehealth/profile';
 import type {
   FitbitSpO2Intraday,
   FitbitHeartRateIntraday,
@@ -84,6 +85,20 @@ describe('buildFallbackOffsetForDate', () => {
     const summer = fn('2024-07-15');
     expect(winter).toBe(ianaZoneOffsetForDate('2024-01-15', zone));
     expect(summer).toBe(ianaZoneOffsetForDate('2024-07-15', zone));
+  });
+
+  it('prefers a valid Profile zone over the browser zone', () => {
+    // Asia/Kolkata (+330) differs from the pinned UTC test zone.
+    const fn = buildFallbackOffsetForDate('Asia/Kolkata');
+    expect(fn('2024-07-15')).toBe(ianaZoneOffsetForDate('2024-07-15', 'Asia/Kolkata'));
+    expect(fn('2024-07-15')).toBe(330);
+  });
+
+  it('falls back to the browser zone when the Profile zone is missing or invalid', () => {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const expected = ianaZoneOffsetForDate('2024-07-15', zone);
+    expect(buildFallbackOffsetForDate(null)('2024-07-15')).toBe(expected);
+    expect(buildFallbackOffsetForDate('Not/AZone')('2024-07-15')).toBe(expected);
   });
 });
 
@@ -243,6 +258,50 @@ describe('getWearableOffsetTable (end-to-end, SpO₂-anchored)', () => {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const expected = ianaZoneOffsetForDate('2024-02-10', zone);
     expect(table.get('2024-02-10')).toBe(expected);
+  });
+
+  it('prefers the stored Profile zone over the browser zone for unresolved dates', async () => {
+    // No sessions ⇒ the SpO₂ night has a null estimate ⇒ fallback seeds it. With a
+    // stored Profile zone (Asia/Kolkata, +330), that overrides the UTC test zone.
+    await seed([], [spo2Utc('2024-02-10', '2024-02-10T08:00:00', 60)]);
+    const db = await getDB();
+    await db.putSetting(profileTimeZoneSettingKey('fitbit'), 'Asia/Kolkata');
+
+    const table = await getWearableOffsetTable('fitbit', 'tok-profile');
+    expect(table.get('2024-02-10')).toBe(ianaZoneOffsetForDate('2024-02-10', 'Asia/Kolkata'));
+    expect(table.get('2024-02-10')).toBe(330);
+  });
+
+  it('does NOT load HR sample blobs for SpO₂-covered dates', async () => {
+    // A date with BOTH an SpO₂ and an HR record. SpO₂ anchors the night, so the HR
+    // record for that date must never be fetched by key (its blob is not loaded).
+    await seed(
+      [session('2024-01-15', [23, 0], [7, 0], 1)],
+      [
+        spo2Utc('2024-01-15', '2024-01-16T07:00:00', 8 * 60),
+        hrUtc('2024-01-15', Date.UTC(2024, 0, 16, 5, 0, 0), 60),
+      ],
+    );
+    const db = await getDB();
+    const byKey = vi.spyOn(db, 'getIntegrationTimeseriesByKey');
+
+    const table = await getWearableOffsetTable('fitbit', 'tok-nohr');
+    expect(table.get('2024-01-15')).toBe(-480); // SpO₂-anchored, unchanged
+    expect(byKey).not.toHaveBeenCalledWith('fitbit', 'heart_rate_intraday', '2024-01-15');
+    byKey.mockRestore();
+  });
+
+  it('fetches an HR record by key only for a date SpO₂ did not cover', async () => {
+    await seed(
+      [session('2024-03-20', [23, 0], [7, 0], 1)],
+      [hrUtc('2024-03-20', Date.UTC(2024, 2, 20, 5, 0, 0), 8 * 60)], // HR only
+    );
+    const db = await getDB();
+    const byKey = vi.spyOn(db, 'getIntegrationTimeseriesByKey');
+
+    await getWearableOffsetTable('fitbit', 'tok-hrkey');
+    expect(byKey).toHaveBeenCalledWith('fitbit', 'heart_rate_intraday', '2024-03-20');
+    byKey.mockRestore();
   });
 
   it('memoizes per importToken and invalidates when it changes', async () => {

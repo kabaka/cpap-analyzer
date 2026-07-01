@@ -7,7 +7,13 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **Wearable heart-rate and SpO₂ overlays now use your Fitbit account's timezone (from `Profile.csv`) for nights without CPAP overlap, instead of your browser's timezone.** The UTC→local offset for the intraday heart-rate and SpO₂ lanes is derived per night from the overlapping CPAP session; only for dates with no CPAP session does the app fall back to a whole-zone estimate. That fallback now prefers the IANA timezone recorded in your Fitbit export's `Profile.csv` (e.g. `America/Los_Angeles`), which is captured locally at import time, so viewing data recorded in a different zone than the browser you review it in lines up correctly. When no profile timezone is available it still falls back to the browser's zone. This is a DST-aware, per-date estimate and reflects your account's **current** timezone, not a per-night travel history; CPAP-anchored nights are unchanged. The captured timezone is stored only in your browser, never transmitted, and is removed by "delete all data".
+
+### Changed
+
+- **Building the wearable timezone-offset table no longer deserializes full heart-rate sample blobs for nights already covered by SpO₂.** The offset estimator anchors on the compact, sleep-only SpO₂ series and only falls back to heart rate for nights with no SpO₂. Previously it loaded every wearable record — including full-resolution intraday heart-rate nights (~17k samples each, across years) — even when SpO₂ already resolved the night. It now loads SpO₂ records in full, enumerates heart-rate record dates with a keys-only index cursor (no sample blobs), and fetches a single heart-rate night by key only when SpO₂ did not cover that date. The resulting offsets are identical; the load is substantially cheaper for large multi-year datasets.
 
 ## [2026.07.0] — 2026-07-01
 
