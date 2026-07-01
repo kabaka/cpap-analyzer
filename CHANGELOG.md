@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.07.0] — 2026-07-01
+
 ### Fixed
 
 - **Wearable heart-rate and SpO₂ overlays now render at your local time instead of ~7–8 hours off.** Fitbit stamps the intraday heart-rate and SpO₂ series in UTC, but the app previously treated every wearable timestamp as local wall-clock — so for a user west of Greenwich those two lanes were shifted by the full UTC offset (a 1 AM event drew at 8 AM for US-Pacific), which made the heart-rate lane look wrong and pushed the SpO₂ lane onto the wrong part of the night. Both lanes are now converted to local time using a per-night offset **derived from your own data**: the overlapping CPAP session is treated as local-time ground truth and the wearable sleep period is aligned to it (with a DST-aware fallback to the browser's timezone for any night without CPAP overlap). The offset is estimated once and shared everywhere the two lanes appear — the per-session signal viewer and the Event Explorer's autonomic (event-triggered heart-rate) view — so they always agree. The other intraday lanes (HRV, snoring, sleep stages) were already in local time and are unchanged, and date-keyed correlations against daily wearable summaries are unaffected. Everything is computed in your browser; no data leaves the device and no timezone is requested from you.
