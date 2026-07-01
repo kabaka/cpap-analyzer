@@ -277,6 +277,13 @@ async function computeOffsetTable(source: string): Promise<Map<string, number>> 
     // Bounded date range = every record. The offset table is a per-date map, so
     // we must consider every wearable date, but only the compact SpO₂ (and the
     // HR-only fallback dates) are actually materialised into nights below.
+    //
+    // TODO(perf): this range cursor deserializes EVERY record's payload,
+    // including full heart-rate sample blobs (~17k/night × years), even though
+    // SpO₂-covered nights never use them — partially defeating the SpO₂-first
+    // anchoring. The store already has `dataType` and `source_dataType_date`
+    // indexes; a follow-up should query `spo2_intraday` first and fetch HR
+    // by key only for SpO₂-less dates so HR blobs are never bulk-loaded here.
     db.getIntegrationTimeseriesByDateRange('0000-01-01', '9999-12-31'),
   ]);
 
