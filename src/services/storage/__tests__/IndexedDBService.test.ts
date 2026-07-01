@@ -917,6 +917,103 @@ describe('IndexedDBService', () => {
     });
   });
 
+  describe('integration timeseries source/type queries', () => {
+    /** Seed fitbit spo2 + hr and a weather row across a few dates. */
+    async function seed(): Promise<void> {
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'fitbit',
+          dataType: 'spo2_intraday',
+          date: '2026-01-10',
+          data: { samples: [{ minuteOffset: 0, value: 96 }], sleepStartTime: '', sampleCount: 1 },
+        }),
+      );
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'fitbit',
+          dataType: 'spo2_intraday',
+          date: '2026-01-12',
+          data: { samples: [{ minuteOffset: 0, value: 95 }], sleepStartTime: '', sampleCount: 1 },
+        }),
+      );
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'fitbit',
+          dataType: 'heart_rate_intraday',
+          date: '2026-01-10',
+          data: {
+            baseTimestampMs: 0,
+            samples: [{ offsetSec: 0, bpm: 60, confidence: 3 }],
+            sampleCount: 1,
+          },
+        }),
+      );
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'fitbit',
+          dataType: 'heart_rate_intraday',
+          date: '2026-01-11',
+          data: {
+            baseTimestampMs: 0,
+            samples: [{ offsetSec: 0, bpm: 61, confidence: 3 }],
+            sampleCount: 1,
+          },
+        }),
+      );
+      // A different source that must never leak into fitbit results.
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'weather',
+          dataType: 'spo2_intraday',
+          date: '2026-01-10',
+          data: { samples: [{ minuteOffset: 0, value: 97 }], sleepStartTime: '', sampleCount: 1 },
+        }),
+      );
+    }
+
+    it('getIntegrationTimeseriesBySourceAndType returns only the matching source+type, date-ordered', async () => {
+      await seed();
+
+      const spo2 = await db.getIntegrationTimeseriesBySourceAndType('fitbit', 'spo2_intraday');
+      expect(spo2.map((r) => r.date)).toEqual(['2026-01-10', '2026-01-12']);
+      expect(spo2.every((r) => r.source === 'fitbit' && r.dataType === 'spo2_intraday')).toBe(true);
+
+      const hr = await db.getIntegrationTimeseriesBySourceAndType('fitbit', 'heart_rate_intraday');
+      expect(hr.map((r) => r.date)).toEqual(['2026-01-10', '2026-01-11']);
+    });
+
+    it('getIntegrationTimeseriesBySourceAndType returns empty for an unknown source/type', async () => {
+      await seed();
+      expect(await db.getIntegrationTimeseriesBySourceAndType('fitbit', 'hrv_detail')).toEqual([]);
+      expect(await db.getIntegrationTimeseriesBySourceAndType('garmin', 'spo2_intraday')).toEqual(
+        [],
+      );
+    });
+
+    it('getIntegrationTimeseriesDatesBySourceAndType enumerates dates only (keys, no blobs)', async () => {
+      await seed();
+
+      const hrDates = await db.getIntegrationTimeseriesDatesBySourceAndType(
+        'fitbit',
+        'heart_rate_intraday',
+      );
+      expect(hrDates).toEqual(['2026-01-10', '2026-01-11']);
+
+      const spo2Dates = await db.getIntegrationTimeseriesDatesBySourceAndType(
+        'fitbit',
+        'spo2_intraday',
+      );
+      expect(spo2Dates).toEqual(['2026-01-10', '2026-01-12']);
+    });
+
+    it('getIntegrationTimeseriesDatesBySourceAndType returns empty for an unknown source/type', async () => {
+      await seed();
+      expect(await db.getIntegrationTimeseriesDatesBySourceAndType('fitbit', 'hrv_detail')).toEqual(
+        [],
+      );
+    });
+  });
+
   // -----------------------------------------------------------------------
   // Error handling
   // -----------------------------------------------------------------------

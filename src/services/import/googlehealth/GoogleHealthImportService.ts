@@ -276,6 +276,14 @@ export class GoogleHealthImportService {
       return importRecord;
     }
 
+    // Best-effort: capture the account's IANA timezone from `Profile.csv` as the
+    // DST-aware FALLBACK zone for the UTC-sourced wearable lanes (heart rate /
+    // SpO2) on dates the CPAP-overlap estimator cannot resolve. Derived location
+    // metadata: stored LOCALLY only (IndexedDB `settings`), never transmitted,
+    // and wiped by `clearAllUserData`'s whole-database destroy. A missing,
+    // malformed, or unreadable Profile.csv never affects the import.
+    await this.persistProfileTimeZone(root);
+
     // Lazy-import the parsers module.
     const parsers = await import('./parsers');
 
@@ -611,6 +619,28 @@ export class GoogleHealthImportService {
       return await root.getDirectoryHandle(name);
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Parse `Profile.csv`'s IANA timezone and persist it as the source's fallback
+   * zone (IndexedDB `settings`). Purely best-effort: any failure — no Profile.csv,
+   * an unreadable file, a missing/invalid `timezone` column, or a storage error —
+   * is swallowed so the import proceeds unaffected. Only a valid, resolvable zone
+   * is written; when absent, any previously-stored zone is left untouched.
+   */
+  private async persistProfileTimeZone(root: FileSystemDirectoryHandle): Promise<void> {
+    try {
+      const { findProfileCsvFile, parseProfileTimeZone, profileTimeZoneSettingKey } =
+        await import('./profile');
+      const file = await findProfileCsvFile(root);
+      if (!file) return;
+      const zone = parseProfileTimeZone(await file.text());
+      if (zone === null) return;
+      await this.db.putSetting(profileTimeZoneSettingKey(SOURCE), zone);
+    } catch {
+      // Non-fatal: the Profile-zone fallback is an optional refinement, never a
+      // reason to fail or degrade the import.
     }
   }
 

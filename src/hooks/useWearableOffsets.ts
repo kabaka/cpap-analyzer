@@ -32,6 +32,11 @@
  * as an anchor ONLY for nights that have no SpO₂ record. HRV / sleep-stages /
  * snoring are LOCAL and are never used as UTC anchors (nor shifted).
  *
+ * The load path enforces this: SpO₂ records are fetched in full (small), HR
+ * record DATES are enumerated with a keys-only cursor (no value blobs), and the
+ * single HR record for a date is fetched by key ONLY when SpO₂ did not cover it.
+ * Full HR sample blobs are therefore never bulk-materialised to build the table.
+ *
  * The full-resolution HR arrays that the lanes render still pass through
  * {@link applyOffset} at read time in the consuming hooks; this module only ever
  * loads the compact SpO₂ minute data (plus HR fallback nights) to BUILD the
@@ -45,17 +50,19 @@
  * {@link resetWearableOffsets} (used by cache clears / tests). Recompute happens
  * on data change, never on every render.
  *
- * ## Fallback zone (DST-aware)
+ * ## Fallback zone (DST-aware, Profile.csv-preferred)
  *
  * For any date the CPAP-overlap path cannot resolve, the fallback derives the
- * signed offset from the browser's IANA zone
- * (`Intl.DateTimeFormat().resolvedOptions().timeZone`) FOR THAT DATE, so DST
- * transitions are respected. See {@link ianaZoneOffsetForDate}.
- *
- * TODO(profile-zone): a `Profile.csv` IANA zone, when present, should OVERRIDE
- * the browser zone (a user may view data recorded in another zone). The seam is
- * {@link buildFallbackOffsetForDate}: swap the zone it reads from browser →
- * profile once Profile parsing exists. Deliberately NOT built here.
+ * signed offset from an IANA zone FOR THAT DATE, so DST transitions are
+ * respected (see {@link ianaZoneOffsetForDate}). The zone is the account's
+ * `Profile.csv` IANA zone when one was captured at import (persisted per source
+ * in the IndexedDB `settings` store; see
+ * {@link module:services/import/googlehealth/profile}), OVERRIDING the browser's
+ * runtime zone — because a user may view data recorded in a different zone. When
+ * no Profile zone is stored, the browser's zone
+ * (`Intl.DateTimeFormat().resolvedOptions().timeZone`) is used. Note the Profile
+ * zone reflects the CURRENT account zone, not a per-date travel history; it only
+ * affects dates the CPAP-anchored path did not already resolve.
  *
  * @module hooks/useWearableOffsets
  */
@@ -63,6 +70,8 @@
 import { useEffect, useState } from 'react';
 import { useDataStore } from '@/stores/useDataStore';
 import { getDB } from '@/services/storage/getDB';
+import type { IndexedDBService } from '@/services/storage/IndexedDBService';
+import { profileTimeZoneSettingKey } from '@/services/import/googlehealth/profile';
 import { sessionWallClockEpoch, sessionDateKey } from '@/utils/wallClock';
 import {
   resolveOffsetTable,
@@ -154,14 +163,21 @@ export function resolveBrowserTimeZone(): string | null {
 
 /**
  * Build the {@link FallbackOffsetForDate} seed used when the CPAP-overlap path
- * yields nothing for a date. Resolves the offset from the browser IANA zone,
- * per date, DST-aware.
+ * yields nothing for a date. Resolves the offset per date, DST-aware.
  *
- * TODO(profile-zone): prefer a Profile.csv IANA zone over the browser zone here
- * once Profile parsing lands. This function is the single seam to change.
+ * Prefers the account's `Profile.csv` IANA zone (`profileZone`) when present and
+ * resolvable, OVERRIDING the browser zone — a user may view data recorded in a
+ * different zone. Falls back to the browser's runtime zone when no Profile zone
+ * is available (or the stored value is not a resolvable IANA id).
+ *
+ * @param profileZone - The stored Profile.csv IANA zone, or `null`/`undefined`.
  */
-export function buildFallbackOffsetForDate(): FallbackOffsetForDate {
-  const zone = resolveBrowserTimeZone();
+export function buildFallbackOffsetForDate(profileZone?: string | null): FallbackOffsetForDate {
+  // A stored Profile zone is validated at import time; guard here too by probing
+  // resolvability via ianaZoneOffsetForDate (returns null for an invalid zone).
+  const preferred =
+    profileZone && ianaZoneOffsetForDate('2000-01-01', profileZone) !== null ? profileZone : null;
+  const zone = preferred ?? resolveBrowserTimeZone();
   if (zone === null) return () => null;
   return (date: string) => ianaZoneOffsetForDate(date, zone);
 }
@@ -262,65 +278,81 @@ function hrNight(record: IntegrationTimeseries): WearableNight | null {
 // ---------------------------------------------------------------------------
 
 /**
+ * Read the stored Profile.csv fallback zone for `source` from the IndexedDB
+ * `settings` store, or `null` when none is stored / on any read error.
+ */
+async function loadProfileZone(db: IndexedDBService, source: string): Promise<string | null> {
+  try {
+    const setting = await db.getSetting(profileTimeZoneSettingKey(source));
+    const value = setting?.value;
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Load sessions + the UTC wearable lanes and resolve the per-date offset table.
  *
  * SpO₂ is the preferred anchor (sleep-only, small); HR nights are loaded as an
  * anchor only where SpO₂ is absent. Nights that resolve neither are still
  * present as null estimates and get filled by neighbour / fallback inside
  * {@link resolveOffsetTable}.
+ *
+ * ## Cheap load path (principle #3)
+ *
+ * The output is identical to loading every record, but HR sample blobs are never
+ * bulk-materialised: SpO₂ records (small, sleep-only) are loaded in full; the
+ * DATES of HR records are enumerated keys-only (no value blobs); and the single
+ * HR record for a date is fetched by key ONLY when SpO₂ did not already cover it.
  */
 async function computeOffsetTable(source: string): Promise<Map<string, number>> {
   const db = await getDB();
 
-  const [sessions, allTimeseries] = await Promise.all([
+  const [sessions, spo2Records, hrDates, profileZone] = await Promise.all([
     db.getAllSessions(),
-    // Bounded date range = every record. The offset table is a per-date map, so
-    // we must consider every wearable date, but only the compact SpO₂ (and the
-    // HR-only fallback dates) are actually materialised into nights below.
-    //
-    // TODO(perf): this range cursor deserializes EVERY record's payload,
-    // including full heart-rate sample blobs (~17k/night × years), even though
-    // SpO₂-covered nights never use them — partially defeating the SpO₂-first
-    // anchoring. The store already has `dataType` and `source_dataType_date`
-    // indexes; a follow-up should query `spo2_intraday` first and fetch HR
-    // by key only for SpO₂-less dates so HR blobs are never bulk-loaded here.
-    db.getIntegrationTimeseriesByDateRange('0000-01-01', '9999-12-31'),
+    // SpO₂ is small (minute cadence, sleep-only). The compound-index range visits
+    // ONLY spo₂ records — HR blobs are never touched by this query.
+    db.getIntegrationTimeseriesBySourceAndType(source, 'spo2_intraday'),
+    // HR is 24/7 and huge (~17k samples/night). Enumerate only its DATES via a
+    // keys-only cursor so no HR value blob is deserialised here; the few nights
+    // that actually need an HR anchor are fetched one-by-one by key below.
+    db.getIntegrationTimeseriesDatesBySourceAndType(source, 'heart_rate_intraday'),
+    // The account's Profile.csv IANA zone (preferred fallback), if captured.
+    loadProfileZone(db, source),
   ]);
 
   const byNight = groupSessionsByNight(sessions.filter((s) => !s.deleted));
-
-  // Index the UTC lanes by date. SpO₂ is the anchor; HR is the fallback anchor.
-  const spo2ByDate = new Map<string, IntegrationTimeseries>();
-  const hrByDate = new Map<string, IntegrationTimeseries>();
-  for (const record of allTimeseries) {
-    if (record.source !== source) continue;
-    if (record.dataType === 'spo2_intraday') spo2ByDate.set(record.date, record);
-    else if (record.dataType === 'heart_rate_intraday') hrByDate.set(record.date, record);
-  }
 
   const nights: NightWithSessions[] = [];
   const seen = new Set<string>();
 
   // 1. SpO₂-anchored nights (cheap, sleep-only) — covers most dates.
-  for (const [date, record] of spo2ByDate) {
+  for (const record of spo2Records) {
     const night = spo2Night(record);
     if (night === null) continue;
-    nights.push({ night, sessions: sessionsForNight(byNight, date) });
-    seen.add(date);
+    nights.push({ night, sessions: sessionsForNight(byNight, record.date) });
+    seen.add(record.date);
   }
 
-  // 2. HR-anchored nights ONLY for dates SpO₂ did not cover. Avoids loading giant
-  //    HR arrays into the estimator where the compact SpO₂ already resolved the
-  //    night (principle #3).
-  for (const [date, record] of hrByDate) {
+  // 2. HR-anchored nights ONLY for dates SpO₂ did not cover. The full HR sample
+  //    blob is fetched (by key) for these dates ALONE, never for SpO₂-covered
+  //    dates — the compact SpO₂ already resolved those nights (principle #3).
+  //    NOTE(perf follow-up): for a device with NO SpO₂ at all, every HR night is
+  //    fetched here in a separate keyed transaction. Correct and off the render
+  //    path (memoized per import), but a future optimisation could bulk-load HR
+  //    via getIntegrationTimeseriesBySourceAndType in that all-HR case.
+  for (const date of hrDates) {
     if (seen.has(date)) continue;
+    seen.add(date); // idempotent guard (the compound key is unique anyway)
+    const record = await db.getIntegrationTimeseriesByKey(source, 'heart_rate_intraday', date);
+    if (record === null) continue;
     const night = hrNight(record);
     if (night === null) continue;
     nights.push({ night, sessions: sessionsForNight(byNight, date) });
-    seen.add(date);
   }
 
-  return resolveOffsetTable(nights, {}, buildFallbackOffsetForDate());
+  return resolveOffsetTable(nights, {}, buildFallbackOffsetForDate(profileZone));
 }
 
 // ---------------------------------------------------------------------------
