@@ -1,0 +1,46 @@
+{
+  "pkg": "cpap-analyzer",
+  "globalName": "CpapDS",
+  "shape": "package",
+  "projectId": "f8b8fd28-bac1-4f6b-a7e7-3de68ca5d9db",
+  "srcDir": "src/components/ui",
+  "tsconfig": "tsconfig.json",
+  "tokensPkg": "cpap-analyzer",
+  "tokensGlob": "src/styles/*.css",
+  "runtimeFontPrefixes": ["Cascadia Code"],
+  "cssEntry": ".design-sync/assets/katex.css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "componentSrcMap": {
+    "TableHeader": null,
+    "TableBody": null,
+    "TableRow": null,
+    "TableHead": null,
+    "TableCell": null,
+    "ToastProvider": null,
+    "TooltipProvider": null
+  },
+  "overrides": {
+    "Table": { "cardMode": "column" },
+    "Dialog": { "cardMode": "single", "viewport": "720x520" }
+  },
+  "dtsPropsFor": {
+    "Accordion": "/** One collapsible item. */ items: { value: string; trigger: string; content: React.ReactNode }[]; /** 'single' allows one open item, 'multiple' allows many. Default 'single'. */ type?: 'single' | 'multiple'; /** Initially-open value(s); string for single, string[] for multiple. */ defaultValue?: string | string[]; className?: string;",
+    "Badge": "variant?: 'default' | 'success' | 'warning' | 'danger' | 'info'; size?: 'sm' | 'md'; children: React.ReactNode; className?: string;",
+    "Button": "variant?: 'primary' | 'secondary' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'lg'; /** Shows a busy state and disables the button. */ loading?: boolean; children: React.ReactNode; disabled?: boolean; type?: 'button' | 'submit' | 'reset'; onClick?: React.MouseEventHandler<HTMLButtonElement>; className?: string;",
+    "Card": "children: React.ReactNode; /** Apply default inner padding. Default true. */ padding?: boolean; className?: string; onClick?: React.MouseEventHandler<HTMLDivElement>;",
+    "Dialog": "/** Controlled open state. Omit for uncontrolled (uses `trigger`). */ open?: boolean; onOpenChange?: (open: boolean) => void; title: string; description?: string; children: React.ReactNode; /** Element that opens the dialog when uncontrolled. */ trigger?: React.ReactNode;",
+    "DropdownMenu": "trigger: React.ReactNode; items: { label: string; onClick?: () => void; icon?: React.ReactNode; disabled?: boolean; /** Render a separator line instead of an item. */ separator?: boolean }[]; side?: 'top' | 'right' | 'bottom' | 'left'; align?: 'start' | 'center' | 'end';",
+    "Icon": "/** Named glyph from the built-in inline-SVG set. */ name: 'dashboard' | 'sessions' | 'trends' | 'explore' | 'reports' | 'data' | 'settings' | 'help' | 'theme-light' | 'theme-dark' | 'theme-system' | 'menu' | 'close' | 'storage' | 'calendar' | 'clock' | 'brand'; size?: 'sm' | 'md' | 'lg'; /** Accessible label; when omitted the icon is aria-hidden. */ title?: string; className?: string; style?: React.CSSProperties;",
+    "Input": "label?: string; /** Error message; renders the field in an invalid state. */ error?: string; /** Helper text shown below the field. */ hint?: string; placeholder?: string; value?: string; defaultValue?: string; disabled?: boolean; type?: string; onChange?: React.ChangeEventHandler<HTMLInputElement>; className?: string;",
+    "MathEquation": "/** KaTeX/LaTeX source, e.g. 'AHI = \\\\frac{apneas + hypopneas}{hours}'. */ math: string; /** Block (centered, display) vs inline rendering. Default false. */ display?: boolean; className?: string;",
+    "MathText": "/** Prose with inline `$...$` and block `$$...$$` LaTeX spans. */ text: string; className?: string;",
+    "Popover": "trigger: React.ReactNode; children: React.ReactNode; side?: 'top' | 'right' | 'bottom' | 'left'; align?: 'start' | 'center' | 'end';",
+    "Select": "label?: string; options: { value: string; label: string }[]; value?: string; onValueChange?: (value: string) => void; placeholder?: string; error?: string; disabled?: boolean;",
+    "Skeleton": "/** CSS width, e.g. 200 (px) or '80%'. */ width?: string | number; /** CSS height, e.g. 16 (px) or '1rem'. */ height?: string | number; variant?: 'text' | 'circle' | 'rect'; className?: string;",
+    "Slider": "label?: string; min?: number; max?: number; step?: number; /** Controlled value(s); array supports range sliders. */ value?: number[]; onValueChange?: (value: number[]) => void; disabled?: boolean;",
+    "Switch": "label?: string; checked?: boolean; onCheckedChange?: (checked: boolean) => void; disabled?: boolean;",
+    "Table": "children?: React.ReactNode; className?: string;",
+    "Tabs": "tabs: { value: string; label: string; content: React.ReactNode }[]; defaultValue?: string; /** Controlled active tab. */ value?: string; onValueChange?: (value: string) => void; className?: string;",
+    "Tooltip": "content: React.ReactNode; children: React.ReactNode; side?: 'top' | 'right' | 'bottom' | 'left'; align?: 'start' | 'center' | 'end';"
+  }
+}
