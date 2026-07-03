@@ -1,0 +1,80 @@
+# CodeQL advanced setup.
+#
+# This committed workflow REPLACES GitHub's CodeQL "default setup". It exists so
+# we can exclude test code from analysis via a CodeQL config (default setup does
+# not support `paths-ignore`). Test fixtures legitimately do things CodeQL flags
+# as vulnerabilities in production code — e.g. `tests/e2e/_support/weather.ts`
+# seeds hardcoded mock coordinates into localStorage, tripping
+# `js/clear-text-storage-of-sensitive-data` (a false positive: canned fixtures,
+# no real user data) — plus URL-substring test assertions and similar test-only
+# patterns. The config in `.github/codeql/codeql-config.yml` ignores `tests/**`
+# and `*.spec.ts`/`*.test.ts`/`__tests__/**` while leaving production `src/**`
+# fully scanned. The `actions` analysis (workflow YAML) is unaffected by those
+# path globs.
+#
+# Languages mirror the prior default-setup coverage exactly:
+# `javascript-typescript` and `actions`. Do not drop either.
+#
+# IMPORTANT — this file does NOT take effect on its own. GitHub will keep running
+# default setup (and ignore this advanced workflow) until default setup is
+# DISABLED in repo settings: Settings → Code security → "CodeQL analysis" →
+# switch from "Default" to "Advanced" (or disable, then let this workflow run).
+# That is a repo-Settings / API action, not a committed-file change, and must be
+# done by someone with admin access before this workflow is the source of truth.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly scan (Mondays 07:17 UTC) so scheduled-only / time-sensitive rules
+    # run on a security cadence even without new commits. Off-the-hour minute to
+    # avoid the top-of-hour scheduler congestion on GitHub-hosted runners.
+    - cron: '17 7 * * 1'
+
+# Least privilege: the workflow default is read-only; the analyze job requests
+# exactly the scopes CodeQL needs (see the job-level `permissions` below).
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    # Scoped to this job only: `security-events: write` uploads results to code
+    # scanning; `contents: read` checks out the source; `actions: read` lets
+    # CodeQL read workflow runs (needed for the `actions` language and private
+    # repos). Nothing else inherits write scopes.
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Committed config supplies the `paths-ignore` test exclusions.
+          config-file: ./.github/codeql/codeql-config.yml
+
+      # No `autobuild`: both javascript-typescript and actions are interpreted
+      # languages that CodeQL extracts directly from source — no compilation
+      # step is required.
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'

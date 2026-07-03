@@ -1,0 +1,72 @@
+/**
+ * Read/maintenance helpers for stored weather integration data, used by the
+ * Settings panel (the "N days" status line and the on-disable delete prompt).
+ *
+ * All fetching of weather data is done elsewhere (user-initiated, via
+ * {@link WeatherSyncService}); this module only inspects and removes what is
+ * already in IndexedDB.
+ *
+ * ## Deletion scope
+ *
+ * {@link deleteAllWeatherData} performs a TOTAL wipe of `source: 'weather'`
+ * across all three integration stores — daily summaries, intra-night hourly
+ * timeseries, and import-history provenance — via the storage layer's
+ * {@link IndexedDBService.deleteIntegrationDataBySource} primitive, which runs
+ * the three cursor sweeps in a single atomic transaction. A disable→Delete
+ * therefore leaves nothing behind; no residual count needs to be disclosed.
+ *
+ * @module services/weather/weatherDataService
+ */
+
+import { getDB } from '@/services/storage/getDB';
+
+/** Weather integration source identifier. */
+const SOURCE = 'weather';
+
+/**
+ * Count distinct stored weather **days** — i.e. distinct civil dates that have a
+ * `weather_daily` summary.
+ *
+ * This intentionally counts civil *days*, not therapy *nights*: a single session
+ * crossing local midnight stores a daily summary for BOTH civil dates, so the
+ * distinct-date count can exceed the number of nights (e.g. one midnight-spanning
+ * night yields 2 stored days). Accurately collapsing those back to nights would
+ * require the original session windows, which this maintenance helper — reading
+ * only the stored daily summaries — does not have. The Settings panel therefore
+ * labels this value as "N days of weather data" rather than "N nights" so the
+ * status is honest about exactly what is counted, and never disagrees with the
+ * per-night counts shown by the sync coverage view / nightly dashboard hook.
+ */
+export async function countWeatherDays(): Promise<number> {
+  const db = await getDB();
+  const records = await db.getIntegrationDataBySource(SOURCE);
+  const dates = new Set<string>();
+  for (const r of records) dates.add(r.date);
+  return dates.size;
+}
+
+/** Outcome of a weather-data deletion — per-store counts of records removed. */
+export interface DeleteWeatherResult {
+  /** Daily-summary records removed from `integration_data`. */
+  readonly dailyRemoved: number;
+  /** Intra-night hourly timeseries records removed from `integration_timeseries`. */
+  readonly timeseriesRemoved: number;
+  /** Import-history records removed from `integration_import_history`. */
+  readonly importRecordsRemoved: number;
+}
+
+/**
+ * Delete ALL stored weather data — every `source: 'weather'` record across the
+ * daily-summary, hourly-timeseries, and import-history stores — in a single
+ * atomic transaction. Returns the per-store counts of records removed.
+ */
+export async function deleteAllWeatherData(): Promise<DeleteWeatherResult> {
+  const db = await getDB();
+  const { dailyDeleted, timeseriesDeleted, importRecordsDeleted } =
+    await db.deleteIntegrationDataBySource(SOURCE);
+  return {
+    dailyRemoved: dailyDeleted,
+    timeseriesRemoved: timeseriesDeleted,
+    importRecordsRemoved: importRecordsDeleted,
+  };
+}

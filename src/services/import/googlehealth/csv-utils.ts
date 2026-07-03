@@ -266,3 +266,35 @@ export function parseNumericFieldWithDefault(
 ): number {
   return parseNumericField(value) ?? defaultValue;
 }
+
+// ---------------------------------------------------------------------------
+// Column index utilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a case-insensitive column name → index map from CSV headers.
+ */
+export function buildColumnIndex(headers: string[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (let i = 0; i < headers.length; i++) {
+    const h = headers[i];
+    if (h !== undefined) {
+      map.set(h.trim().toLowerCase(), i);
+    }
+  }
+  return map;
+}
+
+/**
+ * Get a column value from a CSV row by header name (case-insensitive).
+ * Returns `undefined` if the column is not found or the row is too short.
+ */
+export function getColumn(
+  row: string[],
+  idx: Map<string, number>,
+  columnName: string,
+): string | undefined {
+  const i = idx.get(columnName.toLowerCase());
+  if (i === undefined) return undefined;
+  return row[i]?.trim();
+}

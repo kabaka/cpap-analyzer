@@ -22,7 +22,15 @@
  * @module views/Sessions/SignalViewer
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { HybridSignalRenderer } from '@/components/charts/HybridSignalRenderer';
@@ -50,6 +58,10 @@ import { confidenceTier, confidenceTierLabel, type BreathingEpisode } from '@/an
 import { useBreathingEpisodes } from '@/hooks/useBreathingEpisodes';
 import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
 import { useWearableLanes, type WearableSeries } from '@/hooks/useWearableLanes';
+import { useWeatherTimeseries } from '@/hooks/useWeatherData';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import type { AqiScale } from '@/analysis/weather/aqiRamp';
+import type { WeatherHourly, AirQualityHourly } from '@/types/weather';
 import type { SignalManifest, ChannelDescriptor } from '@/services/storage/OPFSService';
 import { OPFSService } from '@/services/storage/OPFSService';
 import { lttbInto, lttbOutLength, columnEnvelopeInto } from '@/services/workers/downsample.worker';
@@ -59,6 +71,7 @@ import type { Event as TherapyEvent } from '@/types';
 import { isMeaningfulSample } from '@/parsers/validation/physiologicalRanges';
 import { evaluateDeepLink, formatOffsetLabel } from './deepLinkGuard';
 import { createFramePaintScheduler, type FramePaintScheduler } from './framePaintScheduler';
+import { createResizeCoalescer, type ResizeCoalescer } from './resizeCoalescer';
 import {
   detectionReadoutText,
   EMPTY_HOVERED_REGION,
@@ -78,6 +91,22 @@ import {
   type LanePrefs,
 } from './laneState';
 import { computeLaneDomain } from './signalDomain';
+import type { CategoricalSample, EventInput, NumericChannelInput } from './regionStats';
+import {
+  buildMeasureLaneStats,
+  categoricalChipRows,
+  distributionChipRows,
+  formatStatValue,
+  laneStatSummary,
+  numericChipRows,
+  selectionChipRows,
+  spreadChipRows,
+  trendChipRows,
+  type MeasureDataSources,
+  type MeasureLaneStat,
+  type MeasureMode,
+  type TrendDirection,
+} from './regionStatsModel';
 import {
   applyCursorAnchoredZoom,
   pixelRangeToTimeRange,
@@ -94,6 +123,24 @@ import {
   type LaneDescriptor,
   type LaneGroup,
 } from './signalLanes';
+import {
+  aqiBands,
+  aqiSeriesHasData,
+  buildWeatherChannel,
+  conditionBands,
+  conditionsHaveData,
+  mergeAirQualityPoints,
+  mergeWeatherPoints,
+  pickAqiScale,
+  pressureHasData,
+  temperatureHasData,
+  weatherCursorReadout,
+  weatherLaneDescriptor,
+  WEATHER_LANE_SPECS,
+  type AirQualityPoint,
+  type WeatherPoint,
+  type WeatherReadoutUnits,
+} from './weatherLanes';
 import styles from './SignalViewer.module.css';
 
 // ── Constants ────────────────────────────────────────────────────
@@ -188,6 +235,167 @@ const ENVELOPE_SOURCE_OVERSCAN = 4;
  */
 const DETECTION_CHIP_BAND_OFFSET = 28;
 
+/**
+ * Lane heights at/below this (px) use the COMPACT single-row stat chip variant
+ * (collapsed 28px stubs, short lanes). Above it the 4-row grid chip is shown.
+ */
+const MEASURE_COMPACT_CHIP_MAX_HEIGHT = 64;
+
+/**
+ * Plot width (px) below which the per-lane stat chips are replaced by a single
+ * collapsible "Region statistics" bottom sheet (responsive fallback). The
+ * measure band still draws on the canvas.
+ */
+const MEASURE_SHEET_BREAKPOINT = 520;
+
+/**
+ * Region-statistics glyphs (shape-distinct; aria-hidden — the accessible word is
+ * carried in the chip label / aria-label). avg = x̄ (x + combining overline),
+ * med = M̃ (M + combining tilde), min = ↓, max = ↑. See the render decision note
+ * in the PR: M̃ is KEPT (system-ui renders the combining tilde on M correctly on
+ * the supported browser matrix); the `Md` fallback is documented but unused.
+ */
+const MEASURE_GLYPH = {
+  avg: 'x̅',
+  med: 'M̃',
+  min: '↓',
+  max: '↑',
+} as const;
+
+/** Per-stat accessible words (paired with {@link MEASURE_GLYPH}). */
+const MEASURE_WORD = {
+  avg: 'average',
+  med: 'median',
+  min: 'minimum',
+  max: 'maximum',
+} as const;
+
+// ── Measure mode catalogue ───────────────────────────────────────
+//
+// Five overlay lenses on the measured region (UI order = `.`/`,` cycle order):
+// Statistics → Variability → Trend → Distribution → Selection. Each re-skins the
+// per-lane chip + the SR table; the active mode is the single source of truth held
+// in `lanePrefs.measureStatMode` and surfaced by the footer segmented control.
+
+/** All overlay modes in UI / cycle order (mirrors {@link MEASURE_STAT_MODES}). */
+const MEASURE_MODE_ORDER: readonly MeasureMode[] = [
+  'statistics',
+  'variability',
+  'trend',
+  'distribution',
+  'selection',
+];
+
+/** Short segmented-control label per mode (the radiogroup options). */
+const MEASURE_MODE_SHORT: Record<MeasureMode, string> = {
+  statistics: 'Stats',
+  variability: 'Var',
+  trend: 'Trend',
+  distribution: 'Dist',
+  selection: 'Sel',
+};
+
+/** Full mode name for aria + the collapsed disclosure trigger. */
+const MEASURE_MODE_NAME: Record<MeasureMode, string> = {
+  statistics: 'Statistics',
+  variability: 'Variability',
+  trend: 'Trend',
+  distribution: 'Distribution',
+  selection: 'Selection',
+};
+
+/** One-line "what this mode shows", spoken in the debounced aria-live announcement. */
+const MEASURE_MODE_DESCRIPTION: Record<MeasureMode, string> = {
+  statistics: 'average, median, minimum and maximum',
+  variability: 'standard deviation, coefficient of variation and interquartile range',
+  trend: 'slope per minute, net change, percent change and direction',
+  distribution: 'the 5th, 25th, 50th, 75th and 95th percentiles',
+  selection: 'sample rate, sample count and precise region timing',
+};
+
+/** Cycle the active mode forward (`+1`) or back (`−1`), wrapping both ways. */
+function cycleMeasureMode(current: MeasureMode, delta: 1 | -1): MeasureMode {
+  const i = MEASURE_MODE_ORDER.indexOf(current);
+  const base = i < 0 ? 0 : i;
+  const n = MEASURE_MODE_ORDER.length;
+  const next = (base + delta + n) % n;
+  return MEASURE_MODE_ORDER[next] as MeasureMode;
+}
+
+/** Variability chip glyph/word columns. `σ`/`cv`/`iqr` are non-combining BMP glyphs. */
+const SPREAD_GLYPH = { sd: 'σ', cv: 'cv', iqr: 'iqr' } as const;
+const SPREAD_WORD = { sd: 'sd', cv: 'cv', iqr: 'iqr' } as const;
+
+/** Trend chip glyph/word columns (slope/net/percent + a direction row). */
+const TREND_GLYPH = { slope: 'Δ', net: 'Δ', percent: '%' } as const;
+const TREND_WORD = { slope: 'slope', net: 'net', percent: 'change' } as const;
+
+/** Direction arrow + word per {@link TrendDirection}. */
+const TREND_DIRECTION: Record<TrendDirection, { glyph: string; word: string }> = {
+  rising: { glyph: '↗', word: 'rising' },
+  falling: { glyph: '↘', word: 'falling' },
+  flat: { glyph: '→', word: 'flat' },
+};
+
+/** Distribution percentile rows (glyph is a ladder tick; label is the percentile). */
+const DISTRIBUTION_ROWS = [
+  { key: 'p5', label: 'p5' },
+  { key: 'p25', label: 'p25' },
+  { key: 'p50', label: 'p50' },
+  { key: 'p75', label: 'p75' },
+  { key: 'p95', label: 'p95' },
+] as const;
+
+/** Selection chip rows (rate/count/span). `fs`/`n`/`Δt` are non-combining BMP glyphs. */
+const SELECTION_GLYPH = { rate: 'fs', count: 'n', span: 'Δt' } as const;
+const SELECTION_WORD = { rate: 'rate', count: 'samples', span: 'span' } as const;
+
+/** Debounce (ms) for the spoken mode-switch announcement (aria-checked is instant). */
+const MEASURE_MODE_ANNOUNCE_DEBOUNCE_MS = 250;
+
+/**
+ * Format a precise wall-clock-or-relative timestamp WITH milliseconds for the
+ * Selection footer. Reuses the {@link formatWallClockLabel} HH:MM:SS form (UTC
+ * getters) and appends `.mmm`; falls back to a session-relative `mm:ss.mmm` when
+ * there is no wall-clock epoch (mirrors the footer's existing wall-clock fallback).
+ */
+function formatPreciseTime(wallClockEpoch: number, relMs: number): string {
+  const ms = String(Math.floor(((relMs % 1000) + 1000) % 1000)).padStart(3, '0');
+  if (!Number.isNaN(wallClockEpoch)) {
+    return `${formatWallClockLabel(wallClockEpoch, relMs, true)}.${ms}`;
+  }
+  // Session-relative fallback: H:MM:SS.mmm from session start.
+  const totalSec = Math.floor(relMs / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const hh = String(h).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return `${hh}:${mm}:${ss}.${ms}`;
+}
+
+/** Build the exact Selection-footer timing string (start · dur · end), ms-precise. */
+function buildPreciseTimingString(wallClockEpoch: number, startMs: number, endMs: number): string {
+  const start = formatPreciseTime(wallClockEpoch, startMs);
+  const end = formatPreciseTime(wallClockEpoch, endMs);
+  const durMs = Math.max(0, Math.round(endMs - startMs));
+  const dur = formatExactDuration(durMs);
+  return `start ${start} · dur ${dur} · end ${end}`;
+}
+
+/** Exact `H:MM:SS.mmm` duration for the Selection footer (millisecond precision). */
+function formatExactDuration(durMs: number): string {
+  const ms = String(durMs % 1000).padStart(3, '0');
+  const totalSec = Math.floor(durMs / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}.${ms}` : `${m}:${ss}.${ms}`;
+}
+
 /** Lane drawer presets — id → set of lane ids to show (others hidden). */
 interface LanePreset {
   readonly id: string;
@@ -217,6 +425,11 @@ const LANE_PRESETS: readonly LanePreset[] = [
     match: (l) => l.group === 'sleep' || l.id === 'wear:heart_rate_intraday',
   },
   {
+    id: 'environment',
+    label: 'Environment focus',
+    match: (l) => l.id === 'cpap:flow' || l.group === 'weather',
+  },
+  {
     id: 'everything',
     label: 'Everything',
     match: () => true,
@@ -234,6 +447,20 @@ interface FullChannelData {
 interface ViewportRange {
   startTime: number; // ms offset from session signal start
   endTime: number; // ms offset from session signal start
+}
+
+/**
+ * The two sources a measured region can come from. `viewport` tracks the visible
+ * window live (recomputed on the settled viewport); `selection` is an explicitly
+ * pinned region (Alt-drag or keyboard `[`/`]`) that stays fixed in time across
+ * pan/zoom. The pinned region is transient (never persisted).
+ */
+type MeasureRegionSource = 'viewport' | 'selection';
+
+/** An explicitly pinned measure region, session-relative ms, half-open `[start, end)`. */
+interface PinnedRegion {
+  startMs: number;
+  endMs: number;
 }
 
 // ── Resolve CSS custom property to a computed colour value ────────
@@ -375,6 +602,763 @@ function DetectionChip({
   );
 }
 
+// ── Region-statistics per-lane chip (overlay) ────────────────────
+
+/**
+ * One per-lane stat chip docked to the lane's left inner edge. Purely decorative
+ * (`aria-hidden`, `pointer-events:none`) — the structured table + the polite
+ * live-region summary carry the accessible data. Renders the 4-row numeric grid
+ * (avg/med/min/max), the categorical stage-% summary, or a "— no data" dash; the
+ * `compact` flag switches to the single-row inline variant for short/collapsed
+ * lanes. Stats text swaps in place (tabular figures prevent jitter).
+ */
+/**
+ * The "— no data" chip variant, shared by the three empty-stats branches in
+ * {@link MeasureChip} (no stats, empty numeric, empty categorical).
+ */
+function MeasureChipNoData({ top, compact }: { top: number; compact: boolean }): JSX.Element {
+  return (
+    <div
+      className={`${styles.statChip} ${compact ? styles.statChipCompact : ''}`}
+      style={{ top: `${top}px` }}
+      aria-hidden="true"
+    >
+      <span className={styles.statChipNoData}>—</span>
+    </div>
+  );
+}
+
+/**
+ * "— not numeric" chip variant for hypnogram/categorical & event lanes under the
+ * numeric overlay modes (Variability/Trend/Distribution/Selection): those lanes
+ * have no continuous-metric to report, so the chip shows a labelled dash rather
+ * than a number (never fabricated).
+ */
+function MeasureChipNotNumeric({
+  top,
+  compact,
+  reason,
+}: {
+  top: number;
+  compact: boolean;
+  reason: string;
+}): JSX.Element {
+  return (
+    <div
+      className={`${styles.statChip} ${compact ? styles.statChipCompact : ''}`}
+      style={{ top: `${top}px` }}
+      aria-hidden="true"
+    >
+      <span className={styles.statChipNoData}>— {reason}</span>
+    </div>
+  );
+}
+
+function MeasureChip({
+  stat,
+  top,
+  compact,
+  mode,
+}: {
+  stat: MeasureLaneStat;
+  top: number;
+  compact: boolean;
+  mode: MeasureMode;
+}): JSX.Element | null {
+  const { stats } = stat;
+
+  // Selection mode is metadata-driven (rate/count/span), independent of `stats.kind`.
+  if (mode === 'selection') {
+    return <MeasureSelectionChip stat={stat} top={top} compact={compact} />;
+  }
+
+  if (stats.kind === 'none') {
+    return <MeasureChipNoData top={top} compact={compact} />;
+  }
+
+  // Numeric overlay modes re-skin the numeric chip; categorical/none lanes are
+  // "not numeric" under them (Statistics keeps the categorical stage chip).
+  if (mode === 'variability') {
+    if (stats.kind !== 'spread') {
+      return <MeasureChipNotNumeric top={top} compact={compact} reason="not numeric" />;
+    }
+    return <MeasureSpreadChip stats={stats} top={top} compact={compact} />;
+  }
+  if (mode === 'trend') {
+    if (stats.kind !== 'trend') {
+      return <MeasureChipNotNumeric top={top} compact={compact} reason="not numeric" />;
+    }
+    return <MeasureTrendChip stats={stats} top={top} compact={compact} />;
+  }
+  if (mode === 'distribution') {
+    if (stats.kind !== 'distribution') {
+      return <MeasureChipNotNumeric top={top} compact={compact} reason="not numeric" />;
+    }
+    return <MeasureDistributionChip stats={stats} top={top} compact={compact} />;
+  }
+
+  // ── Statistics mode (default, unchanged behaviour) ──
+  if (stats.kind === 'numeric') {
+    const rows = numericChipRows(stats);
+    const unit = rows.unit;
+    if (rows.empty) {
+      return <MeasureChipNoData top={top} compact={compact} />;
+    }
+    if (compact) {
+      // Single inline row: glyphs only, unit once at the end.
+      return (
+        <div
+          className={`${styles.statChip} ${styles.statChipCompact}`}
+          style={{ top: `${top}px` }}
+          aria-hidden="true"
+        >
+          <span className={styles.statChipCompactRow}>
+            <span className={styles.statChipGlyph}>{MEASURE_GLYPH.avg}</span> {rows.avg}
+            <span className={styles.legendSeparatorInline}>·</span>
+            <span className={styles.statChipGlyph}>{MEASURE_GLYPH.med}</span>
+            {rows.medianIsApproximate ? '~' : ''}
+            {rows.med}
+            <span className={styles.legendSeparatorInline}>·</span>
+            <span className={styles.statChipGlyph}>{MEASURE_GLYPH.min}</span> {rows.min}
+            <span className={styles.legendSeparatorInline}>·</span>
+            <span className={styles.statChipGlyph}>{MEASURE_GLYPH.max}</span> {rows.max}
+            {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+          </span>
+        </div>
+      );
+    }
+    // Single-sample collapse: show value on the avg row; collapse the rest.
+    if (rows.singleSample) {
+      return (
+        <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+          <span className={styles.statChipGlyph}>{MEASURE_GLYPH.avg}</span>
+          <span className={styles.statChipLabel}>{MEASURE_WORD.avg}</span>
+          <span className={styles.statChipValue}>
+            {rows.avg}
+            {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+          </span>
+          <span className={styles.statChipSingle}>n = 1 (single sample)*</span>
+        </div>
+      );
+    }
+    return (
+      <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+        {(['avg', 'med', 'min', 'max'] as const).map((key) => {
+          const value = rows[key];
+          const approx = key === 'med' && rows.medianIsApproximate;
+          return (
+            <Fragment key={key}>
+              <span className={styles.statChipGlyph}>{MEASURE_GLYPH[key]}</span>
+              <span className={styles.statChipLabel}>{MEASURE_WORD[key]}</span>
+              <span className={styles.statChipValue}>
+                {approx ? '~' : ''}
+                {value}
+                {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+              </span>
+            </Fragment>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // Event-count lanes are not modelled as lanes in this viewer (events are
+  // markers across the stack; the count is shown in the footer/table), so a
+  // `count` kind never reaches a lane chip. Render nothing defensively.
+  if (stats.kind !== 'categorical') return null;
+
+  // Categorical (hypnogram): per-stage occupancy summary.
+  const stageRows = categoricalChipRows(stats);
+  if (stageRows.length === 0) {
+    return <MeasureChipNoData top={top} compact={compact} />;
+  }
+  if (compact) {
+    return (
+      <div
+        className={`${styles.statChip} ${styles.statChipCompact}`}
+        style={{ top: `${top}px` }}
+        aria-hidden="true"
+      >
+        <span className={styles.statChipCompactRow}>
+          {stageRows.map((s, i) => (
+            <Fragment key={s.stageName}>
+              {i > 0 ? <span className={styles.legendSeparatorInline}>·</span> : null}
+              {s.stageName} {s.percent}%
+            </Fragment>
+          ))}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+      {stageRows.map((s) => (
+        <Fragment key={s.stageName}>
+          <span className={styles.statChipGlyph} aria-hidden="true">
+            ◼
+          </span>
+          <span className={styles.statChipLabel}>{s.stageName}</span>
+          <span className={styles.statChipValue}>{s.percent}%</span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** Variability chip: σ / cv / iqr rows (CV dashes for zero-mean / non-allowlisted). */
+function MeasureSpreadChip({
+  stats,
+  top,
+  compact,
+}: {
+  stats: Extract<MeasureLaneStat['stats'], { kind: 'spread' }>;
+  top: number;
+  compact: boolean;
+}): JSX.Element {
+  const rows = spreadChipRows(stats);
+  if (rows.empty) return <MeasureChipNoData top={top} compact={compact} />;
+  const unit = rows.unit;
+  const cvTitle = rows.cvUndefined ? 'CV undefined for a zero-mean signal' : undefined;
+  if (compact) {
+    return (
+      <div
+        className={`${styles.statChip} ${styles.statChipCompact}`}
+        style={{ top: `${top}px` }}
+        aria-hidden="true"
+      >
+        <span className={styles.statChipCompactRow}>
+          <span className={styles.statChipGlyph}>{SPREAD_GLYPH.sd}</span> {rows.sd}
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{SPREAD_GLYPH.cv}</span>
+          <span title={cvTitle}>
+            {rows.cv}
+            {rows.cv === '—' ? '' : '%'}
+          </span>
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{SPREAD_GLYPH.iqr}</span> {rows.iqr}
+          {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+      <span className={styles.statChipGlyph}>{SPREAD_GLYPH.sd}</span>
+      <span className={styles.statChipLabel}>{SPREAD_WORD.sd}</span>
+      <span className={styles.statChipValue}>
+        {rows.sd}
+        {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+      </span>
+      <span className={styles.statChipGlyph}>{SPREAD_GLYPH.cv}</span>
+      <span className={styles.statChipLabel}>{SPREAD_WORD.cv}</span>
+      <span className={styles.statChipValue} title={cvTitle}>
+        {rows.cv}
+        {rows.cv === '—' ? '' : <span className={styles.statChipUnit}> %</span>}
+      </span>
+      <span className={styles.statChipGlyph}>{SPREAD_GLYPH.iqr}</span>
+      <span className={styles.statChipLabel}>{SPREAD_WORD.iqr}</span>
+      <span className={styles.statChipValue}>
+        {rows.iqr}
+        {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+/** Trend chip: slope / net / % change + a direction row and a muted r² note. */
+function MeasureTrendChip({
+  stats,
+  top,
+  compact,
+}: {
+  stats: Extract<MeasureLaneStat['stats'], { kind: 'trend' }>;
+  top: number;
+  compact: boolean;
+}): JSX.Element {
+  const rows = trendChipRows(stats);
+  if (rows.empty) return <MeasureChipNoData top={top} compact={compact} />;
+  const unit = rows.unit;
+  const dir = TREND_DIRECTION[rows.direction];
+  if (compact) {
+    return (
+      <div
+        className={`${styles.statChip} ${styles.statChipCompact}`}
+        style={{ top: `${top}px` }}
+        aria-hidden="true"
+      >
+        <span className={styles.statChipCompactRow}>
+          <span className={styles.statChipGlyph}>{dir.glyph}</span> {rows.slope}
+          {unit ? `${unit}/min` : '/min'}
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{TREND_GLYPH.net}</span> {rows.net}
+          {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+      <span className={styles.statChipGlyph}>{TREND_GLYPH.slope}</span>
+      <span className={styles.statChipLabel}>{TREND_WORD.slope}</span>
+      <span className={styles.statChipValue}>
+        {rows.slope}
+        <span className={styles.statChipUnit}> {unit ? `${unit}/min` : '/min'}</span>
+      </span>
+      <span className={styles.statChipGlyph}>{TREND_GLYPH.net}</span>
+      <span className={styles.statChipLabel}>{TREND_WORD.net}</span>
+      <span className={styles.statChipValue}>
+        {rows.net}
+        {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+      </span>
+      <span className={styles.statChipGlyph}>{TREND_GLYPH.percent}</span>
+      <span className={styles.statChipLabel}>{TREND_WORD.percent}</span>
+      <span className={styles.statChipValue}>
+        {rows.percent}
+        {rows.percent === '—' ? '' : <span className={styles.statChipUnit}> %</span>}
+      </span>
+      <span className={styles.statChipGlyph} aria-hidden="true">
+        {dir.glyph}
+      </span>
+      <span className={styles.statChipLabel}>direction</span>
+      <span className={styles.statChipValue}>{dir.word}</span>
+      {rows.rSquared !== null ? (
+        <span className={styles.statChipNote}>r²={rows.rSquared}</span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Distribution chip: p5/p25/p50/p75/p95 rows (ladder tick glyph), unit once. */
+function MeasureDistributionChip({
+  stats,
+  top,
+  compact,
+}: {
+  stats: Extract<MeasureLaneStat['stats'], { kind: 'distribution' }>;
+  top: number;
+  compact: boolean;
+}): JSX.Element {
+  const rows = distributionChipRows(stats);
+  if (rows.empty) return <MeasureChipNoData top={top} compact={compact} />;
+  const unit = rows.unit;
+  if (compact) {
+    return (
+      <div
+        className={`${styles.statChip} ${styles.statChipCompact}`}
+        style={{ top: `${top}px` }}
+        aria-hidden="true"
+      >
+        <span className={styles.statChipCompactRow}>
+          {DISTRIBUTION_ROWS.map((r, i) => (
+            <Fragment key={r.key}>
+              {i > 0 ? <span className={styles.legendSeparatorInline}>·</span> : null}
+              {rows[r.key]}
+            </Fragment>
+          ))}
+          {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+      {DISTRIBUTION_ROWS.map((r) => (
+        <Fragment key={r.key}>
+          <span className={styles.statChipGlyph} aria-hidden="true">
+            ▏
+          </span>
+          <span className={styles.statChipLabel}>{r.label}</span>
+          <span className={styles.statChipValue}>
+            {rows[r.key]}
+            {unit ? <span className={styles.statChipUnit}> {unit}</span> : null}
+          </span>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** Selection chip: fs rate / n samples / Δt span (per-lane facts). */
+function MeasureSelectionChip({
+  stat,
+  top,
+  compact,
+}: {
+  stat: MeasureLaneStat;
+  top: number;
+  compact: boolean;
+}): JSX.Element {
+  const info = stat.selection;
+  if (!info) return <MeasureChipNoData top={top} compact={compact} />;
+  const rows = selectionChipRows(info);
+  if (rows.empty) return <MeasureChipNoData top={top} compact={compact} />;
+  const rateTitle = rows.rateEstimated ? 'mean cadence; wearable sampling is irregular' : undefined;
+  if (compact) {
+    return (
+      <div
+        className={`${styles.statChip} ${styles.statChipCompact}`}
+        style={{ top: `${top}px` }}
+        aria-hidden="true"
+      >
+        <span className={styles.statChipCompactRow}>
+          <span className={styles.statChipGlyph}>{SELECTION_GLYPH.rate}</span>
+          <span title={rateTitle}>
+            {rows.rate}
+            {info.stepped ? '' : ' Hz'}
+          </span>
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{SELECTION_GLYPH.count}</span> {rows.count}
+          <span className={styles.legendSeparatorInline}>·</span>
+          <span className={styles.statChipGlyph}>{SELECTION_GLYPH.span}</span> {rows.span}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={styles.statChip} style={{ top: `${top}px` }} aria-hidden="true">
+      <span className={styles.statChipGlyph}>{SELECTION_GLYPH.rate}</span>
+      <span className={styles.statChipLabel}>{SELECTION_WORD.rate}</span>
+      <span className={styles.statChipValue} title={rateTitle}>
+        {rows.rate}
+        {info.stepped ? '' : <span className={styles.statChipUnit}> Hz</span>}
+      </span>
+      <span className={styles.statChipGlyph}>{SELECTION_GLYPH.count}</span>
+      <span className={styles.statChipLabel}>{SELECTION_WORD.count}</span>
+      <span className={styles.statChipValue}>{rows.count}</span>
+      <span className={styles.statChipGlyph}>{SELECTION_GLYPH.span}</span>
+      <span className={styles.statChipLabel}>{SELECTION_WORD.span}</span>
+      <span className={styles.statChipValue}>{rows.span}</span>
+    </div>
+  );
+}
+
+// ── Measure-mode footer switcher ─────────────────────────────────
+
+/**
+ * The footer segmented control: the visible mode switcher AND the mode indicator
+ * (single source of truth). A standard `role="radiogroup"` of 5 options
+ * (Stats · Var · Trend · Dist · Sel) with roving tabindex, Arrow Left/Right to move,
+ * and Space/Enter to select; clicking an option selects it directly. The selected
+ * option is marked by a fill + a leading `●` marker + weight + shadow (never colour
+ * alone). On a tight footer (`collapsed`) it folds to "active label + ▸" that opens
+ * an upward popover list of the five modes.
+ */
+function MeasureModeSwitcher({
+  mode,
+  onChange,
+  collapsed,
+}: {
+  mode: MeasureMode;
+  onChange: (next: MeasureMode) => void;
+  collapsed: boolean;
+}): JSX.Element {
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const optionRefs = useRef<Map<MeasureMode, HTMLButtonElement | null>>(new Map());
+
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = cycleMeasureMode(mode, 1);
+      onChange(next);
+      optionRefs.current.get(next)?.focus();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = cycleMeasureMode(mode, -1);
+      onChange(next);
+      optionRefs.current.get(next)?.focus();
+    }
+  };
+
+  if (collapsed) {
+    return (
+      <div className={styles.modeSwitcherCollapsed}>
+        <button
+          type="button"
+          className={styles.modeSwitcherDisclosure}
+          aria-haspopup="listbox"
+          aria-expanded={popoverOpen}
+          aria-label={`Measure mode: ${MEASURE_MODE_NAME[mode]}. Change mode`}
+          onClick={() => setPopoverOpen((o) => !o)}
+        >
+          {MEASURE_MODE_SHORT[mode]}
+          <span className={styles.regionStatsSheetChevron} aria-hidden="true">
+            ▸
+          </span>
+        </button>
+        {popoverOpen && (
+          <ul className={styles.modeSwitcherPopover} role="listbox" aria-label="Measure mode">
+            {MEASURE_MODE_ORDER.map((m) => (
+              <li key={m} role="option" aria-selected={m === mode}>
+                <button
+                  type="button"
+                  className={styles.modeSwitcherPopoverOption}
+                  data-selected={m === mode ? 'true' : undefined}
+                  onClick={() => {
+                    onChange(m);
+                    setPopoverOpen(false);
+                  }}
+                >
+                  <span className={styles.modeSwitcherOptionMarker} aria-hidden="true">
+                    ●
+                  </span>
+                  {MEASURE_MODE_NAME[m]}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={styles.modeSwitcher}
+      role="radiogroup"
+      aria-label="Measure mode"
+      onKeyDown={onKeyDown}
+    >
+      {MEASURE_MODE_ORDER.map((m) => {
+        const selected = m === mode;
+        return (
+          <button
+            key={m}
+            type="button"
+            ref={(el) => {
+              optionRefs.current.set(m, el);
+            }}
+            className={styles.modeSwitcherOption}
+            role="radio"
+            aria-checked={selected}
+            aria-label={MEASURE_MODE_NAME[m]}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onChange(m)}
+          >
+            <span className={styles.modeSwitcherOptionMarker} aria-hidden="true">
+              ●
+            </span>
+            {MEASURE_MODE_SHORT[m]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Measure-region SR table (per-mode) ───────────────────────────
+
+/** Column headers per mode (Lane is always the first row-header column). */
+const MEASURE_TABLE_HEADERS: Record<MeasureMode, readonly string[]> = {
+  statistics: ['Lane', 'Average', 'Median', 'Minimum', 'Maximum', 'Unit', 'Samples'],
+  variability: ['Lane', 'Std dev', 'CV', 'IQR', 'Unit', 'Samples'],
+  trend: ['Lane', 'Slope (/min)', 'Net Δ', '% change', 'Direction', 'R²', 'Unit', 'Samples'],
+  distribution: ['Lane', 'p5', 'p25', 'p50', 'p75', 'p95', 'Unit', 'Samples'],
+  selection: ['Lane', 'Sample rate (Hz)', 'Samples', 'Span'],
+};
+
+/** Number of data columns (excluding the Lane row-header) for an inapplicable lane's colSpan. */
+function measureTableDataColumns(mode: MeasureMode): number {
+  return MEASURE_TABLE_HEADERS[mode].length - 1;
+}
+
+/**
+ * The screen-reader structured path for the Measure overlay: a real, focusable
+ * `<table>` whose caption, column headers, and cells swap per active mode while the
+ * element stays mounted (only contents change). Inapplicable lanes render an explicit
+ * `—` summary cell with a `title` reason; numeric/categorical-empty lanes fall back to
+ * {@link laneStatSummary}.
+ */
+function MeasureStatsTable({
+  mode,
+  laneStats,
+  region,
+  wallClockEpoch,
+  eventCount,
+}: {
+  mode: MeasureMode;
+  laneStats: readonly MeasureLaneStat[];
+  region: { startMs: number; endMs: number; source: MeasureRegionSource };
+  wallClockEpoch: number;
+  eventCount: number;
+}): JSX.Element {
+  const headers = MEASURE_TABLE_HEADERS[mode];
+  const dataCols = measureTableDataColumns(mode);
+  const sourceWord = region.source === 'selection' ? 'pinned region' : 'viewport';
+  const modeName = MEASURE_MODE_NAME[mode];
+  const clockClause = Number.isNaN(wallClockEpoch)
+    ? ''
+    : mode === 'selection'
+      ? `, ${formatPreciseTime(wallClockEpoch, region.startMs)} to ${formatPreciseTime(
+          wallClockEpoch,
+          region.endMs,
+        )}`
+      : `, ${formatWallClockLabel(wallClockEpoch, region.startMs, true)} to ${formatWallClockLabel(
+          wallClockEpoch,
+          region.endMs,
+          true,
+        )}`;
+  const durLabel =
+    mode === 'selection'
+      ? formatExactDuration(Math.max(0, Math.round(region.endMs - region.startMs)))
+      : formatDuration(Math.round((region.endMs - region.startMs) / 1000));
+
+  return (
+    <table className={styles.srOnly} tabIndex={0} aria-label="Region statistics">
+      <caption>
+        {modeName} — Region statistics, {sourceWord}, {durLabel}
+        {clockClause}
+      </caption>
+      <thead>
+        <tr>
+          {headers.map((h, i) => (
+            <th key={h} scope="col">
+              {i === 0 ? 'Lane' : h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {laneStats.map((laneStat) => (
+          <MeasureStatsTableRow
+            key={laneStat.laneId}
+            mode={mode}
+            laneStat={laneStat}
+            dataCols={dataCols}
+          />
+        ))}
+        {eventCount > 0 && (
+          <tr>
+            <th scope="row">Events</th>
+            <td colSpan={dataCols}>
+              {eventCount.toLocaleString()} event{eventCount === 1 ? '' : 's'} in region
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+/** One lane row of the per-mode SR table. */
+function MeasureStatsTableRow({
+  mode,
+  laneStat,
+  dataCols,
+}: {
+  mode: MeasureMode;
+  laneStat: MeasureLaneStat;
+  dataCols: number;
+}): JSX.Element {
+  const s = laneStat.stats;
+  const name = laneStat.laneName;
+  const unit = laneStat.unit || '—';
+
+  // A single explicit "—" summary cell for an inapplicable / empty lane.
+  const notApplicable = (reason: string) => (
+    <tr>
+      <th scope="row">{name}</th>
+      <td colSpan={dataCols} title={reason}>
+        —<span className={styles.srOnly}> {reason}</span>
+      </td>
+    </tr>
+  );
+
+  if (mode === 'selection') {
+    const info = laneStat.selection;
+    if (!info) return notApplicable('no data');
+    if (info.stepped) return notApplicable('stepped lane (no single sample rate)');
+    const rows = selectionChipRows(info);
+    if (rows.empty) return notApplicable('no meaningful samples in region');
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{rows.rate}</td>
+        <td>{rows.count}</td>
+        <td>{rows.span}</td>
+      </tr>
+    );
+  }
+
+  if (mode === 'variability') {
+    if (s.kind !== 'spread' || s.count === 0) return notApplicable('not numeric / no data');
+    const rows = spreadChipRows(s);
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{rows.sd}</td>
+        <td title={rows.cvUndefined ? 'CV undefined for a zero-mean signal' : undefined}>
+          {rows.cv === '—' ? '—' : `${rows.cv}%`}
+        </td>
+        <td>{rows.iqr}</td>
+        <td>{unit}</td>
+        <td>{s.count.toLocaleString()}</td>
+      </tr>
+    );
+  }
+
+  if (mode === 'trend') {
+    if (s.kind !== 'trend' || s.count < 2 || s.slopePerMin === null) {
+      return notApplicable('not numeric / no defined trend');
+    }
+    const rows = trendChipRows(s);
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{rows.slope}</td>
+        <td>{rows.net}</td>
+        <td>{rows.percent === '—' ? rows.percent : `${rows.percent}%`}</td>
+        <td>{TREND_DIRECTION[rows.direction].word}</td>
+        <td>{rows.rSquared ?? '—'}</td>
+        <td>{unit}</td>
+        <td>{s.count.toLocaleString()}</td>
+      </tr>
+    );
+  }
+
+  if (mode === 'distribution') {
+    if (s.kind !== 'distribution' || s.count < 2) return notApplicable('not numeric / no data');
+    const rows = distributionChipRows(s);
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{rows.p5}</td>
+        <td>{rows.p25}</td>
+        <td>{rows.p50}</td>
+        <td>{rows.p75}</td>
+        <td>{rows.p95}</td>
+        <td>{unit}</td>
+        <td>{s.count.toLocaleString()}</td>
+      </tr>
+    );
+  }
+
+  // ── Statistics mode (default) ──
+  if (s.kind === 'numeric' && s.count > 0) {
+    const d = s.decimals;
+    return (
+      <tr>
+        <th scope="row">{name}</th>
+        <td>{formatStatValue(s.mean, d)}</td>
+        <td>
+          {s.medianIsApproximate ? '~' : ''}
+          {formatStatValue(s.median, d)}
+        </td>
+        <td>{formatStatValue(s.min, d)}</td>
+        <td>{formatStatValue(s.max, d)}</td>
+        <td>{unit}</td>
+        <td>{s.count.toLocaleString()}</td>
+      </tr>
+    );
+  }
+  // Categorical / count / none / empty-numeric: a single summary cell.
+  return (
+    <tr>
+      <th scope="row">{name}</th>
+      <td colSpan={dataCols}>{laneStatSummary(laneStat) ?? 'No data'}</td>
+    </tr>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────
 
 export default function SignalViewer() {
@@ -424,6 +1408,13 @@ export default function SignalViewer() {
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<HybridSignalRenderer | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
+  // rAF-coalescing applier for wrapper-width changes. Records the latest
+  // observed width and applies it at most once per frame, and — crucially —
+  // suppresses applies entirely while the sidebar collapse/expand transition is
+  // animating (document.body.dataset.sidebarAnimating === 'true'), performing a
+  // single authoritative trailing apply once the flag clears. See
+  // resizeCoalescer.ts. Created lazily on observe, torn down with the renderer.
+  const resizeCoalescerRef = useRef<ResizeCoalescer | null>(null);
   const opfsRef = useRef<OPFSService | null>(null);
 
   /** Full CPAP session signal data preloaded into memory. */
@@ -575,6 +1566,73 @@ export default function SignalViewer() {
    */
   const [selectionRect, setSelectionRect] = useState<{ left: number; width: number } | null>(null);
 
+  // ── Measure-region overlay state ─────────────────────────────
+  //
+  // "Measure region" describes EITHER the live viewport (default source) or an
+  // explicitly pinned region (Alt-drag / keyboard). Stats compute only when the
+  // overlay is active (sticky on, or an Alt peek, or a pinned region exists) and
+  // only on the SETTLED viewport — never per wheel/drag frame (perf priority).
+
+  /**
+   * An explicitly pinned region (Alt-drag or keyboard `[`/`]`), or `null` when the
+   * overlay tracks the viewport. Stays fixed in time across pan/zoom. Transient —
+   * never persisted (only the on/off `measureMode` flag is).
+   */
+  const [measureRegion, setMeasureRegion] = useState<PinnedRegion | null>(null);
+
+  /**
+   * Momentary Alt peek: while Alt is held over the plot, chips fade in for the
+   * viewport even when sticky mode is off. Released → hidden (unless pinned/sticky).
+   */
+  const [altPeek, setAltPeek] = useState(false);
+
+  /**
+   * Whether the pointer is currently inside the plot area. A ref (not state) so it
+   * stays off the hot render path — it is read synchronously by the Alt-keydown
+   * handler to gate the peek. Set `true` while the pointer moves over the canvas
+   * wrapper and `false` on pointer leave. The whole point of this gate: a bare Alt
+   * keydown (e.g. Alt-Tab) must do NOTHING unless the pointer is over the plot, so
+   * the overlay never flips on — and stats never compute — at rest.
+   */
+  const pointerOverPlotRef = useRef(false);
+
+  /**
+   * Active ALT-DRAG measure marquee (the persistent sibling of the shift-zoom
+   * rubber-band). Same px mechanics as {@link selectionStartRef}; on release it
+   * PINS a measure region instead of zooming. `null` when no marquee is in flight.
+   */
+  const measureMarqueeRef = useRef<{
+    startX: number;
+    currentX: number;
+    viewport: ViewportRange;
+  } | null>(null);
+
+  /** Pixel rect of the live ALT-drag marquee, or `null`. Mirrors `selectionRect`. */
+  const [measureMarqueeRect, setMeasureMarqueeRect] = useState<{
+    left: number;
+    width: number;
+  } | null>(null);
+
+  /**
+   * Pending keyboard region start (session-relative ms) set by `[` and awaiting a
+   * closing `]`. Held in a ref so the keydown handler reads it without a stale
+   * closure; cleared once `]` pins the region.
+   */
+  const keyboardRegionStartRef = useRef<number | null>(null);
+
+  /** Whether the responsive "Region statistics" bottom sheet is expanded. */
+  const [measureSheetOpen, setMeasureSheetOpen] = useState(false);
+
+  /** Polite aria-live summary pushed on region change (span + first lanes). */
+  const [measureAnnouncement, setMeasureAnnouncement] = useState('');
+
+  /**
+   * Debounced polite aria-live text announcing the active Measure mode (name + what
+   * it shows). `aria-checked` on the segmented control updates immediately; only this
+   * spoken text debounces (~250ms) so fast `,`/`.` cycling doesn't spam the SR.
+   */
+  const [measureModeAnnouncement, setMeasureModeAnnouncement] = useState('');
+
   // Canvas dimensions
   const [canvasSize, setCanvasSize] = useState<{ width: number; height: number }>({
     width: 0,
@@ -588,6 +1646,30 @@ export default function SignalViewer() {
   /** Lane prefs (order/hidden/collapsed/preset), persisted per session. */
   const [lanePrefs, setLanePrefs] = useState<LanePrefs>(() =>
     parseLanePrefs(sessionId ? localStorage.getItem(lanePrefsKey(sessionId)) : null),
+  );
+
+  /**
+   * Sticky "Measure" mode, persisted in lane prefs. When on, the stat chips +
+   * footer are shown for the active region even with no pointer interaction.
+   */
+  const measureMode = lanePrefs.measureMode ?? false;
+
+  /**
+   * Which statistic the Measure overlay renders (Statistics / Variability / Trend /
+   * Distribution / Selection), persisted per session. Single source of truth for the
+   * footer segmented control, the `.`/`,` cycle, the per-lane chips, and the SR table.
+   * Defaults to `'statistics'` when unset.
+   */
+  const measureStatMode: MeasureMode = lanePrefs.measureStatMode ?? 'statistics';
+
+  /** Set the active Measure stat mode (persisted in lane prefs). */
+  const setMeasureStatMode = useCallback(
+    (next: MeasureMode) => {
+      setLanePrefs((prev) =>
+        (prev.measureStatMode ?? 'statistics') === next ? prev : { ...prev, measureStatMode: next },
+      );
+    },
+    [setLanePrefs],
   );
 
   /** Drawer open state. */
@@ -627,6 +1709,9 @@ export default function SignalViewer() {
 
   /** Whether the "no wearable data connected" hint has been dismissed this view. */
   const [hintDismissed, setHintDismissed] = useState(false);
+
+  /** Whether the "no weather for this night" hint has been dismissed this view. */
+  const [weatherHintDismissed, setWeatherHintDismissed] = useState(false);
 
   /**
    * Whether app-computed breathing-detection overlays (PB/CSR candidates) are
@@ -778,6 +1863,83 @@ export default function SignalViewer() {
     [wearableLoading, wearableSeries],
   );
 
+  // ── Weather data (independent, read-only — never fetches network) ──
+  //
+  // The weather integration stores hourly weather/air-quality per civil date. A
+  // night can span two civil dates, so we query the anchor date ± 1 day and merge
+  // BOTH dates' hourly records (mergeWeather/AirQualityPoints) into one ascending
+  // series before aligning to wall-clock. The hook is read-only (no egress).
+
+  const weatherEnabled = useSettingsStore((s) => s.integrations.weather.enabled);
+  const weatherUnitsSetting = useSettingsStore((s) => s.integrations.weather.units);
+
+  /** Date range (anchor ± 1 day) covering a midnight-spanning night either way. */
+  const weatherDateRange = useMemo(() => {
+    if (!weatherEnabled || !wearableDate) return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(wearableDate);
+    if (!m) return null;
+    const base = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const DAY = 86_400_000;
+    const fmtDate = (ms: number): string => {
+      const d = new Date(ms);
+      const y = d.getUTCFullYear();
+      const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${y}-${mo}-${day}`;
+    };
+    return { start: fmtDate(base - DAY), end: fmtDate(base + DAY) };
+  }, [weatherEnabled, wearableDate]);
+
+  const { data: weatherTimeseries, loading: weatherLoading } = useWeatherTimeseries(
+    weatherEnabled ? ['weather_hourly', 'air_quality_hourly'] : null,
+    weatherDateRange,
+  );
+
+  /** Merged, ascending, session-relative-ready weather points (both civil dates). */
+  const weatherPoints = useMemo<WeatherPoint[]>(() => {
+    const records = weatherTimeseries
+      .filter((r) => (r.dataType as string) === 'weather_hourly')
+      .map((r) => r.data as unknown as WeatherHourly);
+    return mergeWeatherPoints(...records);
+  }, [weatherTimeseries]);
+
+  /** Merged, ascending air-quality points (both civil dates). */
+  const aqiPoints = useMemo<AirQualityPoint[]>(() => {
+    const records = weatherTimeseries
+      .filter((r) => (r.dataType as string) === 'air_quality_hourly')
+      .map((r) => r.data as unknown as AirQualityHourly);
+    return mergeAirQualityPoints(...records);
+  }, [weatherTimeseries]);
+
+  /** AQI scale to display (US preferred, European fallback). */
+  const aqiScale = useMemo<AqiScale>(() => pickAqiScale(aqiPoints), [aqiPoints]);
+
+  /** Display-unit prefs for the cursor readout (storage stays SI/metric). */
+  const weatherReadoutUnits = useMemo<WeatherReadoutUnits>(
+    () => ({
+      temperature: weatherUnitsSetting.temperature,
+      pressure: weatherUnitsSetting.pressure,
+      wind: weatherUnitsSetting.wind,
+    }),
+    [weatherUnitsSetting],
+  );
+
+  /** Whether any weather/AQI lane has data this night. */
+  const anyWeatherData = useMemo(
+    () =>
+      conditionsHaveData(weatherPoints) ||
+      temperatureHasData(weatherPoints) ||
+      pressureHasData(weatherPoints) ||
+      aqiSeriesHasData(aqiPoints, aqiScale),
+    [weatherPoints, aqiPoints, aqiScale],
+  );
+
+  /** Weather enabled in Settings but nothing synced for this night yet. */
+  const weatherEnabledButEmpty = useMemo(
+    () => weatherEnabled && !weatherLoading && !anyWeatherData,
+    [weatherEnabled, weatherLoading, anyWeatherData],
+  );
+
   // ── Lane catalogue (CPAP + available wearable lanes) ─────────
 
   const cpapLanes = useMemo<LaneDescriptor[]>(() => {
@@ -812,10 +1974,22 @@ export default function SignalViewer() {
     });
   }, [wearableSeries]);
 
+  const weatherLanes = useMemo<LaneDescriptor[]>(() => {
+    const has: Record<string, boolean> = {
+      conditions: conditionsHaveData(weatherPoints),
+      pressure: pressureHasData(weatherPoints),
+      temperature: temperatureHasData(weatherPoints),
+      aqi: aqiSeriesHasData(aqiPoints, aqiScale),
+    };
+    return WEATHER_LANE_SPECS.map((spec) =>
+      weatherLaneDescriptor(spec.key, has[spec.key] ?? false),
+    );
+  }, [weatherPoints, aqiPoints, aqiScale]);
+
   /** Full catalogue in catalogue order. */
   const allLanes = useMemo<LaneDescriptor[]>(
-    () => [...cpapLanes, ...wearableLanes],
-    [cpapLanes, wearableLanes],
+    () => [...cpapLanes, ...wearableLanes, ...weatherLanes],
+    [cpapLanes, wearableLanes, weatherLanes],
   );
 
   /** Lane ids in their effective (persisted) order. */
@@ -992,15 +2166,27 @@ export default function SignalViewer() {
     if (!wrapper) return;
 
     if (!observerRef.current) {
+      // rAF-coalesce every observed resize, and suppress applies while the
+      // sidebar transition animates (a single authoritative trailing apply runs
+      // once it ends). setWrapperWidth is a stable useState setter, so the
+      // coalescer can be created once here. See resizeCoalescer.ts.
+      const coalescer = createResizeCoalescer(
+        (width) => setWrapperWidth(width),
+        () => document.body.dataset.sidebarAnimating === 'true',
+      );
+      resizeCoalescerRef.current = coalescer;
+
       const observer = new ResizeObserver((entries) => {
+        // Record only the latest width; the coalescer decides when to apply.
         for (const entry of entries) {
-          const { width } = entry.contentRect;
-          if (width > 0) setWrapperWidth(width);
+          coalescer.record(entry.contentRect.width);
         }
       });
       observerRef.current = observer;
       observer.observe(wrapper);
 
+      // Initial mount is never animating, so set the first-paint width
+      // synchronously (bypassing the coalescer) for correct first paint.
       const rect = wrapper.getBoundingClientRect();
       if (rect.width > 0) setWrapperWidth(rect.width);
     }
@@ -1010,6 +2196,12 @@ export default function SignalViewer() {
     if (observerRef.current) {
       observerRef.current.disconnect();
       observerRef.current = null;
+    }
+    // Cancel any pending apply frame AND the post-animation poll so no rAF
+    // leaks and no apply fires after teardown/unmount (even mid-animation).
+    if (resizeCoalescerRef.current) {
+      resizeCoalescerRef.current.cancel();
+      resizeCoalescerRef.current = null;
     }
     if (rendererRef.current) {
       rendererRef.current.dispose();
@@ -1421,20 +2613,74 @@ export default function SignalViewer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wearableSeries, wallClockEpoch, resolvedTheme, wrapperWidth, totalDurationMs]);
 
+  // ── Memoized base WEATHER channels (viewport-independent) ────
+  //
+  // Like the wearable lanes, weather lanes are projected onto the session-relative
+  // axis once (their hourly samples don't change with pan/zoom). Each weather lane
+  // (conditions ribbon, pressure line, temperature dashed line, AQI ribbon) is
+  // built keyed by its stable lane id. Ribbon bands (conditions glyphs, AQI rank
+  // fill + pattern) are derived here and merged into the renderer's `ribbonBands`.
+  const baseWeatherChannels = useMemo(() => {
+    const map = new Map<string, BaseWearableEntry>();
+    if (!Number.isFinite(wallClockEpoch)) return map;
+
+    const container = containerRef.current;
+    const pressureLineWidth = resolveLengthPx(container, '--signal-hero-line-width', 1.6);
+    const temperatureLineWidth = resolveLengthPx(container, '--signal-secondary-line-width', 1.2);
+    const resolveCol = (cssVar: string): string => resolveColor(container, cssVar);
+
+    const ctx = {
+      weatherPoints,
+      aqiPoints,
+      aqiScale,
+      wallClockEpoch,
+    } as const;
+    const presentation = {
+      resolveColor: resolveCol,
+      resolveHeight: (token: string): number => resolveLengthPx(container, token, CHANNEL_HEIGHT),
+      pressureLineWidth,
+      temperatureLineWidth,
+    } as const;
+
+    for (const spec of WEATHER_LANE_SPECS) {
+      const channel = buildWeatherChannel(spec.key, ctx, presentation);
+      if (!channel) continue;
+
+      let ribbonBands: readonly RibbonBand[] | undefined;
+      if (spec.key === 'conditions') {
+        const bands = conditionBands(weatherPoints, resolveCol);
+        if (bands.length > 0) ribbonBands = bands;
+      } else if (spec.key === 'aqi') {
+        const bands = aqiBands(aqiPoints, aqiScale, resolveCol);
+        if (bands.length > 0) ribbonBands = bands;
+      }
+
+      const { height: _height, ...base } = channel;
+      void _height;
+      map.set(spec.id, ribbonBands ? { channel: base, ribbonBands } : { channel: base });
+    }
+    return map;
+    // wrapperWidth + resolvedTheme drive re-resolution of getComputedStyle reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weatherPoints, aqiPoints, aqiScale, wallClockEpoch, resolvedTheme, wrapperWidth]);
+
   // ── Build the full ordered channel list + render ─────────────
 
   /**
-   * Ribbon bands (e.g. hypnogram) keyed by channel name, derived once from the
-   * viewport-independent wearable base channels. Passing the full set is safe —
-   * the renderer only consults bands for channels actually present in a frame.
+   * Ribbon bands (hypnogram + weather conditions/AQI) keyed by channel name,
+   * derived once from the viewport-independent base channels. Passing the full
+   * set is safe — the renderer only consults bands for channels in a frame.
    */
   const wearableRibbonBands = useMemo(() => {
     const bands: Record<string, readonly RibbonBand[]> = {};
     for (const entry of baseWearableChannels.values()) {
       if (entry.ribbonBands) bands[entry.channel.name] = entry.ribbonBands;
     }
+    for (const entry of baseWeatherChannels.values()) {
+      if (entry.ribbonBands) bands[entry.channel.name] = entry.ribbonBands;
+    }
     return bands;
-  }, [baseWearableChannels]);
+  }, [baseWearableChannels, baseWeatherChannels]);
 
   /**
    * Assemble the renderer's {@link ViewportState} (CPAP channels re-sliced &
@@ -1457,6 +2703,13 @@ export default function SignalViewer() {
 
         if (lane.group === 'cpap') {
           channel = buildCpapChannel(lane.name, targetPoints, plotWidth, range);
+        } else if (lane.group === 'weather') {
+          // Weather lane — look up the memoized, viewport-independent base.
+          const base = baseWeatherChannels.get(lane.id);
+          if (base) {
+            channels.push({ ...base.channel, height });
+          }
+          continue;
         } else {
           // Wearable / sleep lane — look up the memoized, viewport-independent base.
           const base = baseWearableChannels.get(lane.id);
@@ -1474,7 +2727,14 @@ export default function SignalViewer() {
 
       return { startTime: range.startTime, endTime: range.endTime, channels };
     },
-    [manifest, canvasSize.width, renderLanes, buildCpapChannel, baseWearableChannels],
+    [
+      manifest,
+      canvasSize.width,
+      renderLanes,
+      buildCpapChannel,
+      baseWearableChannels,
+      baseWeatherChannels,
+    ],
   );
 
   // ── Memoized viewport-independent render overlays ────────────
@@ -1531,6 +2791,11 @@ export default function SignalViewer() {
       // recording device's then-current local wall clock), not duration. NaN when
       // the session start is unparseable → renderer falls back to duration labels.
       axisWallClockEpochMs: wallClockEpoch,
+      // Live vertical scroll offset of the lane scroll container, so the renderer
+      // can pin the crosshair time badge to the top of the VISIBLE area instead of
+      // letting it scroll out of view with the full-height overlay canvas. Read
+      // fresh per paint so every direct render/overlay uses the current offset.
+      viewportScrollTopPx: canvasWrapperRef.current?.scrollTop ?? 0,
     };
   }, [eventMarkers, detectionMarkers, wearableRibbonBands, wallClockEpoch]);
 
@@ -1918,6 +3183,50 @@ export default function SignalViewer() {
     };
   }, [totalDurationMs, renderRangeDirect, commitLiveViewport, getPaintScheduler]);
 
+  // ── Crosshair time-badge scroll-pin (overlay re-paint on scroll) ──
+  //
+  // The lane stack lives in a scrollable container and the overlay canvas is the
+  // full content height, so the crosshair time badge — drawn once at the top of the
+  // visible area — must be REPOSITIONED as the user scrolls, or it drifts. The
+  // badge Y already folds in `viewportScrollTopPx` (read live in buildRenderOptions),
+  // so we just need to re-paint the overlay when the scroll offset changes WHILE a
+  // crosshair is active. This follows the same direct-paint, ref-driven model as the
+  // hover path (no React state, no base-layer re-render) and coalesces bursts of
+  // scroll events into at most one overlay paint per animation frame.
+  useEffect(() => {
+    const wrapper = canvasWrapperRef.current;
+    if (!wrapper) return;
+
+    let rafId: number | null = null;
+    const paint = () => {
+      rafId = null;
+      const renderer = rendererRef.current;
+      const viewport = lastViewportRef.current;
+      const crosshairX = crosshairXRef.current;
+      // Nothing to reposition when no crosshair is showing (cheap early return).
+      if (!renderer || !viewport || crosshairX === null) return;
+      renderer.renderOverlay(viewport, {
+        ...buildRenderOptions(),
+        showCrosshair: true,
+        crosshairX,
+      });
+    };
+
+    const onScroll = () => {
+      // Skip entirely when no crosshair is active — scrolling without a hover does
+      // not need an overlay paint.
+      if (crosshairXRef.current === null) return;
+      if (rafId !== null) return; // already scheduled this frame
+      rafId = requestAnimationFrame(paint);
+    };
+
+    wrapper.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      wrapper.removeEventListener('scroll', onScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [buildRenderOptions]);
+
   // ── Shift-key cursor affordance (window-level keyup) ─────────
   //
   // Releasing Shift anywhere drops the "zoom-to-range" cursor affordance even if
@@ -1982,6 +3291,10 @@ export default function SignalViewer() {
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
 
+      // A press over the wrapper means the pointer is over the plot — keep the
+      // Alt-peek gate in sync even if no pointermove preceded this down.
+      pointerOverPlotRef.current = true;
+
       // SHIFT+drag starts a zoom-to-range SELECTION instead of a pan. The band is
       // drawn as a cheap DOM element; on release the pixel range is converted to a
       // time range and applied as the viewport. A plain drag (no Shift) pans.
@@ -1995,6 +3308,20 @@ export default function SignalViewer() {
         (e.target as HTMLElement).setPointerCapture(e.pointerId);
         // Seed a zero-width band at the anchor; widened on move.
         setSelectionRect(null);
+        return;
+      }
+
+      // ALT(Option)+drag starts a MEASURE marquee — same px mechanics as the
+      // shift-zoom band, but on release it PINS a measure region instead of
+      // zooming (Shift stays zoom; Alt stays measure). A press-and-hold without a
+      // drag is a peek (handled by the Alt-peek listener); a drag pins.
+      if (e.altKey) {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const x = e.clientX - rect.left;
+        measureMarqueeRef.current = { startX: x, currentX: x, viewport: { ...viewport } };
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        setMeasureMarqueeRect(null);
         return;
       }
 
@@ -2037,10 +3364,45 @@ export default function SignalViewer() {
     }
   }, [totalDurationMs]);
 
+  /**
+   * Apply (or discard) the active ALT-drag measure marquee. Reuses the SAME
+   * pixel→time conversion as {@link finishSelection}, but instead of zooming it
+   * PINS the resulting time range as a measure region (`source='selection'`) and
+   * keeps the dashed band visible. A drag shorter than the helper's minimum (or an
+   * Alt-click) is a no-op so a stray click never pins a sliver. Always clears the
+   * marquee ref + rect.
+   */
+  const finishMeasureMarquee = useCallback(() => {
+    const sel = measureMarqueeRef.current;
+    measureMarqueeRef.current = null;
+    setMeasureMarqueeRect(null);
+    if (!sel) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const plotWidth = rect.width - PADDING.left - PADDING.right;
+    const result = pixelRangeToTimeRange(
+      sel.startX,
+      sel.currentX,
+      PADDING.left,
+      plotWidth,
+      sel.viewport,
+      totalDurationMs,
+    );
+    if (result.kind === 'zoom') {
+      // `range` is already session-relative ms (same axis as the viewport).
+      setMeasureRegion({ startMs: result.range.startTime, endMs: result.range.endTime });
+      keyboardRegionStartRef.current = null;
+    }
+  }, [totalDurationMs]);
+
   const handlePointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
+
+      // The pointer is over the plot — gate for the Alt-peek handler (so bare Alt
+      // outside the plot, e.g. Alt-Tab, never activates the overlay).
+      pointerOverPlotRef.current = true;
 
       const x = e.clientX - rect.left;
       crosshairXRef.current = x;
@@ -2057,6 +3419,20 @@ export default function SignalViewer() {
         const left = Math.min(sel.startX, clampedX);
         const width = Math.abs(clampedX - sel.startX);
         setSelectionRect({ left, width });
+        return;
+      }
+
+      // ACTIVE ALT-DRAG MEASURE MARQUEE: identical band mechanics, but on release
+      // it pins a measure region rather than zooming. Only the band repaints.
+      const mq = measureMarqueeRef.current;
+      if (mq) {
+        const plotLeft = PADDING.left;
+        const plotRight = rect.width - PADDING.right;
+        const clampedX = Math.max(plotLeft, Math.min(plotRight, x));
+        mq.currentX = clampedX;
+        const left = Math.min(mq.startX, clampedX);
+        const width = Math.abs(clampedX - mq.startX);
+        setMeasureMarqueeRect({ left, width });
         return;
       }
 
@@ -2133,6 +3509,11 @@ export default function SignalViewer() {
       finishSelection();
       return;
     }
+    // An ALT-drag measure marquee likewise takes precedence: pin (or discard) it.
+    if (measureMarqueeRef.current) {
+      finishMeasureMarquee();
+      return;
+    }
     setIsPanning(false);
     panStartRef.current = null;
     panDxRef.current = 0;
@@ -2142,10 +3523,18 @@ export default function SignalViewer() {
     paintSchedulerRef.current?.cancel();
     rendererRef.current?.endPan();
     commitLiveViewport();
-  }, [commitLiveViewport, finishSelection]);
+  }, [commitLiveViewport, finishSelection, finishMeasureMarquee]);
 
   const handlePointerLeave = useCallback(() => {
     crosshairXRef.current = null;
+    // The pointer has left the plot — close the Alt-peek gate.
+    pointerOverPlotRef.current = false;
+    // If a bare-Alt peek was the ONLY reason the overlay was showing (sticky off,
+    // nothing pinned), clear it so the overlay doesn't linger after the pointer
+    // leaves — even if Alt is still physically held.
+    if (!measureMode && measureRegion === null) {
+      setAltPeek(false);
+    }
     // Drop the shift-cursor affordance once the pointer leaves the plot.
     setShiftZoomArmed(false);
     // A selection in flight when the pointer leaves WITHOUT pointer-capture (the
@@ -2154,6 +3543,10 @@ export default function SignalViewer() {
     // active this rarely fires mid-drag — pointerup handles the common case.
     if (selectionStartRef.current) {
       finishSelection();
+    }
+    // Same graceful completion for an in-flight ALT-drag measure marquee.
+    if (measureMarqueeRef.current) {
+      finishMeasureMarquee();
     }
     // Clear the hovered-region readout (only if it isn't already empty) and reset
     // the identity ref so the next hover re-enters cleanly.
@@ -2182,7 +3575,14 @@ export default function SignalViewer() {
         crosshairX: null,
       });
     }
-  }, [isPanning, commitLiveViewport, finishSelection]);
+  }, [
+    isPanning,
+    commitLiveViewport,
+    finishSelection,
+    finishMeasureMarquee,
+    measureMode,
+    measureRegion,
+  ]);
 
   // ── Keyboard data cursor (arrow keys move crosshair) ─────────
 
@@ -2245,13 +3645,72 @@ export default function SignalViewer() {
         const elapsedSec = Math.round(timeMs / 1000);
         lead = `At ${elapsedSec}s: ${parts.join('; ') || 'no data'}`;
       }
+
+      // Append the weather/AQI clause — the required NON-VISUAL path for the
+      // colour-encoded weather lanes (temp, pressure, dew point, wind, condition
+      // word, and "Air quality: {word}, AQI {value}" — word + number, never a
+      // bare value). Computed from the merged hourly samples at the cursor's
+      // wall-clock time, since dew point / wind / condition aren't their own
+      // lanes. Only spoken when a sample is near the cursor and a wall clock exists.
+      if (useWallClock) {
+        const weatherClause = weatherCursorReadout(
+          wallClockEpoch + timeMs,
+          weatherPoints,
+          aqiPoints,
+          aqiScale,
+          weatherReadoutUnits,
+        );
+        if (weatherClause) regionParts.push(weatherClause);
+      }
+
       setCursorReadout(regionParts.length > 0 ? `${lead} — ${regionParts.join('; ')}` : lead);
     },
-    [canvasSize.width, findHoveredRegion, wallClockEpoch],
+    [
+      canvasSize.width,
+      findHoveredRegion,
+      wallClockEpoch,
+      weatherPoints,
+      aqiPoints,
+      aqiScale,
+      weatherReadoutUnits,
+    ],
   );
 
   const handleCanvasKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // KEYBOARD REGION DEFINITION (a11y path for the mouse-only Alt-drag):
+      // `[` sets the region start at the data cursor, `]` sets the end. Announced
+      // via the existing polite cursor live region. The cursor time defaults to
+      // the viewport centre when the user hasn't moved it with the arrow keys.
+      if (e.key === '[' || e.key === ']') {
+        e.preventDefault();
+        const vp = lastViewportRef.current;
+        if (!vp) return;
+        const span = vp.endTime - vp.startTime;
+        if (span <= 0) return;
+        const t = cursorTimeRef.current ?? vp.startTime + span / 2;
+        const clock = Number.isNaN(wallClockEpoch)
+          ? `${Math.round(t / 1000)}s`
+          : formatWallClockLabel(wallClockEpoch, t, true);
+        if (e.key === '[') {
+          keyboardRegionStartRef.current = t;
+          setCursorReadout(`Region start set at ${clock}`);
+        } else {
+          const start = keyboardRegionStartRef.current;
+          if (start === null) {
+            setCursorReadout('Set a region start with the left-bracket key first.');
+            return;
+          }
+          const startMs = Math.min(start, t);
+          const endMs = Math.max(start, t);
+          setMeasureRegion({ startMs, endMs });
+          keyboardRegionStartRef.current = null;
+          const mins = Math.max(1, Math.round((endMs - startMs) / 60000));
+          setCursorReadout(`Region end set; measuring ${mins} minute${mins === 1 ? '' : 's'}`);
+        }
+        return;
+      }
+
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       e.preventDefault();
       const vp = lastViewportRef.current;
@@ -2270,7 +3729,7 @@ export default function SignalViewer() {
       cursorTimeRef.current = next;
       announceAtTime(next);
     },
-    [announceAtTime],
+    [announceAtTime, wallClockEpoch],
   );
 
   const handleCanvasBlur = useCallback(() => {
@@ -2418,19 +3877,471 @@ export default function SignalViewer() {
     return base + DETECTION_CHIP_BAND_OFFSET;
   }, [renderLanes, laneLayout]);
 
-  // ── Global keyboard shortcut: 'L' opens the lanes drawer ─────
+  // ── Measure-region overlay: active region, sources, stats ────
+
+  /**
+   * Whether the overlay is currently active (chips/footer rendered + stats
+   * computed). True when sticky `measureMode` is on, OR an Alt peek is held, OR a
+   * region is pinned. When false the overlay renders nothing (zero cost at rest).
+   */
+  const measureActive = measureMode || altPeek || measureRegion !== null;
+
+  /**
+   * The region the stats describe, session-relative ms, half-open `[startMs, endMs)`.
+   * A pinned region wins; otherwise it tracks the SETTLED viewport (this memo is
+   * keyed on `viewport` state, which the pan/wheel hot paths only commit once the
+   * gesture settles — so stats never recompute per frame).
+   */
+  const measureRegionRange = useMemo<{
+    startMs: number;
+    endMs: number;
+    source: MeasureRegionSource;
+  }>(
+    () =>
+      measureRegion
+        ? { startMs: measureRegion.startMs, endMs: measureRegion.endMs, source: 'selection' }
+        : { startMs: viewport.startTime, endMs: viewport.endTime, source: 'viewport' },
+    [measureRegion, viewport.startTime, viewport.endTime],
+  );
+
+  /**
+   * Data sources for the stats model, resolved once per relevant input change.
+   * CPAP buffers come from `fullDataRef` (a ref — read on each rebuild, keyed on
+   * `manifest`/`fullDataReady` which change wholesale on session load). Wearable
+   * NUMERIC lanes are pre-clipped to the active region's in-region values (the
+   * cadence is irregular, so we cannot use a uniform time→index map); the
+   * hypnogram step series and events are projected to session-relative ms.
+   */
+  const measureSources = useMemo<MeasureDataSources>(() => {
+    // Genuinely zero-cost at rest: build nothing while the overlay is inactive.
+    const empty: MeasureDataSources = {
+      cpap: new Map(),
+      wearableNumeric: new Map(),
+      categorical: new Map(),
+      events: [],
+    };
+    if (!measureActive) return empty;
+
+    const cpap = new Map<string, { descriptor: NumericChannelInput; data: Float32Array }>();
+    for (const [name, fcd] of fullDataRef.current) {
+      cpap.set(name, {
+        descriptor: {
+          name: fcd.descriptor.name,
+          unit: fcd.descriptor.unit,
+          sampleRate: fcd.descriptor.sampleRate,
+          data: fcd.data,
+        },
+        data: fcd.data,
+      });
+    }
+
+    const categorical = new Map<string, readonly CategoricalSample[]>();
+    const wearableNumeric = new Map<
+      string,
+      { channel: NumericChannelInput; timesMs: Float64Array }
+    >();
+    if (Number.isFinite(wallClockEpoch)) {
+      for (const spec of WEARABLE_LANE_SPECS) {
+        const series = wearableSeries[spec.dataType];
+        if (!series || series.samples.length === 0) continue;
+        const laneId = `wear:${spec.dataType}`;
+        if (spec.dataType === 'sleep_stages') {
+          categorical.set(
+            laneId,
+            series.samples.map((s) => ({
+              timeMs: s.timestampMs - wallClockEpoch,
+              value: s.value,
+            })),
+          );
+        } else {
+          // Clip to the active region and pack the in-region values compactly.
+          // Carry the PARALLEL session-relative time of each kept sample so the
+          // model can fit a correct Trend slope against true (irregular) cadence —
+          // a synthetic uniform Δt would yield a wrong wearable slope. The clip
+          // already computes `t` per sample, so retaining it is free.
+          const values: number[] = [];
+          const times: number[] = [];
+          for (const s of series.samples) {
+            const t = s.timestampMs - wallClockEpoch;
+            if (t >= measureRegionRange.startMs && t < measureRegionRange.endMs) {
+              values.push(s.value);
+              times.push(t);
+            }
+          }
+          // NOTE — intentional divergence from the CPAP path's sentinel handling:
+          // wearable intraday channel names (`heart_rate_intraday`, `spo2_intraday`,
+          // …) are NOT keys in MEANINGFUL_SAMPLE_RANGES, so downstream
+          // `isMeaningfulSample` applies only its non-zero rule for them (the
+          // physiologic range-filter is a no-op). That is safe here: wearable samples
+          // are range-validated upstream at import, so no out-of-range sentinels reach
+          // this buffer. A future reader should NOT assume range filtering runs on
+          // these lanes the way it does for CPAP channels.
+          wearableNumeric.set(laneId, {
+            channel: {
+              name: spec.dataType,
+              unit: spec.unit,
+              sampleRate: 1,
+              data: Float32Array.from(values),
+            },
+            timesMs: Float64Array.from(times),
+          });
+        }
+      }
+    }
+
+    const eventInputs: EventInput[] = events.map((ev) => ({
+      startTimeMs: ev.timestamp - sessionStartMs,
+      type: ev.type,
+      durationMs: ev.duration * 1000,
+    }));
+
+    return { cpap, wearableNumeric, categorical, events: eventInputs };
+    // fullDataRef is a ref; manifest/fullDataReady gate when its buffers are present.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    measureActive,
+    manifest,
+    fullDataReady,
+    wearableSeries,
+    wallClockEpoch,
+    events,
+    sessionStartMs,
+    measureRegionRange.startMs,
+    measureRegionRange.endMs,
+  ]);
+
+  /**
+   * Per-lane region statistics for the active region. Computed ONLY when the
+   * overlay is active — `null` otherwise so there is genuinely zero cost at rest.
+   * Numeric medians are exact and bounded to ~tens of ms for a whole night (see
+   * regionStats), acceptable on the main thread on settle. FUTURE: a Web Worker
+   * could offload this if a pathological multi-night region ever janks.
+   */
+  const measureLaneStats = useMemo<MeasureLaneStat[] | null>(() => {
+    if (!measureActive) return null;
+    if (measureRegionRange.endMs <= measureRegionRange.startMs) return [];
+    return buildMeasureLaneStats(
+      renderLanes,
+      { startMs: measureRegionRange.startMs, endMs: measureRegionRange.endMs },
+      measureSources,
+      measureStatMode,
+    );
+    // Keyed additionally on the active mode: only the active mode's metrics are
+    // computed lazily (each mode is a distinct `RegionStats.kind`), recomputed on a
+    // settled viewport / region pin / mode change — never per wheel/drag frame.
+  }, [measureActive, measureRegionRange, renderLanes, measureSources, measureStatMode]);
+
+  /** Event count in the active region (surfaced once in the footer/table). */
+  const measureEventCount = useMemo(() => {
+    if (!measureActive) return 0;
+    const { startMs, endMs } = measureRegionRange;
+    if (endMs <= startMs) return 0;
+    let n = 0;
+    for (const e of measureSources.events) {
+      if (e.startTimeMs >= startMs && e.startTimeMs < endMs) n++;
+    }
+    return n;
+  }, [measureActive, measureRegionRange, measureSources]);
+
+  /**
+   * Total sample count across numeric lanes in the active region — the footer's
+   * `n =` figure. Sums each numeric lane's meaningful-sample count.
+   */
+  const measureSampleCount = useMemo(() => {
+    if (!measureLaneStats) return 0;
+    let n = 0;
+    for (const s of measureLaneStats) {
+      if (s.stats.kind === 'numeric') n += s.stats.count;
+    }
+    return n;
+  }, [measureLaneStats]);
+
+  /**
+   * Push a concise polite announcement whenever the active region (or its source)
+   * changes while the overlay is active: span + first 2–3 lanes + a pointer to the
+   * full table. Debounced via the memoised region so it fires once per settle.
+   */
+  useEffect(() => {
+    if (!measureActive || !measureLaneStats) {
+      setMeasureAnnouncement('');
+      return;
+    }
+    const { startMs, endMs, source } = measureRegionRange;
+    const span = formatDuration(Math.round((endMs - startMs) / 1000));
+    const clockClause = Number.isNaN(wallClockEpoch)
+      ? ''
+      : ` from ${formatWallClockLabel(wallClockEpoch, startMs, false)} to ${formatWallClockLabel(
+          wallClockEpoch,
+          endMs,
+          false,
+        )}`;
+    const sourceWord = source === 'selection' ? 'Pinned region' : 'Viewport';
+    const laneSummaries = measureLaneStats
+      .map((s) => laneStatSummary(s))
+      .filter((x): x is string => x !== null)
+      .slice(0, 3);
+    const eventClause =
+      measureEventCount > 0
+        ? `; ${measureEventCount} event${measureEventCount === 1 ? '' : 's'}`
+        : '';
+    setMeasureAnnouncement(
+      `${sourceWord}: ${span}${clockClause}. ${laneSummaries.join('; ')}${eventClause}. ` +
+        `Open the Region statistics table for all lanes.`,
+    );
+  }, [measureActive, measureLaneStats, measureRegionRange, measureEventCount, wallClockEpoch]);
+
+  /**
+   * Debounced spoken announcement of the active Measure mode. Fires ~250ms after the
+   * last mode switch (so cycling fast with `,`/`.` announces once, not per step),
+   * announcing the mode name + what it shows + the region descriptor. The visible
+   * segmented control's `aria-checked` is the immediate indicator; this is the spoken
+   * confirmation. Cleared when the overlay is inactive.
+   */
+  useEffect(() => {
+    if (!measureActive) {
+      setMeasureModeAnnouncement('');
+      return;
+    }
+    const name = MEASURE_MODE_NAME[measureStatMode];
+    const desc = MEASURE_MODE_DESCRIPTION[measureStatMode];
+    const sourceWord = measureRegionRange.source === 'selection' ? 'pinned region' : 'viewport';
+    const handle = window.setTimeout(() => {
+      setMeasureModeAnnouncement(`${name} mode: showing ${desc} for the ${sourceWord}.`);
+    }, MEASURE_MODE_ANNOUNCE_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [measureActive, measureStatMode, measureRegionRange.source]);
+
+  /**
+   * Pixel rect ({left,width} CSS px in the canvas wrapper) of a PINNED measure
+   * region, for the dashed band. `null` when there is no pinned region or it is
+   * entirely off-screen (the footer then shows an off-screen chevron pill). Tracks
+   * the live viewport so the band stays locked to its time span across pan/zoom.
+   */
+  const measureBandRect = useMemo<{ left: number; width: number } | null>(() => {
+    if (!measureRegion) return null;
+    const span = viewport.endTime - viewport.startTime;
+    if (span <= 0 || canvasSize.width <= 0) return null;
+    const plotLeft = PADDING.left;
+    const plotWidth = canvasSize.width - PADDING.left - PADDING.right;
+    if (plotWidth <= 0) return null;
+    const startFrac = (measureRegion.startMs - viewport.startTime) / span;
+    const endFrac = (measureRegion.endMs - viewport.startTime) / span;
+    // Clamp to the plot band; the band is hidden only when fully outside.
+    if (endFrac < 0 || startFrac > 1) return null;
+    const leftPx = plotLeft + Math.max(0, Math.min(1, startFrac)) * plotWidth;
+    const rightPx = plotLeft + Math.max(0, Math.min(1, endFrac)) * plotWidth;
+    return { left: leftPx, width: Math.max(0, rightPx - leftPx) };
+  }, [measureRegion, viewport.startTime, viewport.endTime, canvasSize.width]);
+
+  /**
+   * Direction a PINNED region sits relative to the visible viewport when it is
+   * entirely off-screen: `'before'` (earlier in time, to the left) or `'after'`
+   * (later, to the right). `null` when no region is pinned or it is at least
+   * partly visible. Drives the footer's directional chevron pill.
+   */
+  const measureOffscreen = useMemo<'before' | 'after' | null>(() => {
+    if (!measureRegion) return null;
+    if (measureRegion.endMs <= viewport.startTime) return 'before';
+    if (measureRegion.startMs >= viewport.endTime) return 'after';
+    return null;
+  }, [measureRegion, viewport.startTime, viewport.endTime]);
+
+  /** Whether to use the responsive bottom-sheet fallback instead of per-lane chips. */
+  const measureUseSheet = canvasSize.width > 0 && canvasSize.width < MEASURE_SHEET_BREAKPOINT;
+
+  // ── Measure-region handlers ──────────────────────────────────
+
+  /** Toggle sticky Measure mode (persisted). Also drives the `M` key + toolbar button. */
+  const toggleMeasureMode = useCallback(() => {
+    setLanePrefs((prev) => ({ ...prev, measureMode: !(prev.measureMode ?? false) }));
+  }, []);
+
+  /** Clear a pinned region (revert to viewport source). Keeps Measure on/off as-is. */
+  const clearMeasureRegion = useCallback(() => {
+    setMeasureRegion(null);
+    keyboardRegionStartRef.current = null;
+    setMeasureMarqueeRect(null);
+    measureMarqueeRef.current = null;
+  }, []);
+
+  /**
+   * Scroll a pinned, off-screen region back into view (footer chevron pill). Pans
+   * the viewport to centre the region, honouring reduced-motion for any smoothing.
+   */
+  const scrollToMeasureRegion = useCallback(() => {
+    if (!measureRegion || totalDurationMs <= 0) return;
+    const center = (measureRegion.startMs + measureRegion.endMs) / 2;
+    const span = viewport.endTime - viewport.startTime;
+    let start = center - span / 2;
+    let end = center + span / 2;
+    if (start < 0) {
+      start = 0;
+      end = span;
+    }
+    if (end > totalDurationMs) {
+      end = totalDurationMs;
+      start = Math.max(0, end - span);
+    }
+    setViewport({ startTime: start, endTime: end });
+  }, [measureRegion, viewport.startTime, viewport.endTime, totalDurationMs]);
+
+  // ── Selection-mode precise timing + copy ─────────────────────
+
+  /**
+   * The precise (ms-resolution) GLOBAL timing string for the active region, shown in
+   * the footer ONLY in Selection mode: `start <…> · dur <…> · end <…>`. Wall-clock
+   * when available, else session-relative (mirrors the footer's wall-clock fallback).
+   */
+  const measurePreciseTiming = useMemo(
+    () =>
+      buildPreciseTimingString(
+        wallClockEpoch,
+        measureRegionRange.startMs,
+        measureRegionRange.endMs,
+      ),
+    [wallClockEpoch, measureRegionRange.startMs, measureRegionRange.endMs],
+  );
+
+  /** Whether the "Copied" confirmation is currently shown on the copy button. */
+  const [timingCopied, setTimingCopied] = useState(false);
+  /** aria-live confirmation text for the copy action (cleared shortly after). */
+  const [timingCopyStatus, setTimingCopyStatus] = useState('');
+  const timingCopyTimerRef = useRef<number | null>(null);
+
+  /**
+   * Copy the precise region-timing string to the clipboard. Shows a brief "Copied"
+   * confirmation (icon swap + aria-live). The clipboard promise can reject (denied
+   * permission / insecure context); that is handled gracefully with a spoken error
+   * and no thrown rejection.
+   */
+  const copyPreciseTiming = useCallback(() => {
+    const reset = () => {
+      if (timingCopyTimerRef.current !== null) window.clearTimeout(timingCopyTimerRef.current);
+      timingCopyTimerRef.current = window.setTimeout(() => {
+        setTimingCopied(false);
+        setTimingCopyStatus('');
+      }, 1800);
+    };
+    const clipboard = navigator.clipboard;
+    if (!clipboard || typeof clipboard.writeText !== 'function') {
+      setTimingCopyStatus('Copy unavailable in this browser.');
+      reset();
+      return;
+    }
+    clipboard.writeText(measurePreciseTiming).then(
+      () => {
+        setTimingCopied(true);
+        setTimingCopyStatus('Region timing copied to the clipboard.');
+        reset();
+      },
+      () => {
+        setTimingCopied(false);
+        setTimingCopyStatus('Could not copy region timing.');
+        reset();
+      },
+    );
+  }, [measurePreciseTiming]);
+
+  // Clean up a pending copy-confirmation timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (timingCopyTimerRef.current !== null) window.clearTimeout(timingCopyTimerRef.current);
+    };
+  }, []);
+
+  // ── Global keyboard shortcuts: 'L' lanes drawer, 'M' measure ─
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'l' && e.key !== 'L') return;
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
+      // Same guard the lanes drawer uses: never hijack typing in a field.
       if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
-      setDrawerOpen((o) => !o);
+      if (e.key === 'l' || e.key === 'L') {
+        setDrawerOpen((o) => !o);
+      } else if (e.key === 'm' || e.key === 'M') {
+        toggleMeasureMode();
+      } else if (e.key === '.' || e.key === ',') {
+        // Cycle the Measure mode forward (`.`) / back (`,`) — only while the overlay
+        // is active. Ignore autorepeat so a held key doesn't spin through modes.
+        if (e.repeat) return;
+        if (!measureActive) return;
+        const delta = e.key === '.' ? 1 : -1;
+        setMeasureStatMode(cycleMeasureMode(measureStatMode, delta));
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [toggleMeasureMode, measureActive, measureStatMode, setMeasureStatMode]);
+
+  // ── Alt-peek + Escape (two-step clear) for the measure overlay ─
+  //
+  // HOLD Alt over the plot → momentary peek (chips fade in for the viewport even
+  // when sticky mode is off); release hides them (unless pinned / sticky on). Alt
+  // is ALSO the marquee modifier (press-and-drag pins a region), so the peek state
+  // is purely additive — a drag that follows still pins. Escape is a two-step:
+  // a pinned region clears first; otherwise sticky Measure turns off.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        // Ignore keyboard autorepeat (cleanliness — the set is idempotent anyway).
+        if (e.repeat) return;
+        // Gate the peek on the pointer being OVER THE PLOT (the spec's intent:
+        // "hold Alt over the plot"). A bare Alt elsewhere — most commonly Alt-Tab —
+        // must NOT activate the overlay or trigger a stats pass. The Alt+drag
+        // marquee is unaffected: it starts from a pointerdown over the plot, so the
+        // ref is already true there.
+        if (!pointerOverPlotRef.current) return;
+        // BUGFIX (Alt-peek only firing once): a lone Alt keydown is the browser's
+        // "focus the menu bar" accelerator (Chromium/Firefox). Without
+        // preventDefault the first Alt focuses browser chrome and blurs the page —
+        // `onWindowBlur` then clears the peek and subsequent Alt keydowns never reach
+        // the window until the user clicks back. We only capture Alt for the peek
+        // when the pointer is over the plot (checked above), so suppressing the
+        // accelerator here is safe and scoped: Alt-Tab and Alt elsewhere are
+        // untouched (the early return above leaves their default behaviour intact).
+        e.preventDefault();
+        setAltPeek(true);
+        return;
+      }
+      if (e.key === 'Escape') {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+        // Yield Esc to other overlays this component owns that also handle Esc (the
+        // lanes drawer): if one is open, let it consume Esc rather than clobbering a
+        // pinned measure region the user didn't mean to clear.
+        if (drawerOpen) return;
+        if (measureRegion !== null) {
+          clearMeasureRegion();
+          setMeasureAnnouncement('Region cleared. Measuring the viewport.');
+        } else if (measureMode) {
+          toggleMeasureMode();
+        }
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') {
+        // Firefox (and some Chromium configs) activate the menu bar on Alt KEYUP,
+        // not keydown. If we captured this Alt for the peek (pointer over the plot),
+        // also suppress the keyup default so focus stays on the page across repeated
+        // Alt presses. Scoped identically to the keydown guard — Alt elsewhere keeps
+        // its native behaviour.
+        if (pointerOverPlotRef.current) e.preventDefault();
+        setAltPeek(false);
+      }
+    };
+    // Releasing focus / leaving the window can swallow the Alt keyup; clear on blur.
+    const onWindowBlur = () => setAltPeek(false);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onWindowBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onWindowBlur);
+    };
+  }, [measureRegion, measureMode, clearMeasureRegion, toggleMeasureMode, drawerOpen]);
 
   // ── Conditional rendering ────────────────────────────────────
 
@@ -2551,6 +4462,18 @@ export default function SignalViewer() {
           >
             Lanes
           </Button>
+          <Button
+            variant={measureMode ? 'primary' : 'secondary'}
+            size="sm"
+            onClick={toggleMeasureMode}
+            aria-pressed={measureMode}
+            title="Measure region (M) · switch modes: , ."
+          >
+            <span aria-hidden="true" className={styles.measureGlyph}>
+              ⊢⊣
+            </span>
+            Measure
+          </Button>
           <div className={styles.zoomPresets}>
             <span>Zoom:</span>
             {ZOOM_PRESETS.map((preset) => {
@@ -2587,6 +4510,26 @@ export default function SignalViewer() {
               variant="ghost"
               size="sm"
               onClick={() => setHintDismissed(true)}
+              aria-label="Dismiss"
+            >
+              ✕
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── No-weather-for-this-night hint (enabled-but-empty) ── */}
+      {weatherEnabledButEmpty && !weatherHintDismissed && (
+        <div className={styles.hintBar} role="note">
+          <span>No weather for this night. Sync in Settings → Integrations</span>
+          <div className={styles.hintActions}>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/settings')}>
+              Open Settings
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setWeatherHintDismissed(true)}
               aria-label="Dismiss"
             >
               ✕
@@ -2713,6 +4656,30 @@ export default function SignalViewer() {
           />
         )}
 
+        {/* ── Measure-region band(s) ──────────────────────────────
+            The ACTIVE alt-drag marquee (transient, while dragging) and the
+            PINNED measure band (persistent). Both use the NEUTRAL slate fill +
+            DASHED edges so they never read as the transient blue zoom band. No
+            band is drawn for the viewport source. aria-hidden: the structured
+            table + live region carry the accessible region info. */}
+        {measureMarqueeRect !== null && (
+          <div
+            className={styles.measureBand}
+            aria-hidden="true"
+            style={{
+              left: `${measureMarqueeRect.left}px`,
+              width: `${measureMarqueeRect.width}px`,
+            }}
+          />
+        )}
+        {measureMarqueeRect === null && measureBandRect !== null && (
+          <div
+            className={styles.measureBand}
+            aria-hidden="true"
+            style={{ left: `${measureBandRect.left}px`, width: `${measureBandRect.width}px` }}
+          />
+        )}
+
         {/* Lane headers as positioned HTML overlay (keyboard accessible). */}
         <div className={styles.laneHeaders} aria-label="Lane controls">
           {renderLanes.map((r, i) => {
@@ -2801,6 +4768,165 @@ export default function SignalViewer() {
             })}
           </div>
         )}
+
+        {/* ── Region-statistics per-lane chips (overlay) ──────────
+            Docked to each lane's left inner edge, vertically centred on the lane.
+            Lives in the scroll box (like .laneHeaders) so it tracks vertical
+            scroll. aria-hidden — the structured table below carries the data.
+            Hidden entirely on narrow plots (the bottom sheet takes over). */}
+        {measureActive && measureLaneStats && !measureUseSheet && (
+          <div className={styles.statChips} aria-hidden="true">
+            {renderLanes.map((r, i) => {
+              const entry = laneLayout[i];
+              const laneStat = measureLaneStats[i];
+              if (!entry || !laneStat) return null;
+              const compact = r.collapsed || r.height <= MEASURE_COMPACT_CHIP_MAX_HEIGHT;
+              return (
+                <MeasureChip
+                  key={r.lane.id}
+                  stat={laneStat}
+                  top={entry.top + r.height / 2}
+                  compact={compact}
+                  mode={measureStatMode}
+                />
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Responsive "Region statistics" bottom sheet ─────────
+            Replaces the per-lane chips on narrow plots. Collapsed by default; the
+            disclosure row + lane rows are real interactive/structured content
+            (the chips are aria-hidden). The measure band still draws on canvas. */}
+        {measureActive && measureLaneStats && measureUseSheet && (
+          <div className={styles.regionStatsSheet}>
+            <button
+              type="button"
+              className={styles.regionStatsSheetToggle}
+              aria-expanded={measureSheetOpen}
+              onClick={() => setMeasureSheetOpen((o) => !o)}
+            >
+              <span className={styles.regionStatsSheetChevron} aria-hidden="true">
+                ▸
+              </span>
+              Region statistics
+              <span className={styles.regionStatsSheetCount}>
+                n = {measureSampleCount.toLocaleString()}
+              </span>
+            </button>
+            {measureSheetOpen && (
+              <ul className={styles.regionStatsSheetList}>
+                {measureLaneStats.map((laneStat) => (
+                  <li key={laneStat.laneId} className={styles.regionStatsSheetRow}>
+                    <span
+                      className={styles.regionStatsSheetSwatch}
+                      style={{
+                        backgroundColor: resolveColor(containerRef.current, laneStat.colorVar),
+                      }}
+                      aria-hidden="true"
+                    />
+                    <span className={styles.regionStatsSheetName}>{laneStat.laneName}</span>
+                    <span className={styles.regionStatsSheetStat}>
+                      {laneStatSummary(laneStat) ?? '— no data'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* ── Region footer ──────────────────────────────────────
+            Sticky at the bottom of the plot while the overlay is active. Mode
+            switcher (first child + single source of truth) → source pill → clock
+            span → sample count. An off-screen pinned region adds a directional
+            chevron pill. In Selection mode the footer expands to carry precise
+            (ms) GLOBAL timing + a copy button. */}
+        {measureActive && (
+          <div
+            className={styles.regionFooter}
+            role="status"
+            aria-live="off"
+            data-mode={measureStatMode}
+          >
+            <MeasureModeSwitcher
+              mode={measureStatMode}
+              onChange={setMeasureStatMode}
+              collapsed={measureUseSheet}
+            />
+            <span
+              className={styles.regionSourcePill}
+              data-source={measureRegionRange.source === 'selection' ? 'region' : 'viewport'}
+            >
+              <span aria-hidden="true">
+                {measureRegionRange.source === 'selection' ? '⊐⊏' : '⟦'}
+              </span>
+              {measureRegionRange.source === 'selection' ? 'REGION' : 'VIEWPORT'}
+            </span>
+            {measureStatMode === 'selection' ? (
+              <span className={styles.regionTimingPrecise}>
+                <span className={styles.regionTimingField}>
+                  <span className={styles.regionTimingLabel}>start</span>
+                  <span className={styles.regionTimingValue}>
+                    {formatPreciseTime(wallClockEpoch, measureRegionRange.startMs)}
+                  </span>
+                </span>
+                <span className={styles.regionTimingField}>
+                  <span className={styles.regionTimingLabel}>dur</span>
+                  <span className={styles.regionTimingValue}>
+                    {formatExactDuration(
+                      Math.max(
+                        0,
+                        Math.round(measureRegionRange.endMs - measureRegionRange.startMs),
+                      ),
+                    )}
+                  </span>
+                </span>
+                <span className={styles.regionTimingField}>
+                  <span className={styles.regionTimingLabel}>end</span>
+                  <span className={styles.regionTimingValue}>
+                    {formatPreciseTime(wallClockEpoch, measureRegionRange.endMs)}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className={styles.regionTimingCopy}
+                  aria-label="Copy precise region timing"
+                  data-copied={timingCopied ? 'true' : undefined}
+                  onClick={copyPreciseTiming}
+                >
+                  <span aria-hidden="true">{timingCopied ? '✓' : '⧉'}</span>
+                  {timingCopied ? 'Copied' : 'Copy'}
+                </button>
+              </span>
+            ) : (
+              !Number.isNaN(wallClockEpoch) && (
+                <span className={styles.regionFooterSpan}>
+                  {formatWallClockLabel(wallClockEpoch, measureRegionRange.startMs, true)}
+                  <span className={styles.legendSeparator}>·</span>~
+                  {formatDuration(
+                    Math.round((measureRegionRange.endMs - measureRegionRange.startMs) / 1000),
+                  )}
+                  <span className={styles.legendSeparator}>·</span>
+                  {formatWallClockLabel(wallClockEpoch, measureRegionRange.endMs, true)}
+                </span>
+              )
+            )}
+            {measureOffscreen !== null && (
+              <button
+                type="button"
+                className={styles.regionOffscreenPill}
+                onClick={scrollToMeasureRegion}
+              >
+                <span aria-hidden="true">{measureOffscreen === 'before' ? '◂' : '▸'}</span>
+                {measureOffscreen === 'before' ? 'region earlier' : 'region later'}
+              </button>
+            )}
+            <span className={styles.regionFooterCount}>
+              n = {measureSampleCount.toLocaleString()}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Live region for the keyboard data cursor readout. */}
@@ -2817,6 +4943,36 @@ export default function SignalViewer() {
       <div className={styles.srOnly} aria-live="polite" role="status">
         {deepLinkStatus}
       </div>
+
+      {/* Polite live region: concise region-statistics summary on region change. */}
+      <div className={styles.srOnly} aria-live="polite" role="status">
+        {measureAnnouncement}
+      </div>
+
+      {/* Polite live region: debounced Measure-mode switch announcement. */}
+      <div className={styles.srOnly} aria-live="polite" role="status">
+        {measureModeAnnouncement}
+      </div>
+
+      {/* Polite live region: precise-timing copy confirmation (Selection mode). */}
+      <div className={styles.srOnly} aria-live="polite" role="status">
+        {timingCopyStatus}
+      </div>
+
+      {/* ── Region statistics table (screen-reader structured path) ──
+          A real, focusable <table> so AT users get the full per-lane statistics
+          the (aria-hidden) canvas chips show visually. Visually hidden but in the
+          a11y + tab order whenever the overlay is active. Caption + columns + cells
+          swap with the active mode; the element stays mounted across mode changes. */}
+      {measureActive && measureLaneStats && (
+        <MeasureStatsTable
+          mode={measureStatMode}
+          laneStats={measureLaneStats}
+          region={measureRegionRange}
+          wallClockEpoch={wallClockEpoch}
+          eventCount={measureEventCount}
+        />
+      )}
 
       {/* ── Status bar ────────────────────────────────────────── */}
       <div className={styles.statusBar}>
@@ -2856,10 +5012,17 @@ export default function SignalViewer() {
             </div>
           </div>
 
-          {(['cpap', 'wearable', 'sleep'] as const).map((group) => {
+          {(['cpap', 'wearable', 'sleep', 'weather'] as const).map((group) => {
             const groupLanes = allLanes.filter((l) => l.group === group);
             if (groupLanes.length === 0) return null;
-            const heading = group === 'cpap' ? 'CPAP' : group === 'wearable' ? 'Wearable' : 'Sleep';
+            const heading =
+              group === 'cpap'
+                ? 'CPAP'
+                : group === 'wearable'
+                  ? 'Wearable'
+                  : group === 'sleep'
+                    ? 'Sleep'
+                    : 'Weather & Environment';
             return (
               <div key={group} className={styles.drawerGroup}>
                 <span className={styles.drawerHeading}>{heading}</span>

@@ -48,3 +48,48 @@
 .clinicianPromptTitle {
   font-weight: var(--font-weight-semibold);
 }
+
+/* Bottom legend (replaces the Recharts <Legend>). Absolutely positioned over
+   the canvas in the 24px band reserved by the chart's bottom margin. */
+.legend {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* Hatched swatch mirrors the "modeled" series' diagonal pattern as a cue. */
+.legendSwatch[data-hatch='true'] {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.75) 0,
+    rgba(255, 255, 255, 0.75) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}

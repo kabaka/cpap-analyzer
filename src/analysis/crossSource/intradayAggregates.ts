@@ -12,9 +12,14 @@
  * wired into intraday correlation work (e.g. correlating a session's mean HR
  * against its AHI). They are NOT yet consumed by any view.
  *
- * All inputs use the absolute, wall-clock-as-UTC epoch convention produced by
- * the wearable retrieval layer (see `useWearableLanes`), so a "window" is
- * a `[startMs, endMs]` pair in the same time base as the samples.
+ * All inputs use the absolute, LOCAL-frame epoch convention produced by the
+ * wearable retrieval layer (see `useWearableLanes`), so a "window" is a
+ * `[startMs, endMs]` pair in the same time base as the samples. For the two
+ * UTC-sourced lanes (heart rate, SpO₂), callers must feed samples that have
+ * ALREADY been converted to local time via `applyOffset`/`useWearableOffsets`
+ * (exactly as `useWearableLanes` does). This module is pure and
+ * time-base-agnostic — it never applies the offset itself — so any future feed
+ * must do the conversion upstream to keep windows and samples in one frame.
  *
  * @module analysis/crossSource/intradayAggregates
  */

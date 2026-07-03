@@ -33,3 +33,9 @@ export {
   TECSA_PRESENTATION_ORDER,
   type TecsaPresentation,
 } from './tecsaPresentation';
+export {
+  BREATHING_ALGO_VERSION,
+  hashBreathingParams,
+  DEFAULT_BREATHING_PARAM_HASH,
+  makeBreathingDetectionId,
+} from './cacheVersion';

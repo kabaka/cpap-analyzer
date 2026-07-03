@@ -7,19 +7,49 @@
  * @module services/storage/getDB
  */
 
+import { BREATHING_ALGO_VERSION } from '@/analysis/breathing';
 import { IndexedDBService } from './IndexedDBService';
+import { requestPersistentStorage } from './persistentStorage';
 import {
   MigrationService,
   MIGRATION_001_INITIAL_SCHEMA,
   MIGRATION_002_NONUNIQUE_MACHINE_DATE,
   MIGRATION_003_INTEGRATION_STORES,
+  MIGRATION_004_BREATHING_DETECTIONS,
 } from './MigrationService';
 
 /** Current target schema version. Must match `DB_VERSION` in IndexedDBService. */
-const TARGET_SCHEMA_VERSION = 3;
+const TARGET_SCHEMA_VERSION = 4;
 
 let instance: IndexedDBService | null = null;
 let openPromise: Promise<IndexedDBService> | null = null;
+
+/**
+ * Discard the cached singleton without closing the connection.
+ *
+ * Used by the connection-lost path: when IndexedDBService reports that an open
+ * connection was force-closed (eviction) or superseded (versionchange), it has
+ * already closed/nulled its own handle, so there is nothing left to close here —
+ * we only need to clear our cached `instance`/`openPromise` so the NEXT
+ * `getDB()` call transparently opens a fresh connection instead of returning a
+ * dead one. Guarded against clearing a *newer* instance: if a reopen has already
+ * raced ahead and installed a different instance, we leave it untouched.
+ */
+function handleConnectionLost(lost: IndexedDBService): void {
+  if (instance === lost) {
+    instance = null;
+    openPromise = null;
+  }
+}
+
+/** Whether DEV-only diagnostics may be emitted (degrades to silence). */
+function isDevEnvironment(): boolean {
+  try {
+    return Boolean(import.meta.env?.DEV);
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Build a MigrationService with all known migrations registered.
@@ -36,6 +66,7 @@ function buildMigrationService(): MigrationService {
     MIGRATION_001_INITIAL_SCHEMA,
     MIGRATION_002_NONUNIQUE_MACHINE_DATE,
     MIGRATION_003_INTEGRATION_STORES,
+    MIGRATION_004_BREATHING_DETECTIONS,
   ]);
   return service;
 }
@@ -50,12 +81,40 @@ export async function getDB(): Promise<IndexedDBService> {
   // Avoid racing multiple callers that arrive before the first open resolves.
   if (!openPromise) {
     openPromise = (async () => {
-      const db = new IndexedDBService();
+      // Wire the connection-lost callback at construction so eviction/versionchange
+      // on THIS instance clears the singleton cache and the next getDB() reopens.
+      const db = new IndexedDBService(undefined, undefined, () => {
+        handleConnectionLost(db);
+      });
       await db.open();
       // Maintain the migration ledger. Schema/index changes already happened in
       // onupgradeneeded; this records the version history and verifies it.
       await buildMigrationService().run(db.getRawDatabase(), TARGET_SCHEMA_VERSION);
+      // Version-eviction sweep: reclaim breathing-detection rows left behind by a
+      // superseded algorithm version. Bounded (≤1 stale row per session per old
+      // version) and idempotent; runs once per open after the ledger so a fresh
+      // open never serves — nor accumulates — stale cached detections. See
+      // docs/analysis/breathing-detection-cache-storage.md §4.3.
+      await db.deleteBreathingDetectionsByAlgoVersionNotMatching(BREATHING_ALGO_VERSION);
       instance = db;
+
+      // Best-effort: ask the browser to move our data into the durable
+      // (persistent) storage bucket so it isn't silently evicted under storage
+      // pressure / "clear on exit" / disk cleanup. Fire-and-forget: this MUST
+      // NOT block or fail DB open. requestPersistentStorage never rejects, but
+      // we attach a defensive .catch() anyway and log only at DEV debug level —
+      // no PII, no telemetry, purely local console.
+      requestPersistentStorage()
+        .then((status) => {
+          if (isDevEnvironment()) {
+            // eslint-disable-next-line no-console -- DEV-only, no PII/telemetry: local persistence status
+            console.debug(`[storage] persistent storage: ${status}`);
+          }
+        })
+        .catch(() => {
+          /* unreachable by contract; swallowed so a rejection can never surface */
+        });
+
       return db;
     })();
 

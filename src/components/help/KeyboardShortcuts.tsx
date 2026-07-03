@@ -24,6 +24,10 @@ const shortcutGroups: readonly ShortcutGroup[] = [
     ],
   },
   {
+    title: 'Interface',
+    shortcuts: [{ keys: ['['], description: 'Collapse / expand the navigation sidebar (desktop)' }],
+  },
+  {
     title: 'Help',
     shortcuts: [
       { keys: ['?'], description: 'Open / close help panel' },

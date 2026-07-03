@@ -64,6 +64,10 @@
   margin: 0;
 }
 
+.errorIcon {
+  color: var(--color-error);
+}
+
 /* TECSA card */
 .tecsaCard {
   display: flex;
@@ -227,6 +231,136 @@
 .catalogStatus {
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+}
+
+/* Progress + status row: a determinate bar with an inline Cancel/Resume control. */
+.catalogProgress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.catalogProgressRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.catalogProgressBar {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.catalogProgressAction {
+  flex: 0 0 auto;
+}
+
+.catalogStatusLine {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.catalogStatusLine:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.catalogCount {
+  font-variant-numeric: tabular-nums;
+}
+
+.catalogEta {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cancelledTag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* Per-night failure disclosure (UX §8.3) — icon + text, never colour alone. */
+.failureNotice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.failureIcon {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+}
+
+.failureDetailsButton {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.failureDetailsButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.failureList {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-height: 240px;
+  overflow-y: auto;
+  font-size: var(--font-size-sm);
+  min-width: 240px;
+}
+
+.failureListItem {
+  display: flex;
+  gap: var(--space-2);
+  color: var(--color-text-primary);
+}
+
+.failureListDate {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-medium);
+  flex: 0 0 auto;
+}
+
+.failureListReason {
+  color: var(--color-text-secondary);
+}
+
+.skeletonRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+/* Screen-reader-only live region (visually hidden, still announced). */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .tableScroll {

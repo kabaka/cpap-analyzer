@@ -19,3 +19,12 @@ export type { WorkerPoolOptions } from './WorkerPool';
 export type { AnalysisWorkerAPI } from './analysis.worker';
 
 export type { ExportWorkerAPI } from './export.worker';
+
+export type {
+  FitbitParserWorkerAPI,
+  FitbitWorkerDataType,
+  FitbitWorkerFile,
+  FitbitWorkerProgress,
+  FitbitWorkerProgressCallback,
+  FitbitWorkerResult,
+} from './fitbitParser.worker';

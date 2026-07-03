@@ -14,9 +14,8 @@ import { Badge, Select, Skeleton, Tabs, Tooltip } from '@/components/ui';
 import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
 import { useAppStore } from '@/stores/useAppStore';
 import { useCorrelationData } from '@/hooks/useCorrelationData';
-import type { JoinedDayRecord } from '@/hooks/useCorrelationData';
+import type { JoinedDayRecord, JoinedWeatherRecord } from '@/hooks/useCorrelationData';
 import { useWearableSummary } from '@/hooks/useWearableSummary';
-import type { WearableSummary } from '@/hooks/useWearableSummary';
 import {
   computeCorrelation,
   computeBlandAltman,
@@ -30,66 +29,18 @@ import type {
   LaggedCrossSourceCorrelationResult,
   CpapDailyRecord,
 } from '@/analysis/crossSource';
-import type { FitbitDailyType } from '@/types/fitbit';
 import type { NightlyAggregate } from '@/types/session';
+import {
+  CPAP_METRICS,
+  buildComparisonMetrics,
+  comparisonGroups,
+  filterAvailableWearableMetrics,
+  filterAvailableWeatherMetrics,
+  extractCpapFromJoined,
+  alignSeries,
+  type ComparisonMetricDef,
+} from './integrationMetrics';
 import styles from './IntegrationAnalysis.module.css';
-
-// ---------------------------------------------------------------------------
-// CPAP metric definitions
-// ---------------------------------------------------------------------------
-
-interface CpapMetricDef {
-  readonly key: string;
-  readonly label: string;
-  /**
-   * Per-night metric accessor. Per-hour rate indices (AHI and its sub-indices)
-   * are `number | null`: `null` is an UNDEFINED rate (recording below
-   * MIN_INDEX_USAGE_HOURS), never zero. `extractCpapFromJoined` drops null
-   * (and non-finite) values pairwise so correlations only see defined nights.
-   */
-  readonly extract: (agg: NightlyAggregate) => number | null;
-}
-
-const CPAP_METRICS: readonly CpapMetricDef[] = [
-  { key: 'ahi', label: 'AHI', extract: (a) => a.ahi },
-  { key: 'ahiObstructive', label: 'Obstructive AI', extract: (a) => a.ahiObstructive },
-  { key: 'ahiCentral', label: 'Central AI', extract: (a) => a.ahiCentral },
-  { key: 'ahiHypopnea', label: 'Hypopnea Index', extract: (a) => a.ahiHypopnea },
-  { key: 'pressureMean', label: 'Pressure Mean', extract: (a) => a.pressureMean },
-  { key: 'pressureP95', label: 'Pressure 95th', extract: (a) => a.pressureP95 },
-  { key: 'leakMedian', label: 'Leak Median', extract: (a) => a.leakMedian },
-  { key: 'leakP95', label: 'Leak 95th', extract: (a) => a.leakP95 },
-  { key: 'usageHours', label: 'Usage Hours', extract: (a) => a.usageHours },
-];
-
-// ---------------------------------------------------------------------------
-// Wearable metric definitions
-// ---------------------------------------------------------------------------
-
-interface WearableMetricDef {
-  readonly dataType: FitbitDailyType;
-  readonly path: string;
-  readonly label: string;
-}
-
-const WEARABLE_METRICS: readonly WearableMetricDef[] = [
-  { dataType: 'sleep_score', path: 'overallScore', label: 'Sleep Score' },
-  { dataType: 'sleep_score', path: 'compositionScore', label: 'Sleep Composition' },
-  { dataType: 'sleep_score', path: 'durationScore', label: 'Sleep Duration Score' },
-  { dataType: 'sleep_score', path: 'deepSleepMinutes', label: 'Deep Sleep (min)' },
-  { dataType: 'hrv_daily', path: 'dailyRmssd', label: 'HRV (RMSSD)' },
-  { dataType: 'hrv_daily', path: 'deepRmssd', label: 'HRV Deep Sleep' },
-  { dataType: 'spo2_daily', path: 'avg', label: 'SpO₂ Average' },
-  { dataType: 'spo2_daily', path: 'min', label: 'SpO₂ Minimum' },
-  { dataType: 'respiratory_rate', path: 'fullSleepRate', label: 'Respiratory Rate' },
-  { dataType: 'heart_rate_resting', path: 'restingHeartRate', label: 'Resting Heart Rate' },
-  { dataType: 'readiness', path: 'score', label: 'Readiness Score' },
-  { dataType: 'stress', path: 'score', label: 'Stress Score' },
-  { dataType: 'temperature', path: 'nightlyDeviation', label: 'Skin Temp Deviation' },
-  { dataType: 'activity_daily', path: 'steps', label: 'Steps' },
-  { dataType: 'activity_daily', path: 'activeZoneMinutes', label: 'Active Zone Minutes' },
-  { dataType: 'snoring_daily', path: 'totalDurationMinutes', label: 'Snoring Duration' },
-] as const;
 
 // ---------------------------------------------------------------------------
 // Formatting helpers
@@ -210,86 +161,8 @@ function toISODateRange(dateRange: { start: Date; end: Date }): {
   };
 }
 
-/** Extract a numeric wearable metric from joined records. */
-function extractWearableFromJoined(
-  data: readonly JoinedDayRecord[],
-  metric: WearableMetricDef,
-): Array<{ date: string; value: number }> {
-  const result: Array<{ date: string; value: number }> = [];
-  for (const record of data) {
-    const summary = record.wearable[metric.dataType];
-    if (!summary) continue;
-    const raw = getNestedValue(summary.data, metric.path);
-    if (typeof raw === 'number' && Number.isFinite(raw)) {
-      result.push({ date: record.date, value: raw });
-    }
-  }
-  return result;
-}
-
-/** Navigate into an object by a dot-separated path. */
-function getNestedValue(obj: unknown, path: string): unknown {
-  const segments = path.split('.');
-  let current: unknown = obj;
-  for (const segment of segments) {
-    if (current === null || current === undefined || typeof current !== 'object') {
-      return undefined;
-    }
-    current = (current as Record<string, unknown>)[segment];
-  }
-  return current;
-}
-
-/** Extract CPAP metric values aligned with dates from joined records. */
-function extractCpapFromJoined(
-  data: readonly JoinedDayRecord[],
-  metric: CpapMetricDef,
-): Array<{ date: string; value: number }> {
-  const result: Array<{ date: string; value: number }> = [];
-  for (const record of data) {
-    // Null-handling (pairwise deletion): a null index is an undefined rate
-    // (sub-floor recording), not zero. Drop it (and any non-finite value) so it
-    // never enters a correlation / Bland-Altman / lagged-CCF series; alignSeries
-    // then drops the matching wearable point, keeping the paired series aligned.
-    const v = metric.extract(record.cpap);
-    if (v !== null && Number.isFinite(v)) {
-      result.push({ date: record.date, value: v });
-    }
-  }
-  return result;
-}
-
-/** Build aligned arrays from two metric series (inner join on date). */
-function alignSeries(
-  seriesA: ReadonlyArray<{ date: string; value: number }>,
-  seriesB: ReadonlyArray<{ date: string; value: number }>,
-): { x: number[]; y: number[]; dates: string[] } {
-  const mapB = new Map(seriesB.map((s) => [s.date, s.value]));
-  const x: number[] = [];
-  const y: number[] = [];
-  const dates: string[] = [];
-  for (const a of seriesA) {
-    const bVal = mapB.get(a.date);
-    if (bVal !== undefined) {
-      x.push(a.value);
-      y.push(bVal);
-      dates.push(a.date);
-    }
-  }
-  return { x, y, dates };
-}
-
-// ---------------------------------------------------------------------------
-// Available wearable metrics (filtered by imported data)
-// ---------------------------------------------------------------------------
-
-function filterAvailableWearableMetrics(
-  summary: WearableSummary | null,
-): readonly WearableMetricDef[] {
-  if (!summary?.hasData) return [];
-  const availableTypes = new Set<string>(summary.availableDataTypes);
-  return WEARABLE_METRICS.filter((m) => availableTypes.has(m.dataType));
-}
+// Metric definitions, extraction/join helpers, availability filters, and the
+// grouped-options builder live in `./integrationMetrics` (pure + unit-tested).
 
 // ---------------------------------------------------------------------------
 // Sub-component: Correlation Explorer
@@ -297,27 +170,33 @@ function filterAvailableWearableMetrics(
 
 interface CorrelationExplorerProps {
   data: readonly JoinedDayRecord[];
-  availableWearableMetrics: readonly WearableMetricDef[];
+  weatherData: readonly JoinedWeatherRecord[];
+  comparisonMetrics: readonly ComparisonMetricDef[];
 }
 
 const CorrelationExplorer = React.memo(function CorrelationExplorer({
   data,
-  availableWearableMetrics,
+  weatherData,
+  comparisonMetrics,
 }: CorrelationExplorerProps) {
   const [cpapMetricKey, setCpapMetricKey] = useState<string>(CPAP_METRICS[0]?.key ?? 'ahi');
-  const [wearableIdx, setWearableIdx] = useState<string>('0');
+  const [comparisonId, setComparisonId] = useState<string>(comparisonMetrics[0]?.id ?? '');
   const [method, setMethod] = useState<'pearson' | 'spearman'>('pearson');
 
   const cpapMetric = CPAP_METRICS.find((m) => m.key === cpapMetricKey) ?? CPAP_METRICS[0];
-  const wearableMetric =
-    availableWearableMetrics[Number(wearableIdx)] ?? availableWearableMetrics[0];
+  const comparisonMetric =
+    comparisonMetrics.find((m) => m.id === comparisonId) ?? comparisonMetrics[0];
 
   const result = useMemo((): CrossSourceCorrelationResult | null => {
-    if (!cpapMetric || !wearableMetric || data.length < 3) return null;
+    if (!cpapMetric || !comparisonMetric) return null;
 
-    const cpapSeries = extractCpapFromJoined(data, cpapMetric);
-    const wearableSeries = extractWearableFromJoined(data, wearableMetric);
-    const aligned = alignSeries(cpapSeries, wearableSeries);
+    // The CPAP series is drawn from whichever join the comparison metric lives
+    // in (wearable join for wearable metrics, weather join for weather metrics)
+    // so CPAP nights without the other source are not silently dropped.
+    const cpapSource = comparisonMetric.group === 'weather' ? weatherData : data;
+    const cpapSeries = extractCpapFromJoined(cpapSource, cpapMetric);
+    const comparisonSeries = comparisonMetric.extract(data, weatherData);
+    const aligned = alignSeries(cpapSeries, comparisonSeries);
 
     if (aligned.x.length < 3) return null;
 
@@ -327,20 +206,13 @@ const CorrelationExplorer = React.memo(function CorrelationExplorer({
       dates: aligned.dates,
       method,
     });
-  }, [data, cpapMetric, wearableMetric, method]);
+  }, [data, weatherData, cpapMetric, comparisonMetric, method]);
 
   const cpapOptions = CPAP_METRICS.map((m) => ({ value: m.key, label: m.label }));
-  const wearableOptions = availableWearableMetrics.map((m, i) => ({
-    value: String(i),
-    label: m.label,
-  }));
+  const groups = comparisonGroups(comparisonMetrics);
 
-  if (availableWearableMetrics.length === 0) {
-    return (
-      <div className={styles.noData}>
-        No wearable metrics available. Import Google Health data to enable correlation analysis.
-      </div>
-    );
+  if (comparisonMetrics.length === 0) {
+    return <NoComparisonData context="correlation analysis" />;
   }
 
   return (
@@ -356,10 +228,10 @@ const CorrelationExplorer = React.memo(function CorrelationExplorer({
         </div>
         <div className={styles.controlGroup}>
           <Select
-            label="Wearable Metric"
-            options={wearableOptions}
-            value={wearableIdx}
-            onValueChange={setWearableIdx}
+            label="Compare against"
+            groups={groups}
+            value={comparisonId}
+            onValueChange={setComparisonId}
           />
         </div>
         <div className={styles.controlGroup}>
@@ -431,8 +303,8 @@ const CorrelationExplorer = React.memo(function CorrelationExplorer({
 
           <div className={styles.interpretation} role="status" aria-live="polite">
             {cpapMetric &&
-              wearableMetric &&
-              interpretCorrelation(cpapMetric.label, wearableMetric.label, result)}
+              comparisonMetric &&
+              interpretCorrelation(cpapMetric.label, comparisonMetric.label, result)}
           </div>
         </div>
       )}
@@ -441,24 +313,43 @@ const CorrelationExplorer = React.memo(function CorrelationExplorer({
 });
 
 // ---------------------------------------------------------------------------
+// Shared empty state for the "Compare against" tabs
+// ---------------------------------------------------------------------------
+
+function NoComparisonData({ context }: { context: string }) {
+  return (
+    <div className={styles.noData}>
+      No comparison metrics available. Import Google Health data or enable the weather integration
+      in Settings &rarr; Integrations to enable {context}.
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sub-component: Correlation Matrix
 // ---------------------------------------------------------------------------
 
 interface CorrelationMatrixProps {
   data: readonly JoinedDayRecord[];
-  availableWearableMetrics: readonly WearableMetricDef[];
+  weatherData: readonly JoinedWeatherRecord[];
+  comparisonMetrics: readonly ComparisonMetricDef[];
 }
 
 const CorrelationMatrixTab = React.memo(function CorrelationMatrixTab({
   data,
-  availableWearableMetrics,
+  weatherData,
+  comparisonMetrics,
 }: CorrelationMatrixProps) {
   const [method, setMethod] = useState<'pearson' | 'spearman'>('pearson');
 
   const matrixResult = useMemo((): CrossSourceCorrelationMatrix | null => {
-    if (data.length < 3 || availableWearableMetrics.length === 0) return null;
+    if (comparisonMetrics.length === 0) return null;
 
-    // Build CpapDailyRecord array.
+    // Build the CPAP record set from the UNION of both joins (a CPAP night may
+    // appear with weather, with wearable, or both). `correlateDataSources`
+    // inner-joins each comparison column by date, so listing every CPAP night
+    // here lets weather columns pair with weather-only nights and wearable
+    // columns with wearable-only nights.
     //
     // Null-handling (listwise deletion): CpapDailyRecord requires numeric `ahi`
     // and sub-indices, but those are `number | null` on a NightlyAggregate —
@@ -467,54 +358,47 @@ const CorrelationMatrixTab = React.memo(function CorrelationMatrixTab({
     // whole night when `ahi` is null. Because every AHI component shares the same
     // rate-validity floor and usage-hours denominator, `ahi !== null` guarantees
     // `ahiObstructive`/`ahiCentral` are also non-null on the kept rows, so the
-    // matrix never sees a fabricated 0. CAVEAT FOR QA: this reduces the row count
-    // (and thus the per-cell n) for the correlation matrix on date ranges that
-    // contain sub-floor nights.
-    const cpapData: CpapDailyRecord[] = data
-      .filter(
-        (
-          d,
-        ): d is typeof d & {
-          cpap: NightlyAggregate & {
-            ahi: number;
-            ahiObstructive: number;
-            ahiCentral: number;
-          };
-        } => d.cpap.ahi !== null && d.cpap.ahiObstructive !== null && d.cpap.ahiCentral !== null,
-      )
-      .map((d) => ({
-        date: d.date,
-        ahi: d.cpap.ahi,
-        pressureMean: d.cpap.pressureMean,
-        pressure95th: d.cpap.pressureP95,
-        leakMedian: d.cpap.leakMedian,
-        leak95th: d.cpap.leakP95,
-        usageHours: d.cpap.usageHours,
-        ahiObstructive: d.cpap.ahiObstructive,
-        ahiCentral: d.cpap.ahiCentral,
-        respiratoryRateMedian: d.cpap.respRateMedian ?? undefined,
-        tidalVolumeMedian: d.cpap.tidalVolumeMedian ?? undefined,
-        minuteVentilationMedian: d.cpap.minuteVentMean ?? undefined,
-      }));
+    // matrix never sees a fabricated 0.
+    const cpapByDate = new Map<string, NightlyAggregate>();
+    for (const d of data) cpapByDate.set(d.date, d.cpap);
+    for (const d of weatherData) if (!cpapByDate.has(d.date)) cpapByDate.set(d.date, d.cpap);
 
-    // Build wearable metric series
-    const wearableData: Record<string, Array<{ date: string; value: number }>> = {};
-    for (const metric of availableWearableMetrics) {
-      const series = extractWearableFromJoined(data, metric);
+    const cpapData: CpapDailyRecord[] = [];
+    for (const [date, cpap] of cpapByDate) {
+      if (cpap.ahi === null || cpap.ahiObstructive === null || cpap.ahiCentral === null) continue;
+      cpapData.push({
+        date,
+        ahi: cpap.ahi,
+        pressureMean: cpap.pressureMean,
+        pressure95th: cpap.pressureP95,
+        leakMedian: cpap.leakMedian,
+        leak95th: cpap.leakP95,
+        usageHours: cpap.usageHours,
+        ahiObstructive: cpap.ahiObstructive,
+        ahiCentral: cpap.ahiCentral,
+        respiratoryRateMedian: cpap.respRateMedian ?? undefined,
+        tidalVolumeMedian: cpap.tidalVolumeMedian ?? undefined,
+        minuteVentilationMedian: cpap.minuteVentMean ?? undefined,
+      });
+    }
+    cpapData.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+    if (cpapData.length < 3) return null;
+
+    // Build comparison metric series (wearable ∪ weather) as matrix columns.
+    const comparisonColumns: Record<string, Array<{ date: string; value: number }>> = {};
+    for (const metric of comparisonMetrics) {
+      const series = metric.extract(data, weatherData);
       if (series.length > 0) {
-        wearableData[metric.label] = series;
+        comparisonColumns[metric.label] = series;
       }
     }
 
-    return correlateDataSources({ cpapData, wearableData, method });
-  }, [data, availableWearableMetrics, method]);
+    return correlateDataSources({ cpapData, wearableData: comparisonColumns, method });
+  }, [data, weatherData, comparisonMetrics, method]);
 
-  if (availableWearableMetrics.length === 0) {
-    return (
-      <div className={styles.noData}>
-        No wearable metrics available. Import Google Health data to enable the correlation matrix.
-      </div>
-    );
+  if (comparisonMetrics.length === 0) {
+    return <NoComparisonData context="the correlation matrix" />;
   }
 
   if (matrixResult === null || matrixResult.cpapMetrics.length === 0) {
@@ -672,7 +556,8 @@ type ComparisonMode = 'bland-altman' | 'lagged-ccf';
 
 interface MetricComparisonProps {
   data: readonly JoinedDayRecord[];
-  availableWearableMetrics: readonly WearableMetricDef[];
+  weatherData: readonly JoinedWeatherRecord[];
+  comparisonMetrics: readonly ComparisonMetricDef[];
 }
 
 const MAX_LAG_OPTIONS = [
@@ -684,65 +569,57 @@ const MAX_LAG_OPTIONS = [
 
 const MetricComparison = React.memo(function MetricComparison({
   data,
-  availableWearableMetrics,
+  weatherData,
+  comparisonMetrics,
 }: MetricComparisonProps) {
   const [mode, setMode] = useState<ComparisonMode>('bland-altman');
   const [cpapMetricKey, setCpapMetricKey] = useState<string>(CPAP_METRICS[0]?.key ?? 'ahi');
-  const [wearableIdx, setWearableIdx] = useState<string>('0');
+  const [comparisonId, setComparisonId] = useState<string>(comparisonMetrics[0]?.id ?? '');
   const [maxLag, setMaxLag] = useState<string>('7');
 
   const cpapMetric = CPAP_METRICS.find((m) => m.key === cpapMetricKey) ?? CPAP_METRICS[0];
-  const wearableMetric =
-    availableWearableMetrics[Number(wearableIdx)] ?? availableWearableMetrics[0];
+  const comparisonMetric =
+    comparisonMetrics.find((m) => m.id === comparisonId) ?? comparisonMetrics[0];
 
   const cpapOptions = CPAP_METRICS.map((m) => ({ value: m.key, label: m.label }));
-  const wearableOptions = availableWearableMetrics.map((m, i) => ({
-    value: String(i),
-    label: m.label,
-  }));
+  const groups = comparisonGroups(comparisonMetrics);
+
+  /** Aligned CPAP × comparison series, drawing CPAP from the matching join. */
+  const aligned = useMemo(() => {
+    if (!cpapMetric || !comparisonMetric) return null;
+    const cpapSource = comparisonMetric.group === 'weather' ? weatherData : data;
+    const cpapSeries = extractCpapFromJoined(cpapSource, cpapMetric);
+    const comparisonSeries = comparisonMetric.extract(data, weatherData);
+    const result = alignSeries(cpapSeries, comparisonSeries);
+    return result.x.length < 3 ? null : result;
+  }, [data, weatherData, cpapMetric, comparisonMetric]);
 
   const blandAltmanResult = useMemo((): BlandAltmanResult | null => {
-    if (mode !== 'bland-altman' || !cpapMetric || !wearableMetric || data.length < 3) return null;
-
-    const cpapSeries = extractCpapFromJoined(data, cpapMetric);
-    const wearableSeries = extractWearableFromJoined(data, wearableMetric);
-    const aligned = alignSeries(cpapSeries, wearableSeries);
-
-    if (aligned.x.length < 3) return null;
-
+    if (mode !== 'bland-altman' || !aligned || !cpapMetric || !comparisonMetric) return null;
     return computeBlandAltman({
       method1: aligned.x,
       method2: aligned.y,
       dates: aligned.dates,
       method1Label: cpapMetric.label,
-      method2Label: wearableMetric.label,
+      method2Label: comparisonMetric.label,
     });
-  }, [mode, data, cpapMetric, wearableMetric]);
+  }, [mode, aligned, cpapMetric, comparisonMetric]);
 
   const laggedResult = useMemo((): LaggedCrossSourceCorrelationResult | null => {
-    if (mode !== 'lagged-ccf' || !cpapMetric || !wearableMetric || data.length < 3) return null;
-
-    const cpapSeries = extractCpapFromJoined(data, cpapMetric);
-    const wearableSeries = extractWearableFromJoined(data, wearableMetric);
-    const aligned = alignSeries(cpapSeries, wearableSeries);
-
-    if (aligned.x.length < 3) return null;
-
+    if (mode !== 'lagged-ccf' || !aligned) return null;
     return computeLaggedCrossCorrelation({
       x: aligned.x,
       y: aligned.y,
       dates: aligned.dates,
       maxLag: Number(maxLag),
     });
-  }, [mode, data, cpapMetric, wearableMetric, maxLag]);
+  }, [mode, aligned, maxLag]);
 
-  if (availableWearableMetrics.length === 0) {
-    return (
-      <div className={styles.noData}>
-        No wearable metrics available. Import Google Health data to enable metric comparison.
-      </div>
-    );
+  if (comparisonMetrics.length === 0) {
+    return <NoComparisonData context="metric comparison" />;
   }
+
+  const isWeatherSelected = comparisonMetric?.group === 'weather';
 
   return (
     <div>
@@ -786,10 +663,10 @@ const MetricComparison = React.memo(function MetricComparison({
         </div>
         <div className={styles.controlGroup}>
           <Select
-            label={mode === 'bland-altman' ? 'Method 2 (Wearable)' : 'Lagging Metric'}
-            options={wearableOptions}
-            value={wearableIdx}
-            onValueChange={setWearableIdx}
+            label={mode === 'bland-altman' ? 'Method 2 (Compare against)' : 'Lagging Metric'}
+            groups={groups}
+            value={comparisonId}
+            onValueChange={setComparisonId}
           />
         </div>
         {mode === 'lagged-ccf' && (
@@ -804,11 +681,17 @@ const MetricComparison = React.memo(function MetricComparison({
         )}
       </div>
 
+      {isWeatherSelected && (
+        <p className={styles.laggedHint} role="note">
+          Environmental effects may precede therapy changes by a day or more — try lagged analysis.
+        </p>
+      )}
+
       {mode === 'bland-altman' && (
         <BlandAltmanResults
           result={blandAltmanResult}
           method1Label={cpapMetric?.label ?? ''}
-          method2Label={wearableMetric?.label ?? ''}
+          method2Label={comparisonMetric?.label ?? ''}
         />
       )}
 
@@ -993,21 +876,34 @@ export default function IntegrationAnalysis() {
   const { summary, loading: summaryLoading } = useWearableSummary();
   const {
     data,
+    weatherData,
     loading: dataLoading,
     cpapDays,
     wearableDays,
     overlapDays,
+    weatherDays,
   } = useCorrelationData(isoRange);
 
   const availableWearableMetrics = useMemo(
     () => filterAvailableWearableMetrics(summary),
     [summary],
   );
+  const availableWeatherMetrics = useMemo(
+    () => filterAvailableWeatherMetrics(weatherData),
+    [weatherData],
+  );
+  const comparisonMetrics = useMemo(
+    () => buildComparisonMetrics(availableWearableMetrics, availableWeatherMetrics),
+    [availableWearableMetrics, availableWeatherMetrics],
+  );
 
   const loading = summaryLoading || dataLoading;
+  const hasWeather = weatherData.length > 0;
 
-  // --- Empty state: no wearable data ---
-  if (!summaryLoading && summary && !summary.hasData) {
+  // --- Empty state: neither wearable nor weather data ---
+  // Weather metrics are derived from synced weather data; if any weather night
+  // exists we fall through to the tabs (weather-only correlation is valid).
+  if (!loading && summary && !summary.hasData && !hasWeather) {
     return (
       <div className={styles.page} aria-labelledby="integration-heading">
         <div className={styles.header}>
@@ -1019,22 +915,34 @@ export default function IntegrationAnalysis() {
           <span className={styles.emptyIcon} aria-hidden="true">
             &#x1F4CA;
           </span>
-          <h2 className={styles.emptyTitle}>No Wearable Data Available</h2>
+          <h2 className={styles.emptyTitle}>No Comparison Data Available</h2>
           <p className={styles.emptyDescription}>
-            Import your Google Health (Fitbit) data to unlock cross-source analysis. Correlate your
-            CPAP therapy metrics with sleep scores, heart rate variability, SpO&#x2082; readings,
-            and more.
+            Import your Google Health (Fitbit) data to correlate CPAP therapy metrics with sleep
+            scores, heart rate variability, SpO&#x2082; readings, and more — or enable the weather
+            &amp; air-quality integration to correlate against overnight barometric pressure,
+            humidity, and AQI.
           </p>
-          <Link to="/data/import" className={styles.emptyLink}>
-            Go to Import &rarr;
-          </Link>
+          <div className={styles.emptyActions}>
+            <Link to="/data/import" className={styles.emptyLink}>
+              Go to Import &rarr;
+            </Link>
+            <Link to="/settings" className={styles.emptyLink}>
+              Settings &rarr; Integrations (weather) &rarr;
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
   // --- Empty state: no date range overlap ---
-  if (!loading && summary?.hasData && data.length === 0 && !summary.overlapDateRange) {
+  if (
+    !loading &&
+    summary?.hasData &&
+    !hasWeather &&
+    data.length === 0 &&
+    !summary.overlapDateRange
+  ) {
     return (
       <div className={styles.page} aria-labelledby="integration-heading">
         <div className={styles.header}>
@@ -1067,7 +975,11 @@ export default function IntegrationAnalysis() {
           {loading ? (
             <LoadingSkeleton />
           ) : (
-            <CorrelationExplorer data={data} availableWearableMetrics={availableWearableMetrics} />
+            <CorrelationExplorer
+              data={data}
+              weatherData={weatherData}
+              comparisonMetrics={comparisonMetrics}
+            />
           )}
         </div>
       ),
@@ -1080,7 +992,11 @@ export default function IntegrationAnalysis() {
           {loading ? (
             <LoadingSkeleton />
           ) : (
-            <CorrelationMatrixTab data={data} availableWearableMetrics={availableWearableMetrics} />
+            <CorrelationMatrixTab
+              data={data}
+              weatherData={weatherData}
+              comparisonMetrics={comparisonMetrics}
+            />
           )}
         </div>
       ),
@@ -1093,7 +1009,11 @@ export default function IntegrationAnalysis() {
           {loading ? (
             <LoadingSkeleton />
           ) : (
-            <MetricComparison data={data} availableWearableMetrics={availableWearableMetrics} />
+            <MetricComparison
+              data={data}
+              weatherData={weatherData}
+              comparisonMetrics={comparisonMetrics}
+            />
           )}
         </div>
       ),
@@ -1124,6 +1044,11 @@ export default function IntegrationAnalysis() {
         <div className={styles.bannerStat}>
           <span className={styles.bannerValue}>{wearableDays}</span>
           <span>wearable days</span>
+        </div>
+        <span className={styles.bannerSeparator} aria-hidden="true" />
+        <div className={styles.bannerStat}>
+          <span className={styles.bannerValue}>{weatherDays}</span>
+          <span>weather days</span>
         </div>
       </div>
 

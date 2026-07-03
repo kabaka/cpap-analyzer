@@ -34,6 +34,7 @@ export class RouteErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    // eslint-disable-next-line no-console -- intentional error-boundary logging; stays in-browser (no telemetry)
     console.error('[RouteErrorBoundary] Uncaught error:', error, errorInfo);
   }
 

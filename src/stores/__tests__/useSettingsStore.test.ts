@@ -25,8 +25,25 @@ const defaultDisplay = {
 
 const defaultIntegrations = {
   fitbit: { enabled: false, visibleDataTypes: [], lastImportAt: null, recordCount: 0 },
-  weather: { enabled: false, apiKey: null, location: '' },
-  llm: { enabled: false, provider: null, apiKey: null },
+  weather: {
+    enabled: false,
+    consentAt: null,
+    location: { label: null, latitude: null, longitude: null },
+    units: { temperature: 'C', pressure: 'hPa', wind: 'kmh', precip: 'mm' },
+    domains: { core: true, airQuality: true },
+    resolution: 'daily+hourly',
+    autoSyncNewImports: false,
+    lastSyncAt: null,
+  },
+  llm: {
+    enabled: false,
+    backend: null,
+    consentAt: null,
+    consentContractVersion: null,
+    webllm: { modelId: null },
+    anthropic: { model: 'claude-opus-4-8' },
+    openaiCompatible: { baseUrl: null, model: null },
+  },
 };
 
 describe('useSettingsStore', () => {
@@ -140,20 +157,27 @@ describe('useSettingsStore', () => {
       });
       const weather = useSettingsStore.getState().integrations.weather;
       expect(weather.enabled).toBe(true);
-      expect(weather.apiKey).toBeNull();
-      expect(weather.location).toBe('');
+      // No apiKey field — Open-Meteo is keyless.
+      expect('apiKey' in weather).toBe(false);
+      expect(weather.consentAt).toBeNull();
+      expect(weather.location).toEqual({ label: null, latitude: null, longitude: null });
+      expect(weather.domains).toEqual({ core: true, airQuality: true });
+      expect(weather.autoSyncNewImports).toBe(false);
     });
 
-    it('should update LLM integration', () => {
+    it('should update LLM (AI Insights) integration', () => {
       useSettingsStore.getState().updateIntegration('llm', {
         enabled: true,
-        provider: 'anthropic',
-        apiKey: 'sk-test',
+        backend: 'anthropic',
       });
       expect(useSettingsStore.getState().integrations.llm).toEqual({
         enabled: true,
-        provider: 'anthropic',
-        apiKey: 'sk-test',
+        backend: 'anthropic',
+        consentAt: null,
+        consentContractVersion: null,
+        webllm: { modelId: null },
+        anthropic: { model: 'claude-opus-4-8' },
+        openaiCompatible: { baseUrl: null, model: null },
       });
     });
   });

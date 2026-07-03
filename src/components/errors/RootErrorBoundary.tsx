@@ -31,6 +31,7 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     // Log to console in development; a future telemetry-free logging
     // system could hook in here.
+    // eslint-disable-next-line no-console -- intentional error-boundary logging; stays in-browser (no telemetry)
     console.error('[RootErrorBoundary] Uncaught error:', error, errorInfo);
   }
 

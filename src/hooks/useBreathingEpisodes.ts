@@ -12,22 +12,30 @@
  * probability of disease) and surfaces sub-threshold episodes explicitly via
  * `belowDeviceThreshold`.
  *
+ * ## Caching (ADR 0023)
+ *
+ * Detection results flow through the **shared** read-through cache in
+ * {@link import('./breathingDetectionCache')} — L1 in-memory Map → L2 IndexedDB
+ * (`breathing_detections`) → compute from OPFS → persist. Because the catalog
+ * uses the same module and the same composite `id`
+ * (`makeBreathingDetectionId(sessionId, BREATHING_ALGO_VERSION,
+ * DEFAULT_BREATHING_PARAM_HASH)`), a night computed by the viewer warms the
+ * catalog and vice-versa: the two surfaces now share one persistent cache
+ * (ending the prior "two caches don't warm each other" divergence). A reload
+ * resolves from IndexedDB with no OPFS I/O and no detector run.
+ *
  * ## Performance
  *
  * Detection is gated behind {@link UseBreathingEpisodesOptions.enabled}; the
  * caller should defer enabling until the primary content (signal viewer canvas
  * paint, dashboard KPIs) has rendered, so detection never blocks first paint.
  *
- * Results are cached in-memory per `sessionId` in a module-level Map so a
- * second mount of the same session reuses the previous computation. The cache
- * is keyed on `sessionId` only — detector parameters and signal data are
- * assumed stable within a session.
- *
  * ## Testability
  *
  * The worker dependency is injected through a module-level factory
  * ({@link _setBreathingWorkerFactoryForTesting}) so unit tests can replace it
- * with a Comlink-shaped stub without spawning a real worker.
+ * with a Comlink-shaped stub without spawning a real worker; the shared cache's
+ * L1 / L2 seams are cleared via {@link _clearBreathingCacheForTesting}.
  *
  * @module hooks/useBreathingEpisodes
  */
@@ -40,10 +48,16 @@ import type {
   PeriodicBreathingInput,
   PeriodicBreathingResult,
 } from '@/analysis/breathing';
-import { OPFSService } from '@/services/storage/OPFSService';
 import { createWorker, type WrappedWorker } from '@/services/workers/createWorker';
 import type { AnalysisWorkerAPI } from '@/services/workers/analysis.worker';
 import type { Event as TherapyEvent } from '@/types';
+
+import {
+  _clearBreathingDetectionCacheForTesting,
+  currentDetectionId,
+  getBreathingDetection,
+  peekL1,
+} from './breathingDetectionCache';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -79,26 +93,15 @@ export interface UseBreathingEpisodesResult {
 }
 
 // ---------------------------------------------------------------------------
-// Module-level caches + worker factory (testable seams)
+// Worker factory (testable seam)
 // ---------------------------------------------------------------------------
-
-/**
- * In-memory per-session episode cache. We intentionally keep this at module
- * scope (rather than per-mount) so that navigating away from and back to the
- * same session reuses the previous detection rather than re-running it.
- * Detector parameters are stable in v1, so `sessionId` alone is a safe key.
- */
-const episodeCache = new Map<string, PeriodicBreathingResult>();
-
-/** In-flight detection promises keyed by sessionId (de-dupe concurrent mounts). */
-const inFlight = new Map<string, Promise<PeriodicBreathingResult>>();
 
 type BreathingWorker = Pick<AnalysisWorkerAPI, 'detectPeriodicBreathing'>;
 
 type WorkerFactory = () => WrappedWorker<BreathingWorker>;
 
-let workerFactory: WorkerFactory = () =>
-  createWorker<BreathingWorker>(
+function defaultWorkerFactory(): WrappedWorker<BreathingWorker> {
+  return createWorker<BreathingWorker>(
     () =>
       new Worker(new URL('../services/workers/analysis.worker.ts', import.meta.url), {
         type: 'module',
@@ -106,6 +109,9 @@ let workerFactory: WorkerFactory = () =>
       }),
     { name: 'breathing-detection' },
   );
+}
+
+let workerFactory: WorkerFactory = defaultWorkerFactory;
 
 let sharedWorker: WrappedWorker<BreathingWorker> | null = null;
 
@@ -114,37 +120,34 @@ function getWorker(): WrappedWorker<BreathingWorker> {
   return sharedWorker;
 }
 
+/** Run the detector for one input on the shared single worker (viewer path). */
+async function computeOnSharedWorker(
+  input: PeriodicBreathingInput,
+): Promise<PeriodicBreathingResult> {
+  return getWorker().proxy.detectPeriodicBreathing(input);
+}
+
 /**
  * @internal Testing seam — replace the worker factory with a stub. Accepts a
  * loosely-typed factory so tests can pass a plain `{ proxy, dispose }` object
  * without satisfying the Comlink `Remote<…>` brand. Production code must never
- * call this.
+ * call this. Also clears the shared read-through cache so a stale L1/L2 entry
+ * from a prior test cannot mask the new stub.
  */
 export function _setBreathingWorkerFactoryForTesting(factory: (() => unknown) | null): void {
   // Tear down any active worker so the next call uses the new factory.
   sharedWorker?.dispose();
   sharedWorker = null;
-  workerFactory = factory
-    ? (factory as WorkerFactory)
-    : () =>
-        createWorker<BreathingWorker>(
-          () =>
-            new Worker(new URL('../services/workers/analysis.worker.ts', import.meta.url), {
-              type: 'module',
-              name: 'breathing-detection',
-            }),
-          { name: 'breathing-detection' },
-        );
-  episodeCache.clear();
-  inFlight.clear();
+  workerFactory = factory ? (factory as WorkerFactory) : defaultWorkerFactory;
+  _clearBreathingDetectionCacheForTesting();
 }
 
 /**
- * @internal Testing seam — clear the per-session episode cache between tests.
+ * @internal Testing seam — clear the shared per-session detection cache between
+ * tests (L1 + in-flight). L2 (IndexedDB) is reset separately via `resetDB`.
  */
 export function _clearBreathingCacheForTesting(): void {
-  episodeCache.clear();
-  inFlight.clear();
+  _clearBreathingDetectionCacheForTesting();
 }
 
 // ---------------------------------------------------------------------------
@@ -168,88 +171,6 @@ export function toDeviceEventFlags(events: readonly TherapyEvent[]): readonly De
   return out;
 }
 
-/**
- * Best-effort case-insensitive channel lookup against the session manifest.
- * Returns the canonical channel name (as stored) or `null`.
- */
-function findChannel(
-  manifest: { channels: readonly { name: string }[] },
-  needles: readonly string[],
-): string | null {
-  const byLower = new Map(manifest.channels.map((c) => [c.name.toLowerCase(), c.name]));
-  for (const n of needles) {
-    const hit = byLower.get(n.toLowerCase());
-    if (hit) return hit;
-  }
-  return null;
-}
-
-/**
- * Load the flow + optional leak channels from OPFS and run the detector via the
- * Comlink-wrapped worker. Results are memoised in {@link episodeCache} and
- * concurrent calls de-duped via {@link inFlight}.
- */
-async function detectForSession(
-  sessionId: string,
-  sessionStartMs: number,
-  flags: readonly DeviceEventFlag[],
-): Promise<PeriodicBreathingResult> {
-  const cached = episodeCache.get(sessionId);
-  if (cached) return cached;
-
-  const existing = inFlight.get(sessionId);
-  if (existing) return existing;
-
-  const promise = (async () => {
-    if (!OPFSService.isSupported()) {
-      throw new Error('OPFS is not supported in this browser; breathing detection unavailable.');
-    }
-
-    const opfs = new OPFSService();
-    await opfs.initialize();
-    const manifest = await opfs.readManifest(sessionId);
-
-    // Prefer minute-ventilation when present (cleaner envelope), else flow.
-    const minuteVentName = findChannel(manifest, ['MinuteVent', 'minuteVent', 'minute_vent']);
-    const flowName = findChannel(manifest, ['Flow', 'FlowRate', 'Flow Rate']);
-    const leakName = findChannel(manifest, ['Leak', 'LeakRate']);
-
-    const channelName = minuteVentName ?? flowName;
-    if (!channelName) {
-      throw new Error('No flow or minute-ventilation channel available for breathing detection.');
-    }
-    const descriptor = manifest.channels.find((c) => c.name === channelName);
-    if (!descriptor) {
-      throw new Error(`Channel "${channelName}" missing descriptor.`);
-    }
-
-    const [signal, leakSignal] = await Promise.all([
-      opfs.readChannel(sessionId, channelName),
-      leakName ? opfs.readChannel(sessionId, leakName) : Promise.resolve(null),
-    ]);
-
-    const input: PeriodicBreathingInput = {
-      ...(channelName === minuteVentName ? { minuteVent: signal } : { flow: signal }),
-      sampleRateHz: descriptor.sampleRate,
-      startMs: sessionStartMs,
-      eventFlags: flags,
-      ...(leakSignal ? { leak: leakSignal } : {}),
-    };
-
-    const worker = getWorker();
-    const result = await worker.proxy.detectPeriodicBreathing(input);
-    episodeCache.set(sessionId, result);
-    return result;
-  })();
-
-  inFlight.set(sessionId, promise);
-  try {
-    return await promise;
-  } finally {
-    inFlight.delete(sessionId);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -259,6 +180,12 @@ const EMPTY_RESULT: PeriodicBreathingResult = {
   recordHours: 0,
   sessionCriterionMet: false,
 };
+
+/** Read the synchronous L1 result for a session, or `null`. */
+function l1ResultFor(sessionId: string | undefined): PeriodicBreathingResult | null {
+  if (!sessionId) return null;
+  return peekL1(currentDetectionId(sessionId)) ?? null;
+}
 
 /**
  * Detect candidate periodic-breathing and Cheyne–Stokes-respiration episodes
@@ -275,15 +202,16 @@ export function useBreathingEpisodes(
     sessionCriterionMet: boolean;
     loading: boolean;
     error: string | null;
-  }>(() => ({
-    episodes: sessionId ? (episodeCache.get(sessionId)?.episodes ?? null) : null,
-    recordHours: sessionId ? (episodeCache.get(sessionId)?.recordHours ?? 0) : 0,
-    sessionCriterionMet: sessionId
-      ? (episodeCache.get(sessionId)?.sessionCriterionMet ?? false)
-      : false,
-    loading: false,
-    error: null,
-  }));
+  }>(() => {
+    const memo = l1ResultFor(sessionId);
+    return {
+      episodes: memo?.episodes ?? null,
+      recordHours: memo?.recordHours ?? 0,
+      sessionCriterionMet: memo?.sessionCriterionMet ?? false,
+      loading: false,
+      error: null,
+    };
+  });
 
   // Keep the latest event flags accessible inside the async effect without
   // re-triggering it: events array identity changes on every render but the
@@ -308,24 +236,32 @@ export function useBreathingEpisodes(
       return;
     }
 
-    // Cache hit — surface synchronously, skip the network.
-    const cached = episodeCache.get(sessionId);
-    if (cached) {
+    // L1 hit — surface synchronously, skip the read-through.
+    const memo = l1ResultFor(sessionId);
+    if (memo) {
       setState({
-        episodes: cached.episodes,
-        recordHours: cached.recordHours,
-        sessionCriterionMet: cached.sessionCriterionMet,
+        episodes: memo.episodes,
+        recordHours: memo.recordHours,
+        sessionCriterionMet: memo.sessionCriterionMet,
         loading: false,
         error: null,
       });
       return;
     }
 
+    const controller = new AbortController();
     let cancelled = false;
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     const flags = toDeviceEventFlags(eventsRef.current);
-    detectForSession(sessionId, sessionStartMs, flags)
+    getBreathingDetection({
+      sessionId,
+      sessionStartMs,
+      flags,
+      compute: computeOnSharedWorker,
+      throwOnNoChannel: true,
+      signal: controller.signal,
+    })
       .then((result) => {
         if (cancelled) return;
         setState({
@@ -349,6 +285,7 @@ export function useBreathingEpisodes(
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [sessionId, sessionStartMs, enabled]);
 

@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Event } from '@/types/events';
 import { EventTypeSwatch } from '@/components/events/EventTypeSwatch';
 import { eventLabel } from '@/components/events/eventTypeMeta';
+import { sessionWallClockEpoch } from '@/views/Sessions/signalLanes';
 import styles from './EventTable.module.css';
 
 /** Sortable columns. */
@@ -26,6 +27,12 @@ const VIEWPORT_HEIGHT = 480; // px
 
 export interface EventTableProps {
   events: readonly Event[];
+  /**
+   * sessionId → session `startTime` (ISO). Used to render each event's time in
+   * the wall-clock-as-UTC convention (matching the Signal Viewer and Session
+   * Detail), independent of the viewer's timezone.
+   */
+  sessionStartTimes: ReadonlyMap<string, string>;
   /** Cap on rendered rows. Aggregations use the full set; the table caps. */
   maxRows?: number;
 }
@@ -38,6 +45,11 @@ function compareNullableNumber(a: number | null, b: number | null, dir: SortDir)
   return dir === 'asc' ? a - b : b - a;
 }
 
+/**
+ * Defensive fallback: render an epoch-ms timestamp in the viewer's LOCAL
+ * timezone. Only used when a session's wall-clock start is missing/unparseable
+ * (rare); the primary path is {@link formatWallClockTime}.
+ */
 function formatLocalTime(ms: number): string {
   const d = new Date(ms);
   return d.toLocaleString(undefined, {
@@ -50,11 +62,45 @@ function formatLocalTime(ms: number): string {
   });
 }
 
+/**
+ * Render an event's time in the wall-clock-as-UTC convention used by the Signal
+ * Viewer and Session Detail.
+ *
+ * The Explorer spans multiple days, so we keep the date as well as the time.
+ * We compute the event's wall-clock instant by anchoring it to the session's
+ * wall-clock start (`sessionWallClockEpoch`) plus its offset from the raw
+ * session start, then format with `timeZone: 'UTC'` so the displayed fields are
+ * the wall-clock components — viewer-timezone-independent while preserving
+ * locale month formatting. Falls back to {@link formatLocalTime} when the
+ * session start is missing or unparseable.
+ */
+function formatWallClockTime(event: Event, sessionStartTimes: ReadonlyMap<string, string>): string {
+  const startIso = sessionStartTimes.get(event.sessionId);
+  if (startIso !== undefined) {
+    const wallStart = sessionWallClockEpoch(startIso);
+    const rawStart = new Date(startIso).getTime();
+    if (!Number.isNaN(wallStart) && !Number.isNaN(rawStart)) {
+      const wallInstant = wallStart + (event.timestamp - rawStart);
+      return new Date(wallInstant).toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZone: 'UTC',
+      });
+    }
+  }
+  // Defensive fallback so a missing/invalid session start never crashes a row.
+  return formatLocalTime(event.timestamp);
+}
+
 function formatNum(v: number | null, digits = 1): string {
   return v === null ? 'n/a' : v.toFixed(digits);
 }
 
-export function EventTable({ events, maxRows = 5000 }: EventTableProps) {
+export function EventTable({ events, sessionStartTimes, maxRows = 5000 }: EventTableProps) {
   const navigate = useNavigate();
   const [sortKey, setSortKey] = useState<SortKey>('timestamp');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
@@ -268,7 +314,7 @@ export function EventTable({ events, maxRows = 5000 }: EventTableProps) {
                   title="Open in Signal Viewer"
                 >
                   <span role="gridcell" className={styles.cell}>
-                    {formatLocalTime(event.timestamp)}
+                    {formatWallClockTime(event, sessionStartTimes)}
                   </span>
                   <span role="gridcell" className={styles.cell}>
                     <EventTypeSwatch type={event.type} />

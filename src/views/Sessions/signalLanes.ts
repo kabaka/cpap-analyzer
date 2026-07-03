@@ -39,10 +39,10 @@ import {
 // ---------------------------------------------------------------------------
 
 /** Logical grouping for the lanes drawer + legend. */
-export type LaneGroup = 'cpap' | 'wearable' | 'sleep';
+export type LaneGroup = 'cpap' | 'wearable' | 'sleep' | 'weather';
 
 /** Lane-kind pill shown on each header (also a non-colour redundancy cue). */
-export type LaneKindPill = 'CPAP' | 'WEAR' | 'SLEEP';
+export type LaneKindPill = 'CPAP' | 'WEAR' | 'SLEEP' | 'WX';
 
 /**
  * A lane descriptor: the persistent identity + presentation metadata for one row
@@ -142,39 +142,11 @@ export const WEARABLE_DATA_TYPES: readonly WearableIntradayType[] = WEARABLE_LAN
 // Alignment
 // ---------------------------------------------------------------------------
 
-/**
- * Reduce a session start ISO timestamp to the wall-clock-as-UTC epoch used by
- * wearable samples. See the module docstring for why local getters are used.
- *
- * @param sessionStartIso - The session's `startTime` ISO 8601 string.
- * @returns Epoch ms in the wall-clock-as-UTC convention, or `NaN` if unparseable.
- */
-export function sessionWallClockEpoch(sessionStartIso: string): number {
-  const d = new Date(sessionStartIso);
-  if (Number.isNaN(d.getTime())) return NaN;
-  return Date.UTC(
-    d.getFullYear(),
-    d.getMonth(),
-    d.getDate(),
-    d.getHours(),
-    d.getMinutes(),
-    d.getSeconds(),
-    d.getMilliseconds(),
-  );
-}
-
-/**
- * Derive the calendar date (YYYY-MM-DD) to query the wearable hook with, from a
- * session start ISO string, using the same local-wall-clock interpretation.
- */
-export function sessionDateKey(sessionStartIso: string): string | null {
-  const d = new Date(sessionStartIso);
-  if (Number.isNaN(d.getTime())) return null;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+// `sessionWallClockEpoch` and `sessionDateKey` now live in the dependency-free
+// `@/utils/wallClock` util (so the wearable-timezone layer can consume them
+// without importing this view module, which would form an import cycle). They
+// are re-exported here to preserve existing import sites.
+export { sessionWallClockEpoch, sessionDateKey } from '@/utils/wallClock';
 
 /**
  * Convert one wearable series to session-relative arrays.
@@ -299,16 +271,19 @@ const DEFAULT_RANGES: Record<WearableIntradayType, readonly [number, number]> = 
  * to match clinical convention. Colours are passed in already resolved.
  */
 export function hypnogramBands(resolve: (cssVar: string) => string): RibbonBand[] {
+  // Colours are requested as `var(...)` expressions to match the project-wide
+  // resolver contract (resolveColor only resolves `var(--x)`; bare names fall
+  // through unchanged and paint as an invalid canvas colour).
   return [
-    { value: SLEEP_STAGE_CODES.wake, label: 'W', color: resolve('--color-hypno-wake') },
+    { value: SLEEP_STAGE_CODES.wake, label: 'W', color: resolve('var(--color-hypno-wake)') },
     {
       value: SLEEP_STAGE_CODES.rem,
       label: 'REM',
-      color: resolve('--color-hypno-rem'),
+      color: resolve('var(--color-hypno-rem)'),
       hatch: true, // redundant non-colour cue for REM
     },
-    { value: SLEEP_STAGE_CODES.light, label: 'N1–2', color: resolve('--color-hypno-light') },
-    { value: SLEEP_STAGE_CODES.deep, label: 'N3', color: resolve('--color-hypno-deep') },
+    { value: SLEEP_STAGE_CODES.light, label: 'N1–2', color: resolve('var(--color-hypno-light)') },
+    { value: SLEEP_STAGE_CODES.deep, label: 'N3', color: resolve('var(--color-hypno-deep)') },
   ];
 }
 

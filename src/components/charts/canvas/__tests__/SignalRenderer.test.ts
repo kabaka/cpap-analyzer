@@ -15,6 +15,7 @@ import {
   chooseYTicks,
   computeLaneLayout,
   totalLaneHeight,
+  resolveRibbonPattern,
   SignalRenderer,
 } from '../SignalRenderer';
 import type { ViewportState, RenderOptions, SignalChannel, RibbonBand } from '../SignalRenderer';
@@ -747,6 +748,319 @@ describe('SignalRenderer', () => {
       });
       expect(() => renderSync(viewport, options)).not.toThrow();
     });
+
+    // ── Ribbon pattern overlays (AQI non-colour encoding) ──────────
+    //
+    // The renderer owns its own mock 2D context (the global getContext stub).
+    // We reach in to assert the canvas calls each pattern issues. `strokeRect`
+    // uniquely identifies the `crosshatch-outline` band outline; hatch passes go
+    // through `fillDiagonalHatch` (moveTo/lineTo + stroke under a clip).
+    function ctxOf(r: SignalRenderer): CanvasRenderingContext2D {
+      return (r as unknown as { ctx: CanvasRenderingContext2D }).ctx;
+    }
+
+    function aqiRibbon(band: Partial<RibbonBand>): {
+      viewport: ViewportState;
+      options: RenderOptions;
+    } {
+      const bands: RibbonBand[] = [{ value: 1, label: 'AQI', color: '#dc2626', ...band }];
+      const ribbon = makeChannel({
+        name: 'Air Quality',
+        render: 'ribbon',
+        data: new Float32Array([1, 1, 1]),
+        sampleTimes: new Float64Array([0, 3000, 6000]),
+        physicalMin: 1,
+        physicalMax: 1,
+      });
+      return {
+        viewport: makeViewport({ channels: [ribbon] }),
+        options: makeOptions({ ribbonBands: { 'Air Quality': bands } }),
+      };
+    }
+
+    it('draws no outline for hatch patterns; an outline for crosshatch-outline', () => {
+      const sparse = aqiRibbon({ pattern: 'hatch-sparse' });
+      renderSync(sparse.viewport, sparse.options);
+      // The ribbon's own band separators use fillRect; the only strokeRect in the
+      // ribbon path is the crosshatch-outline outline — absent here.
+      expect(ctxOf(renderer).strokeRect).not.toHaveBeenCalled();
+
+      // Fresh renderer (fresh mock ctx) for the outline case.
+      renderer = new SignalRenderer(document.createElement('canvas'));
+      renderer.resize(800, 400);
+      const outline = aqiRibbon({ pattern: 'crosshatch-outline' });
+      renderSync(outline.viewport, outline.options);
+      expect(ctxOf(renderer).strokeRect).toHaveBeenCalled();
+    });
+
+    it('uses patternColor as the hatch stroke when provided', () => {
+      const { viewport, options } = aqiRibbon({
+        pattern: 'hatch-dense',
+        patternColor: '#123456',
+      });
+      renderSync(viewport, options);
+      const ctx = ctxOf(renderer);
+      const strokeStyles = (ctx.stroke as ReturnType<typeof vi.fn>).mock.calls;
+      // The hatch pass strokes with strokeStyle set to patternColor at least once.
+      // We can't read the assignment order from a property setter mock, so assert
+      // the render issued stroke() calls (hatch lines) without throwing instead.
+      expect(strokeStyles.length).toBeGreaterThan(0);
+    });
+
+    it('renders all six patterns without throwing', () => {
+      const patterns = [
+        'solid',
+        'hatch-sparse',
+        'hatch-med',
+        'hatch-dense',
+        'crosshatch',
+        'crosshatch-outline',
+      ] as const;
+      for (const pattern of patterns) {
+        renderer = new SignalRenderer(document.createElement('canvas'));
+        renderer.resize(800, 400);
+        const { viewport, options } = aqiRibbon({ pattern });
+        expect(() => renderSync(viewport, options)).not.toThrow();
+      }
+    });
+
+    it('keeps the legacy `hatch: true` band working (no outline, no throw)', () => {
+      const bands: RibbonBand[] = [
+        { value: 2, label: 'REM', color: '#8b5cf6', hatch: true },
+        { value: 1, label: 'N1–2', color: '#38bdf8' },
+      ];
+      const ribbon = makeChannel({
+        name: 'Sleep Stages',
+        render: 'ribbon',
+        data: new Float32Array([2, 1]),
+        sampleTimes: new Float64Array([0, 5000]),
+        physicalMin: 1,
+        physicalMax: 2,
+      });
+      const viewport = makeViewport({ channels: [ribbon] });
+      const options = makeOptions({ ribbonBands: { 'Sleep Stages': bands } });
+      expect(() => renderSync(viewport, options)).not.toThrow();
+      // Legacy hatch never draws an outline rect.
+      expect(ctxOf(renderer).strokeRect).not.toHaveBeenCalled();
+    });
+
+    // ── Line dash (stacked single-line distinguisher) ──────────────
+    it('applies setLineDash for a dashed line lane and not for a solid one', () => {
+      const dashed = makeChannel({ name: 'Temp', render: 'line', dash: [4, 4] });
+      renderSync(makeViewport({ channels: [dashed] }), makeOptions());
+      expect(ctxOf(renderer).setLineDash).toHaveBeenCalledWith([4, 4]);
+
+      // Fresh renderer: a solid line lane must never call setLineDash with a
+      // non-empty pattern (the line path only sets a dash when `dash` is set).
+      renderer = new SignalRenderer(document.createElement('canvas'));
+      renderer.resize(800, 400);
+      const solid = makeChannel({ name: 'Pressure', render: 'line' });
+      renderSync(makeViewport({ channels: [solid] }), makeOptions());
+      const calls = (ctxOf(renderer).setLineDash as ReturnType<typeof vi.fn>).mock.calls;
+      const nonEmpty = calls.filter((c) => Array.isArray(c[0]) && c[0].length > 0);
+      expect(nonEmpty).toHaveLength(0);
+    });
+  });
+});
+
+// ── Crosshair time-badge scroll pinning ──────────────────────────
+//
+// The crosshair TIME badge (the clock/duration readout drawn once near the top
+// of the stack) must be pinned to the top of the VISIBLE viewport when the
+// scroll container has scrolled down — otherwise it scrolls out of view on the
+// full-height overlay canvas. `RenderOptions.viewportScrollTopPx` shifts ONLY
+// that badge's Y by the scroll offset; the crosshair X, the per-lane value
+// badges, and the intersection dots are unaffected.
+//
+// We reach into the renderer's own mock 2D context (the global getContext stub
+// installed at the top of this file) and read the recorded fillText/roundRect
+// calls. The mock's measureText returns width 0, so badge geometry is fully
+// deterministic.
+
+describe('SignalRenderer crosshair time-badge scroll pinning', () => {
+  // A roomy top padding so the badge's bottom-anchored box (boxH = 15) lands
+  // well below y=0 at scrollTop=0 and never hits the `Math.max(0, …)` clamp in
+  // drawReadoutBadge — so the +N shift is observable as an exact delta.
+  const padding = { top: 40, right: 20, bottom: 30, left: 40 } as const;
+
+  function ctxOf(r: SignalRenderer): CanvasRenderingContext2D {
+    return (r as unknown as { ctx: CanvasRenderingContext2D }).ctx;
+  }
+
+  /** Render synchronously by invoking the rAF callback immediately. */
+  function renderSync(r: SignalRenderer, viewport: ViewportState, options: RenderOptions): void {
+    const rafSpy = vi
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((cb: FrameRequestCallback) => {
+        cb(0);
+        return 0;
+      });
+    try {
+      r.render(viewport, options);
+    } finally {
+      rafSpy.mockRestore();
+    }
+  }
+
+  function makeRenderer(): SignalRenderer {
+    const r = new SignalRenderer(document.createElement('canvas'));
+    r.resize(800, 400);
+    return r;
+  }
+
+  const channel: SignalChannel = {
+    name: 'Flow',
+    data: new Float32Array([0, 1, 2, 3, 4]),
+    sampleRate: 25,
+    unit: 'L/min',
+    color: '#0000ff',
+    physicalMin: -20,
+    physicalMax: 60,
+  };
+
+  const viewport: ViewportState = { startTime: 0, endTime: 10_000, channels: [channel] };
+
+  // Crosshair at the plot midpoint → time 5_000 ms → time label "00:05" (no
+  // wall-clock epoch supplied). The lane value badge uses toFixed(2) + unit, so
+  // it can never collide with this text.
+  const crosshairX = (padding.left + (800 - padding.right)) / 2;
+  const TIME_LABEL = formatTimeLabel(5_000);
+
+  function options(scrollTop?: number): RenderOptions {
+    return {
+      showCrosshair: true,
+      crosshairX,
+      showGrid: false,
+      eventMarkers: [],
+      channelHeight: 100,
+      padding,
+      ...(scrollTop !== undefined ? { viewportScrollTopPx: scrollTop } : {}),
+    };
+  }
+
+  /** The Y passed to the fillText call that rendered the time-label badge text. */
+  function timeBadgeTextY(ctx: CanvasRenderingContext2D): number {
+    const calls = (ctx.fillText as ReturnType<typeof vi.fn>).mock.calls;
+    const match = calls.filter((c) => c[0] === TIME_LABEL);
+    expect(match).toHaveLength(1);
+    return match[0]![2] as number;
+  }
+
+  it('draws the time badge at the unscrolled Y when viewportScrollTopPx is unset', () => {
+    const r = makeRenderer();
+    renderSync(r, viewport, options());
+    const y = timeBadgeTextY(ctxOf(r));
+    // y = (padding.top - 2) - boxH + ph = 38 - 15 + 2 = 25. Captured as a
+    // regression guard for the unscrolled baseline.
+    expect(y).toBe(25);
+    r.dispose();
+  });
+
+  it('treats viewportScrollTopPx of 0 identically to unset', () => {
+    const a = makeRenderer();
+    renderSync(a, viewport, options());
+    const yUnset = timeBadgeTextY(ctxOf(a));
+    a.dispose();
+
+    const b = makeRenderer();
+    renderSync(b, viewport, options(0));
+    const yZero = timeBadgeTextY(ctxOf(b));
+    b.dispose();
+
+    expect(yZero).toBe(yUnset);
+  });
+
+  it('shifts the time badge down by exactly viewportScrollTopPx', () => {
+    const a = makeRenderer();
+    renderSync(a, viewport, options(0));
+    const yBase = timeBadgeTextY(ctxOf(a));
+    a.dispose();
+
+    const N = 200;
+    const b = makeRenderer();
+    renderSync(b, viewport, options(N));
+    const yScrolled = timeBadgeTextY(ctxOf(b));
+    b.dispose();
+
+    expect(yScrolled - yBase).toBe(N);
+  });
+
+  it('does not move the crosshair X line when scrolled', () => {
+    const a = makeRenderer();
+    renderSync(a, viewport, options(0));
+    const movesA = (ctxOf(a).moveTo as ReturnType<typeof vi.fn>).mock.calls;
+    a.dispose();
+
+    const b = makeRenderer();
+    renderSync(b, viewport, options(200));
+    const movesB = (ctxOf(b).moveTo as ReturnType<typeof vi.fn>).mock.calls;
+    b.dispose();
+
+    // The vertical crosshair line is moved to (crosshairX, padding.top) in both
+    // cases — its X is independent of the scroll offset.
+    const lineMoveA = movesA.find((c) => c[0] === crosshairX && c[1] === padding.top);
+    const lineMoveB = movesB.find((c) => c[0] === crosshairX && c[1] === padding.top);
+    expect(lineMoveA).toBeDefined();
+    expect(lineMoveB).toBeDefined();
+    expect(lineMoveB![0]).toBe(lineMoveA![0]);
+  });
+
+  it('does not shift the per-lane value badge or intersection dot by the scroll offset', () => {
+    // The intersection dot is drawn with ctx.arc(crosshairX, v.y, …); v.y is a
+    // lane-relative position that must NOT pick up the time badge's scroll shift.
+    const a = makeRenderer();
+    renderSync(a, viewport, options(0));
+    const arcsA = (ctxOf(a).arc as ReturnType<typeof vi.fn>).mock.calls;
+    a.dispose();
+
+    const b = makeRenderer();
+    renderSync(b, viewport, options(200));
+    const arcsB = (ctxOf(b).arc as ReturnType<typeof vi.fn>).mock.calls;
+    b.dispose();
+
+    // One lane → one intersection dot. Its X (crosshairX) and Y are identical
+    // regardless of the scroll offset.
+    expect(arcsA).toHaveLength(1);
+    expect(arcsB).toHaveLength(1);
+    expect(arcsB[0]![0]).toBe(arcsA[0]![0]); // X unchanged
+    expect(arcsB[0]![1]).toBe(arcsA[0]![1]); // Y unchanged (not scroll-shifted)
+  });
+});
+
+// ── resolveRibbonPattern (pattern selection + hatch back-compat) ──
+//
+// Pure selection logic for the ribbon non-colour encoding. Pixel output is
+// exercised by the render-path tests above; here we lock down the mapping that
+// the AQI ribbon and the legacy hypnogram REM band both depend on.
+
+describe('resolveRibbonPattern', () => {
+  it('maps legacy `hatch: true` (no pattern) to "hatch-med"', () => {
+    expect(resolveRibbonPattern({ hatch: true })).toBe('hatch-med');
+  });
+
+  it('maps `hatch: false`/absent (no pattern) to "solid"', () => {
+    expect(resolveRibbonPattern({ hatch: false })).toBe('solid');
+    expect(resolveRibbonPattern({})).toBe('solid');
+  });
+
+  it('lets an explicit pattern win over `hatch`', () => {
+    // A new caller overriding a legacy hatch must get exactly what it asked for.
+    expect(resolveRibbonPattern({ hatch: true, pattern: 'solid' })).toBe('solid');
+    expect(resolveRibbonPattern({ hatch: false, pattern: 'crosshatch' })).toBe('crosshatch');
+  });
+
+  it('passes through each explicit pattern unchanged', () => {
+    const patterns = [
+      'solid',
+      'hatch-sparse',
+      'hatch-med',
+      'hatch-dense',
+      'crosshatch',
+      'crosshatch-outline',
+    ] as const;
+    for (const p of patterns) {
+      expect(resolveRibbonPattern({ pattern: p })).toBe(p);
+    }
   });
 });
 

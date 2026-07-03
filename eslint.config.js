@@ -5,7 +5,22 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/', 'coverage/', 'playwright-report/', 'scripts/'] },
+  // Ignore everything under scripts/ EXCEPT the release tooling: those .mjs/.ts
+  // files are tracked production code (run by CI) and must be linted. Note the
+  // file-level glob `scripts/**/*` (not the directory `scripts/**`): ESLint prunes
+  // an ignored *directory* before a later negation can re-include its children, so
+  // ignoring at the file level — then negating `scripts/release` and its tree —
+  // is what actually un-ignores the release files while keeping siblings ignored.
+  {
+    ignores: [
+      'dist/',
+      'coverage/',
+      'playwright-report/',
+      'scripts/**/*',
+      '!scripts/release',
+      '!scripts/release/**',
+    ],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.strict,
   {
@@ -35,6 +50,29 @@ export default tseslint.config(
     ],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  // Release tooling runs under Node (process, node:* imports, console output for
+  // CLI feedback). Give those files Node globals and allow console use.
+  {
+    files: ['scripts/release/**/*.{mjs,ts}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  // The fixture generator is a CLI script whose console output is legitimate
+  // progress feedback (same reasoning as the release-tooling override). Allow
+  // console use there.
+  {
+    files: ['tests/fixtures/generators/**/*.ts'],
+    rules: {
+      'no-console': 'off',
     },
   },
 );

@@ -5,7 +5,13 @@ import type {
   StoredAnalysisResult,
   StoredImportRecord,
 } from '@/services/storage/IndexedDBService';
-import type { Session, Event, IntegrationData } from '@/types';
+import type {
+  Session,
+  Event,
+  IntegrationData,
+  IntegrationTimeseries,
+  IntegrationImportRecord,
+} from '@/types';
 import { ErrorCategory, ErrorSeverity } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -153,6 +159,40 @@ function makeIntegrationData(overrides: Partial<IntegrationData> = {}): Integrat
   };
 }
 
+function makeIntegrationTimeseries(
+  overrides: Partial<IntegrationTimeseries> = {},
+): IntegrationTimeseries {
+  return {
+    id: crypto.randomUUID(),
+    source: 'weather',
+    dataType: 'heart_rate_intraday',
+    date: '2026-01-15',
+    data: { baseTimestampMs: 0, samples: [], sampleCount: 0 },
+    importedAt: '2026-01-16T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function makeIntegrationImportRecord(
+  overrides: Partial<IntegrationImportRecord> = {},
+): IntegrationImportRecord {
+  return {
+    id: crypto.randomUUID(),
+    source: 'weather',
+    importedAt: '2026-01-16T09:00:00.000Z',
+    dateRangeStart: '2026-01-01',
+    dateRangeEnd: '2026-01-31',
+    dataTypes: ['weather_daily'],
+    recordsImported: 10,
+    recordsSkipped: 0,
+    recordsErrored: 0,
+    errors: [],
+    durationSeconds: 1.5,
+    fileHashes: [],
+    ...overrides,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -174,7 +214,7 @@ describe('IndexedDBService', () => {
   // -----------------------------------------------------------------------
 
   describe('database initialization', () => {
-    it('should create all 9 object stores', async () => {
+    it('should create all 10 object stores', async () => {
       const raw = (db as unknown as { db: IDBDatabase }).db;
       const storeNames = Array.from(raw.objectStoreNames);
       expect(storeNames).toContain('sessions');
@@ -186,7 +226,8 @@ describe('IndexedDBService', () => {
       expect(storeNames).toContain('integration_data');
       expect(storeNames).toContain('integration_timeseries');
       expect(storeNames).toContain('integration_import_history');
-      expect(storeNames).toHaveLength(9);
+      expect(storeNames).toContain('breathing_detections');
+      expect(storeNames).toHaveLength(10);
     });
 
     it('should create correct indexes on sessions store', async () => {
@@ -792,6 +833,184 @@ describe('IndexedDBService', () => {
       await db.deleteIntegrationData(data.id);
       const result = await db.getIntegrationData(data.id);
       expect(result).toBeNull();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // deleteIntegrationDataBySource — total source purge across three stores
+  // -----------------------------------------------------------------------
+
+  describe('deleteIntegrationDataBySource', () => {
+    /** Seed weather + non-weather rows across all three integration stores. */
+    async function seed(): Promise<void> {
+      // Daily summaries: 2 weather, 1 fitbit.
+      await db.addIntegrationData(makeIntegrationData({ source: 'weather', date: '2026-01-10' }));
+      await db.addIntegrationData(makeIntegrationData({ source: 'weather', date: '2026-01-11' }));
+      await db.addIntegrationData(makeIntegrationData({ source: 'fitbit', date: '2026-01-10' }));
+
+      // Timeseries: 3 weather, 1 fitbit.
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({ source: 'weather', date: '2026-01-10' }),
+      );
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({ source: 'weather', date: '2026-01-11' }),
+      );
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({ source: 'weather', date: '2026-01-12' }),
+      );
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({ source: 'fitbit', date: '2026-01-10' }),
+      );
+
+      // Import history: 1 weather, 2 fitbit.
+      await db.addIntegrationImportRecord(makeIntegrationImportRecord({ source: 'weather' }));
+      await db.addIntegrationImportRecord(makeIntegrationImportRecord({ source: 'fitbit' }));
+      await db.addIntegrationImportRecord(makeIntegrationImportRecord({ source: 'fitbit' }));
+    }
+
+    it('should remove exactly the weather rows across all three stores and return counts', async () => {
+      await seed();
+
+      const counts = await db.deleteIntegrationDataBySource('weather');
+
+      expect(counts).toEqual({
+        dailyDeleted: 2,
+        timeseriesDeleted: 3,
+        importRecordsDeleted: 1,
+      });
+    });
+
+    it('should leave other sources untouched', async () => {
+      await seed();
+      await db.deleteIntegrationDataBySource('weather');
+
+      // No weather rows remain in any store.
+      expect(await db.getIntegrationDataBySource('weather')).toHaveLength(0);
+      expect(
+        (await db.getIntegrationTimeseriesByDateRange('0000-01-01', '9999-12-31')).filter(
+          (r) => r.source === 'weather',
+        ),
+      ).toHaveLength(0);
+      expect(await db.getIntegrationImportRecords('weather')).toHaveLength(0);
+
+      // Fitbit rows are fully preserved.
+      expect(await db.getIntegrationDataBySource('fitbit')).toHaveLength(1);
+      expect(
+        (await db.getIntegrationTimeseriesByDateRange('0000-01-01', '9999-12-31')).filter(
+          (r) => r.source === 'fitbit',
+        ),
+      ).toHaveLength(1);
+      expect(await db.getIntegrationImportRecords('fitbit')).toHaveLength(2);
+    });
+
+    it('should return zero counts when the source has no records', async () => {
+      await db.addIntegrationData(makeIntegrationData({ source: 'fitbit' }));
+
+      const counts = await db.deleteIntegrationDataBySource('weather');
+
+      expect(counts).toEqual({
+        dailyDeleted: 0,
+        timeseriesDeleted: 0,
+        importRecordsDeleted: 0,
+      });
+      expect(await db.getIntegrationDataBySource('fitbit')).toHaveLength(1);
+    });
+  });
+
+  describe('integration timeseries source/type queries', () => {
+    /** Seed fitbit spo2 + hr and a weather row across a few dates. */
+    async function seed(): Promise<void> {
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'fitbit',
+          dataType: 'spo2_intraday',
+          date: '2026-01-10',
+          data: { samples: [{ minuteOffset: 0, value: 96 }], sleepStartTime: '', sampleCount: 1 },
+        }),
+      );
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'fitbit',
+          dataType: 'spo2_intraday',
+          date: '2026-01-12',
+          data: { samples: [{ minuteOffset: 0, value: 95 }], sleepStartTime: '', sampleCount: 1 },
+        }),
+      );
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'fitbit',
+          dataType: 'heart_rate_intraday',
+          date: '2026-01-10',
+          data: {
+            baseTimestampMs: 0,
+            samples: [{ offsetSec: 0, bpm: 60, confidence: 3 }],
+            sampleCount: 1,
+          },
+        }),
+      );
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'fitbit',
+          dataType: 'heart_rate_intraday',
+          date: '2026-01-11',
+          data: {
+            baseTimestampMs: 0,
+            samples: [{ offsetSec: 0, bpm: 61, confidence: 3 }],
+            sampleCount: 1,
+          },
+        }),
+      );
+      // A different source that must never leak into fitbit results.
+      await db.addIntegrationTimeseries(
+        makeIntegrationTimeseries({
+          source: 'weather',
+          dataType: 'spo2_intraday',
+          date: '2026-01-10',
+          data: { samples: [{ minuteOffset: 0, value: 97 }], sleepStartTime: '', sampleCount: 1 },
+        }),
+      );
+    }
+
+    it('getIntegrationTimeseriesBySourceAndType returns only the matching source+type, date-ordered', async () => {
+      await seed();
+
+      const spo2 = await db.getIntegrationTimeseriesBySourceAndType('fitbit', 'spo2_intraday');
+      expect(spo2.map((r) => r.date)).toEqual(['2026-01-10', '2026-01-12']);
+      expect(spo2.every((r) => r.source === 'fitbit' && r.dataType === 'spo2_intraday')).toBe(true);
+
+      const hr = await db.getIntegrationTimeseriesBySourceAndType('fitbit', 'heart_rate_intraday');
+      expect(hr.map((r) => r.date)).toEqual(['2026-01-10', '2026-01-11']);
+    });
+
+    it('getIntegrationTimeseriesBySourceAndType returns empty for an unknown source/type', async () => {
+      await seed();
+      expect(await db.getIntegrationTimeseriesBySourceAndType('fitbit', 'hrv_detail')).toEqual([]);
+      expect(await db.getIntegrationTimeseriesBySourceAndType('garmin', 'spo2_intraday')).toEqual(
+        [],
+      );
+    });
+
+    it('getIntegrationTimeseriesDatesBySourceAndType enumerates dates only (keys, no blobs)', async () => {
+      await seed();
+
+      const hrDates = await db.getIntegrationTimeseriesDatesBySourceAndType(
+        'fitbit',
+        'heart_rate_intraday',
+      );
+      expect(hrDates).toEqual(['2026-01-10', '2026-01-11']);
+
+      const spo2Dates = await db.getIntegrationTimeseriesDatesBySourceAndType(
+        'fitbit',
+        'spo2_intraday',
+      );
+      expect(spo2Dates).toEqual(['2026-01-10', '2026-01-12']);
+    });
+
+    it('getIntegrationTimeseriesDatesBySourceAndType returns empty for an unknown source/type', async () => {
+      await seed();
+      expect(await db.getIntegrationTimeseriesDatesBySourceAndType('fitbit', 'hrv_detail')).toEqual(
+        [],
+      );
     });
   });
 

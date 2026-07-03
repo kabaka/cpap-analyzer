@@ -66,6 +66,13 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
       },
       {
+        heading: 'Finding your way around',
+        paragraphs: [
+          'The left sidebar is the primary navigation. It groups the views into an "Analysis" section (Dashboard, Sessions, Trends, Explore, and Reports) and a "Data" section (Data, where you import and manage your records), with Help and Settings pinned to the footer.',
+          'On a wide screen you can collapse the sidebar to a narrow, icon-only "rail" to reclaim horizontal space for charts and the signal viewer — useful when inspecting whole-night waveforms. Use the toggle button pinned in the sidebar footer (labelled "Collapse sidebar" when expanded, "Expand sidebar" when collapsed), or press the `[` key. In the collapsed rail, each item shows only its icon; hover or move keyboard focus to an icon to reveal a tooltip with its label, and the view you are currently on stays marked by an accent bar. Your choice is remembered the next time you open the app — like every preference, it is stored locally in your browser and never leaves your device. The `[` shortcut is desktop-only and is ignored while you are typing in a text field. On narrow (mobile) screens the sidebar instead appears as a slide-in drawer opened from the menu button.',
+        ],
+      },
+      {
         heading: 'Privacy guarantee',
         paragraphs: [
           "CPAP Analyzer is architecturally incapable of transmitting your data. It runs entirely in your browser using client-side JavaScript. There are no server endpoints, no analytics services, no tracking pixels, and no external API calls. Your data is stored in your browser's local storage (IndexedDB and OPFS) and never leaves your device.",
@@ -80,13 +87,21 @@ export const helpArticles: readonly HelpArticle[] = [
     slug: 'importing-data',
     title: 'Importing Data',
     summary:
-      'How to import CPAP data from your SD card and wearable data from Google Health (Fitbit).',
+      'How to import CPAP data from your SD card and wearable data from Google Health (Fitbit), and how the background import indicator works.',
     icon: 'import',
     sections: [
       {
         heading: 'Overview',
         paragraphs: [
-          "CPAP Analyzer reads data directly from your CPAP machine's SD card. ResMed devices store therapy data in a structured directory format with EDF (European Data Format) files containing detailed signal recordings and summary statistics.",
+          "CPAP Analyzer reads data directly from your CPAP machine's SD card. ResMed devices store therapy data in a structured directory format with EDF (European Data Format) files containing detailed signal recordings and summary statistics. The app can also import wearable health data from a Google Health (Fitbit) export. Both kinds of import run client-side, in the background, with the same persistent progress indicator described below.",
+        ],
+      },
+      {
+        heading: 'How the import runs (background import and the progress indicator)',
+        paragraphs: [
+          'Imports run in the background. Once you start an import, you do not have to wait on the import screen — you can navigate anywhere in the app (Dashboard, Sessions, Trends, Settings) while it continues. A small progress pill appears at the bottom-left of every screen so you always know an import is in flight and how far along it is.',
+          'Click (or keyboard-activate) the pill to expand a detail panel. The panel lists every stage of the current import with its own state — pending, running, done, or, if something goes wrong, failed or cancelled — and shows a Cancel button. When the import finishes, a completion toast tells you what changed (for example, how many new sessions or records were added and how many duplicates were skipped). The indicator is keyboard-accessible and announces progress to assistive technology through a polite live region, so screen-reader users are kept informed without a flood of chatter.',
+          'Progress is multi-stage and every stage is shown from the start, each advancing independently — there is no longer a single bar whose meaning silently changes as the import moves through its phases. A CPAP SD-card import shows four stages: scanning files (discovering what is on the card), parsing (decoding the EDF signal and summary files), building sessions (assembling each night from its segments and summaries), and storing (writing the results to your local database). A Google Health import shows a scanning stage, then a determinate sub-progress row for each discovered data type (sleep, intraday heart rate, SpO\\u2082, HRV, snoring, and so on) that fills in as that type is imported. This makes it obvious, at a glance, exactly where a long import is and which data types are still to come.',
         ],
       },
       {
@@ -115,13 +130,13 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Import duration',
         paragraphs: [
-          'Import time depends on how many nights of data are on the SD card. Typical import times: 30 days takes 5–15 seconds; 6 months takes 30–60 seconds; 1+ year may take 1–3 minutes. Detailed signal data (EDF files) is the largest component. You can monitor progress in the import wizard.',
+          'Import time depends on how many nights of data are on the SD card. Typical import times: 30 days takes 5–15 seconds; 6 months takes 30–60 seconds; 1+ year may take 1–3 minutes. Detailed signal data (EDF files) is the largest component. You can monitor progress on the persistent progress indicator (see "How the import runs," above) and continue using the app while a long import finishes in the background.',
         ],
       },
       {
         heading: 'Re-importing and updates',
         paragraphs: [
-          'You can re-import at any time to add new nights. CPAP Analyzer will detect which sessions already exist and only import new data. Existing data is not duplicated.',
+          'You can re-import at any time to add new nights. CPAP Analyzer will detect which sessions already exist and only import new data. Existing data is not duplicated. The same incremental, de-duplicated behaviour is what makes cancelling an import or closing the tab mid-import safe — see "De-duplication" and "Closing the tab during an import," below.',
         ],
       },
       {
@@ -137,6 +152,7 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           "The following data types are imported when present in the export: Sleep Sessions (start/end times, duration, efficiency), Sleep Scores (composite sleep quality metric, 0--100), Sleep Stages (wake, light, deep, REM durations and transitions), SpO\\u2082 — daily summary and per-minute intraday readings (peripheral oxygen saturation measured by the wearable's red/infrared sensor), HRV — daily summary and detailed intraday readings (heart rate variability, measured as RMSSD in milliseconds), Respiratory Rate (breaths per minute during sleep), Resting Heart Rate (daily resting BPM), Readiness Score (recovery/readiness composite, 0--100), Stress Score (stress management composite), Skin Temperature (nightly deviation from personal baseline in degrees), Daily Activity (steps, active minutes, calories), and Snoring (detected snoring episodes and duration).",
           'Not every Fitbit device records every data type. Older trackers may lack SpO\\u2082, HRV, or skin temperature sensors. The importer processes whatever data is present and silently skips missing categories.',
+          'The large, full-resolution intraday series — heart rate at roughly a 5-second cadence, plus SpO\\u2082, HRV, and snoring — are parsed off the main thread so a big wearable import does not freeze the interface. Each of these data types advances its own determinate progress row in the import indicator, so you can watch them complete one by one while you continue using the app.',
         ],
       },
       {
@@ -149,6 +165,26 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Data privacy for Google Health imports',
         paragraphs: [
           'Google Health data is processed entirely in your browser, using the same client-side architecture as CPAP SD card imports. No data is uploaded to any server during or after the import. The parsed records are stored locally in IndexedDB alongside your CPAP data. The original export files on your computer are read but never modified.',
+        ],
+      },
+      {
+        heading: 'Cancelling an import',
+        paragraphs: [
+          'You can cancel an in-progress import at any time from the Cancel button in the expanded progress panel. Cancellation is immediate and safe: it stops the import promptly rather than waiting for the current phase to finish.',
+          'Anything already written to your local database when you cancel is kept — cancellation never rolls back or corrupts data that was already stored. Because import is incremental and de-duplicated (see below), you lose no progress: when you re-import the same source later, the nights and records that were already saved are recognised and skipped, and only the remainder is added. In effect, cancelling and re-importing resumes from where you stopped.',
+        ],
+      },
+      {
+        heading: 'De-duplication: re-importing is always safe',
+        paragraphs: [
+          'Every import is incremental. CPAP Analyzer identifies what it already holds and imports only genuinely new data, so re-importing the same SD card or Google Health export — or a newer export that overlaps dates you have already loaded — never creates duplicates. For CPAP data this is keyed by session; for Google Health data it is keyed by data type, date, and timestamp. This is what makes cancellation, a closed tab, and routine periodic re-exports all safe: you can always just re-import, and the app sorts out what is new.',
+        ],
+      },
+      {
+        heading: 'Closing the tab during an import',
+        paragraphs: [
+          'Because the app is entirely client-side, an import lives inside the browser tab — there is no server-side job and no background process that survives the tab. If you close the tab (or the whole browser) while an import is running, the import simply ends.',
+          'No data is corrupted by this. Results are written durably and incrementally as the import proceeds, so every night and record stored up to that moment remains valid and usable. The partial results are real, finished data — not a half-written file. To pick up the rest, re-import the same source: de-duplication recognises what was already saved, skips it, and imports only what is left. If you want an import to complete in one pass, leave the tab open until the completion toast appears; you are free to switch to other browser tabs in the meantime, but do not close this one.',
         ],
       },
     ],
@@ -202,7 +238,7 @@ export const helpArticles: readonly HelpArticle[] = [
     slug: 'sessions',
     title: 'Sessions Guide',
     summary:
-      'How to browse sessions, view session details, explore signal data, and compare nights.',
+      'How to browse sessions in the table or calendar view, read the calendar severity bands, view session details, explore signal data, measure per-lane statistics over a region using the five analysis modes (Statistics, Variability, Trend, Distribution, and Selection), and compare nights.',
     icon: 'sessions',
     sections: [
       {
@@ -210,6 +246,38 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           'The Sessions view shows all imported therapy sessions in a sortable, filterable table. Each row displays the date, usage hours, AHI, leak rate, and pressure summary. Click any column header to sort. Use the search bar to filter by date range or metric thresholds.',
           'Color indicators on each row reflect clinical status: green (excellent control), yellow (mild concerns), orange (moderate concerns), red (significant concerns). These thresholds follow AASM severity classifications.',
+          'A page-size control lets you show 25, 50, or 100 nights per page; with more pages, a page jumper moves between them. Your choice of page size — like the calendar view and metric described below — is written into the URL, so a particular Sessions view is bookmarkable and shareable (the link reproduces the same view, metric, and page size when reopened) and survives a reload or browser back/forward.',
+        ],
+      },
+      {
+        heading: 'Calendar view',
+        paragraphs: [
+          'A Table ⇄ Calendar toggle at the top of the Sessions page switches between the table above and a calendar grid. The calendar lays out one cell per night in a GitHub-contribution-style grid (weeks as columns, days as rows), so patterns — a run of bad nights, a stretch of missed nights, a seasonal drift — stand out spatially in a way a paginated table cannot show. Rather than squeezing the whole date range into one strip, the calendar renders one panel per calendar year, stacked vertically with the oldest year at the top and each panel labelled with its year. Cells keep a fixed size at every time frame, so a short range shows a small neat grid and a multi-year range stacks cleanly instead of collapsing into an unreadable sliver; the All time preset shows just the years that contain data (empty leading and trailing years are trimmed, but an interior empty year is kept, because a multi-year therapy gap is itself meaningful). On a narrow or mobile viewport each year panel scrolls horizontally while its year and weekday labels stay in view. Click any night to open its session detail, exactly as clicking a table row does. The grid is keyboard-navigable: focus a cell and use the arrow keys to move between nights — including across year-panel boundaries — and press Enter to open the focused night.',
+          "Each cell is coloured by one metric, which you choose from a selector: AHI, Usage hours, or Leak median. Switching the metric recolours the whole grid; the chosen metric is part of the URL (for example `/sessions?view=calendar&metric=leak`), so the view is shareable and is restored on reload. The colours are discrete clinical severity bands — a fixed green → amber → orange → red scale anchored to clinically meaningful thresholds — not a relative gradient stretched to fit the data on screen. This is deliberate: because the band edges are fixed (and are the same constants used by the table's AHI badges and the Trends severity zones), a given colour means the same thing on every night and across every date range, so you can compare nights directly by eye and a single colour always carries a clinical, not merely relative, meaning. A legend below the grid names each band and its numeric range, plus the two non-data markers described further down.",
+        ],
+      },
+      {
+        heading: 'Calendar — reading the colour bands',
+        paragraphs: [
+          'AHI (events per hour) — higher is worse. The bands follow the AASM / ICSD-3 severity classification used throughout the app: Normal, AHI < 5 (green); Mild, 5 to < 15 (amber); Moderate, 15 to < 30 (orange); Severe, ≥ 30 (red). AHI is the Apnea–Hypopnea Index, the number of apneas and hypopneas the machine scored per hour of recorded therapy; see the "AHI (Apnea-Hypopnea Index)" glossary entry for what it measures and its limitations. As always, a single night\'s AHI is statistically noisy — the calendar is best read for the pattern across many cells rather than any one night; the Trends AHI chart adds the rolling median and typical-nightly-range band for that purpose.',
+          'Usage (hours per night) — higher is better, so this metric\'s colour ramp is inverted relative to the other two: low usage is red and high usage is green. The bands are: under 2h (red); 2 to < 4h (orange); 4 to < 6h (amber); and ≥ 6h (green). The 4-hour edge is the CMS compliance floor — the United States Medicare definition of an adherent night is at least 4 hours of use — and the 6-hour edge is the commonly recommended adherence target associated with fuller symptomatic benefit. See the "Usage Hours" and "Compliance" glossary entries for the precise definitions (usage measures mask-on therapy time, which is not the same as time asleep).',
+          'Why missed nights matter, and why the calendar makes them visible: adherence is not only about how good your good nights are, but about how many nights you treat at all. A green AHI on the nights you use the machine tells you nothing about the nights you skip — and untreated nights carry the full, unmitigated apnea burden. Insurers and clinicians frequently assess adherence over a window (a common benchmark is use on at least 70% of nights, for at least 4 hours, over 30 consecutive days), so a scatter of missed nights can matter as much as the usage hours on the nights you do record. The calendar deliberately draws missed nights as a distinct, visible state (see below) precisely so these gaps are not invisible the way they are in a table that only lists the nights you have data for.',
+          'Leak median (litres per minute) — lower is better. The bands are: < 6 (green); 6 to < 12 (amber); 12 to < 24 (orange); and ≥ 24 (red). The red edge is anchored on the ResMed large-leak threshold of roughly 24 L/min — a device convention (mask-dependent, not an AASM standard) above which leak is high enough to compromise both therapy delivery and the reliability of the machine\'s own event detection. The 6 and 12 edges are display subdivisions of the acceptable region and carry no formal clinical authority. See the "Mask Leak" glossary entry for what unintentional leak is and why it matters.',
+        ],
+      },
+      {
+        heading: 'Calendar — the leak-median caveat',
+        paragraphs: [
+          'The leak cell colours a night by its median (typical) leak, not by its worst moment. This makes the cell a robust summary of the night as a whole, but it has a specific blind spot you should know about: a night can be quiet for most of its duration and still have brief, severe leak spikes — a mask shifting during a position change, a few minutes of mouth leak — and those short excursions may not move the median enough to change the band. A green or amber leak cell therefore means the typical leak was fine, not that there were no large-leak episodes.',
+          "When you want spike-level detail, do not rely on the calendar colour. Open the night's session detail and read the per-session leak chart, which shows leak over the course of the night, and the higher-percentile and exposure statistics — the P95 (the level exceeded only 5% of the night) and the time spent in large leak — which are designed precisely to surface brief excursions that a median hides. The calendar is for spotting nights and patterns; the per-session leak view is for understanding what happened within a night.",
+        ],
+      },
+      {
+        heading: 'Calendar — gaps and partial nights',
+        paragraphs: [
+          'Cells come in three states, each with a cue that does not rely on colour, so the calendar stays readable for colour-blind users and in any theme (WCAG 1.4.1). A filled cell — coloured in one of the severity bands above — is a night that has a value for the selected metric. The other two states are deliberately not coloured, because they are not "good" or "bad" values but the absence of one, and colouring them would be misleading.',
+          'A gap (dashed, empty cell) is a missed night: there is no recorded session for that date at all — you did not use the machine, or its data was not imported. Gaps are drawn distinctly, rather than simply left blank, so that the holes in your adherence are visible (see "why missed nights matter," above). A gap is never coloured and never counted as a value; it is the absence of a night, not a night with a metric of zero.',
+          'A partial night (neutral cell with a small glyph) is a night that has a recorded session, but for which the selected metric is unavailable. The most common reason is a too-short recording: AHI is a rate (events per hour), and on a recording too brief to compute a trustworthy rate the app declines to report an AHI rather than divide a tiny event count by a tiny duration and emit a wild or misleading figure. Crucially, an unavailable metric is shown as exactly that — unavailable — and never silently rendered as 0. A zero would read as a perfect night (no events, in the green Normal band) and would be a false reassurance; "no valid measurement" and "a measured value of zero" are different facts, and the calendar keeps them distinct. Hover or focus a partial cell to see why the metric is unavailable for that night.',
         ],
       },
       {
@@ -224,6 +292,60 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           'The signal viewer displays high-resolution waveform data recorded by your CPAP machine. Available channels include flow (breathing pattern), mask pressure, and leak rate. The viewer uses LTTB downsampling for smooth rendering of hundreds of thousands of data points.',
           'Click and drag to zoom into any time region. At full zoom, individual breaths are visible — you can identify apneas (flat-line flow), hypopneas (reduced amplitude), and flow limitation (flattened inspiratory shape). The signal viewer marks scored events with colored overlays.',
+        ],
+      },
+      {
+        heading: 'Measuring a region (per-lane statistics)',
+        paragraphs: [
+          "Measure mode summarises every lane over a time region at once. Turn it on with the Measure button in the toolbar, the M key, or by momentarily holding Alt while the pointer is over the plot to peek; it is off by default. Each numeric lane then gains a small chip showing four descriptive statistics of that lane over the region: the average (mean, $\\bar{x}$), the median ($\\tilde{x}$), the minimum, and the maximum. The hypnogram (sleep-stage) lane instead shows per-stage occupancy — the percentage of the region spent in each stage — and event-marker lanes show a count. A footer reports whether the figures describe the VIEWPORT or a pinned REGION, the region's clock span, and the sample count n.",
+          'By default the region is the visible viewport — whatever is currently on screen — and the figures recompute once each time you finish panning or zooming (on settle, never mid-gesture, so scrolling stays smooth). To pin a fixed region instead, Alt(Option)+drag horizontally across the plot; a neutral dashed band marks it (distinct from the blue Shift+drag zoom band), and the statistics stay locked to that time span even as you pan and zoom away. Press Esc to clear a pinned region (a second Esc turns Measure off). Keyboard and screen-reader users can define a region without the mouse: move the data cursor (arrow keys) and press [ to set the start and ] to set the end. The per-lane figures are also exposed in a focusable "Region statistics" table for screen readers, and a concise summary is announced whenever the region changes.',
+          'Why both mean and median? For symmetric, well-behaved signals the two nearly coincide. For right-skewed signals such as leak rate they diverge, and the difference is informative: the median is robust to brief spikes (a few seconds of mask-off or a cough barely move it), whereas the mean is pulled toward those extremes. The minimum and maximum bound the range — the most extreme valid samples seen in the region — and are useful for spotting a single excursion, but by construction they are the least robust figures shown. The sample count n is the statistical weight behind the figures: a region with very few samples (in the limit, n = 1) gives a median you should not over-read, while a region spanning many minutes at the recording rate gives a stable summary. For an extremely long region the median may be reported as a high-accuracy approximation (marked with a leading ~); the average, minimum, and maximum are always exact.',
+          'Only physiologically valid samples are counted. Sensor dropouts, probe-off readings, and other non-physiological sentinel values are excluded from every statistic, so they cannot distort the mean or fake a minimum of zero. A lane with no valid samples in the region shows "—" rather than 0 — the em dash means "nothing to measure here," whereas a genuine measured zero is shown as 0. These are descriptive statistics of your own recorded data; the figures describe what was recorded over the region you chose and nothing more — this tool does not diagnose.',
+        ],
+      },
+      {
+        heading: 'Measure — switching analysis modes',
+        paragraphs: [
+          'The Measure overlay can summarise the region through five interchangeable analysis modes, each of which re-skins the per-lane chips (and the screen-reader "Region statistics" table) to show a different family of figures over the same region. The default mode, Statistics, is the four-number summary described above; the other four — Variability, Trend, Distribution, and Selection — are described below. Only the active mode is computed (and only on settle, never mid-gesture), so adding modes does not slow the viewer down.',
+          'Switch modes with the `.` key (next) and the `,` key (previous); the two keys cycle through the five modes and wrap around, so you can spin through them quickly without leaving the keyboard. You can also click the segmented control in the region footer, which both selects a mode and shows which one is active. Your choice is remembered per session, so reopening the same night returns to the mode you last used. Across every mode the same honesty rules hold: a metric that does not apply to a given lane shows a dash (—) rather than a fabricated number, and only physiologically valid samples are counted. These remain descriptive statistics of your own recorded data — this tool does not diagnose.',
+        ],
+      },
+      {
+        heading: 'Measure — Variability mode',
+        paragraphs: [
+          'Variability mode describes how much each lane moves around its own typical level over the region, using three complementary figures. The first is the sample standard deviation ($s$), computed with the $n-1$ (Bessel-corrected) denominator — the conventional estimator of spread in the same units as the signal. See the "Standard Deviation" glossary entry for the definition; in short, a small $s$ means the lane was steady over the region and a large $s$ means it swung widely.',
+          'The second is the coefficient of variation (CV), the standard deviation expressed as a fraction of the mean and shown as a percentage: $CV = s / |\\bar{x}| \\times 100\\%$. Because it is unitless, the CV lets you compare relative stability across signals measured on completely different scales — for example whether pressure or respiratory rate is, proportionally, the steadier signal over this region — in a way that comparing their raw standard deviations (one in cmH₂O, one in breaths/min) cannot. The CV is only meaningful for ratio-scale signals with a true zero and a mean comfortably away from zero. It is therefore suppressed (shown as a dash) for zero-mean signals such as raw flow — flow is held symmetric about zero, so its mean is near zero by construction and the ratio $s/|\\bar{x}|$ would blow up to a meaningless figure — and for SpO₂, whose 0–100% scale makes a percent-of-mean value clinically meaningless. See the "CV (Coefficient of Variation)" glossary entry for the full reasoning.',
+          'The third is the interquartile range (IQR = $P_{75} - P_{25}$), the spread of the middle 50% of the samples. The IQR is the spike-robust companion to the standard deviation: a few brief excursions (a cough, a momentary mask-off) inflate $s$ but barely move the IQR, so when $s$ is large and the IQR is small you are looking at a quiet region punctuated by short spikes rather than a genuinely turbulent one. See the "IQR (Interquartile Range)" glossary entry for more.',
+        ],
+      },
+      {
+        heading: 'Measure — Trend (rate of change) mode',
+        paragraphs: [
+          'Trend mode answers "is this lane drifting over the region, and if so how fast and how trustworthily?". It fits an ordinary-least-squares line to the lane’s samples within the region and reports the slope per minute — the principled rate of change for a noisy signal. This is deliberately not the endpoint difference (last sample minus first sample): on a noisy signal the two endpoints are individually noise-dominated, so their difference is a poor estimate of the underlying drift, whereas the least-squares slope uses every sample and is far more stable. The slope is shown with an explicit sign (a leading + or −) and in the lane’s own units per minute.',
+          'Alongside the slope, Trend reports the net change over the region (the modelled change from start to end), the percent change (that net change relative to the region mean, which gives a noise-stable base rather than dividing by a single possibly-extreme endpoint), and a direction label — rising, falling, or flat — for an at-a-glance read. A change is called flat when the slope is too small (or too uncertain) to assert a direction.',
+          'Crucially, Trend also reports $R^2$, the coefficient of determination — the fraction of the lane’s variation that the fitted line explains, from 0 to 1. $R^2$ is the guard that tells you whether a trend is real or essentially noise: a steep slope with a low $R^2$ means the line is being pulled through a scatter that does not actually follow it, and should not be trusted as a trend; a slope with a high $R^2$ is a direction you can rely on. Always read the slope and $R^2$ together — neither alone is sufficient. See the "R² (Coefficient of Determination)" glossary entry for the definition.',
+          'For irregularly-sampled wearable signals — heart rate, SpO₂ from a wearable — the slope is fitted against each sample’s real timestamp, not against an assumed uniform sample spacing. This matters because those signals are recorded at an uneven cadence; using the true times keeps the per-minute slope honest rather than distorting it by pretending the samples are evenly spaced.',
+        ],
+      },
+      {
+        heading: 'Measure — Distribution mode',
+        paragraphs: [
+          'Distribution mode shows the shape of the lane’s values over the region as a five-number percentile summary: the 5th, 25th, 50th (median), 75th, and 95th percentiles ($P_5$, $P_{25}$, $P_{50}$, $P_{75}$, $P_{95}$). Reading these together tells you where the bulk of the values sat (the central $P_{25}$–$P_{75}$ band), where the typical value was ($P_{50}$), and how far the tails reached without being dominated by a single extreme sample the way the raw minimum and maximum are. See the "Percentile" glossary entry for how percentiles are defined.',
+          'This is the mode for questions about tails and asymmetry that a single mean cannot answer. For SpO₂, for instance, the $P_5$ shows how low the bottom 5% of the region’s saturation dipped — a far more informative read of desaturation exposure than the average, which a few good minutes can prop up. A wide gap between $P_{50}$ and $P_{95}$ on a leak lane reveals a right-skewed distribution with occasional high excursions even when the median looks fine.',
+        ],
+      },
+      {
+        heading: 'Measure — Selection (timing) mode',
+        paragraphs: [
+          'Selection mode is about the region itself rather than the signal values. The footer reports the region’s precise start and end timestamps and its exact duration to the millisecond, with a button that copies the timing to the clipboard — convenient for noting the span of an event or quoting it elsewhere. Each lane’s chip shows that lane’s effective sample rate (in Hz) and the number of samples it contributed to the region, so you can see the statistical weight behind every other mode’s figures at a glance.',
+          'The mode is deliberately honest about precision. Region edges snap to sample boundaries, so the start and end times resolve only to the nearest sample — i.e. to a resolution of $1/\\text{sampleRate}$ for the lane in question; a 25 Hz CPAP lane resolves to 40 ms, a sparsely-sampled wearable lane only to its much coarser cadence. The sample rate shown also differs by source: CPAP lanes report their nominal recording rate (a fixed figure the device records at, such as 25 Hz for flow), whereas wearable lanes — whose sampling is irregular — report an effective or mean cadence computed from the actual sample timestamps, because there is no single fixed rate to quote. See the "Sample Rate" glossary entry for background.',
+        ],
+      },
+      {
+        heading: 'Measure — keyboard and screen-reader access',
+        paragraphs: [
+          'Every analysis mode is fully keyboard- and screen-reader-accessible. Cycle through the modes with the `,` (previous) and `.` (next) keys without touching the mouse. The footer’s segmented control is a standard radiogroup: move between modes with the arrow keys and select with Space or Enter, with the active mode announced politely so a change is not silent.',
+          'The per-lane figures for the active mode are also exposed in a focusable "Region statistics" table, whose columns and cells re-label themselves for whichever mode is selected — so a screen-reader user reads exactly the same figures (standard deviation and CV in Variability, slope and $R^2$ in Trend, the percentile summary in Distribution, sample rate and count in Selection) that a sighted user sees on the chips. A concise summary is announced whenever the region or the mode changes.',
         ],
       },
       {
@@ -431,6 +553,91 @@ export const helpArticles: readonly HelpArticle[] = [
     ],
   },
 
+  // ─── EVENTS BY SLEEP STAGE & CYCLE ────────────────────────────────
+  {
+    slug: 'events-by-sleep-stage',
+    title: 'Analysing Events by Sleep Stage & Cycle',
+    summary:
+      'A new Event Explorer lens that correlates your apnea/hypopnea events with wearable sleep-stage data and intraday heart rate — REM-predominant OSA, per-cycle event load, and the cardiac response to events.',
+    icon: 'events',
+    sections: [
+      {
+        heading: 'Overview',
+        paragraphs: [
+          'The "Sleep stages & cycles" lens in the Event Explorer asks where in the structure of your sleep your respiratory events fall. It overlays the apneas and hypopneas your CPAP machine scored onto the sleep-stage hypnogram imported from a wearable (Fitbit / Google Health), and onto your intraday heart rate, so you can see whether events concentrate in REM, in particular sleep cycles, or at specific times of night — and how your heart responds to each event.',
+          'This lens requires a Google Health (Fitbit) import that contains sleep-stage data, and ideally intraday heart rate, for the same nights as your CPAP data. Without wearable staging, the lens has no hypnogram to align events to. Everything here is computed in your browser; no data leaves your device. Crucially, this is an exploratory analysis layer built on consumer-wearable estimates — it does not diagnose. Read it as a way to generate questions for your clinician, not answers.',
+        ],
+      },
+      {
+        heading: 'Sleep stages and the hypnogram',
+        paragraphs: [
+          'Sleep is not uniform. Across the night the brain cycles through distinct stages: Wake; REM (rapid eye movement) sleep, the dreaming stage marked by near-complete muscle atonia; and non-REM sleep, conventionally split into Light sleep (the AASM stages N1 and N2) and Deep, or slow-wave, sleep (stage N3). CPAP Analyzer displays four levels — Wake, REM, Light (= N1 + N2, because consumer wearables rarely separate them), and Deep (= N3). The step graph of these stages over the night is called a hypnogram.',
+          'The stages differ in ways that matter for sleep apnea. REM relaxes the muscles that hold the upper airway open, so obstructive events in REM tend to be longer and to cause deeper oxygen dips; Deep N3 sleep is usually the most stable and arousal-resistant. The gold standard for staging is polysomnography (PSG), which scores 30-second epochs from the EEG, eye movements, and chin muscle tone (Berry et al. 2012). A CPAP machine cannot stage sleep at all — the stages here come entirely from the wearable, which infers them from heart rate, its variability, and movement. See the "Limitations & interpretation" section below for what that approximation costs.',
+        ],
+      },
+      {
+        heading: 'Sleep cycles, and how this tool derives them',
+        paragraphs: [
+          'A sleep cycle is one pass through the non-REM → REM progression: the night descends from light into deep non-REM sleep, rises into a REM episode, and then repeats. The cycle length is an ultradian rhythm of roughly 90 minutes (often cited as 90–120 minutes), so a full night contains about four to six cycles. The structure shifts across the night — Deep sleep dominates the early cycles, while REM episodes lengthen in the later ones, back-loading REM into the hours before waking (Feinberg & Floyd 1979).',
+          'Because a wearable does not produce the cycle scoring a sleep technologist would, CPAP Analyzer derives cycles heuristically from the imported hypnogram. First it identifies REM episodes as maximal runs of REM, merging runs separated by gaps of 15 minutes or less so a brief interruption does not split one physiological REM period into two. It then defines each sleep cycle as the span from the end of one REM episode to the end of the next — following the classical convention that a cycle ends when a REM period ends. Any non-REM sleep that trails after the final REM episode is reported as an incomplete final cycle rather than discarded.',
+          'This reproduces the textbook ~90-minute cadence and the across-night trends when the wearable staging is reasonable, but it is explicitly a heuristic over modeled stages — not PSG cycle scoring. It inherits every uncertainty of consumer-wearable staging, and a single missed or spurious REM episode shifts the cycle boundaries. Treat the cycle structure as an approximate scaffold for organising your events, not as a precise architecture.',
+        ],
+      },
+      {
+        heading: 'Events by stage: the per-stage rate and the χ² test',
+        paragraphs: [
+          'The first view reports the event rate per hour within each stage — apneas plus hypopneas scored during REM divided by hours of REM, and likewise for Light, Deep, and (where relevant) Wake. Comparing these rates directly is more informative than a raw count, because you naturally spend very different amounts of time in each stage.',
+          'To ask whether the differences are real, the lens runs a chi-square (χ²) goodness-of-fit test. The categories are the sleep stages; the observed counts are the events scored in each stage; and the expected counts are proportional to the time spent in each stage — so the expected count for a stage is the total event count times that stage\'s share of staged time. The null hypothesis is therefore "events occur at the same rate per hour in every stage." The statistic is $\\chi^2 = \\sum_i (O_i - E_i)^2 / E_i$, summed over the stages, and under the null it follows a χ² distribution with degrees of freedom $\\mathrm{df} = k - 1$, one fewer than the number of stages.',
+          "How to read it: a larger χ² means the observed counts depart further from what time-in-stage predicts; the p-value is the probability of a χ² at least that large under the null, so p < 0.05 is the usual signal that your per-stage event rates genuinely differ (most often, an excess in REM). The test is an omnibus test — it tells you that some stage differs, not which one, so pair it with the per-stage bar chart to see the direction. The key validity caveat is Cochran's rule: the χ² approximation is unreliable when expected counts are small, the common guideline being that all expected counts should be at least 5. A short night, or a stage with very little time, can leave too few expected events for the test to be trusted; CPAP Analyzer flags this rather than printing a spurious p-value.",
+        ],
+      },
+      {
+        heading: 'REM-predominant OSA: AHI_REM, AHI_NREM, and the ratio',
+        paragraphs: [
+          'Because REM atonia makes the airway most collapsible — and because the supine posture common late in the night compounds it (the classic "supine-REM" worst case) — many people have obstructive sleep apnea that is concentrated in REM. The lens quantifies this with two stage-specific indices: AHI_REM, the apnea–hypopnea index computed within REM time only, and AHI_NREM, the index within non-REM time only.',
+          'The widely used literature definition of REM-related OSA is a ratio AHI_REM / AHI_NREM ≥ 2 (with AHI_NREM > 0). A stricter REM-predominant definition adds floors so the label is not driven by a sliver of REM or a near-zero NREM denominator: additionally AHI_NREM < 15/h, at least 30 minutes of REM sleep, and at least 15 minutes of NREM sleep (Conwell et al. 2012; Koo et al. 2008; Mokhlesi & Punjabi 2012). CPAP Analyzer reports the ratio and shows whether each floor is met. This matters clinically because REM events are often longer and desaturate more deeply, and because REM lengthens toward morning, so a REM-predominant pattern can mean your worst breathing falls in the hours before you wake.',
+          "A single night with little REM can produce a wild ratio, so the lens also offers an across-nights Wilcoxon signed-rank test — the rank-based, non-parametric counterpart of a paired t-test — comparing each night's AHI_REM with that same night's AHI_NREM. It asks whether the REM excess is consistent across your nights rather than a one-night artifact, without assuming the (typically skewed) nightly differences are normally distributed. A small p-value there indicates a reliable, repeated REM-versus-NREM difference.",
+        ],
+      },
+      {
+        heading: 'Which cycles do events occur in?',
+        paragraphs: [
+          'Using the derived cycles, the lens shows the per-cycle event load — how many events, and at what rate, fall in cycle 1, cycle 2, and so on — and summarises the early- versus late-night distribution. Because REM episodes lengthen across the night, a REM-predominant pattern typically shows up as an event load that grows in the later cycles; an even spread across cycles instead points toward a positional or pressure cause present all night, and a front-loaded pattern can reflect ramp or acclimatisation effects.',
+          "Read the per-cycle view alongside the stage view: they are two slices of the same structure. As with everything in this lens, the cycle boundaries are heuristic and the stage labels are wearable-derived, so compare the shape of the distribution across several nights rather than over-reading any single night's cycle count.",
+        ],
+      },
+      {
+        heading: 'Heart-rate response (cyclic variation of heart rate)',
+        paragraphs: [
+          'When intraday heart rate is available, the lens computes an event-triggered average heart rate: it aligns every respiratory event to a common time origin and averages the heart-rate trace in a window around it. This reveals the cyclic variation of heart rate (CVHR), the cardiac signature of sleep-disordered breathing first described by Guilleminault et al. (1984) — heart rate tends to slow during the apnea (bradycardia) and then surge upward (tachycardia) at event termination, when the arousal and resumption of breathing trigger a burst of sympathetic activity.',
+          "The magnitude of that post-event tachycardia surge is the number to watch: it reflects the strength of the autonomic (sympathetic) arousal each event provokes, and hence how much cardiovascular stress accompanies your events. Averaging across many events is what makes the pattern visible even when any single event's heart-rate trace is noisy. Bear in mind that wearable heart rate comes from a wrist or ring photoplethysmographic (PPG) sensor with smoothing, latency, and roughly a 5-second sampling cadence — so the surge's shape and rough size are informative, but the exact beat-to-beat timing is not resolved as it would be from an ECG.",
+        ],
+      },
+      {
+        heading: 'Limitations & interpretation',
+        paragraphs: [
+          'Consumer-wearable sleep staging is approximate, not a measurement. Without EEG, eye-movement, and chin-muscle signals, the device cannot truly score N1/N2/N3/REM; it predicts them from heart rate, its variability, and motion. Independent validation finds stage-classification accuracy notably lower than PSG, with the largest errors at the N1 and N3 boundaries and degraded performance specifically in people with obstructive sleep apnea. A small misplacement of REM boundaries can move events between the REM and NREM buckets and swing the AHI_REM / AHI_NREM ratio across the 2.0 line. Read stage- and cycle-aligned numbers as trends across several nights with adequate REM, not single-night verdicts.',
+          'The other inputs carry their own caveats. Device event scoring is flow-only and leak-sensitive, so weight low-leak nights more heavily. Optical (PPG) heart rate has latency and smoothing and a ~5-second cadence, which blurs the CVHR surge. Where SpO₂ appears at an event it is CPAP oximetry (if your machine records it), not the wearable. Time alignment between the CPAP and wearable records assumes both devices share the same wall-clock time for that import; a clock offset would shift events relative to stages.',
+          'Finally, correlation is not causation: an association between a stage and your events does not establish that the stage causes them. This lens is an analysis and exploration tool — it does not diagnose. Treat a REM-predominant pattern, an uneven per-stage rate, or a large CVHR surge as a candidate finding to discuss with a qualified clinician, who can place it in the context of your full history. For the underlying measurement-reliability reasoning, see "Understanding Measurement Uncertainty"; for the event filters and other lenses, see "Event Explorer."',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172. — AASM epoch-based sleep-stage and respiratory-event definitions.',
+          'Feinberg, I., & Floyd, T. C. (1979). Systematic trends across the night in human sleep cycles. Psychophysiology, 16(3), 283–291. DOI: 10.1111/j.1469-8986.1979.tb02991.x. — The ~90-minute NREM–REM cycle and its across-night trends; basis for the cycle-derivation heuristic.',
+          'Guilleminault, C., Connolly, S., Winkle, R., Melvin, K., & Tilkian, A. (1984). Cyclical variation of the heart rate in sleep apnoea syndrome. The Lancet, 1(8369), 126–131. DOI: 10.1016/S0140-6736(84)90062-X. — Original description of cyclic variation of heart rate.',
+          'Conwell, W., Patel, B., Doeing, D., et al. (2012). Prevalence, clinical features, and CPAP adherence in REM-related sleep-disordered breathing. Sleep and Breathing, 16(2), 519–526. DOI: 10.1007/s11325-011-0537-6. — REM-predominant OSA definition and floors.',
+          'Koo, B. B., Patel, S. R., Strohl, K., & Hoffstein, V. (2008). Rapid eye movement-related sleep-disordered breathing: influence of age and gender. Chest, 134(6), 1156–1161. DOI: 10.1378/chest.08-1311. — REM-related OSA criteria.',
+          'Mokhlesi, B., & Punjabi, N. M. (2012). "REM-related" obstructive sleep apnea: an epiphenomenon or a clinically important entity? Sleep, 35(1), 5–7. DOI: 10.5665/sleep.1570. — On denominator floors and clinical significance of the REM/NREM ratio.',
+          'Pearson, K. (1900). On the criterion that a given system of deviations from the probable... Philosophical Magazine, Series 5, 50(302), 157–175. DOI: 10.1080/14786440009463897. — Chi-square goodness-of-fit statistic.',
+          'Cochran, W. G. (1954). Some methods for strengthening the common χ² tests. Biometrics, 10(4), 417–451. DOI: 10.2307/3001616. — The expected-count (≥ 5) validity rule.',
+          'Wilcoxon, F. (1945). Individual comparisons by ranking methods. Biometrics Bulletin, 1(6), 80–83. DOI: 10.2307/3001968. — The signed-rank paired test.',
+        ],
+      },
+    ],
+  },
+
   // ─── PRESSURE ANALYSIS ────────────────────────────────────────────
   {
     slug: 'pressure-analysis',
@@ -553,6 +760,14 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Storage management',
         paragraphs: [
           'View how much local storage your imported data occupies. CPAP Analyzer uses IndexedDB for structured data and the Origin Private File System (OPFS) for large signal files. You can selectively delete old data, export all data as a backup file, or clear all data to start fresh.',
+        ],
+      },
+      {
+        heading: 'Keeping your data safe (data persistence)',
+        paragraphs: [
+          'Because CPAP Analyzer is entirely client-side, your imported data lives in your browser\'s own storage (IndexedDB and OPFS) rather than on a server. Browsers keep that storage in one of two modes. The default is "best-effort": the browser is allowed to automatically evict — silently delete — site data to reclaim space when the disk runs low, when the browser is configured to "clear data on exit," or during routine cleanup. This is the most common cause of unexpected data loss, and it is most often seen on Chrome on Windows; the symptom is opening the app to an empty database, or a "database connection is closing" error part-way through a session.',
+          'To prevent that, CPAP Analyzer asks the browser for "persistent" storage when it starts. Persistent storage opts your data out of automatic eviction — the browser will not discard it to free space. The Storage Usage panel above shows a "Data persistence" indicator with the current state: "Protected" means the browser has granted persistence and your data is safe from automatic eviction; "Not protected" means your data is still in best-effort storage and could be evicted. Requesting persistence is entirely local — it is a request to your own browser and sends nothing anywhere; no network connection is made.',
+          'If the indicator shows "Not protected," use the "Protect my data" button to ask the browser again. Note that some browsers — Chrome in particular — do not grant persistence on request alone: they apply a heuristic based on how "engaged" you are with the site. The most reliable ways to satisfy it are to bookmark CPAP Analyzer (or install it to your home screen / as an app) and to use it regularly; once those signals accumulate, a later request is usually granted. Regardless of persistence state, the safest backstop is to export your data to a file periodically (Storage management, above) — an export is a snapshot you control that survives whatever the browser does with its cache, and it lets you re-import on a new device or browser profile. Persistence protects only against the browser\'s *automatic* eviction; it does not prevent you (or a manual "clear browsing data") from deleting the data yourself, and it applies only to the current browser profile on the current device. See the "Persistent Storage" glossary entry for the full technical detail.',
         ],
       },
       {
@@ -692,8 +907,21 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'How to read these in the app',
         paragraphs: [
           'In the per-session signal viewer, computed PB and CSR episodes are drawn as overlay bands distinct from device-asserted events: a hatched fill pattern marks computed detections, a confidence chip annotates each band, and dashed boundaries denote candidate / below-threshold episodes. Device-asserted CSR runs use the existing solid event styling. The provenance is never ambiguous — a band that originated from the device cannot be confused with one this app computed, and vice versa. (For an overlay walk-through and what the wearable-overlay context adds — including HR elevation around central events and the characteristic desaturation lag — see Intraday Health Signals & Overlays.)',
-          'A dedicated Breathing view collects the longitudinal TECSA trajectory plot (CAI per night with early/late windows shaded), the episode catalog (every detected PB/CSR run with its cycle length, modulation depth, harmonic ratio, confidence, and a deep link that opens its source session in the Signal Viewer with the whole episode framed end to end), and the threshold controls (so a parameter change can be inspected immediately). A Dashboard "Breathing Stability" insight card surfaces the headline state — quiet, isolated candidate episodes, persistent PB, or a TECSA trajectory worth discussing — without ever asserting a diagnosis. A future Trends lane will show cycle-length over time, which is the signal most directly tied to circulation time in the cardiac-output literature.',
+          'A dedicated Breathing view collects the longitudinal TECSA trajectory plot (CAI per night with early/late windows shaded), the episode catalog (every detected PB/CSR run with its cycle length, modulation depth, harmonic ratio, confidence, and a deep link that opens its source session in the Signal Viewer with the whole episode framed end to end), and the threshold controls (so a parameter change can be inspected immediately). The catalog analyzes the full date range you select — there is no per-page night limit; selecting "all time" on a multi-year history analyzes every night in it. A Dashboard "Breathing Stability" insight card surfaces the headline state — quiet, isolated candidate episodes, persistent PB, or a TECSA trajectory worth discussing — without ever asserting a diagnosis. A future Trends lane will show cycle-length over time, which is the signal most directly tied to circulation time in the cardiac-output literature.',
           'When using the Event Explorer to slice respiratory events by type, computed PB/CSR candidates carry their own filterable type tag and a hatched marker that distinguishes them from device-flagged PeriodicBreathing — so a query for "all PeriodicBreathing events" can be scoped to device-asserted, to computed candidates, or to both.',
+        ],
+      },
+      {
+        heading: 'Using the episode catalog (caching, streaming, and how to read the columns)',
+        paragraphs: [
+          'The episode catalog runs the PB/CSR detector described above once per night across every session in the date range you select, then lists each candidate episode as a row. Because the detector is run per night and the airflow signal it reads lives in browser storage, analyzing a long range is real work: each night costs roughly 150–300 ms, so a first-ever "all time" run over a multi-year history can take from many seconds to a few minutes. After that first run it is effectively instant — see the caching note below.',
+          'Results are cached locally so you only pay that cost once. When a night is analyzed, its detection result is saved to a local on-device cache (an IndexedDB store inside your browser — the same private, in-browser storage your sessions already live in). A "cache" here simply means previously computed results kept on hand so they do not have to be recomputed. Nothing is uploaded; the cache never leaves your device, exactly like the rest of your data. Revisiting the same range later — or after a page reload — reads the saved results back near-instantly instead of re-deriving them from the raw airflow signal.',
+          'Analysis runs in two phases, and the catalog tells you which one you are in. First, "Reading saved analysis…" reads any nights already in the cache; this is fast and is all that happens on a revisit of an already-analyzed range. Second, if some nights have never been analyzed (or were invalidated — see below), "Analyzing N new nights…" computes them. Uncached nights are computed in parallel and stream into the table as they finish, so the page is usable — you can filter, sort, and open episodes — the moment the first rows land, while the rest fill in underneath. A determinate progress bar shows total nights done out of total nights in the range, and notes how many came from the cache.',
+          'Cancel and Resume let you bound a long first run without losing work. The Cancel button (shown only while analysis is running) stops computing the not-yet-finished nights but keeps every night already in the table — cancellation never discards completed work. After cancelling, a Resume button continues from where you stopped, computing only the nights that are still missing (the ones already done are read straight from the cache), so resuming is cheap relative to starting over. Changing the date range also restarts analysis for the new range; changing the Pattern, Min confidence, or Sort controls only re-filters or re-sorts what is already on screen and never restarts analysis.',
+          'Cached results are kept honest automatically. Each saved result is tagged with a version identifier derived from the detector\'s algorithm and its current parameter values (a "version hash"). If the detection algorithm changes, or you change any detection threshold, that identifier changes and the stale entries are no longer used — the affected nights are recomputed transparently the next time you view them. You never see results produced by an old algorithm or by parameters you have since changed; correctness is preserved at the cost of one recomputation after a change. This is why a visit right after an update or a parameter change can briefly re-enter the "Analyzing…" phase even for a range you have looked at before.',
+          'Each catalog row describes one candidate episode. The columns are: Night — the calendar date of the session the episode was found in (the link opens that session in the Signal Viewer, framed on the episode). Pattern — "PB" (periodic breathing) or "CSR" (Cheyne-Stokes respiration), with a "sub-threshold" tag when the episode is a genuine candidate that falls below the device\'s own reporting gate (these are shown deliberately, not hidden — see above). Confidence — the detector\'s confidence on a 0–1 scale (rendered as a bar with a numeric value), integrating the modulation index, harmonic ratio, cycle-length plausibility, and alignment with device central-apnea flags. Cycle — the dominant cycle length in seconds (the time from one ventilation peak to the next; longer cycles track longer circulation time and, in CSR, lower cardiac output). Modulation — the modulation depth on a 0–1 scale (how strongly the ventilation envelope waxes and wanes; near 0 is nearly flat, near 1 is deeply cyclic). Duration — how long the candidate run lasted, in minutes. Use the Min confidence slider and the Pattern selector to focus on the strongest CSR-shaped candidates; the status line always shows both how many episodes the filter is showing and how many nights have been analyzed, so a small filtered count during a long run is not mistaken for "nothing found."',
+          'Nights that could not be analyzed are reported, not hidden. If a night\'s airflow signal is unreadable or lacks the flow / minute-ventilation channel the detector needs, that night is skipped but counted, and on completion the catalog shows "N nights could not be analyzed" with a "Details" list of the specific dates and short reasons. A failed night is not the same as a successfully analyzed night with no episodes — the former could not be examined, the latter was examined and found nothing — so the two are reported separately and a failed night never appears as a misleading empty row.',
+          'Two empty results are distinguished. "No candidate … episodes were detected across N analyzed nights" is a clean finding — the range was analyzed and nothing cyclic was found. "No episodes match the current filters" means episodes do exist but your Min confidence or Pattern filter is excluding them; lower the threshold or widen the pattern to see them.',
         ],
       },
       {
@@ -962,6 +1190,186 @@ export const helpArticles: readonly HelpArticle[] = [
     ],
   },
 
+  // ─── WEATHER & ENVIRONMENT ────────────────────────────────────────
+  {
+    slug: 'weather-environment',
+    title: 'Weather & Environment',
+    summary:
+      'The opt-in Open-Meteo weather and air-quality integration — what it correlates and why, exactly what leaves your device, how to enable/disable/delete it, how historical backfill and the ~5-day archive lag work, and how to read the dashboard panel, the Signal-Viewer weather lanes, and the cross-source correlations.',
+    icon: 'integrations',
+    sections: [
+      {
+        heading: 'What this feature does, and why',
+        paragraphs: [
+          'Weather & Environment is an optional integration that fetches local weather and air-quality data for the nights you have recorded and lets you correlate that environmental context against your CPAP therapy metrics. The motivating observation is that some patients show seasonal or weather-dependent variation in their therapy: a stretch of bad nights that lines up with a cold front, a humid spell, or a polluted week rather than with anything about the machine or the mask. Without environmental context that pattern is invisible; with it, you can put a number on the association.',
+          'The headline hypothesis is barometric (atmospheric) pressure versus apnea and central events. Ambient pressure changes alter the gas already in the lungs and the way the respiratory control loop responds to it, and shifts in pressure have been linked to changes in apnea and especially central-event frequency. A falling barometer — a passing weather system — is therefore a plausible modifier of a bad night, and because such a shift can precede the night it affects, this feature treats pressure as the variable of primary interest (see "Reading the cross-source correlations" below for why lagged correlation is the apt tool). Humidity, dewpoint, temperature, wind, and air quality are provided alongside it as additional, secondary context.',
+          'This is an exploratory, hypothesis-generating tool. It can surface that your therapy and the weather tend to move together; it cannot establish that one causes the other, and it does not diagnose anything. Treat every association it shows as a question to investigate, not an answer.',
+        ],
+      },
+      {
+        heading: 'The privacy contract — exactly what is and is not sent',
+        paragraphs: [
+          'This is the first feature in CPAP Analyzer that makes an outbound network request. Every other part of the app — including the Fitbit / Google Health integration, which is a local file import — runs entirely in your browser and contacts no server. Because this feature must ask a remote service "what was the weather at this place on these nights," it necessarily discloses a place and some dates to that service. The whole design is built to make that disclosure minimal, explicit, and reversible, and it stays off until you turn it on.',
+          'What leaves your device, per sync: (1) your configured coordinates, rounded to two decimal places (roughly 1.1 km, i.e. neighbourhood-level, never GPS-precise) before every request; (2) the calendar dates of the nights you are syncing; and (3) only if you use the optional "Find" city search, the city name you type. Nothing else. The requests go only to Open-Meteo (the named provider), over four specific Open-Meteo hosts that the app whitelists — never to a wildcard, never anywhere else.',
+          'What never leaves your device: any therapy or health data (your AHI, leak, pressures, events, signals — none of it is ever transmitted), any identifier (there is none — Open-Meteo needs no account and no API key, so a request carries no credential tying it to you), and your precise GPS location (only the rounded coordinates are ever sent). The browser sends weather requests directly to Open-Meteo, so Open-Meteo necessarily sees your network IP address, as any website you visit does; the app cannot hide that, which is one more reason the feature is opt-in and the disclosure is shown up front.',
+          'Enabling the feature requires you to pass through an explicit consent dialog that states this contract in plain language — a blue "what leaves your device" block and a green "what stays on your device" block — before any request is ever made. The app records the moment you consented (a timestamp). If a future version ever changes what is sent off-device, that recorded consent is used to re-ask you rather than silently carrying your old consent forward.',
+        ],
+      },
+      {
+        heading: 'Enabling, disabling, and deleting your weather data',
+        paragraphs: [
+          'To enable: open Settings → Integrations and expand the Weather & Air Quality item (it carries a "Connects online" pill to distinguish it from the local-file Fitbit import, which sends nothing). Toggling it on opens the consent dialog described above; you must read and accept it. You then set a single location — type latitude and longitude directly, search for a city with "Find," or use the one-time "Use current location" button (which asks your browser for permission and only fills in the field; it never auto-sends anything). Choose your display units (temperature °C/°F, pressure hPa/inHg, wind, precipitation), which domains to fetch (Core weather and/or Air quality), and the resolution (Daily, or Daily + Hourly — the hourly series is what powers the Signal-Viewer lanes). Then press "Sync now."',
+          'Nothing is fetched automatically. Every request is either started by you pressing "Sync now," or — only if you separately opt in to the "Auto-sync newly imported nights" checkbox, which is off by default — triggered when you import new CPAP nights. With auto-sync off (the default), the integration never reaches the network unless you press Sync.',
+          'To disable: toggle the integration off in Settings → Integrations. This immediately stops all requests. By default your already-fetched weather data is kept (so re-enabling does not re-fetch nights you already have, and your past correlations still work); the disable prompt offers a "Keep" option (selected by default) and a "Delete" option. Choosing Delete removes the stored weather and air-quality records from your browser. You can also remove everything at any time via the app-wide "delete all data" control, which clears weather alongside your CPAP and wearable data. Weather data lives in the same local IndexedDB as everything else and, like everything else, never leaves your device once fetched.',
+        ],
+      },
+      {
+        heading: 'How historical backfill works (and why some nights show "No data available")',
+        paragraphs: [
+          "CPAP analysis is retrospective — you may have months or years of nights — so the integration is built to backfill weather for past nights, not just report current conditions. When you sync, the app looks up each night's local calendar date and fetches the matching weather and air-quality summary for your configured location, caching each result so a given night is fetched at most once. A night that spans two calendar dates fetches both and merges them, the same way the wearable lanes handle a night that crosses midnight.",
+          'Open-Meteo serves historical weather from two places, and the app routes between them automatically. Settled history comes from a reanalysis archive that reaches back decades but lags roughly five days behind today — the most recent few days are not yet in the archive. For those recent nights the app instead uses the forecast API\'s "recent past" window, so there is no gap at the boundary; you do not need to think about which source is used. Because of the lag, the dashboard panel always stamps its values with the date they are "as of" and never implies "today."',
+          'Air-quality history is shallower and region-dependent. The air-quality archive reaches back several years for Europe but only to more recent years for the rest of the world, so for older nights, or for nights outside the better-covered regions, the provider may simply have no air-quality record. This is normal and expected — not a failure.',
+          'It is important to read "No data available" correctly. The app deliberately stores "we asked and the provider had nothing" as a state distinct from "we have not asked yet" and from "the request failed." A night with no provider data shows a dash ("—"), never a fabricated zero, and is marked as a terminal "No data available" state in the coverage view — re-syncing it will not conjure data that does not exist on the provider\'s side. This is separate from a genuine error (offline, rate-limited, or an HTTP failure), which is marked "Sync failed" and is worth retrying. The coverage view distinguishes four states with separate icons, words, and colours: Synced (have data), Not synced (not yet fetched — actionable), No data available (queried, provider had none — terminal), and Sync failed (an error — retry). So if recent nights, or non-European nights, show "No data available" for air quality, that is the archive\'s coverage limit, not a bug.',
+        ],
+      },
+      {
+        heading: 'The overnight window — what each displayed number means',
+        paragraphs: [
+          'Every weather number you see is summarized over one canonical "overnight" window, shared identically by the dashboard panel, the Signal-Viewer lanes, and the correlation surface — so a given night\'s "humidity" is the same number everywhere, never three different values. The window is the half-open wall-clock interval from the start of the recorded night up to (but not including) its end: in interval notation, [sleep start, sleep end). Half-open means the closing instant belongs to the next bucket, so adjacent nights never double-count the boundary hour.',
+          'Within that window, each metric is reduced to one statistic chosen to be the clinically meaningful one for that variable, and the displayed tile names the statistic so there is no ambiguity. Temperature is shown as the overnight low (the minimum across the window — the coldest point of the night), because the low is what is physiologically relevant overnight. Barometric pressure, relative humidity, and dewpoint are shown as the overnight mean (the average across the window), because for these a representative central value over the night is what matters. Wind is shown as a representative overnight value, and air quality is summarized as the overnight statistic of the hourly AQI. Whenever you compare a weather value against a therapy metric, you are comparing two nightly summaries computed over the same window.',
+        ],
+      },
+      {
+        heading: 'Reading the dashboard panel',
+        paragraphs: [
+          'When the integration is enabled and at least one night is synced, a Weather Overview panel appears on the Dashboard with six headline tiles: overnight-low temperature, relative humidity, barometric pressure (the headline tile, marked with a subtle accent), air quality (AQI), dewpoint, and wind. Each tile shows the current value in your chosen units alongside a seven-day trend indicator, and the panel carries an "As of {date}" caption — because the provider archive lags about five days, the panel always tells you which night the numbers describe rather than implying they are live. When the most recent synced night is more than about five days old, the caption notes that the provider data lags ~5 days, so a slightly stale date is expected and not a problem.',
+          'The trend indicators are deliberately non-judgemental for most metrics. Temperature, humidity, pressure, dewpoint, and wind use a neutral trend: the arrow tells you the direction of change (rising, falling, steady) without colouring it good or bad, because there is no universally "better" direction for, say, barometric pressure. Air quality is the one exception that is treated as directional: lower AQI is better, so a falling AQI is shown favourably and a rising AQI unfavourably. The AQI tile also shows a category word (e.g. "Good," "Moderate") next to the number and a small ranked swatch, and the severity is always conveyed by the word and number and a pattern, never by colour alone — so the meaning survives colour-blindness and greyscale.',
+          'If the integration is enabled but you have not synced yet, the panel shows a prompt to sync rather than empty tiles. If it is disabled, the panel does not appear at all. A footer links you to the cross-source correlations and reports how many nights of weather data you have.',
+        ],
+      },
+      {
+        heading: 'Reading the Signal-Viewer weather lanes',
+        paragraphs: [
+          'If you fetch at the "Daily + Hourly" resolution, the per-session Signal Viewer gains an optional weather lane group (a "WX" pill) that overlays the night\'s hourly weather on the same wall-clock time axis as your CPAP signals, aligned to the actual recording hours. There are three lanes you can toggle on or off: a conditions ribbon (one segment per run of weather — clear, cloud, rain, etc. — with a small weather glyph), a pressure-and-temperature line lane (barometric pressure drawn solid and heavier because it is the headline variable, temperature drawn dashed so the two are distinguishable without relying on colour), and an air-quality ribbon (coloured by AQI rank, with an escalating hatch pattern so the severity reads without colour). The lane group hides itself automatically when there is no hourly weather for the night. An "Environment focus" lane preset brings up flow alongside the weather lanes for quick inspection.',
+          'As with all Signal-Viewer lanes, the keyboard data cursor announces the weather values at the cursor — temperature, pressure, dewpoint, wind, the condition word, and "Air quality: {word}, AQI {value}" (always the word and the number, never a bare value) — so the weather context is fully available to screen-reader and keyboard-only users, not just visually. Weather lanes are aligned by wall-clock time exactly like the wearable lanes; if you recorded a night in a different time zone from your configured location, the same alignment caveats described in the Intraday Health Signals & Overlays article apply.',
+        ],
+      },
+      {
+        heading: 'Reading the cross-source correlations',
+        paragraphs: [
+          'In Explore → Correlations (the Cross-Source tab), Weather & Environment appears as a second source you can compare your CPAP and wearable metrics against, through a grouped "Compare against" selector (Wearable / Weather & Environment). The same machinery documented in the Cross-Source Analysis article applies unchanged: Pearson and Spearman correlation with confidence intervals and p-values, the correlation matrix, Bland–Altman agreement, and lagged cross-correlation. An availability statistic reports how many nights have weather data, so you can see how much overlap your estimate rests on.',
+          'Lagged cross-correlation deserves emphasis here because it is especially apt for weather. Environmental effects can precede a bad night: a barometric-pressure drop on day t may be associated with worse AHI or more central events on day t (the same night) or on day t+1 (the following night), as a weather system moves through. A same-day-only (lag-0) correlation would miss that delayed relationship entirely. The lagged analysis shifts one series relative to the other across a range of day-offsets and reports the correlation at each lag, highlighting the strongest — so "does a falling barometer tonight predict a worse night tomorrow?" is a question you can actually pose. As always, testing many lags inflates the chance of a spurious "best" lag, so treat the optimal lag as a hypothesis to confirm with more data and domain knowledge, not as an established lead-time.',
+          'All of the usual cross-source caveats apply with full force: correlation is not causation; season is a powerful confounder that can drive weather, sleep, and activity simultaneously; small overlapping samples give wide, unstable estimates (aim for tens of nights, more for lagged analyses); and these analyses are designed to help you frame a question for your clinician — for example, "my central events seem to rise after pressure drops" — not to reach a clinical conclusion on your own.',
+        ],
+      },
+      {
+        heading: 'Scope and limitations',
+        paragraphs: [
+          'Pollen is not included in this version. Open-Meteo\'s pollen data is forecast-only (a few days ahead), Europe-only, and has no historical archive, so it could never be backfilled for any past night. Surfacing it would risk the opposite of helpful: it would show a permanent "no data" for your history and could mislead you into concluding pollen does not affect your therapy when in truth the data simply never existed. Because correctness outranks adding features, pollen is deliberately deferred until a historical-capable source is available.',
+          'A single location is supported per profile in this version. If you travelled, the weather shown is for your configured home location, not wherever you actually slept — so read travel nights with that in mind. Per-night / travel-aware location is a planned future capability.',
+          'Weather and air-quality data come from a third party (Open-Meteo) and depend on its modelled reanalysis and continued availability; like any model, it is an estimate of conditions at your rounded coordinates, not a measurement at your bedside. Missing weather never blocks your CPAP analysis — a night with no weather simply shows a dash, and the rest of the app is unaffected.',
+          'CPAP Analyzer is not a medical device and is not certified for diagnosis. Weather & Environment is an exploratory analysis aid: it informs and helps you frame questions; it does not diagnose, and it does not recommend any change to your therapy. Bring anything new, sustained, or trending — especially a rising central-event pattern — to a qualified clinician, who can place it in the context of your full history.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'Open-Meteo. Open-Meteo Weather, Historical (ERA5 reanalysis archive), and Air Quality APIs. https://open-meteo.com/ — Keyless, no-account weather, historical-archive, and air-quality data sources used by this integration; the historical weather archive lags roughly five days behind the present.',
+          'World Health Organization (2021). WHO global air quality guidelines: particulate matter (PM2.5 and PM10), ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — Health basis and recommended limits for the air-quality pollutants surfaced here.',
+          'United States Environmental Protection Agency (2024). Technical Assistance Document for the Reporting of Daily Air Quality — the Air Quality Index (AQI). EPA-454/B-24-002. — Definition and category bands of the US Air Quality Index.',
+          'European Environment Agency. European Air Quality Index (EAQI). https://www.eea.europa.eu/themes/air/air-quality-index — Definition and category bands of the European AQI.',
+          'Mason, R. H., Ryan, C. M., et al. (2010). Changes in sleep-disordered breathing at altitude and with ambient pressure. — On ambient/barometric pressure as a modifier of respiratory events and the loop-gain mechanisms by which pressure change can shift the obstructive/central balance. (Illustrative of the pressure-vs-events hypothesis; not a claim specific to your data.)',
+        ],
+      },
+    ],
+  },
+
+  // ─── AI INSIGHTS ──────────────────────────────────────────────────
+  {
+    slug: 'ai-insights',
+    title: 'AI Insights',
+    summary:
+      'The opt-in, off-by-default feature that turns your already-computed metrics into plain-language summaries — what it does and deliberately does not do, the four on-device and cloud backends and their privacy tradeoff, exactly what is and is not sent, the compute-then-narrate grounding and numeral validation, the non-diagnostic framing, and how to make a local server (Ollama/LM Studio) reachable.',
+    icon: 'integrations',
+    sections: [
+      {
+        heading: 'What AI Insights does — and what it deliberately does not do',
+        paragraphs: [
+          'AI Insights is an optional feature that turns the metrics the app has *already computed* — your AHI and its sub-indices, leak, pressure, usage, compliance, and the trends across a date range — into a few sentences of plain-language context. Instead of reading a screen full of numbers, you can ask for a summary like "your AHI last night was 3.2, below your 30-day average of 4.1; leak stayed within the normal band, and your usage was just over 7 hours." It can summarise a single night, summarise a date range, or explain one metric or chart you are looking at.',
+          'The single most important thing to understand is the architecture, which we call **compute-then-narrate**. Every number is calculated by the app\'s deterministic analysis pipeline — the same code that draws your charts and fills your dashboard. The language model is handed a frozen snapshot of those *finished* figures and is allowed only to phrase and explain them in prose. It is a **narrator, not a calculator**. It never computes, averages, sums, re-derives, rounds, extrapolates, classifies a severity band, or introduces any number, date, or threshold that the app did not already compute. This is a hard design rule, not a preference: a model that invents a clinical figure is the worst failure a health tool can have, so the model is structurally prevented from being the source of any number (see ADR 0024 and the "Understanding Measurement Uncertainty" article).',
+          'It is equally important to understand what AI Insights is *not*. It is not a chatbot — there is no free-form conversation over your raw data; you choose from a small, safe set of summary and explanation actions and suggested prompts, each of which maps to something the analysis pipeline already answers. It does not diagnose, does not prescribe, and does not recommend changing your therapy. And it is entirely optional and additive: the app is fully functional with the feature switched off (the default), and when it is off, no AI element appears anywhere in the product.',
+        ],
+      },
+      {
+        heading: 'The four backends, and the on-device vs cloud privacy tradeoff',
+        paragraphs: [
+          'AI Insights does not pick one model for you. It exposes a single interface with four interchangeable backends, ordered privacy-first, so you choose your own point on the privacy/quality curve. The first two run entirely **on your device and send nothing off it**; the second two are **bring-your-own-key cloud** services that produce more fluent prose in exchange for sending a small, bounded snapshot to a provider.',
+          '**In-browser (WebLLM)** — the privacy default. A small open model is downloaded once (a multi-gigabyte file stored in your browser) and then runs locally on your GPU via WebGPU. After that one-time download, inference is **zero-egress**: no data — and not even the request — leaves your device. The model-weights download itself is a fetch from a model host, but it carries *none of your data*; it is just the model. WebGPU is required, and the on-disk size is disclosed before you download and counts against the same storage budget shown in Settings → Privacy & Storage. You can remove the model at any time.',
+          "**Chrome built-in AI** — progressive enhancement. Recent versions of Chrome ship a small on-device model (Gemini Nano, exposed through the browser's Summarizer / Prompt APIs). When it is available, there is nothing for the app to download, and inference is again **zero-egress** — nothing leaves your browser. It is gated on having a supporting browser, and some states require a one-time on-device model provisioning that the browser handles.",
+          "**Claude (your API key)** — highest quality, cloud. The app calls Anthropic's API directly from your browser using *your own* API key. This is a cloud backend: the grounded metric snapshot is sent to Anthropic (see the next section for exactly what that is). You choose the model (Opus, Sonnet, or Haiku); each request uses your own Anthropic account and incurs a small cost on it, whereas the on-device backends are free.",
+          '**OpenAI-compatible / Ollama (your key + URL)** — flexible cloud or local. This single backend targets any endpoint that speaks the OpenAI API shape: OpenAI itself, aggregators like OpenRouter and Together, **and local servers such as Ollama or LM Studio** running on your own machine. You supply a base URL, an optional API key, and a model name. Because the base URL is yours, this backend spans both worlds: a remote URL is treated as **cloud** (the snapshot egresses, consent required), while a loopback URL such as `http://localhost:11434/v1` is treated as **on-device** (nothing leaves your machine, no consent dialog). Switching the URL from local to remote re-triggers the consent gate.',
+          'The practical tradeoff: on-device backends give you the strongest possible privacy — a posture stronger than any other feature in the app, because *nothing at all* leaves the device — at the cost of more modest prose and (for WebLLM) a large one-time download and a capable GPU. Cloud backends give you the most fluent wording at the cost of disclosing a small, aggregate snapshot of computed numbers to a third party you have chosen. Local servers (Ollama / LM Studio) are a middle path: high-quality models that still run entirely on your own hardware.',
+        ],
+      },
+      {
+        heading: 'Getting and entering an API key (cloud backends)',
+        paragraphs: [
+          'Cloud backends use **your own** API key — there is no shared or built-in key, and there is no CPAP Analyzer account. For **Claude**, create an API key in the Anthropic Console (console.anthropic.com) under API Keys, then paste it into the Claude backend\'s "Claude API key" field in Settings → Integrations → AI Insights. For an **OpenAI-compatible** cloud endpoint, obtain a key from that provider (for example the OpenAI platform dashboard, or your OpenRouter/Together account) and enter it alongside the endpoint base URL and the model name. For a **local Ollama or LM Studio** server you typically need no key at all — leave the key field blank and point the base URL at your local server.',
+          'Keys are stored **locally and never persisted to disk by default**. They are held in session-scoped memory and are cleared when the browser tab closes, which keeps the exposure window small. A key is sent only as the authorization header on requests *you* trigger, only to the provider you configured; it is never placed in the metric snapshot, never logged, and never transmitted anywhere else. The app does not silently "check" a key by making a hidden network call — the first real summary you generate is what validates it, and an authorization failure is surfaced as a plain "key was rejected" message pointing you back to settings.',
+          'Because there is no telemetry of any kind, the app cannot see your key, your usage, or your prompts. The privacy and cost of a cloud backend are entirely between you and the provider whose key you supplied.',
+        ],
+      },
+      {
+        heading: 'Exactly what is sent on a cloud backend (and what never is)',
+        paragraphs: [
+          'On a cloud backend, the *only* thing that ever leaves your device is a **grounded metric snapshot**: a compact, aggregate object of already-computed numbers for the night or range you asked about. Concretely, it contains the summary metrics you can already see on screen — values like AHI and its sub-indices, median and 95th-percentile leak, usage hours, a pressure summary, event counts, and trend direction — each at the same display precision shown in the UI (numbers are sent as their rounded display strings, so the model cannot even surface an extra digit). It also carries the **calendar date or date range** you asked about, your active units and thresholds (so the wording matches your settings), and your machine *type* only (CPAP / APAP / BiPAP / VPAP / ASV).',
+          'What **never** leaves your device, by hard contract: the **raw signals** (no flow, pressure, leak, or SpO₂ time-series, no 25–50 Hz waveform samples, no EDF files); **within-night detail** (no exact event timestamps, no bedtime or other clock times — only calendar dates); any **device identifier** (no machine serial number, firmware version, session IDs); your **notes and tags** (which are free text and may contain personal detail); your **location**; and any **account or integration identifier**. There is no CPAP Analyzer account, so a request carries only your own provider API key. None of your data from nights you did not ask about is ever included. This blocklist is enforced by a unit-tested serializer, and a "preview the exact payload" affordance lets you inspect the snapshot before it is sent.',
+          'This egress is gated by an explicit **two-gate consent**, the same pattern the weather integration established. Turning the feature on (gate 1) does *not* by itself send anything — it reveals the configuration with the privacy-preferring local backend pre-selected. Only when you deliberately choose a cloud backend (gate 2) does a consent dialog appear, stating in plain language — a blue "what leaves your device" block and a green "what never leaves" block — exactly the contract above. Nothing egresses until you acknowledge it. The app records the moment you consented; if a future version ever changes *what* is sent, that recorded consent is treated as stale and you are re-asked before the next cloud request. A persistent reminder ("Sends a metric snapshot to <provider>; no raw data leaves your device") sits in the insight panel whenever a cloud backend is active, so the disclosure is present at the point of use, not just at setup. On-device backends show no consent dialog and no reminder, because there is genuinely nothing to disclose.',
+        ],
+      },
+      {
+        heading: 'Compute-then-narrate grounding, and the numeral-validation backstop',
+        paragraphs: [
+          'Two layers keep the prose honest. The first is **grounding**: the model receives a structured snapshot of finished numbers and a system prompt that instructs it to reference only values that appear literally in that snapshot, to quote each value and its unit exactly, never to compute or convert anything, to use only the thresholds the app provided (not cutoffs from its own training data — you may have configured custom AHI bands), to attach the app-authored reliability caveat whenever a metric is anything less than high-reliability, and never to diagnose. A metric that the recording was too short to compute (an undefined per-hour rate, which is *not* the same as zero) is flagged so the model describes it as "too short to compute a reliable rate," never as a low number.',
+          'The second layer is a **deterministic, app-side validator** that runs on the model\'s output *before you ever see it* — this is the backstop that catches a hallucinated figure regardless of which backend produced it. While building the snapshot, the app mechanically assembles the exact set of numeric tokens that legitimately exist (every metric value, threshold, slope, p-value, night count, and so on). It then extracts every numeral from the generated prose and requires each one to match that allow-list (with only a tiny, documented set of safe small integers permitted for ordinary phrasing like "the first night"). A number in the prose that is **not** one the app computed — or a value quoted with the wrong unit, or a severity/compliance verdict that disagrees with the app\'s own — is treated as a failure: the app first asks the model to regenerate with the offending token called out, and if that fails again it discards the generated text entirely and falls back to a plain, app-rendered template summary built from the same snapshot, with a quiet "To stay accurate, this is the app\'s own computed summary rather than AI-written text." notice. **Fabricated text is never shown.**',
+          'Because of these two layers, the worst hallucination failure mode — a confidently invented AHI or threshold — is designed out rather than merely discouraged. The numbers you read in an AI summary are, by construction, the same numbers the app computed; if they ever disagreed, that would be a bug the validator is built to catch. Every generated block also surfaces a collapsible "Based on these numbers" panel listing the exact source figures (with their units and severity labels, each linking to the deterministic glossary), so you can always check the prose against the data it was built from.',
+        ],
+      },
+      {
+        heading: 'Not medical advice — talk to your clinician',
+        paragraphs: [
+          'AI Insights is framed deliberately as **descriptive wellness context, not clinical judgement**. The wording is constrained to descriptive verbs ("shows", "stayed within", "trended down", "may be worth discussing") and is forbidden the diagnostic and prescriptive register ("you have…", "you should set your pressure to…", "this proves…"). It does not adopt a persona, does not present itself as a clinician, and does not agree-to-please. At most it will note, non-directively, that a pattern "may be worth discussing with your sleep physician." Every output also carries an inseparable caveat — **"AI-generated — may be inaccurate; verify against the numbers above"** — that cannot be displayed or copied without the warning attached.',
+          'CPAP Analyzer is not a medical device, is not certified for diagnosis, and does not provide medical advice. AI Insights only rephrases metrics the app computed from your own data, and — like any generated text — it can still mislead by implying causation or sounding more confident than the data warrant, even when every number is correct. Always confirm an AI summary against the numbers shown, and bring anything new, sustained, or trending — especially a rising central-event pattern — to a qualified clinician, who can place it in the context of your full history. The AI puts your existing numbers into words; the interpretation that matters is the conversation you have with your healthcare provider.',
+        ],
+      },
+      {
+        heading: 'Why these guardrails (the design principles behind them)',
+        paragraphs: [
+          'The trust-and-safety choices above are not arbitrary; they follow established human-AI design guidance. From Google\'s People + AI Guidebook and Microsoft\'s Human-AI eXperience guidelines: make clear what the system can and cannot do, show your work so trust is calibrated to the data rather than to confident phrasing, keep a human in the loop, and never manufacture precision the model cannot justify — which is why AI Insights shows the source numbers under every summary, avoids fabricated "confidence percentages," and prefers categorical wording ("consistent with your usual pattern") over invented exact figures. From Apple\'s guidance on generative content and from consumer-health products such as Oura and Google Health: clearly label generated content, default the feature off and give people an off switch, design for graceful failure, and use wellness/descriptive language that defers to clinicians rather than diagnosing. The persistent "AI" label, the off-by-default posture, the comprehensive error handling, and the "prepare to talk with your clinician" framing all come directly from these precedents.',
+        ],
+      },
+      {
+        heading:
+          'Troubleshooting a local server (Ollama / LM Studio): CSP and the default-port limit',
+        paragraphs: [
+          'If you point the OpenAI-compatible backend at a local server (for example Ollama at `http://localhost:11434/v1`, or LM Studio at `http://localhost:1234/v1`) and generation fails with a "couldn\'t reach the endpoint / connection blocked" message, the cause is almost always the app\'s **Content-Security-Policy (CSP)**, not the model server. CPAP Analyzer locks down outbound network access with a strict `connect-src` allowlist so that — outside the explicit, consented integrations — the app is *architecturally* unable to contact the network. The same policy that protects your privacy also decides which origins a cloud or local AI backend may reach.',
+          "Two consequences follow from how that policy is delivered. First, because the app is served as static files (with no server to set HTTP headers), the CSP is injected as a build-time `<meta>` tag and therefore **cannot be widened at runtime to an arbitrary host you type**. To make local servers work out of the box, the policy allows **loopback origins** — `localhost`, `127.0.0.1`, and `[::1]` — so a local Ollama or LM Studio endpoint is reachable without weakening the policy for everyone. Second, a meta-tag CSP allowlists loopback at its **standard/default ports** (such as Ollama's `11434` and LM Studio's `1234`); a loopback server reconfigured to listen on a **non-standard port** may fall outside the allowlisted entry and be **blocked**, which is why a non-default port can fail even though the server is running and reachable from a normal browser tab. The fix is to run your local server on its **default port** (or the standard port the app expects) so its origin matches the allowlisted loopback entry. This is a deliberate limitation: the alternative — a wildcard `connect-src` — would re-open exactly the data-exfiltration surface the strict policy exists to close, so correctness and privacy are kept ahead of accommodating every arbitrary port.",
+          'For the same reason, a genuinely arbitrary *remote* OpenAI-compatible host you type at runtime is **not supported in this phase**: it cannot be added to the static CSP without a wildcard. The supported cloud endpoints are the curated, named presets (Anthropic, OpenAI, and similar) whose origins are already in the allowlist. If you need a remote OpenAI-compatible provider that is not a built-in preset, that is a known capability limit, accepted on purpose to preserve the network lockdown. When a request is blocked this way, the error message says so plainly and points you to an on-device backend, which never needs a network connection at all.',
+        ],
+      },
+      {
+        heading: 'References',
+        paragraphs: [
+          'CPAP Analyzer ADR 0024 — Grounded, Opt-In AI Insights via a Multi-Backend Provider Abstraction. — The architectural decision record: compute-then-narrate grounding, the four-backend provider abstraction, the two-gate consent and CSP model, and the non-diagnostic safety framing.',
+          'Google PAIR (People + AI Research). People + AI Guidebook. https://pair.withgoogle.com/guidebook/ — Calibrating user trust to model reliability, "explain for understanding," user feedback, and avoiding false precision.',
+          'Amershi, S., Weld, D., Vorvoreanu, M., et al. (2019). Guidelines for Human-AI Interaction (the Microsoft HAX guidelines). Proceedings of CHI 2019. DOI: 10.1145/3290605.3300233. — Make clear what the system can do and how well; support efficient invocation and dismissal; show why the system did what it did.',
+          'Apple. Human Interface Guidelines — Generative AI / Machine Intelligence. https://developer.apple.com/design/human-interface-guidelines/ — Disclose generated content clearly, set expectations, give people control and an off switch, and design for graceful failure.',
+          'U.S. Food & Drug Administration (2022). Clinical Decision Support Software — Guidance for Industry and FDA Staff. — The clinical-decision-support / general-wellness distinction that informs the descriptive, non-directive wording. (Framing only; this is not a certification claim and the project seeks no medical-device clearance.)',
+        ],
+      },
+    ],
+  },
+
   // ─── UNDERSTANDING MEASUREMENT UNCERTAINTY ────────────────────────
   {
     slug: 'understanding-measurement-uncertainty',
@@ -985,6 +1393,7 @@ export const helpArticles: readonly HelpArticle[] = [
           'Each metric is assigned one of three reliability tiers. High-reliability metrics are directly measured: delivered pressure (the device actively regulates to it), usage / mask-on time (a simple timer), and unintentional leak below the device threshold. Moderate-reliability metrics are algorithmically detected from a leak-corrected flow estimate: the apnea/hypopnea counts and the AHI, tidal volume, minute ventilation, and respiratory rate. Low-reliability metrics are modeled inferences: the central-versus-obstructive split, the flow-limitation index, RERA, and consumer-wearable SpO₂ and multi-stage sleep.',
           'The reliability cue is quiet by default. A high-reliability metric carries no chip at all — the absence of a caveat is the trust signal. A chip appears only when it changes how you should read a value: on a low-tier modeled metric, when a data-quality condition (such as high leak or a very short session) is active, or when a single night sits right on a severity boundary. These cues use a neutral violet visual axis and always pair a shape and a text label with any color, so the signal never depends on color alone and never collides with the red/orange axis reserved for clinical severity.',
           'For trends, the headline AHI is shown as a rolling median line with a shaded band that is the empirical inter-quartile range (the middle 50%, from the 25th to the 75th percentile) of the recent nights — labelled the "typical nightly range." The band is deliberately not a textbook confidence interval of the mean: consecutive nights are correlated and your underlying state can shift (a new mask, a pressure change), which makes the usual narrow error bar both invalid and misleading. The empirical quartile band makes no normality assumption, widens honestly when your nights genuinely vary, and is consistent with a median centre line.',
+          'Beneath the median line and band, a faint line traces the individual nights. On a wide date range there can be more nights than the chart has horizontal pixels, so several nights fall in each one-pixel column; a plain line through one value per column could then skip over a lone spike and hide it. To keep that line honest, on these dense ranges it is drawn as a per-column min–max envelope — each column spans from the lowest to the highest AHI among the nights inside it — so a single bad night is always visible rather than lost between pixels. Nights with no valid AHI stay gaps and are never drawn as zero. This affects only how the faint raw line is drawn; the median, the band, and every computed value are unchanged.',
         ],
       },
       {

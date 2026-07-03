@@ -51,12 +51,18 @@ function isViewId(value: string | null): value is ViewId {
 }
 
 export function EventExplorer() {
-  const { events, loading, error, refetch } = useExplorerEvents();
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Query state is derived from the URL on first render, then kept in sync.
   const [query, setQueryState] = useState<EventQuery>(() => searchParamsToQuery(searchParams));
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>(() => loadSavedQueries());
+
+  // Loading is session-scope-aware: a scoped session is loaded directly,
+  // ignoring the global date range, so a session OUTSIDE that range still
+  // resolves. See useExplorerEvents.
+  const { events, sessionStartTimes, loading, error, refetch } = useExplorerEvents(
+    query.sessionIds,
+  );
 
   const activeView: ViewId = isViewId(searchParams.get('view'))
     ? (searchParams.get('view') as ViewId)
@@ -224,6 +230,7 @@ export function EventExplorer() {
             query={query}
             onChange={setQuery}
             events={events}
+            sessionStartTimes={sessionStartTimes}
             availability={availability}
             savedQueries={savedQueries}
             onSaveQuery={handleSaveQuery}
@@ -255,7 +262,11 @@ export function EventExplorer() {
           ) : (
             <>
               <Tabs tabs={tabs} value={activeView} onValueChange={setView} />
-              <EventTable events={result.matched} maxRows={TABLE_ROW_CAP} />
+              <EventTable
+                events={result.matched}
+                sessionStartTimes={sessionStartTimes}
+                maxRows={TABLE_ROW_CAP}
+              />
             </>
           )}
         </div>

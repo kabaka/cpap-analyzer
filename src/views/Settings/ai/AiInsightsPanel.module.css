@@ -1,0 +1,308 @@
+/* AI Insights settings panel.
+ *
+ * Mirrors WeatherIntegrationPanel.module.css geometry (panel / switchRow /
+ * config / group / groupLegend) and adds the AI-specific radiogroup option
+ * cards, privacy badges, group dividers, and per-backend notices.
+ * `--color-ai*` tokens are NOT consumed here (they belong only to the AiMarker /
+ * caveat family, visual spec §1.4); the panel reuses the green/blue privacy
+ * convention and surface/border/text tokens only.
+ */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ── Gate-1 enable row (mirrors weather) ── */
+
+.switchRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.switchInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.switchLabel {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.switchDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  max-width: 60ch;
+}
+
+/* ── Config area ── */
+
+.config {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin: 0;
+}
+
+.groupLegend {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+  color: var(--color-text-muted);
+  padding: 0 var(--space-1);
+}
+
+/* ── Backend radiogroup (visual spec §2) ── */
+
+.radioGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Two labelled subgroups with a 3px left accent echoing the consent blocks. */
+.subgroupLocal {
+  border-left: 3px solid var(--color-success);
+}
+
+.subgroupCloud {
+  border-left: 3px solid var(--color-info);
+}
+
+/* Legend text carries the meaning; color is reinforcement (visual spec §2.2). */
+.legendLocal {
+  color: var(--color-success);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--font-size-sm);
+}
+
+.legendCloud {
+  color: var(--color-info);
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--font-size-sm);
+}
+
+.legendSub {
+  display: block;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-regular);
+  color: var(--color-text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Option card (visual spec §2.3). */
+.option {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-primary);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.option:hover {
+  border-color: var(--color-border-emphasis);
+  background: var(--color-surface-secondary);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.optionSelected {
+  border-color: var(--color-primary);
+  background: var(--color-nav-active-bg);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.optionDisabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Custom radio dot (the primary non-color selection cue). */
+.radioDot {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--color-border-emphasis);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.radioDot[data-checked] {
+  border-color: var(--color-primary);
+}
+
+.radioDot[data-checked]::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+}
+
+.optionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.optionLabel {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.optionDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.optionStatus {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+/* Privacy badges (visual spec §2.1) — existing green/blue tokens. */
+.privacyBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.badgeLocal {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.badgeCloud {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+/* ── Per-backend config bits ── */
+
+.keyRow {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+}
+
+.keyRow > :first-child {
+  flex: 1 1 auto;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.checkRow input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
+}
+
+.statusLine {
+  font-size: var(--font-size-sm);
+  margin: 0;
+}
+
+.statusReady {
+  color: var(--color-success);
+}
+
+.statusPending {
+  color: var(--color-text-secondary);
+}
+
+.storageNote,
+.costNote {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: 0;
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+/* Inline fallback for unsupported local backends (never a toast — UX §3.4). */
+.fallbackNotice {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-caveat-bg, var(--color-surface-secondary));
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.localNotice {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-success-bg);
+  border-left: 3px solid var(--color-success);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin: 0;
+}
+
+.cspNotice {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--color-error-bg);
+  border-left: 3px solid var(--color-error);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin: 0;
+}
+
+.disclaimer {
+  margin: 0;
+}
+
+/* ── Consent dialog action row (shared layout) ── */
+
+.consentActions {
+  margin-top: var(--space-4);
+}

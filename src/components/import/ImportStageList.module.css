@@ -1,0 +1,196 @@
+/**
+ * Vertical multi-stage progress list for an import job. Each row pairs a status
+ * icon (shape), a status word, the stage label, counts/throughput, and — only
+ * while active — a progress bar. State is reinforced by icon shape + text, never
+ * colour alone (WCAG 1.4.1).
+ */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Compact density for the dock popover. */
+.compact {
+  gap: var(--space-1);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: var(--stage-status-size) 1fr;
+  column-gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-1) 0;
+}
+
+/* Subtle highlight band behind the currently active stage. */
+.rowActive {
+  background-color: var(--color-stage-active-bg);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin: 0 calc(-1 * var(--space-2));
+}
+
+.statusIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--stage-status-size);
+  height: var(--stage-status-size);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+/* Rotating spinner for active stages. Disabled under reduced motion (the
+   component swaps to a static glyph there, but we belt-and-braces the keyframe). */
+.spin {
+  animation: import-stage-spin 0.9s linear infinite;
+}
+
+@keyframes import-stage-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.statusWord {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.percent {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.rate {
+  color: var(--color-text-muted);
+}
+
+.barWrap {
+  margin-top: var(--space-1);
+}
+
+/* ── Sub-stages (nested data types) ── */
+
+.disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: none;
+  border: none;
+  padding: var(--space-1) 0;
+  margin: 0;
+  min-height: 44px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-link);
+  cursor: pointer;
+  font-family: var(--font-family-sans);
+}
+
+.disclosure:hover {
+  color: var(--color-text-link-hover);
+}
+
+.disclosure:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.subList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding: 0 0 0 var(--stage-row-indent);
+  list-style: none;
+}
+
+.subRow {
+  display: grid;
+  grid-template-columns: var(--stage-status-size) 1fr;
+  column-gap: var(--space-2);
+  align-items: center;
+}
+
+.subLabelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.subLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subCount {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Visually-hidden text retained for assistive tech (mirrors the app's .srOnly). */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

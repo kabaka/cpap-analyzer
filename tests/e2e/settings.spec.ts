@@ -60,14 +60,18 @@ test.describe('Settings View', () => {
     await expect(page.getByText(/clustering method/i)).toBeVisible();
   });
 
-  test('Integrations tab should show accordion sections for Fitbit, Weather, and LLM', async ({
+  test('Integrations tab should show accordion sections for Fitbit, Weather, and AI Insights', async ({
     page,
   }) => {
     await page.getByRole('tab', { name: /integrations/i }).click();
 
     await expect(page.getByText(/fitbit/i)).toBeVisible();
     await expect(page.getByText(/weather/i)).toBeVisible();
-    await expect(page.getByText(/llm assistant/i)).toBeVisible();
+    // The old disabled "LLM Assistant — Coming soon" stub was replaced by the
+    // full opt-in "AI Insights" panel (UX spec §0). Disabled by default, it
+    // reads "AI Insights — Disabled".
+    await expect(page.getByText(/ai insights/i)).toBeVisible();
+    await expect(page.getByText(/llm assistant/i)).toHaveCount(0);
   });
 
   test('Privacy tab should show storage info and Clear All Data button', async ({ page }) => {

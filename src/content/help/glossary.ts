@@ -58,7 +58,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       '\\text{AHI} = \\frac{\\text{Total Apneas} + \\text{Total Hypopneas}}{\\text{Total Sleep Time (hours)}}',
     uncertainty:
       'Three things dominate AHI uncertainty, in roughly this order. (1) Real night-to-night biology: your airway behaves differently with body position, sleep stage, alcohol, congestion, and overnight fluid shift — a single night misclassifies roughly 20% of people (Lechat et al. 2022), and reliability stabilises only after about two weeks of data. (2) Counting (Poisson) noise: relative precision improves only as 1/√N, so a short or low-event night gives a noisy rate. (3) Detection differences: the device scores from flow alone and divides by mask-on (not sleep) time, so device-AHI is not interchangeable with a polysomnography AHI. Read the multi-night trend, not last night, and treat a value sitting on a severity boundary (e.g. ≈ 5 or ≈ 15) as "could fall either side." This is descriptive, not a diagnosis — discuss patterns with your clinician.',
-    relatedTerms: ['apnea', 'hypopnea', 'residual-ahi', 'rdi', 'odi'],
+    relatedTerms: ['apnea', 'hypopnea', 'residual-ahi', 'rdi', 'odi', 'rem-predominant-osa'],
     references: [
       'Epstein, L. J., Kristo, D., Strollo, P. J., et al. (2009). Clinical guideline for the evaluation, management and long-term care of obstructive sleep apnea in adults. Journal of Clinical Sleep Medicine, 5(3), 263–276. — AASM severity classification, diagnostic thresholds, and treatment goals.',
       'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
@@ -696,7 +696,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'An arousal is a brief shift from deeper to lighter sleep or to wakefulness, lasting at least 3 seconds, preceded by at least 10 seconds of stable sleep. Arousals caused by breathing events (respiratory arousals) fragment sleep and prevent the restorative deep sleep stages. The arousal index (arousals per hour) correlates with daytime sleepiness.',
     detailed:
       "AASM definition: an abrupt shift in EEG frequency lasting ≥3 seconds, preceded by ≥10 seconds of stable sleep. In REM sleep, a concurrent increase in chin EMG is required. Arousals are the brain's defense mechanism against hypoxia — they restore airway muscle tone and terminate events. However, frequent arousals prevent progression through normal sleep architecture (N1→N2→N3→REM). Arousal index > 25/hr is associated with significant sleepiness. CPAP machines cannot directly measure arousals (requires EEG), but indirect markers include pressure oscillations from movement and sudden changes in flow pattern.",
-    relatedTerms: ['sleep-fragmentation', 'rera'],
+    relatedTerms: ['sleep-fragmentation', 'rera', 'sleep-stage', 'cvhr'],
   },
   {
     id: 'sleep-fragmentation',
@@ -708,7 +708,7 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Sleep fragmentation describes the breakdown of the normal sleep cycle — repeated arousals interrupt the progression through light sleep, deep sleep, and REM sleep. Even if total sleep time is adequate, fragmented sleep is less restorative. Sleep fragmentation is a major consequence of untreated sleep apnea and a primary cause of excessive daytime sleepiness.',
     detailed:
       'Normal sleep progresses through 90-minute cycles: N1 (light) → N2 (intermediate) → N3 (deep/slow-wave) → REM. Fragmentation prevents adequate time in N3 (restorative, growth hormone release) and REM (memory consolidation). Metrics: arousal index, sleep efficiency (time asleep / time in bed), number of stage transitions, WASO (wake after sleep onset). CPAP treatment reduces fragmentation by eliminating event-related arousals. Persistent fragmentation despite CPAP may indicate: suboptimal pressure, mask discomfort, nocturia, periodic limb movements, or primary insomnia.',
-    relatedTerms: ['arousal', 'sleep-apnea'],
+    relatedTerms: ['arousal', 'sleep-apnea', 'sleep-cycle', 'sleep-stage'],
   },
   {
     id: 'cheyne-stokes',
@@ -756,6 +756,100 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['rera', 'flow-limitation', 'osa'],
     references: [
       'Guilleminault, C., Stoohs, R., Clerk, A., Cetel, M., & Maistros, P. (1993). A cause of excessive daytime sleepiness: the upper airway resistance syndrome. Chest, 104(3), 781–787. DOI: 10.1378/chest.104.3.781.',
+    ],
+  },
+
+  {
+    id: 'sleep-stage',
+    term: 'Sleep Stage',
+    category: 'sleep-medicine',
+    aliases: ['Sleep Stages', 'Sleep Architecture', 'Hypnogram'],
+    quick:
+      'A category of sleep — Wake, REM, or non-REM (light N1/N2, deep N3) — assigned to each epoch of the night.',
+    standard:
+      'Sleep is not uniform: across the night the brain cycles through distinct stages, conventionally Wake, REM (rapid eye movement) sleep, and non-REM sleep, the latter split into light sleep (stages N1 and N2) and deep / slow-wave sleep (stage N3). The sequence of stages over the night, plotted as a step graph, is called a hypnogram. Stages differ physiologically in ways that matter for sleep apnea — REM sleep relaxes the airway-dilating muscles (REM atonia), so obstructive events are often longer and more frequent in REM, while deep N3 sleep tends to be the most stable. CPAP machines cannot stage sleep; the stages CPAP Analyzer displays come from an imported wearable (Fitbit / Google Health), which infers them from heart rate, movement, and respiration rather than from the EEG a sleep study uses.',
+    detailed:
+      "In the gold-standard polysomnography (PSG) staging of the AASM Manual (Berry et al. 2012), sleep is scored in 30-second epochs from the electroencephalogram (EEG), electrooculogram (EOG), and chin electromyogram (EMG) into Wake, N1, N2, N3, and REM. N1 is the lightest transitional sleep; N2 is the bulk of a normal night and is marked by sleep spindles and K-complexes; N3 (slow-wave / deep sleep) is dominated by high-amplitude delta activity and is the most restorative and arousal-resistant stage; REM is characterized by EEG desynchronization, rapid eye movements, dreaming, and near-complete skeletal-muscle atonia. CPAP Analyzer maps the wearable's categories onto a four-level ribbon — Wake, REM, Light (= N1 + N2 combined, because consumer wearables rarely separate N1 from N2), and Deep (= N3). Crucially, a consumer wearable does not measure the EEG: it estimates stages from photoplethysmographic heart rate, heart-rate variability, accelerometry, and sometimes respiration. Independent validation finds that such devices classify sleep-versus-wake reasonably but stage classification only moderately, with the largest errors in N1/N3 discrimination and degraded performance in people with sleep-disordered breathing. Treat the wearable hypnogram as an approximate context layer for locating events in the night, not as a clinical-grade staging. CPAP Analyzer reports stage-aligned analyses for information only and does not diagnose.",
+    uncertainty:
+      'Wearable sleep staging is a modeled inference, not a measurement. Without EEG/EOG/EMG the device cannot truly score N1/N2/N3/REM; it predicts them from heart rate, its variability, and motion. Epoch-by-epoch agreement with polysomnography is moderate at best and is worse for the deep (N3) and light-transition (N1) boundaries and in patients with OSA — the exact minutes in each stage, and the precise placement of stage boundaries, should be read loosely. The pattern (for example, "events cluster in the REM-labelled stretches near morning") is more trustworthy than any single epoch\'s label. Read stage-aligned numbers as hypothesis-generating and discuss findings with your clinician.',
+    relatedTerms: [
+      'rem-sleep',
+      'sleep-cycle',
+      'arousal',
+      'sleep-fragmentation',
+      'rem-predominant-osa',
+    ],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172. — AASM epoch-based stage definitions (Wake, N1, N2, N3, REM).',
+    ],
+  },
+  {
+    id: 'rem-sleep',
+    term: 'REM Sleep',
+    category: 'sleep-medicine',
+    aliases: ['Rapid Eye Movement Sleep', 'REM'],
+    quick:
+      'The dreaming stage of sleep, marked by rapid eye movements and muscle atonia, during which obstructive apneas are often worse.',
+    standard:
+      'REM (rapid eye movement) sleep is the stage of vivid dreaming, characterized by a desynchronized EEG, darting eye movements, and a near-complete loss of skeletal-muscle tone (REM atonia). That atonia extends to the muscles that hold the upper airway open, so obstructive apneas and hypopneas in REM tend to be longer and to cause deeper desaturations than in non-REM sleep. REM periods are short early in the night and lengthen toward morning, which is why a person whose events concentrate in REM often has the worst breathing in the second half of the night. When the apnea–hypopnea index is much higher in REM than in non-REM, the pattern is called REM-predominant (or REM-related) OSA.',
+    detailed:
+      'REM sleep recurs roughly every 90 minutes in the normal ultradian rhythm, with each successive REM episode generally longer than the last — so total REM is back-loaded into the final third of the night (Feinberg & Floyd 1979). Physiologically, REM combines suppressed upper-airway dilator-muscle activity, blunted ventilatory responses to hypoxia and hypercapnia, and irregular breathing; the supine posture common in late sleep compounds airway collapsibility (supine-REM is the classic "worst case" for OSA). REM-related event worsening is the basis for the AHI_REM / AHI_NREM comparison and for the literature definitions of REM-predominant OSA (Conwell 2012; Koo 2008; Mokhlesi & Punjabi 2012). In CPAP Analyzer, REM is one of the four wearable hypnogram levels (Wake / REM / Light / Deep); because the stage labels come from a consumer wearable rather than EEG, the REM boundaries are approximate — read the REM-vs-NREM contrast as a trend across nights, not a single-night verdict. CPAP Analyzer reports these analyses descriptively and does not diagnose.',
+    relatedTerms: ['sleep-stage', 'sleep-cycle', 'rem-predominant-osa', 'cvhr', 'ahi'],
+    references: [
+      'Berry, R. B., Budhiraja, R., Gottlieb, D. J., et al. (2012). Rules for scoring respiratory events in sleep: update of the 2007 AASM Manual for the Scoring of Sleep and Associated Events. Journal of Clinical Sleep Medicine, 8(5), 597–619. DOI: 10.5664/jcsm.2172.',
+      'Feinberg, I., & Floyd, T. C. (1979). Systematic trends across the night in human sleep cycles. Psychophysiology, 16(3), 283–291. DOI: 10.1111/j.1469-8986.1979.tb02991.x. — REM episodes lengthen across the night.',
+    ],
+  },
+  {
+    id: 'sleep-cycle',
+    term: 'Sleep Cycle (NREM–REM Ultradian Cycle)',
+    category: 'sleep-medicine',
+    aliases: ['NREM-REM Cycle', 'Ultradian Sleep Cycle'],
+    quick:
+      'One repetition of the non-REM → REM progression during sleep, lasting roughly 90 minutes, repeated four to six times per night.',
+    standard:
+      'A sleep cycle is one pass through the recurring non-REM → REM sequence: the night descends from light into deep non-REM sleep and then rises into a REM episode, after which the cycle repeats. The cycle length is an ultradian rhythm of roughly 90 minutes (commonly cited as 90–120 minutes), so a full night contains about four to six cycles. The structure changes across the night — deep N3 sleep dominates the early cycles, while REM episodes lengthen in the later ones (Feinberg & Floyd 1979). Because consumer wearables do not score true PSG cycles, CPAP Analyzer derives cycle boundaries heuristically from the imported hypnogram, using the ends of successive REM episodes as the cycle markers.',
+    detailed:
+      'How CPAP Analyzer derives cycles (heuristic, not PSG cycle scoring): from the wearable hypnogram it first identifies REM episodes as maximal runs of REM, merging runs separated by gaps of ≤ 15 minutes so that a brief interruption does not split one physiological REM period into two. A sleep cycle is then defined as the span from the end of one REM episode to the end of the next, following the classical convention that a cycle ends when a REM period ends; any non-REM sleep that trails after the final REM episode is reported as an incomplete final cycle rather than discarded. This reproduces the textbook ~90-minute NREM–REM cadence and the across-night trends (more deep sleep early, longer REM late) when the wearable staging is reasonable, but it is explicitly a heuristic over modeled stages: it inherits all the uncertainty of consumer-wearable staging, and a missed or spurious REM episode shifts the cycle boundaries. It is not a substitute for the cycle structure a sleep technologist would derive from polysomnography. CPAP Analyzer uses the derived cycles to show per-cycle event load and early- versus late-night distribution; it reports them for information and does not diagnose.',
+    relatedTerms: ['rem-sleep', 'sleep-stage', 'sleep-fragmentation', 'sleep-apnea'],
+    references: [
+      'Feinberg, I., & Floyd, T. C. (1979). Systematic trends across the night in human sleep cycles. Psychophysiology, 16(3), 283–291. DOI: 10.1111/j.1469-8986.1979.tb02991.x. — The ~90-minute NREM–REM cycle and its systematic across-night trends.',
+    ],
+  },
+  {
+    id: 'rem-predominant-osa',
+    term: 'REM-Predominant / REM-Related OSA',
+    category: 'sleep-medicine',
+    aliases: ['REM-Related OSA', 'REM-Predominant Obstructive Sleep Apnea', 'REM OSA'],
+    quick:
+      'Obstructive sleep apnea in which events are concentrated in REM sleep — formally, the REM apnea–hypopnea index is at least twice the non-REM index.',
+    standard:
+      'REM-related OSA describes obstructive sleep apnea whose events cluster in REM sleep, where airway-muscle atonia makes the airway most collapsible. The common literature definition is a ratio AHI_REM / AHI_NREM ≥ 2 with AHI_NREM > 0, where AHI_REM and AHI_NREM are the apnea–hypopnea indices computed within REM and within non-REM time respectively. A stricter "REM-predominant" definition adds floors to avoid labelling people on the strength of a tiny amount of REM: AHI_NREM < 15, at least 30 minutes of REM sleep, and at least 15 minutes of NREM sleep. The pattern matters because REM events are often longer and cause deeper desaturations, and REM lengthens toward morning, so the worst breathing can fall in the hours before waking.',
+    detailed:
+      'Definitions vary across the literature, which is itself a caveat. The widely used criterion is AHI_REM / AHI_NREM ≥ 2 (with AHI_NREM > 0); Conwell et al. (2012) and Koo et al. (2008) add the more conservative requirements AHI_NREM < 15/h, REM duration ≥ 30 min, and NREM duration ≥ 15 min so the ratio is not driven by a sliver of REM or by near-zero NREM denominators (Mokhlesi & Punjabi 2012 discuss why the denominator floors matter). CPAP Analyzer computes AHI_REM and AHI_NREM by partitioning machine-scored events into REM and non-REM time using the imported wearable hypnogram, reports the ratio, and flags whether the literature floors are met. It also offers an across-nights Wilcoxon signed-rank test of paired AHI_REM versus AHI_NREM to ask whether the REM excess is consistent rather than a one-night artifact. Two strong caveats apply: (1) the diagnostic literature is built on EEG-staged PSG, whereas these stages come from a consumer wearable, so the REM/NREM split is approximate; and (2) device AHI is flow-only and leak-sensitive. Read a REM-predominant pattern as a candidate finding to discuss with a clinician, not a diagnosis. CPAP Analyzer does not diagnose.',
+    uncertainty:
+      'The REM/NREM apnea split is doubly uncertain here: it multiplies the approximate nature of wearable sleep staging (no EEG; REM boundaries are inferred and worse in OSA patients) by the flow-only, leak-sensitive nature of device event scoring. A small misplacement of REM boundaries can move events between the REM and NREM buckets and swing the ratio across the 2.0 line, and short REM time makes AHI_REM noisy. Treat the ratio as a trend across several nights with adequate REM, weight low-leak nights, and confirm the literature floors before reading the label; bring a persistent pattern to your clinician.',
+    relatedTerms: ['rem-sleep', 'sleep-stage', 'ahi', 'osa', 'cvhr', 'wilcoxon-signed-rank'],
+    references: [
+      'Conwell, W., Patel, B., Doeing, D., et al. (2012). Prevalence, clinical features, and CPAP adherence in REM-related sleep-disordered breathing: a cross-sectional analysis of a large clinical population. Sleep and Breathing, 16(2), 519–526. DOI: 10.1007/s11325-011-0537-6.',
+      'Koo, B. B., Patel, S. R., Strohl, K., & Hoffstein, V. (2008). Rapid eye movement-related sleep-disordered breathing: influence of age and gender. Chest, 134(6), 1156–1161. DOI: 10.1378/chest.08-1311.',
+      'Mokhlesi, B., & Punjabi, N. M. (2012). "REM-related" obstructive sleep apnea: an epiphenomenon or a clinically important entity? Sleep, 35(1), 5–7. DOI: 10.5665/sleep.1570. — On denominator floors and the clinical significance of the REM/NREM ratio.',
+    ],
+  },
+  {
+    id: 'cvhr',
+    term: 'CVHR (Cyclic Variation of Heart Rate)',
+    category: 'sleep-medicine',
+    aliases: ['Cyclic Variation of Heart Rate'],
+    quick:
+      'The repetitive bradycardia-then-tachycardia swing in heart rate that accompanies each apnea/hypopnea cycle, driven by autonomic arousal.',
+    standard:
+      'Cyclic variation of heart rate (CVHR) is the characteristic heart-rate signature of sleep-disordered breathing first described by Guilleminault et al. (1984): during an apnea the heart rate tends to slow (bradycardia), then surges upward (tachycardia) at event termination as the arousal and resumption of breathing trigger a burst of sympathetic activity. Averaging the heart rate around many events (an event-triggered average) reveals this dip-then-surge pattern even when individual events are noisy. The size of the post-event tachycardia surge reflects the strength of the autonomic (sympathetic) arousal that each event provokes — larger surges indicate more cardiovascular stress per event.',
+    detailed:
+      'CVHR arises from the autonomic response to repetitive apneas: apnea-related hypoxia and the cessation of the inhibitory lung-stretch reflex favor vagal (parasympathetic) bradycardia during the event, and arousal with breathing resumption produces a sympathetic surge and tachycardia at termination. CPAP Analyzer estimates CVHR by computing an event-triggered average of the imported wearable intraday heart rate, aligning each respiratory event to a common time origin and averaging the heart-rate trace in a window around it; the resulting curve shows the typical peri-event bradycardia–tachycardia excursion and the magnitude of the surge. Because the heart rate comes from a wrist or ring photoplethysmographic (PPG) sensor sampled at roughly a 5-second cadence with smoothing and latency, the timing and amplitude of the surge are approximate — the pattern is informative, the exact beat-to-beat dynamics are not resolved as they would be from an ECG. CVHR has been studied as a screening signal for sleep apnea from heart rate alone; here it is a descriptive overlay on event analysis, reported for information. CPAP Analyzer does not diagnose.',
+    relatedTerms: ['arousal', 'rem-sleep', 'sleep-stage', 'ahi', 'desaturation'],
+    references: [
+      'Guilleminault, C., Connolly, S., Winkle, R., Melvin, K., & Tilkian, A. (1984). Cyclical variation of the heart rate in sleep apnoea syndrome. The Lancet, 1(8369), 126–131. DOI: 10.1016/S0140-6736(84)90062-X. — Original description of cyclic heart-rate variation in sleep apnea.',
     ],
   },
 
@@ -816,6 +910,51 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['median', 'standard-deviation'],
   },
   {
+    id: 'interquartile-range',
+    term: 'IQR (Interquartile Range)',
+    category: 'statistics',
+    aliases: ['Interquartile Range', 'IQR'],
+    quick:
+      'The spread of the middle 50% of values — the 75th percentile minus the 25th percentile (P75 − P25).',
+    standard:
+      'The interquartile range is the distance between the first quartile (P25) and the third quartile (P75), so it describes the spread of the central half of the data while ignoring the extreme quarter at each end. Because it is built from percentiles, the IQR is robust: a few extreme samples — a cough, a brief mask-off spike — do not change it, whereas they would inflate the standard deviation. It is the natural spread measure to read alongside the median, and the two together summarise a skewed distribution far better than a mean ± SD pair.',
+    detailed:
+      'IQR = P75 − P25, the width of the box in a box plot. Robustness: the IQR has a breakdown point of 0.25, meaning up to a quarter of the data can be arbitrarily corrupted without changing it — far more resistant to outliers than the standard deviation, whose breakdown point is 0. For a normal distribution IQR ≈ 1.349 σ, so the two convey similar information when the data are symmetric and well-behaved; they diverge precisely when the distribution is skewed or spike-prone, which is the common case for CPAP signals such as leak. The IQR also underlies Tukey’s outlier fences (values below P25 − 1.5·IQR or above P75 + 1.5·IQR). In the signal viewer’s Measure overlay, the IQR is offered as the spike-robust companion to the standard deviation in the Variability mode.',
+    formula: '\\text{IQR} = P_{75} - P_{25}',
+    relatedTerms: ['percentile', 'median', 'standard-deviation', 'outlier'],
+    references: [
+      'Tukey, J. W. (1977). Exploratory Data Analysis. Reading, MA: Addison-Wesley. — Quartiles, the box plot, and the 1.5·IQR outlier fences.',
+    ],
+  },
+  {
+    id: 'coefficient-of-variation',
+    term: 'CV (Coefficient of Variation)',
+    category: 'statistics',
+    aliases: ['Coefficient of Variation', 'Relative Standard Deviation', 'RSD'],
+    quick:
+      'The standard deviation expressed as a fraction of the mean — a unitless, scale-free measure of relative variability, usually shown as a percentage.',
+    standard:
+      'The coefficient of variation divides the standard deviation by the mean, so it answers "how big is the scatter relative to the typical value?" rather than "how big is the scatter in absolute units?". Because it is dimensionless, it lets you compare the relative stability of signals measured on completely different scales and units — for example whether your pressure is more or less variable, in proportional terms, than your respiratory rate. It is conventionally reported as a percentage (CV × 100%). The CV is only meaningful for ratio-scale signals with a true, meaningful zero and a mean comfortably away from zero.',
+    detailed:
+      'CV = σ / |μ| (sample form: s / |x̄|), usually multiplied by 100 to give a percent. Interpretation: a CV of 10% means the standard deviation is one-tenth of the mean. The CV is undefined or unstable when the mean approaches zero — the ratio blows up and tiny changes in the mean swing it wildly — and it is meaningless for interval-scale signals whose zero is an arbitrary offset rather than a true absence. For this reason CPAP Analyzer suppresses the CV (showing a dash) for zero-mean signals such as raw flow, which is held symmetric about zero so its mean is near zero by construction, and for SpO₂, whose 0–100% scale makes a percent-of-mean figure clinically meaningless (saturation never approaches zero, and proportional variation around ~95% is not a useful quantity). Where it does apply — leak, pressure, tidal volume, minute ventilation, respiratory rate, pulse rate — the CV is a compact way to compare relative steadiness across lanes. It is not a probability or a clinical threshold; it is a descriptive ratio.',
+    formula: 'CV = \\frac{\\sigma}{|\\mu|} \\times 100\\%',
+    relatedTerms: ['standard-deviation', 'mean'],
+  },
+  {
+    id: 'coefficient-of-determination',
+    term: 'R² (Coefficient of Determination)',
+    category: 'statistics',
+    aliases: ['Coefficient of Determination', 'R-squared', 'R2'],
+    quick:
+      'The fraction of a signal’s variation that a fitted line explains — from 0 (the line explains nothing) to 1 (the line passes through every point).',
+    standard:
+      'R² measures how well a straight-line fit accounts for the variation in the data. It ranges from 0 to 1: an R² near 1 means almost all the up-and-down movement falls on the fitted line (a clean, real trend), while an R² near 0 means the line explains almost none of the movement (the points scatter around it as noise). R² is what tells you whether a slope is trustworthy: a steep slope with a low R² is dominated by noise and should not be read as a genuine trend, whereas a modest slope with a high R² is a reliable direction.',
+    detailed:
+      'R² = 1 − SS_res / SS_tot, where SS_res is the sum of squared residuals about the fitted line and SS_tot is the total sum of squared deviations about the mean. Equivalently, for simple linear regression, R² is the square of the Pearson correlation between the predictor and the response. Properties and caveats: R² never decreases when predictors are added, so it is only a fair goodness-of-fit summary for a fixed model; it says nothing about whether the linear form is correct (a curved relationship can have low R² despite being perfectly deterministic), and it is sensitive to the range of the data. In the signal viewer’s Measure overlay, R² accompanies the per-minute slope in the Trend mode specifically as a "is this trend real or just noise?" guard: a high |slope| with low R² is flagged, in effect, as untrustworthy. R² is a descriptive measure of fit, not a significance test.',
+    formula: 'R^2 = 1 - \\frac{\\sum_i (y_i - \\hat{y}_i)^2}{\\sum_i (y_i - \\bar{y})^2}',
+    relatedTerms: ['regression', 'trend', 'correlation'],
+  },
+  {
     id: 'p-value',
     term: 'P-value',
     category: 'statistics',
@@ -845,6 +984,40 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
       'Spearman, C. (1904). The proof and measurement of association between two things. American Journal of Psychology, 15(1), 72–101. DOI: 10.2307/1412159.',
       'Cohen, J. (1988). Statistical Power Analysis for the Behavioral Sciences (2nd ed.). Hillsdale, NJ: Lawrence Erlbaum. — Effect-size benchmarks (r: .1/.3/.5 = small/medium/large).',
       'Schober, P., Boer, C., & Schwarte, L. A. (2018). Correlation coefficients: appropriate use and interpretation. Anesthesia & Analgesia, 126(5), 1763–1768. DOI: 10.1213/ANE.0000000000002864. — Notes that correlation-strength cutoffs are inherently arbitrary.',
+    ],
+  },
+  {
+    id: 'chi-square-gof',
+    term: 'Chi-Square Goodness-of-Fit Test',
+    category: 'statistics',
+    aliases: ['Chi-Squared Goodness-of-Fit', 'χ² Goodness-of-Fit', 'Pearson Chi-Square'],
+    quick:
+      'A test of whether observed category counts differ from the counts expected under a baseline model — used to ask if events are unevenly distributed across sleep stages.',
+    standard:
+      'The chi-square (χ²) goodness-of-fit test compares a set of observed counts across categories with the counts you would expect if a null model were true. In sleep-stage analysis the categories are the sleep stages, the observed counts are the respiratory events scored in each stage, and the expected counts are proportional to the time spent in each stage — so the null hypothesis is "events occur at the same rate per hour in every stage." A large χ² statistic, and a correspondingly small p-value, indicates the event rate differs across stages by more than time-in-stage alone would predict (for example, an excess of events in REM). The test answers whether a difference exists; it does not say which stage drives it or how large the effect is.',
+    detailed:
+      "The statistic is χ² = Σ (Oᵢ − Eᵢ)² / Eᵢ, summed over the k categories, where Oᵢ is the observed count in category i and Eᵢ is its expected count under the null. For stage analysis, Eᵢ = N_total × (time in stage i / total staged time), so events are expected in proportion to time in each stage. Under the null the statistic follows a χ² distribution with df = k − 1 degrees of freedom (one fewer than the number of categories, because the totals are fixed). Reading the result: a larger χ² means observed counts depart further from expectation; the p-value is the probability of a χ² at least that large under the null, so p < 0.05 is the usual flag that the per-stage event rates genuinely differ. Cochran's rule is the key validity caveat: the χ² approximation is unreliable when expected counts are small — the common guideline is that all expected counts should be ≥ 5 (or at least no more than ~20% of cells below 5). A short night, or a stage with very little time, can therefore produce too few expected events for the test to be trustworthy; CPAP Analyzer flags this rather than reporting a spurious p-value. The test is also an omnibus test — it detects that some stage differs but not which one — and, like all the analyses here, it rests on wearable-derived stage labels, so a significant result is a lead to interpret with the hypnogram, not a diagnosis.",
+    formula: '\\chi^2 = \\sum_{i=1}^{k} \\frac{(O_i - E_i)^2}{E_i}, \\quad \\mathrm{df} = k - 1',
+    relatedTerms: ['p-value', 'sleep-stage', 'rem-predominant-osa', 'statistical-significance'],
+    references: [
+      'Pearson, K. (1900). On the criterion that a given system of deviations from the probable in the case of a correlated system of variables is such that it can be reasonably supposed to have arisen from random sampling. Philosophical Magazine, Series 5, 50(302), 157–175. DOI: 10.1080/14786440009463897. — Original chi-square goodness-of-fit statistic.',
+      'Cochran, W. G. (1954). Some methods for strengthening the common χ² tests. Biometrics, 10(4), 417–451. DOI: 10.2307/3001616. — The expected-count (≥ 5) rule for χ² validity.',
+    ],
+  },
+  {
+    id: 'wilcoxon-signed-rank',
+    term: 'Wilcoxon Signed-Rank Test',
+    category: 'statistics',
+    aliases: ['Wilcoxon Signed-Rank', 'Signed-Rank Test'],
+    quick:
+      'A non-parametric paired test of whether two matched measurements differ — used here to compare REM and non-REM AHI across nights.',
+    standard:
+      "The Wilcoxon signed-rank test is the rank-based (non-parametric) counterpart of the paired t-test. It asks whether the differences between two paired measurements are systematically positive or negative, without assuming the differences are normally distributed — which suits skewed quantities like AHI. In sleep-stage analysis it compares each night's AHI_REM with the same night's AHI_NREM (a natural pairing), testing whether the REM excess is consistent across nights rather than a one-night fluke. A small p-value indicates a reliable paired difference in the direction observed.",
+    detailed:
+      "The test ranks the absolute values of the paired differences dᵢ = xᵢ − yᵢ (dropping zeros), attaches the sign of each difference to its rank, and sums the positive-signed ranks to form the statistic W; under the null hypothesis of no systematic difference, positive and negative ranks balance and W has a known sampling distribution (a normal approximation with a continuity correction is used for larger n). It assumes only that the paired differences are symmetric about their median, making it robust to the right-skew and outliers common in nightly AHI data, where a paired t-test's normality assumption would be questionable. CPAP Analyzer uses it for the across-nights comparison of AHI_REM versus AHI_NREM that underpins the REM-predominant-OSA view; it requires enough paired nights (nights with both REM and NREM events scored) to be meaningful, and it reports a difference in central tendency, not its magnitude or clinical importance. As with every analysis built on wearable staging, a significant result is a candidate pattern to discuss with a clinician, not a diagnosis.",
+    relatedTerms: ['p-value', 'rem-predominant-osa', 'median', 'statistical-significance'],
+    references: [
+      'Wilcoxon, F. (1945). Individual comparisons by ranking methods. Biometrics Bulletin, 1(6), 80–83. DOI: 10.2307/3001968. — The signed-rank test for paired samples.',
     ],
   },
   {
@@ -1123,6 +1296,48 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['edf', 'usage-hours'],
   },
   {
+    id: 'persistent-storage',
+    term: 'Persistent Storage (Storage Eviction)',
+    category: 'data',
+    aliases: ['Persistent Storage', 'Storage Eviction', 'Best-Effort Storage', 'Data Persistence'],
+    quick:
+      'A browser guarantee that your locally stored data will not be silently discarded to reclaim disk space.',
+    standard:
+      'Browsers keep site data (IndexedDB, OPFS, and similar) in one of two modes. The default is "best-effort": the browser may automatically evict — silently delete — that data when the device is low on disk space, when the browser is told to clear data on exit, or during routine cleanup, which can wipe out your imported history. "Persistent" storage opts out of that automatic eviction, so the browser will not discard your data to free space. CPAP Analyzer requests persistent storage at startup; the Settings → Privacy & Storage → Storage Usage panel shows whether the request was granted ("Protected") or not ("Not protected"), with a "Protect my data" button to ask again. Requesting persistence is entirely local — it sends nothing anywhere.',
+    detailed:
+      'Per the Storage Standard, an origin\'s storage bucket has a persistence mode of either "best-effort" (the default, evictable) or "persistent" (not evictable under storage pressure). An app moves to persistent mode by calling navigator.storage.persist(); the browser returns whether the grant succeeded. Chrome, in particular, does not grant persistence on request alone — it applies a heuristic based on engagement signals: whether the site is bookmarked, whether it has been installed (added to the home screen / installed as a PWA), whether it has been granted notification permission, and how frequently and recently you use it. So a brand-new visit may legitimately be denied. If persistence is "Not protected," the practical mitigations are: (1) bookmark or install CPAP Analyzer and use it regularly, which over time satisfies Chrome\'s heuristic so a later request is granted; and (2) export your data periodically to a file as an independent backup, since an export is a snapshot you control regardless of what the browser does with its cache. Note that persistence protects against *automatic* eviction only — it does not stop you, or a manual "clear browsing data" action, from deleting the data yourself, and it is scoped to the current browser profile on the current device. CPAP Analyzer also hardens the database connection so that if the browser force-closes it (which can otherwise surface as a "database connection is closing" error mid-session), the app reconnects rather than failing. None of this involves the network: persistence is a request to your own browser, and your therapy data never leaves the device.',
+    relatedTerms: ['session', 'edf', 'downsampling'],
+    references: [
+      'WHATWG Storage Standard — Persistence. https://storage.spec.whatwg.org/ — Defines best-effort vs. persistent storage buckets and the navigator.storage.persist() grant.',
+    ],
+  },
+  {
+    id: 'background-import',
+    term: 'Background Import',
+    category: 'data',
+    aliases: ['Background Import Indicator', 'Import Progress Pill'],
+    quick:
+      'An import that keeps running while you use the rest of the app, shown by a persistent progress indicator.',
+    standard:
+      'A background import runs without holding you on the import screen. After you start it, you can navigate anywhere in CPAP Analyzer while the import continues, tracked by a small progress pill at the bottom-left of every screen. Expanding the pill shows each stage of the import and its state, lets you cancel, and a toast announces completion. All work remains client-side; nothing is uploaded.',
+    detailed:
+      "Because CPAP Analyzer is entirely client-side, an import is driven inside the browser tab rather than by a server-side job. The background-import design moves the import's control loop off any single view so it survives navigation between views, and surfaces a single, app-wide progress indicator (the bottom-left pill, expandable to a detail panel with per-stage state and a Cancel button, plus a completion toast). Progress is multi-stage: a CPAP SD-card import reports scanning → parsing → building sessions → storing, and a Google Health (Fitbit) import reports scanning → a determinate sub-progress row per discovered data type. Results are written durably and incrementally, so cancelling, or closing the tab mid-import, never corrupts data — already-stored nights and records remain valid, and re-importing resumes by skipping duplicates. The indicator is keyboard-accessible and announces progress to assistive technology through a polite ARIA live region.",
+    relatedTerms: ['session', 'intraday', 'edf'],
+  },
+  {
+    id: 'intraday',
+    term: 'Intraday',
+    category: 'data',
+    aliases: ['Intraday Data', 'Intraday Series'],
+    quick:
+      'High-resolution, within-day samples (e.g. heart rate every few seconds) rather than a single daily summary value.',
+    standard:
+      'Intraday data is recorded many times across a single day, preserving how a value changes through the day and night, rather than collapsing it to one daily number. In a Google Health (Fitbit) export, intraday heart rate is sampled roughly every 5 seconds, and SpO\\u2082, HRV, and snoring also carry intraday detail. CPAP Analyzer imports these full-resolution series so wearable signals can be overlaid against your CPAP airflow within the same night.',
+    detailed:
+      '"Intraday" distinguishes a within-day time series from a daily summary: a daily resting heart rate is one number per day, whereas intraday heart rate is a dense series (~5-second cadence) showing the shape of your heart rate across the night. These series are large — intraday heart rate alone is on the order of 0.4–0.6 MB per day — which is why their import runs off the main thread (in Web Workers) with granular, determinate progress, so the interface stays responsive during a big wearable import. Full resolution is retained on purpose: it preserves short-timescale features (for example, the cyclic variation of heart rate around respiratory events) that a daily summary would erase. All parsing and storage are client-side; nothing leaves your browser.',
+    relatedTerms: ['background-import', 'sample-rate', 'signal'],
+  },
+  {
     id: 'signal',
     term: 'Signal',
     category: 'data',
@@ -1186,6 +1401,293 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     relatedTerms: ['downsampling', 'sample-rate'],
     references: [
       'Steinarsson, S. (2013). Downsampling time series for visual representation (MSc thesis). University of Iceland.',
+    ],
+  },
+
+  // ─── WEATHER & ENVIRONMENT ──────────────────────────────────────────
+
+  {
+    id: 'barometric-pressure',
+    term: 'Barometric Pressure (Atmospheric Pressure)',
+    category: 'data',
+    aliases: ['Atmospheric Pressure', 'Air Pressure', 'Mean Sea-Level Pressure', 'MSLP'],
+    quick:
+      'The weight of the atmosphere pressing on a location, reported in hectopascals (hPa) or inches of mercury (inHg); its swings are the headline weather variable correlated against apnea and central events.',
+    standard:
+      'Barometric (atmospheric) pressure is the force per unit area exerted by the column of air above a point. The Weather & Environment integration reports it as mean sea-level pressure so values are comparable across elevations, in hectopascals (hPa; 1 hPa = 1 millibar) or inches of mercury (inHg) per your unit preference, with a typical sea-level value near 1013 hPa (29.92 inHg). For a recorded night it is summarized as the overnight mean over the [sleep start, sleep end) window. Pressure is treated as the headline environmental variable because changes in ambient pressure can plausibly modify sleep-disordered breathing — a passing weather system (a falling barometer) is a candidate driver of a worse night.',
+    detailed:
+      'Standard atmosphere is 1013.25 hPa = 29.92 inHg = 760 mmHg. Open-Meteo reports both surface pressure (at the station altitude) and mean sea-level pressure (MSLP, altitude-normalized); the integration uses MSLP as the headline series so day-to-day swings are not confounded by elevation. Conversion: 1 hPa = 0.02953 inHg; 1 inHg = 33.864 hPa. Why pressure may matter for sleep-disordered breathing: ambient pressure sets the partial pressures of the gases already in the lungs, and the respiratory control system regulates breathing against CO₂ and O₂ chemoreflexes whose behaviour (loop gain) is sensitive to those partial pressures and to how quickly they change. A drop in ambient pressure, like a passing low-pressure weather system or a gain in altitude, can shift the balance between obstructive and central events — most relevantly by raising loop gain and thereby the tendency toward central / periodic breathing. Because a weather system can change pressure a day before it changes your night, the effect is often best examined with lagged cross-correlation (comparing pressure on day t against events on day t or t+1) rather than a same-day correlation. This is an association to explore, not an established mechanism in any individual; CPAP Analyzer does not diagnose.',
+    relatedTerms: [
+      'dewpoint',
+      'relative-humidity',
+      'overnight-window',
+      'loop-gain',
+      'central-apnea',
+    ],
+    references: [
+      'World Meteorological Organization (2018). Guide to Instruments and Methods of Observation (WMO-No. 8), Volume I: Measurement of Meteorological Variables. — Definitions of station and mean-sea-level pressure and standard units.',
+      'White, D. P. (2005). Pathogenesis of obstructive and central sleep apnea. American Journal of Respiratory and Critical Care Medicine, 172(11), 1363–1370. DOI: 10.1164/rccm.200412-1631SO. — Loop gain and the chemoreflex control of breathing underlying the obstructive/central balance.',
+    ],
+  },
+  {
+    id: 'relative-humidity',
+    term: 'Relative Humidity',
+    category: 'data',
+    aliases: ['Humidity', 'RH'],
+    quick:
+      'The amount of water vapour in the air expressed as a percentage of the maximum the air can hold at its current temperature (0–100%).',
+    standard:
+      'Relative humidity (RH) is the ratio of the actual water-vapour content of the air to the saturation content at the same temperature, reported as a percentage from 0% (bone dry) to 100% (saturated, where dew or fog forms). Because the saturation capacity rises steeply with temperature, the same absolute amount of moisture gives a high RH on a cold night and a lower RH on a warm one — so RH alone can be misleading about how "moist" the air feels (see Dewpoint for a temperature-independent measure). The Weather & Environment integration reports RH as the overnight mean over the [sleep start, sleep end) window. Ambient humidity is offered as secondary context for nasal congestion and comfort; it is not a headline therapy driver.',
+    detailed:
+      "RH = (e / e_s(T)) × 100%, where e is the actual vapour pressure and e_s(T) is the saturation vapour pressure at air temperature T. Saturation vapour pressure follows the Clausius–Clapeyron relation, roughly doubling for every ~10 °C rise, which is why RH and dewpoint diverge: dewpoint tracks the absolute moisture content directly, whereas RH is that content normalized by a temperature-dependent ceiling. For interpreting therapy, dewpoint is usually the more stable companion variable because it is not confounded by overnight temperature swings. Note that ambient (room) humidity is distinct from the humidity your CPAP delivers, which is set by the machine's heated humidifier; the integration measures outdoor ambient conditions at your rounded coordinates, not the air at the mask. Read RH as comfort/context, not as a measured property of your delivered therapy.",
+    relatedTerms: ['dewpoint', 'barometric-pressure', 'overnight-window'],
+    references: [
+      'World Meteorological Organization (2018). Guide to Instruments and Methods of Observation (WMO-No. 8), Volume I. — Definitions of relative humidity and dewpoint.',
+      'Lawrence, M. G. (2005). The relationship between relative humidity and the dewpoint temperature in moist air: A simple conversion and applications. Bulletin of the American Meteorological Society, 86(2), 225–233. DOI: 10.1175/BAMS-86-2-225.',
+    ],
+  },
+  {
+    id: 'dewpoint',
+    term: 'Dewpoint',
+    category: 'data',
+    aliases: ['Dew Point', 'Dew-Point Temperature'],
+    quick:
+      'The temperature to which air must be cooled (at constant pressure) for its water vapour to saturate and condense; a temperature-independent measure of how moist the air actually is.',
+    standard:
+      'Dewpoint is the temperature at which the air, cooled at constant pressure, would reach 100% relative humidity and begin to condense. Unlike relative humidity, dewpoint reflects the absolute moisture content of the air directly and does not change as the air warms or cools through the night, which makes it a more stable companion variable for correlation. It is reported in °C or °F per your unit preference and, for a recorded night, summarized as the overnight mean over the [sleep start, sleep end) window. A higher dewpoint means muggier, more moisture-laden air; a low dewpoint means dry air. As a rule of thumb, dewpoints below ~10 °C feel dry, ~10–16 °C comfortable, and above ~18 °C distinctly humid.',
+    detailed:
+      'Dewpoint T_d is defined implicitly by e_s(T_d) = e, where e is the actual vapour pressure and e_s is the saturation vapour pressure; equivalently it is the temperature at which RH would equal 100%. Because e is a property of the air mass and changes only when moisture is added or removed, dewpoint is conserved as the air is heated or cooled — the reason it is preferred over RH when you want a single number for "how much water is in the air" across a night with swinging temperature. Dewpoint is always less than or equal to the air temperature; the gap between them (the dewpoint depression) is small when the air is near saturation and large when it is dry. The integration provides dewpoint as secondary, non-judgemental context (its dashboard trend is neutral — there is no universally "better" direction); it is offered for comfort and congestion correlation, not as a clinical metric.',
+    relatedTerms: ['relative-humidity', 'barometric-pressure', 'overnight-window'],
+    references: [
+      'Lawrence, M. G. (2005). The relationship between relative humidity and the dewpoint temperature in moist air: A simple conversion and applications. Bulletin of the American Meteorological Society, 86(2), 225–233. DOI: 10.1175/BAMS-86-2-225.',
+      'World Meteorological Organization (2018). Guide to Instruments and Methods of Observation (WMO-No. 8), Volume I. — Dewpoint definition and measurement.',
+    ],
+  },
+  {
+    id: 'aqi',
+    term: 'AQI (Air Quality Index)',
+    category: 'data',
+    aliases: ['Air Quality Index', 'US AQI', 'European AQI', 'EAQI'],
+    quick:
+      'A unitless 0-up index that compresses several pollutant concentrations into one ranked, plain-language air-quality category (e.g. Good, Moderate, Unhealthy); the app shows both the US and the European scheme.',
+    standard:
+      'The Air Quality Index (AQI) translates measured pollutant concentrations — PM2.5, PM10, ozone (O₃), nitrogen dioxide (NO₂) and others — into a single dimensionless number and a ranked category word, so that "the air today" can be read at a glance. The Weather & Environment integration surfaces two parallel schemes because they differ in scale and labels: the US AQI (a 0–500 scale with six categories, where the overall value is driven by whichever pollutant is worst) and the European AQI (EAQI, a six-band scheme from Good to Extremely Poor). Lower is better in both. Because AQI is the one environmental metric with a clear "good" direction, it is the only weather tile whose trend is shown as favourable/unfavourable rather than neutral, and its severity is always conveyed by the category word and the number and a hatch pattern — never colour alone.',
+    detailed:
+      'US AQI is a piecewise-linear transform: for each pollutant, the measured concentration is mapped onto a 0–500 index via published breakpoint tables, and the reported AQI is the maximum across pollutants (the "dominant pollutant" sets the value). Its six categories are Good (0–50), Moderate (51–100), Unhealthy for Sensitive Groups (101–150), Unhealthy (151–200), Very Unhealthy (201–300), and Hazardous (301–500). The European AQI is computed differently — each pollutant is binned into one of six bands (Good, Fair, Moderate, Poor, Very Poor, Extremely Poor) and the overall index is the worst band among the pollutants — so the same air can read as a different word under each scheme; that is expected, and the app labels which scheme a value belongs to. AQI is unitless by construction (it is an index, not a concentration). The integration computes the overnight AQI statistic from the provider\'s hourly values over the [sleep start, sleep end) window, and stores air quality only where the provider has data — air-quality history is shallow and region-dependent, so older or non-European nights may legitimately show "No data available" (a dash), distinct from an error. AQI is environmental context for exploration, not a clinical measurement of your airway or your therapy.',
+    relatedTerms: ['pm2-5', 'pm10', 'ozone', 'nitrogen-dioxide', 'overnight-window'],
+    references: [
+      'United States Environmental Protection Agency (2024). Technical Assistance Document for the Reporting of Daily Air Quality — the Air Quality Index (AQI). EPA-454/B-24-002. — US AQI breakpoints and categories.',
+      'European Environment Agency. European Air Quality Index. https://www.eea.europa.eu/themes/air/air-quality-index — EAQI bands and method.',
+    ],
+  },
+  {
+    id: 'pm2-5',
+    term: 'PM2.5 (Fine Particulate Matter)',
+    category: 'data',
+    aliases: ['PM2.5', 'Fine Particulate Matter', 'Fine Particles'],
+    quick:
+      'Airborne particles 2.5 micrometres in diameter or smaller, reported in micrograms per cubic metre (µg/m³); small enough to reach deep into the lungs.',
+    standard:
+      'PM2.5 is the mass concentration of airborne particulate matter with an aerodynamic diameter of 2.5 micrometres (µm) or less, reported in micrograms per cubic metre of air (µg/m³). These fine particles — from combustion, traffic, wildfire smoke, and secondary chemistry — are small enough to penetrate deep into the respiratory tract and are the pollutant most consistently linked to respiratory and cardiovascular health effects. PM2.5 is one of the primary inputs to the AQI. The integration summarizes it as the overnight statistic over the [sleep start, sleep end) window and offers it as environmental context to correlate against your therapy.',
+    detailed:
+      'PM2.5 is defined by a size-selective sampling convention (particles with a 50% cut-point at 2.5 µm aerodynamic diameter), reported as a mass concentration in µg/m³. For orientation, the WHO 2021 air-quality guideline sets the 24-hour PM2.5 limit at 15 µg/m³ and the annual limit at 5 µg/m³; values during wildfire smoke episodes can reach hundreds of µg/m³. Because PM2.5 deposits in the small airways and alveoli, it is the dominant driver of the health-protective AQI on many days. Within this tool PM2.5 is descriptive context drawn from a third-party model at your rounded coordinates — a regional estimate, not a measurement at your bedside — and is provided to support exploratory correlation, not clinical assessment. Its history in the air-quality archive is shallow and region-dependent, so older nights may have no value.',
+    relatedTerms: ['pm10', 'aqi', 'ozone', 'nitrogen-dioxide', 'overnight-window'],
+    references: [
+      'World Health Organization (2021). WHO global air quality guidelines: particulate matter (PM2.5 and PM10), ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — PM2.5 definition and guideline limits.',
+    ],
+  },
+  {
+    id: 'pm10',
+    term: 'PM10 (Coarse Particulate Matter)',
+    category: 'data',
+    aliases: ['PM10', 'Coarse Particulate Matter', 'Inhalable Particles'],
+    quick:
+      'Airborne particles 10 micrometres in diameter or smaller, reported in micrograms per cubic metre (µg/m³); inhalable, and includes dust and pollen fragments as well as the finer PM2.5.',
+    standard:
+      'PM10 is the mass concentration of airborne particulate matter with an aerodynamic diameter of 10 micrometres or less, in micrograms per cubic metre (µg/m³). It is the broader "inhalable" fraction: by definition it includes all of PM2.5 plus the coarser particles between 2.5 and 10 µm, such as wind-blown dust, road dust, and fragments of pollen and mould. PM10 is an AQI input and is summarized over the overnight [sleep start, sleep end) window. Like the other pollutants it is provided as environmental context, not a clinical measurement.',
+    detailed:
+      'PM10 uses a size-selective convention with a 50% cut-point at 10 µm aerodynamic diameter and is reported in µg/m³; it is a superset of PM2.5, so PM10 ≥ PM2.5 always. The coarse fraction (PM10 minus PM2.5, sometimes written PM10–2.5) deposits higher in the airways than fine particles. WHO 2021 guideline limits are 45 µg/m³ over 24 hours and 15 µg/m³ annually. Note that the coarse fraction can include pollen fragments, but PM10 is not a pollen count and the app does not surface pollen as a separate metric (pollen has no historical archive and is deferred). As with all air-quality variables here, PM10 is a regional model estimate at your rounded coordinates intended for exploratory correlation, with shallow, region-dependent history that may legitimately read "No data available" for older or non-European nights.',
+    relatedTerms: ['pm2-5', 'aqi', 'ozone', 'nitrogen-dioxide', 'overnight-window'],
+    references: [
+      'World Health Organization (2021). WHO global air quality guidelines: particulate matter (PM2.5 and PM10), ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — PM10 definition and guideline limits.',
+    ],
+  },
+  {
+    id: 'ozone',
+    term: 'Ozone (O₃)',
+    category: 'data',
+    aliases: ['O3', 'O₃', 'Ground-Level Ozone', 'Tropospheric Ozone'],
+    quick:
+      'A reactive gas (O₃) formed near the ground by sunlight acting on traffic and industrial emissions; a respiratory irritant, reported in micrograms per cubic metre (µg/m³).',
+    standard:
+      'Ozone (O₃) at ground level is a secondary pollutant: it is not emitted directly but forms when sunlight drives chemical reactions among nitrogen oxides and volatile organic compounds from traffic, industry, and solvents. (This tropospheric ozone is distinct from the protective stratospheric ozone layer high above.) It is a strong respiratory irritant that peaks on hot, sunny afternoons and is one of the pollutants feeding the AQI. The integration reports it in micrograms per cubic metre (µg/m³), summarized over the overnight [sleep start, sleep end) window, as environmental context.',
+    detailed:
+      'Ground-level O₃ is produced photochemically (NOₓ + VOCs + sunlight), so its concentration has a strong diurnal and seasonal cycle, typically highest in the afternoon and in warm months, and lowest overnight — which is worth bearing in mind when reading an overnight ozone summary, since the nocturnal window often captures ozone near its daily minimum. Open-Meteo reports O₃ as a mass concentration in µg/m³ (regulatory limits are sometimes expressed instead as a maximum daily 8-hour mean; the WHO 2021 guideline peak-season limit is 60 µg/m³ and the short-term 8-hour limit 100 µg/m³). As a respiratory irritant ozone is biologically plausible context for airway symptoms, but within this tool it is a regional model estimate for exploratory correlation only, not a clinical measurement, with shallow and region-dependent history.',
+    relatedTerms: ['nitrogen-dioxide', 'pm2-5', 'pm10', 'aqi', 'overnight-window'],
+    references: [
+      'World Health Organization (2021). WHO global air quality guidelines: particulate matter, ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — Ozone definition, formation, and guideline limits.',
+    ],
+  },
+  {
+    id: 'nitrogen-dioxide',
+    term: 'Nitrogen Dioxide (NO₂)',
+    category: 'data',
+    aliases: ['NO2', 'NO₂'],
+    quick:
+      'A reddish-brown gas (NO₂) from combustion — chiefly traffic — that irritates the airways and is a marker of urban/traffic pollution, reported in micrograms per cubic metre (µg/m³).',
+    standard:
+      'Nitrogen dioxide (NO₂) is a combustion by-product, emitted mainly by motor vehicles and other fuel burning, and is a useful marker of traffic-related air pollution. It is a respiratory irritant in its own right and also a precursor in the chemistry that forms ground-level ozone and fine particles. The integration reports NO₂ in micrograms per cubic metre (µg/m³), summarized over the overnight [sleep start, sleep end) window, and includes it as one of the AQI-driving pollutants offered as environmental context.',
+    detailed:
+      'NO₂ is one of the nitrogen oxides (NOₓ) produced when fuel burns at high temperature; concentrations are highest near busy roads and during traffic peaks, giving it a pronounced spatial gradient that a coarse, ~1.1 km-rounded coordinate can only partly resolve. It is reported here as a mass concentration in µg/m³; the WHO 2021 guideline sets a 24-hour limit of 25 µg/m³ and an annual limit of 10 µg/m³. NO₂ both irritates the airways directly and participates in the photochemistry that generates ozone and secondary particulate, so it tends to co-vary with those pollutants. As with every air-quality variable here, NO₂ is a third-party regional model estimate at your rounded coordinates, provided for exploratory correlation rather than clinical assessment, with shallow and region-dependent historical coverage.',
+    relatedTerms: ['ozone', 'pm2-5', 'pm10', 'aqi', 'overnight-window'],
+    references: [
+      'World Health Organization (2021). WHO global air quality guidelines: particulate matter, ozone, nitrogen dioxide, sulfur dioxide and carbon monoxide. Geneva: WHO. — NO₂ definition, sources, and guideline limits.',
+    ],
+  },
+  {
+    id: 'overnight-window',
+    term: 'Overnight Aggregation Window',
+    category: 'data',
+    aliases: ['Overnight Window', 'Overnight Aggregation', 'Sleep Window'],
+    quick:
+      'The half-open wall-clock interval [sleep start, sleep end) over which each environmental metric is reduced to one nightly number, shared identically across every weather surface.',
+    standard:
+      'The overnight aggregation window is the single, canonical time interval the Weather & Environment integration uses to turn a stream of hourly weather into one number per night. It runs from the start of the recorded night up to — but not including — its end: in interval notation [sleep start, sleep end). The interval is half-open so that the closing instant belongs to the next night\'s bucket and adjacent nights never double-count the boundary hour. The same window is used by the dashboard panel, the Signal-Viewer lanes, and the correlation surface, so a given night\'s weather reads identically everywhere rather than showing three different "last-night" values.',
+    detailed:
+      'Within the [sleep start, sleep end) window each metric is reduced by a per-metric statistic chosen to be the meaningful one for that variable, and the displayed tile names which statistic it shows: temperature is the overnight low (the minimum across the window); barometric pressure, relative humidity, and dewpoint are the overnight mean (the average across the window); wind is a representative overnight value; and air quality / AQI is the overnight statistic of the hourly index. "Wall-clock" means the interval is defined in the local civil time of the recorded night, aligned to the same local-date keying the app uses for CPAP sessions, so a weather night lines up with the correct CPAP night. A night that crosses midnight (two civil dates) is fetched for both dates and merged into one window. Knowing the exact window and statistic matters for interpretation: when you correlate "overnight pressure" against AHI, you are comparing two summaries computed over the same interval, and a value such as "temperature" is specifically the night\'s coldest point, not its average.',
+    relatedTerms: ['barometric-pressure', 'relative-humidity', 'dewpoint', 'aqi'],
+  },
+
+  // ─── AI INSIGHTS ───────────────────────────────────────────────────
+
+  {
+    id: 'ai-insights',
+    term: 'AI Insights',
+    category: 'data',
+    aliases: ['AI Summaries', 'AI narration'],
+    quick:
+      "The opt-in, off-by-default feature that uses a language model to phrase the app's already-computed metrics into plain-language summaries — it never computes or diagnoses.",
+    standard:
+      'AI Insights is an optional CPAP Analyzer feature that turns metrics the app has already calculated into a few sentences of plain-language context (a night summary, a range/trend summary, or an explanation of one metric or chart). It is built on compute-then-narrate: the deterministic analysis pipeline does all the math, and the model only puts the finished numbers into words. It is off by default, runs on one of four user-chosen backends (two fully on-device, two bring-your-own-key cloud), and never diagnoses or recommends changing therapy.',
+    detailed:
+      'AI Insights is the realisation of ADR 0024. Its load-bearing constraint is that the language model is a narrator, not a calculator: it receives a frozen, aggregate snapshot of already-computed figures and may only select among them, phrase them, and attach the app-authored caveats — it may not compute, average, re-derive, round, extrapolate, classify a severity band, or introduce any number, date, or threshold not present in the snapshot. The feature ships disabled and, while disabled, renders no UI anywhere. When enabled, the user picks a backend along a privacy/quality curve: in-browser WebLLM and Chrome built-in AI run entirely on-device (zero egress), while Claude (Anthropic) browser-direct and any OpenAI-compatible endpoint are bring-your-own-key cloud backends gated by an explicit two-gate egress consent. Correctness is protected by grounding plus a deterministic numeral-validation backstop that rejects any output containing a number the app did not compute, falling back to a templated summary. Every output carries an inseparable "AI-generated — verify against the numbers" caveat and is framed as descriptive, non-diagnostic wellness context. CPAP Analyzer is not a medical device and AI Insights does not diagnose or give medical advice.',
+    relatedTerms: [
+      'grounding',
+      'llm',
+      'on-device-llm',
+      'hallucination',
+      'webllm',
+      'chrome-built-in-ai',
+      'ai-cloud-backend',
+    ],
+    references: [
+      'CPAP Analyzer ADR 0024 — Grounded, Opt-In AI Insights via a Multi-Backend Provider Abstraction. — Defines compute-then-narrate grounding, the four-backend provider abstraction, two-gate cloud consent, and the non-diagnostic framing.',
+    ],
+  },
+  {
+    id: 'grounding',
+    term: 'Grounding (compute-then-narrate)',
+    category: 'data',
+    aliases: ['Compute-then-narrate', 'Grounded generation'],
+    quick:
+      'The design rule that the app computes every number deterministically and the language model is only allowed to phrase those finished numbers — never to calculate or invent one.',
+    standard:
+      'Grounding is the practice of constraining a language model to a fixed, already-computed set of facts rather than letting it produce numbers from its own reasoning. In CPAP Analyzer this takes the compute-then-narrate form: the deterministic analysis pipeline calculates all clinical and statistical values, hands the model a structured snapshot of those finished figures, and instructs it to reference only what is in the snapshot — quoting each value and unit exactly and never computing, converting, or introducing a number. Grounding is the accepted mitigation for two well-established weaknesses of language models: weak numeric reasoning (especially in small models) and the tendency of all models to hallucinate.',
+    detailed:
+      "Grounding works on two layers. First, the input is structured and closed-world: numeric values are sent as their rounded display strings paired with their unit, reliability tier, and availability, and the system prompt forbids the model from computing, summing, averaging, ratioing, rounding, or introducing any figure not literally present — if a needed number is absent, the model must say the information is unavailable rather than fabricate one. Second, a deterministic post-generation validator extracts every numeral from the model's prose and requires each to match an allow-list assembled mechanically from the snapshot; any unmatched number (or a value quoted with the wrong unit, or a severity/compliance verdict that disagrees with the app's own) causes a regeneration and, failing that, a fall back to a plain templated summary. The result is that fabricated figures are designed out: every number a user reads in an AI summary is, by construction, a number the app itself computed. Grounding is what lets a generative surface satisfy the project's non-negotiable Correctness principle.",
+    relatedTerms: ['ai-insights', 'llm', 'hallucination'],
+    references: [
+      'CPAP Analyzer ADR 0024 — Grounded, Opt-In AI Insights via a Multi-Backend Provider Abstraction. — The compute-then-narrate grounding decision and its rationale (LLM numeric weakness and hallucination).',
+    ],
+  },
+  {
+    id: 'llm',
+    term: 'Large Language Model (LLM)',
+    category: 'data',
+    aliases: ['LLM', 'Language model'],
+    quick:
+      'A neural-network model trained on large text corpora to generate fluent natural language; in CPAP Analyzer it only phrases your already-computed numbers, never calculates them.',
+    standard:
+      'A large language model (LLM) is a machine-learning model — typically a transformer neural network with millions to hundreds of billions of parameters — trained to predict and generate natural-language text. LLMs are good at fluent phrasing and summarisation but are not reliable calculators: they have weak numeric reasoning (more so the smaller they are) and can produce confident but false statements (hallucinations). CPAP Analyzer therefore uses an LLM strictly as a narrator of metrics the app has already computed, behind the grounding and validation guardrails that prevent it from being the source of any number.',
+    detailed:
+      "LLMs generate text by repeatedly predicting the next token given the preceding context, having learned statistical patterns of language from large corpora. Their fluency makes them well suited to turning a table of numbers into readable prose, but two properties make them unsafe as a source of clinical figures: (1) numeric/arithmetic reasoning is unreliable and degrades in smaller models, and (2) all LLMs hallucinate — they can state plausible-sounding but unfounded facts. CPAP Analyzer mitigates both by never asking the model to compute anything: the model receives finished, rounded values and is constrained — by a closed-world system prompt and a deterministic numeral-validation backstop — to restate only those values. The app can run the model in four ways: two on-device (in-browser WebLLM via WebGPU, and Chrome's built-in Gemini Nano) and two bring-your-own-key cloud APIs (Anthropic's Claude, and any OpenAI-compatible endpoint). The choice of backend trades privacy against phrasing quality; the grounding guarantee is identical across all of them.",
+    relatedTerms: ['ai-insights', 'grounding', 'on-device-llm', 'hallucination'],
+    references: [
+      'Vaswani, A., Shazeer, N., Parmar, N., et al. (2017). Attention Is All You Need. Advances in Neural Information Processing Systems 30 (NeurIPS). — The transformer architecture underlying modern large language models.',
+    ],
+  },
+  {
+    id: 'on-device-llm',
+    term: 'On-device LLM / WebGPU',
+    category: 'data',
+    aliases: ['On-device inference', 'WebGPU', 'Local LLM'],
+    quick:
+      'Running a language model entirely inside your own browser/device (often on the GPU via WebGPU) so that no data — and not even the request — leaves the device.',
+    standard:
+      "An on-device LLM runs the model on your own hardware rather than on a remote server, so generating a summary involves no network request and zero data egress. In the browser this is commonly done with WebGPU, a modern web API that gives JavaScript access to the GPU for the heavy matrix computation an LLM needs. CPAP Analyzer offers two on-device backends: in-browser WebLLM (which downloads model weights once and runs them on the GPU via WebGPU) and Chrome's built-in AI (which uses a small model that ships with the browser). Both keep everything — your metrics and the request itself — on your device, which is the strongest privacy posture in the app.",
+    detailed:
+      "WebGPU is the successor to WebGL for general-purpose GPU compute in the browser; it is what makes practical in-browser LLM inference possible, because transformer inference is dominated by large matrix multiplications that are far faster on a GPU than on the CPU. The WebLLM backend downloads a quantised open model once (a multi-gigabyte file, stored in the browser and counted against the app's storage budget) and then runs it locally; after that one-time, data-free download, inference is zero-egress. The Chrome built-in backend instead uses Gemini Nano, a small model provisioned by the browser, so there is no app-side download. The privacy advantage is categorical: unlike a cloud backend, an on-device backend sends nothing off the device, so there is no consent dialog and no per-request egress reminder — there is genuinely nothing to disclose. The tradeoffs are capability (small local models phrase less fluently than frontier cloud models), hardware requirements (WebGPU support and adequate GPU memory), and, for WebLLM, the large initial download. A local server such as Ollama or LM Studio addressed over a loopback URL is treated the same way — on-device, no egress — even though it is technically a separate process rather than in-page inference.",
+    relatedTerms: ['ai-insights', 'llm', 'webllm', 'chrome-built-in-ai'],
+    references: [
+      'W3C. WebGPU. https://www.w3.org/TR/webgpu/ — The browser API providing GPU access used for in-browser model inference.',
+    ],
+  },
+  {
+    id: 'hallucination',
+    term: 'Hallucination',
+    category: 'data',
+    aliases: ['LLM hallucination', 'Confabulation'],
+    quick:
+      'When a language model states plausible-sounding but false or unfounded information — including invented numbers — as if it were fact.',
+    standard:
+      "A hallucination is output from a language model that is fluent and confident but not actually supported by the input or by reality — for example, inventing a number, misstating a threshold, or asserting a relationship that does not exist. All language models hallucinate to some degree; it is an inherent property of how they generate text, not a fixable bug in a particular model. In a health tool a hallucinated clinical value is the worst possible failure, which is why CPAP Analyzer never lets the model compute or originate a figure and validates every number in its output against the app's own computations before showing it.",
+    detailed:
+      'Because an LLM generates text by predicting likely continuations rather than by retrieving verified facts, it can produce statements that are syntactically and stylistically convincing yet factually wrong — including fabricated figures and spurious precision. The risk is highest exactly where it is most dangerous for a clinical tool: numbers. CPAP Analyzer addresses hallucination structurally rather than hoping the model behaves. Grounding (compute-then-narrate) removes any need for the model to produce a number — it is handed the finished, rounded values and told to restate only those. A deterministic numeral-extraction validator then checks the generated prose against an allow-list of the exact tokens the app computed and rejects any output containing a number that is not on it (or a value carrying the wrong unit, or a severity verdict that conflicts with the app\'s own), regenerating once and otherwise falling back to a non-generative templated summary. The inseparable "AI-generated — may be inaccurate; verify against the numbers" caveat and the "Based on these numbers" source panel let the reader check the prose against the data regardless. Even fully grounded, generated text can still mislead by implying causation or sounding overconfident, which is why the framing stays descriptive and non-diagnostic and defers to a clinician.',
+    relatedTerms: ['ai-insights', 'llm', 'grounding'],
+    references: [
+      'Ji, Z., Lee, N., Frieske, R., et al. (2023). Survey of Hallucination in Natural Language Generation. ACM Computing Surveys, 55(12), 1–38. DOI: 10.1145/3571730. — A survey of why language models hallucinate and how grounding mitigates it.',
+    ],
+  },
+  {
+    id: 'webllm',
+    term: 'WebLLM (in-browser backend)',
+    category: 'data',
+    aliases: ['WebLLM'],
+    quick:
+      'The on-device AI Insights backend that downloads an open model once and runs it entirely in your browser on the GPU (WebGPU), with zero data egress afterwards.',
+    standard:
+      "WebLLM is CPAP Analyzer's privacy-default AI Insights backend. It downloads a quantised open language model once (a multi-gigabyte file stored in your browser) and then runs it locally on your GPU through WebGPU, so generating a summary involves no network request. After the one-time, data-free model download, it is fully zero-egress: none of your data — and not even the inference request — leaves your device. It requires WebGPU support and adequate GPU memory, and the on-disk model size is disclosed before download and can be removed at any time.",
+    detailed:
+      'WebLLM brings transformer inference into the browser by compiling and running a quantised open model against WebGPU. The first time you select a model, its weights are fetched from a model host — a download that carries none of your data, just the model — and cached locally (in OPFS/browser cache, counting against the same storage budget shown in Privacy & Storage). Every subsequent generation runs entirely on-device with zero egress, which is why this backend needs no consent dialog. The first generation after a download may include a one-time model load/warm-up, shown as a "Loading model…" state. Practical considerations: it needs a browser and device with WebGPU and enough GPU memory (a larger model gives richer prose but downloads more and may not fit on low-memory devices, surfaced as a graceful "couldn\'t load — try a smaller model" error), and small local models phrase less fluently than frontier cloud models. The grounding and numeral-validation guarantees are identical to every other backend, so the prose is just as constrained to the app\'s computed numbers.',
+    relatedTerms: ['ai-insights', 'on-device-llm', 'llm', 'chrome-built-in-ai'],
+  },
+  {
+    id: 'chrome-built-in-ai',
+    term: 'Chrome built-in AI (Gemini Nano)',
+    category: 'data',
+    aliases: ['Chrome built-in AI', 'Gemini Nano', 'Prompt API', 'Summarizer API'],
+    quick:
+      'The on-device AI Insights backend that uses the small Gemini Nano model bundled with recent Chrome browsers, with no app-side download and zero data egress.',
+    standard:
+      "Chrome built-in AI is an on-device AI Insights backend that uses Gemini Nano, a small language model that ships inside recent versions of Chrome and is exposed through the browser's Summarizer and Prompt APIs. Because the model is provided by the browser, there is nothing for the app to download, and inference runs entirely on your device with zero data egress. It is available only on supporting browsers, and some states require a one-time on-device model provisioning that the browser handles; when it is unavailable, the app steers you to WebLLM or a cloud backend.",
+    detailed:
+      "Chrome built-in AI is a progressive-enhancement backend: where the browser exposes an on-device model API (the Summarizer / Prompt APIs backed by Gemini Nano), CPAP Analyzer can generate insights with the lightest possible footprint — no multi-gigabyte download, since the model ships with the browser — and zero egress, since inference is local. Availability is gated on browser support and, in some states, a one-time on-device model provisioning that the browser performs (surfaced with the same progress affordance as a WebLLM download). The capability is still maturing and browser coverage is growing, so the app feature-detects it on selection and renders a clear inline explanation rather than a raw API error when it is unavailable, pointing the user to the in-browser WebLLM option or a cloud option. As with every backend, the compute-then-narrate grounding and the numeral-validation backstop apply unchanged, so the model only ever restates the app's own computed numbers.",
+    relatedTerms: ['ai-insights', 'on-device-llm', 'llm', 'webllm'],
+  },
+  {
+    id: 'ai-cloud-backend',
+    term: 'Cloud AI backend (Claude / OpenAI-compatible)',
+    category: 'data',
+    aliases: ['BYO-key cloud backend', 'Claude browser-direct', 'OpenAI-compatible endpoint'],
+    quick:
+      'A bring-your-own-key AI Insights backend that sends a small, aggregate metric snapshot to a remote provider (Anthropic Claude or any OpenAI-compatible endpoint) for higher-quality wording, gated by explicit consent.',
+    standard:
+      "A cloud AI backend produces summaries by calling a remote provider's API directly from your browser using your own API key. CPAP Analyzer offers two: Claude (Anthropic) browser-direct, and any OpenAI-compatible endpoint (OpenAI, OpenRouter, Together, or a local Ollama/LM Studio server via a base URL). Cloud backends send a small, aggregate metric snapshot off the device, so they are gated by an explicit two-gate consent that names exactly what is and is not sent. They trade some privacy for more fluent prose; there is no shared key and no app account — each request uses your own key, on your own provider account, and incurs that provider's cost.",
+    detailed:
+      "Because CPAP Analyzer has no backend server, a cloud AI request originates from your browser with your own API key and is sent directly to the provider — which means the provider necessarily sees the request and your network IP, exactly as any website you visit does; the app cannot proxy or hide that, which is why cloud backends are opt-in and consent-gated. The only thing that egresses is the grounded metric snapshot: aggregate, already-computed numbers at display precision (AHI, leak, usage, pressure, event counts, trend direction), the calendar dates you asked about, and your machine type — never the raw signals, exact times, serial number, notes, location, or any identifier. The Claude backend uses Anthropic's SDK browser-direct access with a model you choose (Opus / Sonnet / Haiku, trading quality, speed, and cost); the OpenAI-compatible backend targets any endpoint speaking the OpenAI API shape and, via a user-supplied base URL, spans both remote providers (treated as cloud, consent required) and local loopback servers like Ollama (treated as on-device, no egress). Cloud origins must be in the app's strict CSP allowlist — the curated presets (Anthropic, OpenAI, and similar) and loopback are permitted, but an arbitrary user-typed remote host is not supported in this phase, because allowing it would require a wildcard that would re-open the network-exfiltration surface the policy exists to close. API keys are held in session-scoped memory, never persisted to disk by default, never placed in the snapshot, and never logged.",
+    relatedTerms: ['ai-insights', 'llm', 'grounding', 'on-device-llm'],
+    references: [
+      'CPAP Analyzer ADR 0024 — Grounded, Opt-In AI Insights via a Multi-Backend Provider Abstraction. — The cloud-backend egress contract, two-gate consent, CSP allowlist, and the no-arbitrary-remote-host limitation.',
     ],
   },
 ] as const;

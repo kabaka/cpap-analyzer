@@ -875,3 +875,56 @@ export const MIGRATION_003_INTEGRATION_STORES: Migration = {
     return { success: errors.length === 0, errors, warnings };
   },
 };
+
+/**
+ * Migration 4: add the `breathing_detections` per-night PB/CSR detection cache
+ * store.
+ *
+ * The store + its four indexes (`sessionId`, `date`, `algoVersion`,
+ * `computedAt`) are created by `IndexedDBService.upgradeSchema()` inside
+ * `onupgradeneeded` (the only place IndexedDB permits store creation). This
+ * migration record maintains the settings-store ledger and verifies the on-disk
+ * v4 layout. Additive only — no existing data is touched. See
+ * docs/analysis/breathing-detection-cache-storage.md.
+ */
+export const MIGRATION_004_BREATHING_DETECTIONS: Migration = {
+  version: 4,
+  description: 'Add breathing_detections per-night PB/CSR detection cache store',
+  estimatedDurationMs: 50,
+  dependencies: [3],
+
+  async up(context: MigrationContext): Promise<void> {
+    context.progress.setMessage('Recording breathing-detection cache store…');
+    // Store creation is applied by IndexedDBService.upgradeSchema() during
+    // onupgradeneeded. Nothing to do here beyond advancing the version record.
+  },
+
+  async down(): Promise<void> {
+    // Cannot drop object stores outside a versionchange transaction. No-op.
+  },
+
+  async verify(context: MigrationContext): Promise<MigrationVerificationResult> {
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    if (!context.db.objectStoreNames.contains('breathing_detections')) {
+      errors.push('Missing object store: breathing_detections');
+    } else {
+      try {
+        const tx = context.db.transaction('breathing_detections', 'readonly');
+        const store = tx.objectStore('breathing_detections');
+        for (const idx of ['sessionId', 'date', 'algoVersion', 'computedAt']) {
+          if (!store.indexNames.contains(idx)) {
+            errors.push(`Missing index ${idx} on breathing_detections`);
+          }
+        }
+      } catch (error) {
+        errors.push(
+          `Failed to inspect breathing_detections indexes: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return { success: errors.length === 0, errors, warnings };
+  },
+};

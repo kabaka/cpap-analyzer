@@ -7,13 +7,22 @@
  * @module views/Settings/Settings
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { Accordion, Button, Card, Dialog, Input, Select, Switch, Tabs } from '@/components/ui';
 import { clearAllUserData } from '@/services/storage/clearAllUserData';
+import {
+  isPersistenceApiAvailable,
+  isStoragePersisted,
+  requestPersistentStorage,
+  type PersistenceStatus,
+} from '@/services/storage/persistentStorage';
 import { formatBytes } from '@/utils/formatBytes';
+import { WeatherIntegrationPanel } from './weather/WeatherIntegrationPanel';
+import { AiInsightsPanel } from './ai/AiInsightsPanel';
+import { backendById } from './ai/backends';
 import styles from './Settings.module.css';
 
 // ─── Option Constants ─────────────────────────────────────────────────────
@@ -41,10 +50,18 @@ const CLUSTERING_METHOD_OPTIONS = [
   { value: 'single-link', label: 'Single-Link' },
 ];
 
-const LLM_PROVIDER_OPTIONS = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-];
+// ─── Deep-link targets ────────────────────────────────────────────────────
+
+/**
+ * Hash that deep-links to the AI Insights panel (m1). When the Settings route is
+ * opened with this hash (e.g. from the InsightDrawer's "Finish setup in Settings"
+ * recovery action), the Integrations tab is selected and the AI Insights
+ * accordion item is expanded and scrolled into view.
+ */
+const AI_INSIGHTS_HASH = '#ai-insights';
+
+/** DOM id of the AI Insights accordion item, used as the scroll/focus anchor. */
+const AI_INSIGHTS_ANCHOR_ID = 'ai-insights';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -248,10 +265,24 @@ function AnalysisSection() {
 
 // ─── Section: Integrations ────────────────────────────────────────────────
 
-function IntegrationsSection() {
+function IntegrationsSection({ aiInsightsTarget }: { readonly aiInsightsTarget: boolean }) {
   const integrations = useSettingsStore((s) => s.integrations);
   const updateIntegration = useSettingsStore((s) => s.updateIntegration);
   const navigate = useNavigate();
+
+  // When deep-linked to AI Insights (#ai-insights), scroll the item into view and
+  // move focus to its heading once after mount (m1). Accessible: focus lands on
+  // the panel the user came to fix, not the top of the page.
+  const aiInsightsAnchorRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!aiInsightsTarget) return;
+    const node = aiInsightsAnchorRef.current;
+    if (node === null) return;
+    node.scrollIntoView({ block: 'start' });
+    // Move focus to the accordion trigger button wrapping this anchor — the
+    // user lands on the control they came to fix, not the top of the page.
+    node.closest('button')?.focus();
+  }, [aiInsightsTarget]);
 
   const fitbitTriggerLabel = (() => {
     if (!integrations.fitbit.enabled) return 'Google Health (Fitbit) — Disabled';
@@ -259,6 +290,14 @@ function IntegrationsSection() {
       return `Google Health (Fitbit) — ${integrations.fitbit.recordCount.toLocaleString()} records`;
     return 'Google Health (Fitbit) — Enabled';
   })();
+
+  // AI Insights accordion trigger (visual spec §2.4): off = "Disabled"; on +
+  // local backend = green "On-device" pill; on + cloud backend = blue
+  // "Connects online" pill. Color is never the sole signal — each pill carries
+  // its word and the leading "✨ AI Insights" label is always present.
+  const llmBackend = integrations.llm.backend;
+  const llmIsCloud = llmBackend === 'anthropic' || llmBackend === 'openai-compatible';
+  const llmBackendLabel = llmBackend !== null ? backendById(llmBackend).label : null;
 
   const accordionItems = [
     {
@@ -312,102 +351,58 @@ function IntegrationsSection() {
     },
     {
       value: 'weather',
-      trigger: `Weather — ${integrations.weather.enabled ? 'Enabled' : 'Disabled'}`,
+      trigger: (
+        <span className={styles.integrationTrigger}>
+          <span className={styles.integrationTriggerIcon} aria-hidden="true">
+            🌐
+          </span>
+          <span>
+            Weather &amp; Air Quality — {integrations.weather.enabled ? 'Enabled' : 'Disabled'}
+          </span>
+          {integrations.weather.enabled && (
+            <span className={styles.onlinePill}>Connects online</span>
+          )}
+        </span>
+      ),
       content: (
         <div className={styles.integrationPanel}>
-          <div className={styles.switchRow}>
-            <div className={styles.switchInfo}>
-              <span className={styles.switchLabel}>Enable Weather integration</span>
-              <span className={styles.switchDescription}>
-                Correlate therapy data with local weather conditions.
-              </span>
-            </div>
-            <Switch
-              checked={integrations.weather.enabled}
-              onCheckedChange={(checked) => updateIntegration('weather', { enabled: checked })}
-            />
-          </div>
-          {integrations.weather.enabled && (
-            <>
-              <span className={styles.comingSoon}>
-                Coming soon — Integration will be available in a future release
-              </span>
-              <Input
-                label="API key"
-                type="password"
-                placeholder="Enter weather API key"
-                value={integrations.weather.apiKey ?? ''}
-                onChange={(e) =>
-                  updateIntegration('weather', {
-                    apiKey: e.target.value || null,
-                  })
-                }
-                disabled
-                hint="Configuration will be available when integration launches"
-              />
-              <Input
-                label="Location"
-                placeholder="City name or coordinates"
-                value={integrations.weather.location}
-                onChange={(e) => updateIntegration('weather', { location: e.target.value })}
-                disabled
-                hint="Configuration will be available when integration launches"
-              />
-            </>
-          )}
+          <WeatherIntegrationPanel />
         </div>
       ),
     },
     {
+      // AI Insights sits after Weather (UX §2.1): it is the most
+      // privacy-sensitive integration, so it reads last after the weather
+      // two-gate precedent.
       value: 'llm',
-      trigger: `LLM Assistant — ${integrations.llm.enabled ? 'Enabled' : 'Disabled'}`,
+      trigger: (
+        <span
+          className={styles.integrationTrigger}
+          id={AI_INSIGHTS_ANCHOR_ID}
+          ref={aiInsightsAnchorRef}
+        >
+          {integrations.llm.enabled && (
+            <span className={styles.integrationTriggerIcon} aria-hidden="true">
+              ✨
+            </span>
+          )}
+          <span>
+            AI Insights —{' '}
+            {integrations.llm.enabled
+              ? `On${llmBackendLabel ? ` · ${llmBackendLabel}` : ''}`
+              : 'Disabled'}
+          </span>
+          {integrations.llm.enabled &&
+            (llmIsCloud ? (
+              <span className={styles.onlinePill}>Connects online</span>
+            ) : (
+              <span className={`${styles.onlinePill} ${styles.onDevicePill}`}>On-device</span>
+            ))}
+        </span>
+      ),
       content: (
         <div className={styles.integrationPanel}>
-          <div className={styles.switchRow}>
-            <div className={styles.switchInfo}>
-              <span className={styles.switchLabel}>Enable LLM Assistant</span>
-              <span className={styles.switchDescription}>
-                Use AI to generate insights and explanations from your therapy data. Your data is
-                sent to the selected provider&apos;s API.
-              </span>
-            </div>
-            <Switch
-              checked={integrations.llm.enabled}
-              onCheckedChange={(checked) => updateIntegration('llm', { enabled: checked })}
-            />
-          </div>
-          {integrations.llm.enabled && (
-            <>
-              <span className={styles.comingSoon}>
-                Coming soon — Integration will be available in a future release
-              </span>
-              <Select
-                label="Provider"
-                options={LLM_PROVIDER_OPTIONS}
-                value={integrations.llm.provider ?? ''}
-                onValueChange={(v) =>
-                  updateIntegration('llm', {
-                    provider: v as 'openai' | 'anthropic',
-                  })
-                }
-                placeholder="Select provider"
-                disabled
-              />
-              <Input
-                label="API key"
-                type="password"
-                placeholder="Enter API key"
-                value={integrations.llm.apiKey ?? ''}
-                onChange={(e) =>
-                  updateIntegration('llm', {
-                    apiKey: e.target.value || null,
-                  })
-                }
-                disabled
-                hint="Configuration will be available when integration launches"
-              />
-            </>
-          )}
+          <AiInsightsPanel />
         </div>
       ),
     },
@@ -419,7 +414,11 @@ function IntegrationsSection() {
         Configure external service integrations. All integrations are disabled by default. When
         enabled, data may be sent to third-party services as described in each section.
       </p>
-      <Accordion items={accordionItems} type="single" />
+      <Accordion
+        items={accordionItems}
+        type="single"
+        defaultValue={aiInsightsTarget ? 'llm' : undefined}
+      />
     </div>
   );
 }
@@ -429,6 +428,139 @@ function IntegrationsSection() {
 interface StorageEstimate {
   usage: number;
   quota: number;
+}
+
+/**
+ * UI state for the data-persistence indicator.
+ *
+ * - `'loading'`     — initial `isStoragePersisted()` probe is in flight.
+ * - `'unsupported'` — the Storage persistence API is unavailable in this
+ *                     browser; only an informational note is shown.
+ * - {@link PersistenceStatus} — a resolved durability state. `'persisted'` and
+ *                     `'denied'` come from the live API; `'unsupported'` is
+ *                     folded into the dedicated state above.
+ */
+type PersistenceUiState = 'loading' | PersistenceStatus;
+
+/**
+ * "Data persistence" indicator (eviction-protection).
+ *
+ * Surfaces whether the browser has placed this origin's IndexedDB + OPFS data in
+ * the durable bucket, and lets the user request durability when it is not yet
+ * granted. Purely local UI over `navigator.storage.*` (via the
+ * {@link requestPersistentStorage} service) — no network or telemetry, in line
+ * with the project's privacy-first principle.
+ *
+ * Accessibility: status is conveyed by text + an icon (never color alone); the
+ * resolved status lives in a polite `aria-live` region so screen readers
+ * announce the outcome after a request resolves; the action button reflects its
+ * in-flight state and is keyboard-operable with the shared focus styles.
+ */
+function DataPersistenceCard() {
+  // Feature-gate computed once: the API surface does not change at runtime, so a
+  // constant avoids re-probing on every render.
+  const [supported] = useState(isPersistenceApiAvailable);
+  const [state, setState] = useState<PersistenceUiState>(supported ? 'loading' : 'unsupported');
+  const [requesting, setRequesting] = useState(false);
+
+  // Probe the current durability state on mount. `isStoragePersisted()` never
+  // throws and resolves `false` when unsupported, so no try/catch is needed.
+  useEffect(() => {
+    if (!supported) return;
+    let cancelled = false;
+    void isStoragePersisted().then((persisted) => {
+      if (!cancelled) setState(persisted ? 'persisted' : 'denied');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [supported]);
+
+  const handleRequest = useCallback(async () => {
+    setRequesting(true);
+    // requestPersistentStorage() never throws; it maps every outcome to a
+    // PersistenceStatus, so we can assign the result directly. We keep the
+    // 'denied' branch's guidance visible by leaving the state at 'denied'.
+    const result = await requestPersistentStorage();
+    setState(result);
+    setRequesting(false);
+  }, []);
+
+  // The API is absent (non-secure context, older browser, some test runners):
+  // show a brief note instead of controls, so the absence is explained rather
+  // than silently missing.
+  if (!supported || state === 'unsupported') {
+    return (
+      <div className={styles.persistenceInfo}>
+        <h4 className={styles.fieldGroupTitle}>Data persistence</h4>
+        <p className={styles.sectionDescription}>
+          Eviction protection is not supported in this browser. Export your data periodically from
+          Data Management to keep a backup.
+        </p>
+      </div>
+    );
+  }
+
+  const isPersisted = state === 'persisted';
+
+  return (
+    <div className={styles.persistenceInfo}>
+      <h4 className={styles.fieldGroupTitle}>Data persistence</h4>
+
+      {/* Polite live region: announces the resolved status (including the result
+          of a request) without interrupting the user. Color is never the sole
+          signal — each state carries an icon and explanatory text. */}
+      <div className={styles.persistenceStatus} aria-live="polite">
+        {state === 'loading' ? (
+          <p className={styles.sectionDescription}>Checking data persistence…</p>
+        ) : (
+          <>
+            <p
+              className={
+                isPersisted
+                  ? `${styles.persistenceBadge} ${styles.persistenceBadgeOk}`
+                  : `${styles.persistenceBadge} ${styles.persistenceBadgeWarn}`
+              }
+            >
+              <span className={styles.persistenceBadgeIcon} aria-hidden="true">
+                {isPersisted ? '🛡️' : '⚠️'}
+              </span>
+              <span>{isPersisted ? 'Protected' : 'Not protected'}</span>
+            </p>
+            <p className={styles.sectionDescription}>
+              {isPersisted
+                ? 'Your data is protected from automatic browser cleanup.'
+                : 'Your browser may evict this data under storage pressure, which would permanently remove your imported sessions and analysis results.'}
+            </p>
+            {/* Denied guidance lives inside the polite live region so a
+                screen-reader user hears the outcome of a "Protect my data"
+                request even when the badge text is unchanged (denied → denied). */}
+            {state === 'denied' && (
+              <p className={styles.sectionDescription}>
+                Your browser declined to protect this data for now. Chrome grants this based on
+                engagement — bookmarking or installing the app and using it regularly increases the
+                chance it is granted, and trying again later may succeed. As a backstop, export your
+                data periodically from Data Management.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {!isPersisted && state !== 'loading' && (
+        <div className={styles.persistenceAction}>
+          <Button
+            variant="primary"
+            onClick={() => void handleRequest()}
+            loading={requesting}
+            disabled={requesting}
+          >
+            Protect my data
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PrivacyStorageSection() {
@@ -521,6 +653,8 @@ function PrivacyStorageSection() {
             Storage estimate unavailable in this browser.
           </p>
         )}
+
+        <DataPersistenceCard />
       </Card>
 
       <Card>
@@ -623,6 +757,16 @@ function AboutSection() {
 export default function Settings() {
   const resetToDefaults = useSettingsStore((s) => s.resetToDefaults);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const location = useLocation();
+
+  // Deep-link support (m1): `/settings#ai-insights` selects the Integrations tab
+  // and targets the AI Insights accordion item. Tracked in state so the user can
+  // still navigate away to other tabs after landing.
+  const aiInsightsTarget = location.hash === AI_INSIGHTS_HASH;
+  const [activeTab, setActiveTab] = useState(aiInsightsTarget ? 'integrations' : 'general');
+  useEffect(() => {
+    if (aiInsightsTarget) setActiveTab('integrations');
+  }, [aiInsightsTarget]);
 
   const handleReset = useCallback(() => {
     resetToDefaults();
@@ -633,7 +777,11 @@ export default function Settings() {
   const tabs = [
     { value: 'general', label: 'General', content: <GeneralSection /> },
     { value: 'analysis', label: 'Analysis', content: <AnalysisSection /> },
-    { value: 'integrations', label: 'Integrations', content: <IntegrationsSection /> },
+    {
+      value: 'integrations',
+      label: 'Integrations',
+      content: <IntegrationsSection aiInsightsTarget={aiInsightsTarget} />,
+    },
     { value: 'privacy', label: 'Privacy & Storage', content: <PrivacyStorageSection /> },
     { value: 'about', label: 'About', content: <AboutSection /> },
   ];
@@ -644,7 +792,7 @@ export default function Settings() {
         <h1 className={styles.title}>Settings</h1>
       </div>
 
-      <Tabs tabs={tabs} defaultValue="general" />
+      <Tabs tabs={tabs} value={activeTab} onValueChange={setActiveTab} />
 
       <div className={styles.footerActions}>
         <Button variant="secondary" onClick={() => setShowResetDialog(true)}>

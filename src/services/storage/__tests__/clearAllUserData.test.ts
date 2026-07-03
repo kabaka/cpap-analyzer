@@ -58,6 +58,34 @@ vi.mock('@/stores/useSettingsStore', () => ({
   },
 }));
 
+// In-memory LLM credential store (holds BYO provider API keys, privacy-critical).
+// Backed by a tiny stateful stub so the test can prime it with keys and then
+// assert that forgetAll() actually empties it after clearAllUserData().
+const credentialState = {
+  anthropicApiKey: null as string | null,
+  openaiApiKey: null as string | null,
+  remember: { anthropic: false, openai: false },
+};
+const forgetAll = vi.fn<() => void>(() => {
+  credentialState.anthropicApiKey = null;
+  credentialState.openaiApiKey = null;
+  credentialState.remember = { anthropic: false, openai: false };
+});
+
+vi.mock('@/stores/useLLMCredentialStore', () => ({
+  useLLMCredentialStore: {
+    getState: () => ({ ...credentialState, forgetAll }),
+  },
+}));
+
+// In-memory PB/CSR detection cache (holds derived health data). Mocked so we can
+// assert the privacy-critical reset is invoked by the orchestration.
+const clearBreathingDetectionMemoryCache = vi.fn<() => void>();
+
+vi.mock('@/hooks/breathingDetectionCache', () => ({
+  clearBreathingDetectionMemoryCache: () => clearBreathingDetectionMemoryCache(),
+}));
+
 import { clearAllUserData } from '@/services/storage/clearAllUserData';
 
 // ---------------------------------------------------------------------------
@@ -129,6 +157,11 @@ describe('clearAllUserData', () => {
     getDB.mockResolvedValue({ destroy });
     destroy.mockResolvedValue(undefined);
     deleteAll.mockResolvedValue(undefined);
+    // Prime the credential store with session keys + remember flags so the wipe
+    // assertion below has something to clear.
+    credentialState.anthropicApiKey = 'sk-ant-secret';
+    credentialState.openaiApiKey = 'sk-oai-secret';
+    credentialState.remember = { anthropic: true, openai: true };
     // No OPFSService re-init needed: it's a plain class whose instances always
     // carry `deleteAll`, so no mock-state reset can strip the method.
 
@@ -275,6 +308,17 @@ describe('clearAllUserData', () => {
       // In-memory cache + persisted settings.
       expect(clearCache).toHaveBeenCalledTimes(1);
       expect(resetToDefaults).toHaveBeenCalledTimes(1);
+
+      // In-memory PB/CSR detection cache (derived health data) is wiped too, so
+      // delete-everything stays total (privacy regression guard).
+      expect(clearBreathingDetectionMemoryCache).toHaveBeenCalledTimes(1);
+
+      // In-memory LLM credential store (BYO provider API keys) is forgotten too:
+      // both keys null and remember flags reset (privacy regression guard).
+      expect(forgetAll).toHaveBeenCalledTimes(1);
+      expect(credentialState.anthropicApiKey).toBeNull();
+      expect(credentialState.openaiApiKey).toBeNull();
+      expect(credentialState.remember).toEqual({ anthropic: false, openai: false });
     });
 
     it('destroys the database before dropping the singleton (resetDB after destroy)', async () => {

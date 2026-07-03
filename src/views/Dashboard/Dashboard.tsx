@@ -7,7 +7,7 @@
  * @module views/Dashboard/Dashboard
  */
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { useSessionData } from '@/hooks/useSessionData';
 import { useSummaryStats } from '@/hooks/useSummaryStats';
@@ -15,6 +15,14 @@ import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 import { useWearableSummary } from '@/hooks/useWearableSummary';
 import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
 import { Card } from '@/components/ui';
+import {
+  InsightTrigger,
+  buildDateRangeInput,
+  buildGroundingCommon,
+  machineClassOf,
+  rangeScopeLabel,
+} from '@/components/insights';
+import { formatDate } from '@/utils/formatDate';
 import { generateInsights } from './insights';
 import { findFirstSettingsChangeDate } from '@/views/Trends/utils/detectSettingsChanges';
 import { EmptyState } from './EmptyState';
@@ -26,6 +34,8 @@ import BreathingStabilityPanel from './panels/BreathingStabilityPanel';
 import MachineSettingsPanel from './panels/MachineSettingsPanel';
 import RecentSessions from './panels/RecentSessions';
 import WearableOverview from './panels/WearableOverview';
+import WeatherOverview from './panels/WeatherOverview';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import styles from './Dashboard.module.css';
 import type { MachineSettings } from '@/types';
 
@@ -35,6 +45,9 @@ export default function Dashboard() {
   const { stats, loading: statsLoading, error: statsError } = useSummaryStats(dateRange);
   const { aggregates, loading: aggLoading, error: aggError } = useNightlyAggregates(dateRange);
   const { summary: wearableSummary } = useWearableSummary();
+  const weatherEnabled = useSettingsStore((s) => s.integrations.weather.enabled);
+  const ahiThresholds = useSettingsStore((s) => s.analysisParams.ahi);
+  const displayPrefs = useSettingsStore((s) => s.display);
 
   const error = sessionsError ?? statsError ?? aggError;
   const loading = statsLoading || sessionsLoading || aggLoading;
@@ -55,6 +68,22 @@ export default function Dashboard() {
     return generateInsights(aggregates, stats);
   }, [aggregates, stats]);
 
+  // Build the "Summarize range" insight request from the loaded aggregates and
+  // the active thresholds/display prefs. Lazy: assembled only when the trigger
+  // is activated (the InsightTrigger calls this on click). Trends are computed
+  // by the builder via the existing `linearTrend` estimator — the UI never
+  // re-implements a statistic.
+  const buildRangeRequest = useCallback(() => {
+    const common = buildGroundingCommon(
+      { ahi: ahiThresholds, display: displayPrefs },
+      machineClassOf(sessions[0]?.machineType),
+    );
+    return {
+      input: buildDateRangeInput(aggregates, common),
+      scopeLabel: rangeScopeLabel(formatDate(dateRange.start), formatDate(dateRange.end)),
+    };
+  }, [aggregates, ahiThresholds, displayPrefs, sessions, dateRange]);
+
   // Trend data for charts
   const trendData = stats?.trendData ?? [];
 
@@ -70,7 +99,14 @@ export default function Dashboard() {
       {/* Header */}
       <div className={styles.header}>
         <h1 className={styles.title}>Dashboard</h1>
-        <DateRangeSelector />
+        <div className={styles.headerActions}>
+          <InsightTrigger
+            label="Summarize range"
+            ariaLabel="Summarize the selected date range with AI"
+            buildRequest={buildRangeRequest}
+          />
+          <DateRangeSelector />
+        </div>
       </div>
 
       {error && (
@@ -85,7 +121,23 @@ export default function Dashboard() {
       <KPIRow stats={stats} loading={loading} />
 
       {/* Therapy Overview Charts */}
-      <TherapyOverview trendData={trendData} loading={loading} />
+      <div className={styles.sectionWithAffordance}>
+        <div className={styles.sectionAffordance}>
+          <InsightTrigger
+            label="Explain trend"
+            ariaLabel="Explain the therapy trends for the selected range with AI"
+            appearance="subtle"
+            buildRequest={() => {
+              const request = buildRangeRequest();
+              return {
+                ...request,
+                userBrief: 'Describe the AHI, usage, and leak trends shown for this range.',
+              };
+            }}
+          />
+        </div>
+        <TherapyOverview trendData={trendData} loading={loading} />
+      </div>
 
       {/* Event Distribution + Insights */}
       <div className={styles.analyticsRow}>
@@ -102,6 +154,13 @@ export default function Dashboard() {
       {wearableSummary?.hasData && (
         <div className={styles.wearableRow}>
           <WearableOverview summary={wearableSummary} />
+        </div>
+      )}
+
+      {/* Weather & Air Quality Overview (when the integration is enabled) */}
+      {weatherEnabled && (
+        <div className={styles.wearableRow}>
+          <WeatherOverview />
         </div>
       )}
 

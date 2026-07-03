@@ -8,7 +8,13 @@
  */
 
 /** View identifiers (also used in the `view` URL param). */
-export type ViewId = 'histogram' | 'scatter' | 'distributions' | 'intervals' | 'clusters';
+export type ViewId =
+  | 'histogram'
+  | 'scatter'
+  | 'distributions'
+  | 'intervals'
+  | 'clusters'
+  | 'sleepStages';
 
 export const VIEW_OPTIONS: readonly { value: ViewId; label: string }[] = [
   { value: 'histogram', label: 'Duration histogram' },
@@ -16,4 +22,5 @@ export const VIEW_OPTIONS: readonly { value: ViewId; label: string }[] = [
   { value: 'distributions', label: 'Per-type distributions' },
   { value: 'intervals', label: 'Inter-event intervals' },
   { value: 'clusters', label: 'Clusters' },
+  { value: 'sleepStages', label: 'Sleep stages & cycles' },
 ];

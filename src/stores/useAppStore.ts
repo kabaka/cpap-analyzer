@@ -30,6 +30,12 @@ interface AppState {
   resolvedTheme: ResolvedTheme;
   setTheme: (theme: Theme) => void;
 
+  // Sidebar collapsed/rail preference (persisted to localStorage). Desktop only;
+  // the mobile off-canvas drawer ignores this. Default: expanded (false).
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebarCollapsed: () => void;
+
   // Import state
   importStatus: 'idle' | 'scanning' | 'importing' | 'complete' | 'error';
   importProgress: { current: number; total: number };
@@ -74,6 +80,17 @@ export const useAppStore = create<AppState>()(
         setTheme: (theme) =>
           set({ theme, resolvedTheme: resolveTheme(theme) }, undefined, 'setTheme'),
 
+        // Sidebar collapsed/rail preference — default expanded
+        sidebarCollapsed: false,
+        setSidebarCollapsed: (collapsed) =>
+          set({ sidebarCollapsed: collapsed }, undefined, 'setSidebarCollapsed'),
+        toggleSidebarCollapsed: () =>
+          set(
+            (state) => ({ sidebarCollapsed: !state.sidebarCollapsed }),
+            undefined,
+            'toggleSidebarCollapsed',
+          ),
+
         // Import state
         importStatus: 'idle',
         importProgress: { current: 0, total: 0 },
@@ -83,17 +100,25 @@ export const useAppStore = create<AppState>()(
       }),
       {
         name: THEME_STORAGE_KEY,
-        partialize: (state) => ({ theme: state.theme }),
+        partialize: (state) => ({
+          theme: state.theme,
+          sidebarCollapsed: state.sidebarCollapsed,
+        }),
         merge: (persisted, current) => {
-          const stored = persisted as { theme?: Theme } | undefined;
+          const stored = persisted as { theme?: Theme; sidebarCollapsed?: boolean } | undefined;
           const theme =
             stored?.theme === 'light' || stored?.theme === 'dark' || stored?.theme === 'system'
               ? stored.theme
               : current.theme;
+          // Backward compatible: older payloads (theme-only) lack this key, so
+          // default to expanded (false).
+          const sidebarCollapsed =
+            typeof stored?.sidebarCollapsed === 'boolean' ? stored.sidebarCollapsed : false;
           return {
             ...current,
             theme,
             resolvedTheme: resolveTheme(theme),
+            sidebarCollapsed,
           };
         },
       },

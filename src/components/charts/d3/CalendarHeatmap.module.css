@@ -1,17 +1,109 @@
 .container {
+  /* Left-rail width in px. Kept in sync with GUTTER_WIDTH in CalendarHeatmap.tsx
+     so the SVG coordinate space, the flex gutter box, and the legend agree. */
+  --cal-gutter: 36px;
+
   width: 100%;
   font-family: var(--font-family-sans);
+  position: relative;
+}
+
+/* ── Per-year panel stack ─────────────────────────────────────── */
+
+/* One column of year panels, oldest (top) → newest (bottom). */
+.panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* A panel is a fixed gutter + a horizontally scrollable week grid. */
+.panel {
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Fixed-width left rail: year label + (top panel) weekday labels. Never shrinks
+   or scrolls, so labels stay put while weeks scroll horizontally. */
+.gutter {
+  display: block;
+  flex: 0 0 var(--cal-gutter);
+  width: var(--cal-gutter);
+  overflow: visible;
+}
+
+/* The scrolling viewport for the week grid. The gutter stays visible while the
+   weeks scroll. Independent per-panel scroll (no cross-panel sync). */
+.scrollport {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
 }
 
 .svg {
   display: block;
-  width: 100%;
   overflow: visible;
 }
 
+/* Year label in the gutter, vertically centred on the 7-row block. */
+.yearLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  fill: var(--color-text-secondary);
+  text-anchor: start;
+  dominant-baseline: central;
+}
+
+/* ── Cell groups (gridcells) ─────────────────────────────────── */
+
+.cell {
+  cursor: default;
+  outline: none;
+}
+
+.cell[data-state='value'],
+.cell[data-state='partial'] {
+  cursor: pointer;
+}
+
+/* Value cells keep a solid surface-primary gutter so tiles read separated. */
 .dayCell {
   stroke: var(--color-surface-primary);
   stroke-width: 1.5;
+}
+
+/* Gap cells: secondary surface + a dashed border (non-colour cue). */
+.cellGap .dayCell {
+  stroke: var(--color-border-default);
+  stroke-width: 1;
+  stroke-dasharray: 2 1.5;
+}
+
+/* Partial cells: a small centred glyph dot (non-colour cue). */
+.partialGlyph {
+  fill: var(--color-text-secondary);
+  pointer-events: none;
+}
+
+/* "Today" ring — distinct from selection and focus. */
+.cellToday .dayCell {
+  stroke: var(--color-border-emphasis);
+  stroke-width: 1.5;
+}
+
+/* Selected outline. */
+.cellSelected .dayCell {
+  stroke: var(--color-primary);
+  stroke-width: 2;
+}
+
+/* Keyboard focus ring wins over today/selected. */
+.cell:focus-visible .dayCell,
+.cell:focus .dayCell {
+  stroke: var(--color-focus-ring);
+  stroke-width: 2;
 }
 
 .monthLabel {
@@ -26,6 +118,8 @@
   text-anchor: end;
   dominant-baseline: central;
 }
+
+/* ── Tooltip ──────────────────────────────────────────────────── */
 
 .tooltip {
   position: absolute;
@@ -43,30 +137,100 @@
   top: var(--tt-y, 0);
 }
 
-.legendRow {
+.tooltipDate {
+  font-weight: var(--font-weight-semibold);
+}
+
+.tooltipDetail {
+  color: var(--color-text-secondary);
+}
+
+/* ── Legend ───────────────────────────────────────────────────── */
+
+.legend {
+  margin-top: var(--space-3);
+  /* Align under the week grid, past the year-label gutter. */
+  padding-left: var(--cal-gutter);
+}
+
+.legendCaption {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.legendList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legendItem {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  margin-top: var(--space-2);
-  padding-left: var(--space-6);
-}
-
-.legendLabel {
-  font-size: 9px;
-  color: var(--color-text-muted);
 }
 
 .legendSwatch {
-  width: 10px;
-  height: 10px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
   border-radius: 2px;
+  /* Same gutter stroke as value cells. */
+  box-shadow: 0 0 0 1.5px var(--color-surface-primary) inset;
+  flex-shrink: 0;
+}
+
+.legendSwatchGap {
+  background-color: var(--color-surface-secondary);
+  border: 1px dashed var(--color-border-default);
+  box-shadow: none;
+}
+
+.legendSwatchPartial {
+  background-color: var(--color-surface-tertiary);
+}
+
+.legendSwatchDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--color-text-secondary);
+}
+
+.legendText {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.legendLabelStrong {
+  color: var(--color-text-primary);
+}
+
+.legendRange {
+  color: var(--color-text-muted);
 }
 
 .empty {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* One-panel min-height so toggling presets doesn't collapse the card. */
+  min-height: calc(20px + 7 * 16px);
   padding: var(--space-8);
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dayCell,
+  .tooltip {
+    transition: none;
+  }
 }

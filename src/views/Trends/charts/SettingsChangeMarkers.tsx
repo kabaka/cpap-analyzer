@@ -2,116 +2,128 @@
  * Vertical settings-change markers shared across every Trends chart.
  *
  * The Trends view detects machine-settings changes between consecutive nights
- * via {@link detectSettingsChanges}. Each change is rendered as a faint dashed
- * vertical Recharts {@link ReferenceLine}. We render a tiny SVG `<title>` per
- * marker so hovering the line surfaces the human-readable diff (`"max 12 →
- * 15"`); this is the lightest available hover affordance that does not
- * disrupt the existing crosshair sync between the synced charts.
+ * via {@link detectSettingsChanges}. Each change is drawn as a faint dashed
+ * vertical line. Now that the charts render on a Canvas2D base, these markers are
+ * an SVG OVERLAY positioned over the canvas (so the canvas stays a pure raster
+ * plot): each marker keeps its native `<title>` + `aria-label` hover affordance
+ * surfacing the human-readable diff (`"max 12 → 15"`), exactly as before, plus an
+ * invisible wider hit-rect so a casual mouseover lands the tooltip without
+ * pixel-hunting the 1px line.
  *
- * Recharts requires children of `ComposedChart` to be Recharts elements. We
- * return a React fragment of `ReferenceLine` elements rather than a custom
- * component wrapping them so the parent chart can keep them in its own
- * children tree (Recharts walks children by type at runtime).
+ * The markers sit at the category's X position. For point-scale charts (every
+ * non-bar Trends chart) that is the `scalePoint` coordinate; for the bar chart
+ * (Usage) it is the band CENTRE. The component computes this from the same
+ * category geometry the Canvas renderer uses, so a marker lands on the same pixel
+ * column the dashed Recharts `ReferenceLine` used to.
  *
  * @module views/Trends/charts/SettingsChangeMarkers
  */
 
-import { ReferenceLine } from 'recharts';
-import type { ReactElement } from 'react';
+import React from 'react';
 import { describeSettingsChange } from '../utils/formatSettingsChange';
 import type { SettingsChange } from '../utils/detectSettingsChanges';
+import type { ChartMargins } from './canvas/TrendsCanvasChart';
 
-interface RenderMarkersOptions {
-  /** Stroke colour to apply to each marker. */
+interface SettingsMarkerOverlayProps {
+  readonly changes: readonly SettingsChange[];
+  /** The night rows, in render order, for date → index mapping. */
+  readonly data: readonly { readonly date: string }[];
+  /** Same margins the Canvas chart uses (so X math matches the plot). */
+  readonly margins: ChartMargins;
+  /** Resolved stroke colour. */
   readonly stroke: string;
-  /** Optional `yAxisId` to bind the line to (multi-axis charts). */
-  readonly yAxisId?: string;
+  /** True for the bar chart (band-centre placement); false for point scales. */
+  readonly isBand?: boolean;
+  /** Optional explicit top inset for the line (defaults to `margins.top`). */
+  readonly top?: number;
+  /** Optional explicit bottom inset for the line (defaults to `margins.bottom`). */
+  readonly bottom?: number;
 }
 
 /**
- * Shape recharts passes into a `ReferenceLine` custom shape renderer for
- * vertical lines (x-bound). We only depend on a handful of fields, all of
- * which are present on Recharts' internal shape props.
+ * SVG overlay of dashed vertical settings-change markers, absolutely positioned
+ * to fill the chart area. Uses a percentage-free pixel layout via a
+ * 100%-stretched SVG with a viewBox set to the live pixel size is avoided —
+ * instead each marker's X is expressed as a CSS `calc()` over the plot width so
+ * it tracks responsively without measuring the DOM.
  */
-interface ReferenceLineShapeProps {
-  readonly x1?: number;
-  readonly x2?: number;
-  readonly y1?: number;
-  readonly y2?: number;
-  readonly stroke?: string;
-  readonly strokeDasharray?: string;
-  readonly strokeOpacity?: number;
-}
+export const SettingsMarkerOverlay = React.memo(function SettingsMarkerOverlay({
+  changes,
+  data,
+  margins,
+  stroke,
+  isBand = false,
+  top,
+  bottom,
+}: SettingsMarkerOverlayProps) {
+  if (changes.length === 0 || data.length === 0) return null;
 
-/**
- * Build a faint-dashed vertical `ReferenceLine` for every settings change.
- *
- * Each marker is a custom shape: a visible dashed line plus an invisible
- * wider `<rect>` that carries an SVG `<title>` for native-tooltip hover. This
- * gives users the change summary (`"max 12.0 → 15.0"`) on hover without
- * disrupting the recharts crosshair sync (the recharts mouse handlers on the
- * `ComposedChart` see the rect as part of the chart, not a separate target).
- *
- * Designed to be spread inline into a `ComposedChart` child tree because
- * Recharts walks children by element type at render time.
- */
-export function renderSettingsChangeMarkers(
-  changes: readonly SettingsChange[],
-  { stroke, yAxisId }: RenderMarkersOptions,
-): readonly ReactElement[] {
-  return changes.map((sc) => {
-    const summary = describeSettingsChange(sc);
-    const tooltip = `${sc.date}: ${summary}`;
-    return (
-      <ReferenceLine
-        key={`sc-${sc.date}`}
-        x={sc.date}
-        stroke={stroke}
-        strokeDasharray="4 4"
-        strokeOpacity={0.5}
-        ifOverflow="extendDomain"
-        {...(yAxisId !== undefined ? { yAxisId } : {})}
-        shape={(props: ReferenceLineShapeProps) => {
-          const {
-            x1 = 0,
-            x2 = 0,
-            y1 = 0,
-            y2 = 0,
-            stroke: s = stroke,
-            strokeDasharray = '4 4',
-            strokeOpacity = 0.5,
-          } = props;
-          const hitWidth = 8;
-          const left = Math.min(x1, x2) - hitWidth / 2;
-          const top = Math.min(y1, y2);
-          const height = Math.abs(y2 - y1);
-          return (
-            <g aria-label={tooltip}>
-              <title>{tooltip}</title>
-              <line
-                x1={x1}
-                x2={x2}
-                y1={y1}
-                y2={y2}
-                stroke={s}
-                strokeDasharray={strokeDasharray}
-                strokeOpacity={strokeOpacity}
-              />
-              {/* Invisible wider hover target so the native <title> tooltip
-                  surfaces on a casual mouseover without the user having to
-                  pixel-hunt the 1px dashed line. */}
-              <rect
-                x={left}
-                y={top}
-                width={hitWidth}
-                height={height}
-                fill="transparent"
-                pointerEvents="visible"
-              />
-            </g>
-          );
-        }}
-      />
-    );
-  });
-}
+  const count = data.length;
+  const indexOf = (date: string): number => data.findIndex((d) => d.date === date);
+
+  const lineTop = top ?? margins.top;
+  const lineBottomInset = bottom ?? margins.bottom;
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden={false}>
+      {changes.map((sc) => {
+        const idx = indexOf(sc.date);
+        if (idx < 0) return null;
+        const summary = describeSettingsChange(sc);
+        const tooltip = `${sc.date}: ${summary}`;
+        // X within the plot, as a calc() over the responsive plot width.
+        // For a point scale: pointX with a normalized 0..1 plot. For a band
+        // scale: band centre. We express the fraction along the plot width.
+        const frac = isBand
+          ? // band centre fraction = (i + 0.5) / count
+            (idx + 0.5) / count
+          : // point fraction = i / (count - 1), single category centred.
+            count <= 1
+            ? 0.5
+            : idx / (count - 1);
+        const leftCalc = `calc(${margins.left}px + (100% - ${margins.left + margins.right}px) * ${frac})`;
+        return (
+          <div
+            key={`sc-${sc.date}`}
+            style={{
+              position: 'absolute',
+              top: lineTop,
+              bottom: lineBottomInset,
+              left: leftCalc,
+              width: 0,
+              pointerEvents: 'none',
+            }}
+          >
+            {/* Visible dashed line. */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: 0,
+                width: 0,
+                borderLeft: `1px dashed ${stroke}`,
+                opacity: 0.5,
+              }}
+            />
+            {/* Invisible wider hover target carrying the native title + label. */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: -4,
+                width: 8,
+                pointerEvents: 'auto',
+                cursor: 'help',
+              }}
+              title={tooltip}
+              aria-label={tooltip}
+              role="img"
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+});

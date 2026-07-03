@@ -683,4 +683,218 @@ describe('OPFSService', () => {
       expect(manifest.durationSeconds).toBe(MAX_SESSION_SECONDS);
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Parallel, bounded-concurrency chunk writes (Change A)
+  //
+  // Chunk files are written with bounded concurrency (≤ 8 in flight), but the
+  // manifest is ALWAYS written last — only after every chunk write resolves —
+  // and a failing chunk write must still reject the whole writeSession so the
+  // caller's IDB-then-OPFS compensation fires. These tests instrument the OPFS
+  // mock to observe concurrency, write ordering, and the failure path.
+  // -----------------------------------------------------------------------
+
+  describe('parallel bounded-concurrency chunk writes', () => {
+    /**
+     * Install an instrumented in-memory OPFS that records, per file name, when
+     * its writable is opened and when it closes. A barrier delays each chunk's
+     * close to a later microtask/timer turn so that overlapping writes are
+     * actually observable, and an optional `failFile` makes one chunk's write
+     * reject.
+     */
+    function installInstrumentedOPFS(opts: { delayMs?: number; failFile?: string } = {}): {
+      events: Array<{ file: string; phase: 'open' | 'close' }>;
+      concurrency: { peak: number };
+      writeOrder: string[];
+    } {
+      const events: Array<{ file: string; phase: 'open' | 'close' }> = [];
+      const concurrency = { peak: 0 };
+      const writeOrder: string[] = [];
+      let openWritables = 0;
+
+      class InstrWritable {
+        private chunks: Uint8Array[] = [];
+        constructor(
+          private readonly fileName: string,
+          private readonly onClose: (bytes: Uint8Array) => void,
+        ) {
+          events.push({ file: fileName, phase: 'open' });
+          openWritables++;
+          concurrency.peak = Math.max(concurrency.peak, openWritables);
+        }
+        async write(data: ArrayBuffer | ArrayBufferView | string): Promise<void> {
+          if (opts.failFile && this.fileName === opts.failFile) {
+            throw new Error(`synthetic write failure for ${this.fileName}`);
+          }
+          if (typeof data === 'string') {
+            this.chunks.push(new TextEncoder().encode(data));
+          } else if (data instanceof ArrayBuffer) {
+            this.chunks.push(new Uint8Array(data.slice(0)));
+          } else {
+            const v = data as ArrayBufferView;
+            this.chunks.push(
+              new Uint8Array(v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength)),
+            );
+          }
+        }
+        async close(): Promise<void> {
+          // Yield so concurrent opens stack up before any close runs.
+          await new Promise((r) => setTimeout(r, opts.delayMs ?? 2));
+          const total = this.chunks.reduce((s, c) => s + c.byteLength, 0);
+          const merged = new Uint8Array(total);
+          let off = 0;
+          for (const c of this.chunks) {
+            merged.set(c, off);
+            off += c.byteLength;
+          }
+          this.onClose(merged);
+          openWritables--;
+          events.push({ file: this.fileName, phase: 'close' });
+          writeOrder.push(this.fileName);
+        }
+      }
+
+      class InstrFileHandle {
+        readonly kind = 'file' as const;
+        bytes: Uint8Array = new Uint8Array(0);
+        constructor(readonly name: string) {}
+        async createWritable(): Promise<InstrWritable> {
+          return new InstrWritable(this.name, (b) => {
+            this.bytes = b;
+          });
+        }
+        async getFile(): Promise<MockFile> {
+          return new MockFile(this.bytes);
+        }
+      }
+
+      class InstrDirHandle {
+        readonly kind = 'directory' as const;
+        private dirs = new Map<string, InstrDirHandle>();
+        private files = new Map<string, InstrFileHandle>();
+        constructor(readonly name: string) {}
+        async getDirectoryHandle(name: string, o?: { create?: boolean }): Promise<InstrDirHandle> {
+          const e = this.dirs.get(name);
+          if (e) return e;
+          if (!o?.create) throw notFound(name);
+          const h = new InstrDirHandle(name);
+          this.dirs.set(name, h);
+          return h;
+        }
+        async getFileHandle(name: string, o?: { create?: boolean }): Promise<InstrFileHandle> {
+          const e = this.files.get(name);
+          if (e) return e;
+          if (!o?.create) throw notFound(name);
+          const h = new InstrFileHandle(name);
+          this.files.set(name, h);
+          return h;
+        }
+        async removeEntry(name: string): Promise<void> {
+          if (this.dirs.delete(name) || this.files.delete(name)) return;
+          throw notFound(name);
+        }
+        async *values(): AsyncIterableIterator<InstrDirHandle | InstrFileHandle> {
+          for (const d of this.dirs.values()) yield d;
+          for (const f of this.files.values()) yield f;
+        }
+      }
+
+      const root = new InstrDirHandle('');
+      Object.defineProperty(navigator, 'storage', {
+        value: { getDirectory: vi.fn(async () => root as unknown as FileSystemDirectoryHandle) },
+        configurable: true,
+        writable: true,
+      });
+
+      return { events, concurrency, writeOrder };
+    }
+
+    /** A multi-chunk session: 1 Hz over 50 minutes → 10 chunks (5 min each). */
+    function manyChunkChannel(): { startTime: number; endTime: number; channel: ChannelInput } {
+      const startTime = 1_000_000;
+      const seconds = 50 * 60;
+      const endTime = startTime + seconds * 1000;
+      const data = new Float32Array(seconds); // 1 Hz
+      for (let i = 0; i < data.length; i++) data[i] = i;
+      return { startTime, endTime, channel: makeChannel({ name: 'Flow', sampleRate: 1, data }) };
+    }
+
+    it('writes all chunks and the manifest LAST, with bounded concurrency', async () => {
+      const { events, concurrency, writeOrder } = installInstrumentedOPFS({ delayMs: 3 });
+      const service = new OPFSService();
+      await service.initialize();
+
+      const { startTime, endTime, channel } = manyChunkChannel();
+      const manifest = await service.writeSession('parallel-1', startTime, endTime, [channel]);
+
+      // 10 chunks declared in the manifest, in ascending index order.
+      expect(manifest.chunks).toHaveLength(10);
+      manifest.chunks.forEach((c, i) => expect(c.index).toBe(i));
+
+      // Concurrency was real (more than one writable open at once) but BOUNDED
+      // at or below the configured cap of 8.
+      expect(concurrency.peak).toBeGreaterThan(1);
+      expect(concurrency.peak).toBeLessThanOrEqual(8);
+
+      // The manifest is the FINAL file written — every chunk closed before it.
+      const lastClosed = writeOrder[writeOrder.length - 1];
+      expect(lastClosed).toBe('manifest.json');
+      const manifestClosePos = events.findIndex(
+        (e) => e.file === 'manifest.json' && e.phase === 'close',
+      );
+      const lastChunkClosePos = Math.max(
+        ...events
+          .map((e, i) => (e.file.endsWith('.bin') && e.phase === 'close' ? i : -1))
+          .filter((i) => i >= 0),
+      );
+      expect(manifestClosePos).toBeGreaterThan(lastChunkClosePos);
+    });
+
+    it('caps in-flight writables at the concurrency bound for a large session', async () => {
+      const { concurrency } = installInstrumentedOPFS({ delayMs: 1 });
+      const service = new OPFSService();
+      await service.initialize();
+
+      // 5 Hz over 4 hours → 48 chunks; far more than the cap of 8.
+      const startTime = 0;
+      const seconds = 4 * 60 * 60;
+      const endTime = seconds * 1000;
+      const data = new Float32Array(seconds * 5);
+      const manifest = await service.writeSession('parallel-big', startTime, endTime, [
+        makeChannel({ name: 'Flow', sampleRate: 5, data }),
+      ]);
+
+      expect(manifest.chunks.length).toBe(48);
+      // Never more than 8 writables open simultaneously.
+      expect(concurrency.peak).toBeLessThanOrEqual(8);
+      // And the parallelism was actually exercised (multiple in flight).
+      expect(concurrency.peak).toBeGreaterThan(1);
+    });
+
+    it('rejects the whole writeSession when any chunk write fails', async () => {
+      installInstrumentedOPFS({ delayMs: 1, failFile: 'chunk-003.bin' });
+      const service = new OPFSService();
+      await service.initialize();
+
+      const { startTime, endTime, channel } = manyChunkChannel();
+
+      await expect(
+        service.writeSession('parallel-fail', startTime, endTime, [channel]),
+      ).rejects.toBeInstanceOf(OPFSError);
+    });
+
+    it('writes the single chunk and manifest for a one-chunk session', async () => {
+      const { writeOrder } = installInstrumentedOPFS({ delayMs: 1 });
+      const service = new OPFSService();
+      await service.initialize();
+
+      const data = new Float32Array([1, 2, 3, 4, 5]);
+      const manifest = await service.writeSession('parallel-tiny', 0, 200, [
+        makeChannel({ name: 'Flow', sampleRate: 25, data }),
+      ]);
+
+      expect(manifest.chunks).toHaveLength(1);
+      expect(writeOrder).toEqual(['chunk-000.bin', 'manifest.json']);
+    });
+  });
 });

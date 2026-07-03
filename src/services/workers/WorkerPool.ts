@@ -323,6 +323,30 @@ export class WorkerPool<T> {
     return this.queue.length;
   }
 
+  /**
+   * The number of workers currently executing a task (busy, not idle).
+   *
+   * Cheap O(workers) scan. Exposed for occupancy profiling (the gated import
+   * profiler polls this with {@link maxPoolSize} to compute pool busy/idle
+   * fractions). Reading it has no effect on scheduling.
+   */
+  get busyWorkerCount(): number {
+    let busy = 0;
+    for (const managed of this.workers.values()) {
+      if (managed.busy) busy++;
+    }
+    return busy;
+  }
+
+  /**
+   * The pool's configured maximum worker count — the denominator for occupancy.
+   * Workers are created lazily, so {@link workerCount} (live workers) can be
+   * below this; occupancy is measured against the cap the pool may grow to.
+   */
+  get maxPoolSize(): number {
+    return this.maxWorkers;
+  }
+
   // ── Queue management ─────────────────────────────────────────
 
   /**

@@ -40,6 +40,19 @@
   --color-info: #2563eb;
   --color-info-bg: rgba(37, 99, 235, 0.1);
 
+  /* GENERATIVE-AI MARKER (fuchsia/magenta) — AI Insights visual spec §5.
+     Owns ONE meaning: "this is LLM-generated content / the affordance that
+     produces it." Deliberately off the clinical-severity (red/orange/green),
+     privacy (green=retained / blue=egress), and reliability/detection (violet)
+     scales so it can never be confused with any of them. Color is reinforcement
+     only — the ✨ glyph is aria-hidden and the literal text "AI"/"AI-generated"
+     always carries the signal (WCAG 1.4.1). Reserved exclusively for the
+     src/components/ai/* modules; never used on deterministic (?) glossary help. */
+  --color-ai: #a21caf; /* fuchsia-700: ~5.9:1 as text on --color-surface-primary (#fff) */
+  --color-ai-bg: rgba(162, 28, 175, 0.1); /* pill / caveat-banner fill */
+  --color-ai-subtle-bg: rgba(162, 28, 175, 0.05); /* chip hover wash */
+  --color-ai-border: rgba(162, 28, 175, 0.35); /* optional pill/region hairline */
+
   /* RELIABILITY / MEASUREMENT-UNCERTAINTY SCALE (consensus D2)
      Metadata ABOUT a metric's trustworthiness, never clinical severity.
      Deliberately on the desaturated VIOLET/NEUTRAL axis so it can never be
@@ -99,9 +112,9 @@
   --color-wearable-snore: #7c5cff;
 
   /* HYPNOGRAM (sleep stage) COLORS */
-  --color-hypno-wake: #f59e0b;
+  --color-hypno-wake: #d97706; /* amber-600: ≥3:1 graphical contrast on white */
   --color-hypno-rem: #8b5cf6;
-  --color-hypno-light: #38bdf8;
+  --color-hypno-light: #0ea5e9; /* sky-500: deeper than #38bdf8 for white-bg contrast */
   --color-hypno-deep: #1e3a8a;
   --color-hypno-unknown: var(--color-surface-tertiary);
 
@@ -129,6 +142,18 @@
   --color-selection-band-bg: rgba(37, 99, 235, 0.16);
   --color-selection-band-border: rgba(37, 99, 235, 0.6);
 
+  /* SIGNAL VIEWER REGION STATISTICS
+     The "Measure region" overlay (per-lane stat chips + measure band + region
+     footer). Chip surface is near-OPAQUE so the small chip text holds AA
+     contrast over a bright waveform underneath. The band fill/edge are a NEUTRAL
+     slate — deliberately distinct (dashed edge + neutral, not the primary-blue
+     solid SHIFT-drag zoom band) so the persistent measure region never reads as
+     the transient zoom rubber-band. Colour is reinforcement only; the band also
+     carries a dashed edge and the footer/pill carry text + shape cues. */
+  --color-stat-chip-bg: rgba(255, 255, 255, 0.94);
+  --color-stat-band-bg: rgba(100, 116, 139, 0.1);
+  --color-stat-band-edge: rgba(100, 116, 139, 0.55);
+
   /* SIGNAL VIEWER LANE METRICS */
   --signal-lane-height: 150px;
   --signal-lane-height-hero: 200px;
@@ -143,8 +168,62 @@
   --signal-lane-name-shadow: rgba(255, 255, 255, 0.9);
   /* Hit-area target for the lane grip/hide controls (WCAG 2.5.8 ≥ 24×24px). */
   --signal-lane-control-size: 24px;
+  /* Compact single-row ribbon lane (weather conditions / AQI). */
+  --signal-lane-height-ribbon: 44px;
+
+  /* WEATHER LANE COLORS (Signal Viewer pressure/temperature dual line).
+     Cool cyan = pressure (headline), warm brown-orange = temperature. Kept off
+     the chart/wearable/hypno hues for mutual distinguishability. */
+  --color-weather-pressure: #0e7490;
+  --color-weather-temp: #92400e;
+
+  /* AIR QUALITY INDEX (AQI) RAMP — its own 6-step scale, deliberately distinct
+     from the clinical --color-status-* (AHI severity) scale. The rank (1–6)
+     drives fill + pattern; the WORD is provider-aware (US / European). Each
+     `-fg` is the on-fill text colour (verified ≥ 4.5:1 on its fill). Consuming
+     components (see AqiSwatch) render the rank WORD in --color-text-primary and
+     use the fill only as a swatch/band, so light ranks 1–3 (which fall below
+     4.5:1 as text on the surface) never rely on colour for legibility.
+     NOTE: light rank 1 is #2a7d4f (a slight darkening of the spec's #2e8b57) so
+     its on-fill white text reaches 5.07:1; see the contrast report. */
+  --color-aqi-1: #2a7d4f;
+  --color-aqi-1-fg: #ffffff;
+  --color-aqi-1-bg: rgba(42, 125, 79, 0.12);
+  --color-aqi-2: #9aa520;
+  --color-aqi-2-fg: #1a1a1a;
+  --color-aqi-2-bg: rgba(154, 165, 32, 0.12);
+  --color-aqi-3: #d97706;
+  --color-aqi-3-fg: #1a1a1a;
+  --color-aqi-3-bg: rgba(217, 119, 6, 0.12);
+  --color-aqi-4: #dc2626;
+  --color-aqi-4-fg: #ffffff;
+  --color-aqi-4-bg: rgba(220, 38, 38, 0.12);
+  --color-aqi-5: #8b1a8b;
+  --color-aqi-5-fg: #ffffff;
+  --color-aqi-5-bg: rgba(139, 26, 139, 0.12);
+  --color-aqi-6: #6b1f3a;
+  --color-aqi-6-fg: #ffffff;
+  --color-aqi-6-bg: rgba(107, 31, 58, 0.12);
+
+  /* NEUTRAL TREND (non-judgmental metrics: temp/humidity/pressure/dewpoint/wind).
+     Aliases of the existing secondary text / tertiary surface tokens so a neutral
+     trend chip carries no favourable/unfavourable colour signal. */
+  --color-trend-neutral: var(--color-text-secondary);
+  --color-trend-neutral-bg: var(--color-surface-tertiary);
+
+  /* MEASURE-MODE FOOTER SWITCHER (Signal Viewer). Aliases so the segmented control
+     reads as a subtle inset track with an elevated selected segment. Selection is
+     conveyed by fill + weight + a ● marker + shadow, never colour alone. */
+  --color-mode-switcher-trough: var(--color-surface-tertiary);
+  --color-mode-switcher-selected-bg: var(--color-surface-elevated);
+  --color-mode-switcher-selected-fg: var(--color-text-primary);
+  --color-mode-switcher-rest-fg: var(--color-text-secondary);
 
   /* APP CHROME (sidebar / header / icons) */
+  /* Sidebar geometry — theme-invariant. Expanded is the default desktop width;
+     rail is the collapsed icon-only width (desktop ≥768px only). */
+  --sidebar-width-expanded: 240px;
+  --sidebar-width-rail: 64px;
   --color-surface-sidebar: #fbfbfb;
   --color-nav-active-bg: rgba(37, 99, 235, 0.08);
   --color-nav-active-fg: #1d4ed8;
@@ -158,6 +237,22 @@
   /* FOCUS */
   --color-focus-ring: #3b82f6;
   --color-focus-ring-offset: #ffffff;
+
+  /* IMPORT / MULTI-STAGE PROGRESS STATUS
+     Semantic aliases for the multi-stage import flow (pending → active → done,
+     plus warning/error terminals). They alias the existing text/primary/
+     success/warning/error/surface tokens so the dark theme and any contrast
+     adjustments are inherited automatically — never hard-code a stage colour.
+     Colour is reinforcement only; consumers always pair a stage with a unique
+     icon shape + text label (WCAG 1.4.1). */
+  --color-stage-pending: var(--color-text-muted);
+  --color-stage-active: var(--color-primary);
+  --color-stage-done: var(--color-success);
+  --color-stage-warning: var(--color-warning);
+  --color-stage-error: var(--color-error);
+  --color-stage-active-bg: var(--color-surface-secondary);
+  --stage-status-size: var(--icon-size-sm);
+  --stage-row-indent: var(--space-6);
 
   /* SPACING SCALE (4px base) */
   --space-0: 0;
@@ -235,6 +330,11 @@
   --z-dropdown: 100;
   --z-sticky: 200;
   --z-overlay: 300;
+  /* Non-modal drawers (e.g. the AI Insights rail) sit above sticky page chrome
+     such as the layout header/StatusBar so their controls — notably the close
+     button — remain pointer-clickable, while staying below true modal dialogs
+     and toasts. */
+  --z-drawer: 350;
   --z-modal: 400;
   --z-tooltip: 500;
   --z-toast: 600;
@@ -273,6 +373,12 @@
   --color-error-bg: rgba(239, 68, 68, 0.15);
   --color-info: #60a5fa;
   --color-info-bg: rgba(96, 165, 250, 0.15);
+  /* GENERATIVE-AI MARKER — dark theme (brightened, same hue intent).
+     #e879f9 (fuchsia-400) ≈ 8.6:1 as text on --color-surface-primary (#0a0a0a). */
+  --color-ai: #e879f9;
+  --color-ai-bg: rgba(232, 121, 249, 0.15);
+  --color-ai-subtle-bg: rgba(232, 121, 249, 0.08);
+  --color-ai-border: rgba(232, 121, 249, 0.4);
   --color-primary: #3b82f6;
   --color-primary-hover: #60a5fa;
   --color-primary-active: #2563eb;
@@ -303,7 +409,7 @@
   --color-hypno-wake: #fbbf24;
   --color-hypno-rem: #a78bfa;
   --color-hypno-light: #38bdf8;
-  --color-hypno-deep: #3b82f6;
+  --color-hypno-deep: #6366f1; /* indigo-500: hue-separated from cyan light (was #3b82f6, two near-identical blues) */
   --color-hypno-unknown: var(--color-surface-tertiary);
 
   /* DETECTION EPISODE COLORS (breathing-event detection overlay) */
@@ -344,8 +450,52 @@
   --color-selection-band-bg: rgba(96, 165, 250, 0.2);
   --color-selection-band-border: rgba(96, 165, 250, 0.7);
 
+  /* SIGNAL VIEWER REGION STATISTICS — dark. Near-opaque dark chip surface so
+     chip text holds AA over a bright waveform; band fill/edge brightened slate
+     to stay visible over dark waveforms (see :root for rationale). */
+  --color-stat-chip-bg: rgba(31, 31, 31, 0.94);
+  --color-stat-band-bg: rgba(148, 163, 184, 0.14);
+  --color-stat-band-edge: rgba(148, 163, 184, 0.6);
+
   /* SIGNAL VIEWER LANE METRICS — dark-mode lane-name halo */
   --signal-lane-name-shadow: rgba(0, 0, 0, 0.95);
+  --signal-lane-height-ribbon: 44px;
+
+  /* WEATHER LANE COLORS — brightened for dark surfaces. */
+  --color-weather-pressure: #22d3ee;
+  --color-weather-temp: #fdba74;
+
+  /* AIR QUALITY INDEX (AQI) RAMP — dark. Every `-fg` is #1a1a1a (dark text on a
+     bright fill); all six verified ≥ 5.0:1 on their fill, and every dark fill
+     clears 4.5:1 as text on the dark surface. */
+  --color-aqi-1: #34d399;
+  --color-aqi-1-fg: #1a1a1a;
+  --color-aqi-1-bg: rgba(52, 211, 153, 0.18);
+  --color-aqi-2: #bfd13a;
+  --color-aqi-2-fg: #1a1a1a;
+  --color-aqi-2-bg: rgba(191, 209, 58, 0.18);
+  --color-aqi-3: #fbbf24;
+  --color-aqi-3-fg: #1a1a1a;
+  --color-aqi-3-bg: rgba(251, 191, 36, 0.18);
+  --color-aqi-4: #f87171;
+  --color-aqi-4-fg: #1a1a1a;
+  --color-aqi-4-bg: rgba(248, 113, 113, 0.18);
+  --color-aqi-5: #d946ef;
+  --color-aqi-5-fg: #1a1a1a;
+  --color-aqi-5-bg: rgba(217, 70, 239, 0.18);
+  --color-aqi-6: #fb7185;
+  --color-aqi-6-fg: #1a1a1a;
+  --color-aqi-6-bg: rgba(251, 113, 133, 0.18);
+
+  /* NEUTRAL TREND (dark) — alias of secondary text / tertiary surface. */
+  --color-trend-neutral: var(--color-text-secondary);
+  --color-trend-neutral-bg: var(--color-surface-tertiary);
+
+  /* MEASURE-MODE FOOTER SWITCHER (dark) — same aliasing as the light theme. */
+  --color-mode-switcher-trough: var(--color-surface-tertiary);
+  --color-mode-switcher-selected-bg: var(--color-surface-elevated);
+  --color-mode-switcher-selected-fg: var(--color-text-primary);
+  --color-mode-switcher-rest-fg: var(--color-text-secondary);
 
   /* APP CHROME (sidebar / header / icons) — dark */
   --color-surface-sidebar: #121212;
@@ -356,6 +506,19 @@
 
   --color-focus-ring: #60a5fa;
   --color-focus-ring-offset: #0a0a0a;
+
+  /* IMPORT / MULTI-STAGE PROGRESS STATUS — dark. Pure aliases of the dark-theme
+     semantic tokens above; restated here for parity with the file's convention
+     of duplicating semantic aliases in the dark block (see --color-trend-neutral). */
+  --color-stage-pending: var(--color-text-muted);
+  --color-stage-active: var(--color-primary);
+  --color-stage-done: var(--color-success);
+  --color-stage-warning: var(--color-warning);
+  --color-stage-error: var(--color-error);
+  --color-stage-active-bg: var(--color-surface-secondary);
+  --stage-status-size: var(--icon-size-sm);
+  --stage-row-indent: var(--space-6);
+
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);

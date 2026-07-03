@@ -53,13 +53,18 @@
   top: 0;
   left: 0;
   bottom: 0;
-  width: 240px;
+  width: var(--sidebar-width-expanded);
   background-color: var(--color-surface-sidebar);
   border-right: 1px solid var(--color-border-default);
   display: flex;
   flex-direction: column;
   z-index: var(--z-sticky);
-  transition: transform var(--transition-base);
+  /* `transform` drives the mobile slide; `width` drives the desktop rail
+     collapse/expand. Both go through --transition-base, which reduced-motion
+     zeroes globally (no hardcoded durations). */
+  transition:
+    transform var(--transition-base),
+    width var(--transition-base);
 }
 
 .brandArea {
@@ -219,12 +224,13 @@
 /* ── Content wrapper ── */
 
 .content {
-  margin-left: 240px;
+  margin-left: var(--sidebar-width-expanded);
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   min-width: 0;
+  transition: margin-left var(--transition-base);
 }
 
 /* ── Header bar ── */
@@ -299,6 +305,150 @@
 
 .overlay {
   display: none;
+}
+
+/* ── Rail toggle (desktop-only, pinned in the sidebar footer) ──
+   Reuses the .menuToggle visual language but renders as a full-width row in
+   expanded mode (icon + "Collapse" label, like a navLink) and a centered
+   square in rail mode. Hidden below 768px so it never coexists with the
+   mobile hamburger. */
+
+.railToggle {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .railToggle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    /* Match the nav links' full-width hit area. Nav links fill their <li>
+       (the nav content box) and inset themselves with a symmetric
+       `margin: 0 var(--space-2)`. The toggle is a direct <button> child of the
+       footer, so it must stretch to the same box explicitly: full width minus
+       the same horizontal margin, with border-box so padding+border stay inside
+       the computed width (no overflow). This makes the entire row clickable,
+       not just the icon + label. */
+    box-sizing: border-box;
+    width: calc(100% - 2 * var(--space-2));
+    /* ≥36px desktop floor */
+    height: 40px;
+    margin: 0 var(--space-2);
+    padding: 0 var(--space-3);
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    text-align: left;
+    transition: background-color var(--transition-fast);
+  }
+
+  .railToggle:hover {
+    background-color: var(--color-surface-tertiary);
+  }
+
+  .railToggle:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .railToggleIcon {
+    flex-shrink: 0;
+  }
+}
+
+/* ── Rail (collapsed) state ──
+   Driven by `.sidebarRail` on the <aside> and `.contentRail` on the content
+   wrapper. ALL rail rules are scoped to ≥768px so the mobile off-canvas drawer
+   is never affected by the collapsed preference. Label visibility is hard-cut
+   (display:none) — never transitioned. */
+
+@media (min-width: 768px) {
+  .sidebarRail {
+    width: var(--sidebar-width-rail);
+  }
+
+  .contentRail {
+    margin-left: var(--sidebar-width-rail);
+  }
+
+  /* Brand: hide the wordmark, center the mark. */
+  .sidebarRail .brandArea {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .sidebarRail .wordmark {
+    display: none;
+  }
+
+  /* Nav + footer links become icon-only rows with the icon centered in the
+     narrow rail. We deliberately KEEP the expanded geometry that affects an
+     icon's position — same 40px height, same vertical rhythm — and only change
+     what's needed for icon-only mode:
+       • drop the horizontal margin/padding and let the link fill the nav
+         content box so `justify-content: center` centers the icon within the
+         full rail width (a fixed 48px width inside the ~48px content box left no
+         room for `margin: 0 auto` to act, so the icon read as left-of-centre
+         once the accent bar / box rounding shifted it);
+       • collapse the icon↔label gap to 0 (the label itself is hidden below).
+     Height stays 40px so the icon's vertical centre does not move on toggle. */
+  .sidebarRail .navLink {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+
+  /* Hidden from sight AND the a11y tree, but its box is gone (display:none) — the
+     accessible name is provided by the aria-label on the link in rail mode. */
+  .sidebarRail .navLabel {
+    display: none;
+  }
+
+  /* Active accent bar hugs the rail's left edge for centered icons. */
+  .sidebarRail .navLinkActive::before {
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 24px;
+    width: 3px;
+  }
+
+  /* Group labels lose their text but KEEP their box (visibility:hidden, not
+     display:none). Reserving the label's height means every icon below it stays
+     at exactly the same vertical position as in the expanded sidebar, so nothing
+     "jumps up" on collapse. The label is already aria-hidden, so reserving the
+     space has no a11y cost. The reserved label box also separates the groups, so
+     no extra divider is needed (a divider would re-introduce vertical offset). */
+  .sidebarRail .navGroupLabel {
+    visibility: hidden;
+    /* The label keeps its box to preserve vertical rhythm, but in the narrow
+       rail its text would otherwise wrap to multiple lines and inflate the box
+       height (pushing every icon below it down). Pin it to a single line and
+       clip the overflow so the reserved height stays identical to expanded. */
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  /* Rail toggle: icon-only row, full width with the icon centered (matching the
+     nav links), text label hidden. Same 40px height as expanded so it does not
+     shift vertically either. */
+  .sidebarRail .railToggle {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+
+  .sidebarRail .railToggleLabel {
+    display: none;
+  }
 }
 
 /* ── Responsive: < 768px ── */

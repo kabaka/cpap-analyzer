@@ -3,21 +3,23 @@
  *
  * Manages all structured data persistence using the native IDBDatabase API:
  * sessions, nightly aggregates, therapy events, analysis results, settings,
- * import history, and integration data.
+ * import history, integration data, and the breathing-detection cache.
  *
- * Database: `cpap-analyzer`, schema version 2.
+ * Database: `cpap-analyzer`, schema version 4.
  */
 
 import {
   ErrorCategory,
   ErrorSeverity,
   type AnalysisResult,
+  type BreathingDetectionRecord,
   type CPAPError,
   type Event,
   type ImportRecord,
   type IntegrationDailySummary,
   type IntegrationData,
   type IntegrationImportRecord,
+  type IntegrationSource,
   type IntegrationTimeseries,
   type NightlyAggregate,
   type Session,
@@ -35,6 +37,9 @@ export type StoredAnalysisResult = AnalysisResult;
 
 /** ImportRecord stored in IndexedDB with storage indexes. */
 export type StoredImportRecord = ImportRecord;
+
+/** BreathingDetectionRecord stored in IndexedDB (cache-identity compound key). */
+export type StoredBreathingDetection = BreathingDetectionRecord;
 
 /** A settings entry as persisted in IndexedDB (includes updatedAt). */
 export interface StoredSetting {
@@ -56,7 +61,8 @@ type StoreName =
   | 'import_history'
   | 'integration_data'
   | 'integration_timeseries'
-  | 'integration_import_history';
+  | 'integration_import_history'
+  | 'breathing_detections'; // v4
 
 // ---------------------------------------------------------------------------
 // Error helper
@@ -133,17 +139,50 @@ const DB_NAME = 'cpap-analyzer';
  * - v3: add `integration_timeseries` and `integration_import_history` stores;
  *   add `dataType` and `source_dataType_date` indexes to `integration_data`;
  *   remove legacy `source_date` unique index from `integration_data`.
+ * - v4: add the `breathing_detections` per-night PB/CSR detection cache store
+ *   (keyPath `id`, indexes `sessionId`, `date`, `algoVersion`, `computedAt`).
+ *   Additive only; touches no existing data. See
+ *   docs/analysis/breathing-detection-cache-storage.md.
  */
-const DB_VERSION = 3;
+const DB_VERSION = 4;
+
+/**
+ * Optional callback invoked when an OPEN connection is lost out-of-band — i.e.
+ * not via an explicit {@link IndexedDBService.close} call.
+ *
+ * Fires when the browser force-closes the connection under storage eviction
+ * (`IDBDatabase.onclose`) or when a newer-version connection requires this one
+ * to step aside (`IDBDatabase.onversionchange`). The service has already nulled
+ * its internal handle by the time this runs, so the listener's job is to drop
+ * any cached reference to this now-dead instance and let the next access reopen
+ * a fresh connection. The callback must not throw.
+ */
+export type ConnectionLostListener = () => void;
 
 export class IndexedDBService {
   private db: IDBDatabase | null = null;
   private readonly dbName: string;
   private readonly dbVersion: number;
+  private readonly onConnectionLost?: ConnectionLostListener;
 
-  constructor(dbName: string = DB_NAME, dbVersion: number = DB_VERSION) {
+  /**
+   * @param dbName           - IndexedDB database name (defaults to the app DB).
+   * @param dbVersion        - Target schema version (defaults to {@link DB_VERSION}).
+   * @param onConnectionLost - Optional listener notified when an open connection
+   *                           is force-closed by eviction or superseded by a
+   *                           version change. Lets a singleton owner (see
+   *                           `getDB`) discard the dead instance so the next
+   *                           access transparently reopens. Omitting it keeps
+   *                           the service fully usable and independently testable.
+   */
+  constructor(
+    dbName: string = DB_NAME,
+    dbVersion: number = DB_VERSION,
+    onConnectionLost?: ConnectionLostListener,
+  ) {
     this.dbName = dbName;
     this.dbVersion = dbVersion;
+    this.onConnectionLost = onConnectionLost;
   }
 
   // -----------------------------------------------------------------------
@@ -170,6 +209,29 @@ export class IndexedDBService {
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       });
+
+      // Harden the connection lifecycle so an out-of-band loss does not leave a
+      // permanently-dead handle in place.
+      const db = this.db;
+
+      // A newer-version connection (e.g. another tab after an app update, or a
+      // schema bump) cannot upgrade while this one is open. Close ours and null
+      // the handle so we don't deadlock the upgrade; notify the owner so the
+      // next access reopens at the new version.
+      db.onversionchange = () => {
+        db.close();
+        this.db = null;
+        this.onConnectionLost?.();
+      };
+
+      // Fires when the browser force-closes the connection out from under us —
+      // most notably when best-effort storage is evicted mid-session (surfaces
+      // elsewhere as "The database connection is closing"). Null the handle so
+      // the next access reopens instead of throwing on a dead connection.
+      db.onclose = () => {
+        this.db = null;
+        this.onConnectionLost?.();
+      };
     } catch (error) {
       throw new StorageError(
         'STORAGE_OPEN_FAILED',
@@ -347,7 +409,12 @@ export class IndexedDBService {
    */
   async deleteSessionCascade(sessionId: string): Promise<void> {
     try {
-      const tx = this.createWriteTransaction('sessions', 'nightly_aggregates', 'events');
+      const tx = this.createWriteTransaction(
+        'sessions',
+        'nightly_aggregates',
+        'events',
+        'breathing_detections', // v4
+      );
 
       // Session row (keyed by id).
       tx.objectStore('sessions').delete(sessionId);
@@ -357,6 +424,13 @@ export class IndexedDBService {
 
       // Therapy events for this session — looked up via the sessionId index.
       await this.deleteByIndexCursor(tx.objectStore('events'), 'sessionId', sessionId);
+
+      // v4: remove every cached detection (all versions) for this session.
+      await this.deleteByIndexCursor(
+        tx.objectStore('breathing_detections'),
+        'sessionId',
+        sessionId,
+      );
 
       // Await transaction completion so any failed delete rolls back the batch.
       await this.awaitTransaction(tx);
@@ -790,6 +864,225 @@ export class IndexedDBService {
   }
 
   // -----------------------------------------------------------------------
+  // Breathing Detections
+  // -----------------------------------------------------------------------
+
+  /**
+   * Insert or update a breathing-detection record (upsert by composite id).
+   *
+   * Uses `put`, not `add`: re-detecting the same
+   * `(sessionId, algoVersion, paramHash)` overwrites the row in place, keeping
+   * the cache self-cleaning (no dangling duplicate). The caller decides the
+   * quota-degrade policy — a `QuotaExceededError` here is best-effort-recoverable
+   * (the cache is an accelerator, not source of truth), so the read-through layer
+   * wraps this call in its own try/catch rather than this method swallowing it.
+   */
+  async putBreathingDetection(record: StoredBreathingDetection): Promise<void> {
+    try {
+      const store = this.writeStore('breathing_detections');
+      await this.wrapRequest(store.put(record));
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        'put breathing detection',
+        'breathing_detections',
+        record.id,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Retrieve a breathing-detection record by composite id, or `null`.
+   *
+   * This is the cache-validity check: callers build `id` from the current
+   * `algoVersion` + `paramHash`, so a hit is always structurally valid.
+   */
+  async getBreathingDetectionById(id: string): Promise<StoredBreathingDetection | null> {
+    try {
+      const store = this.readStore('breathing_detections');
+      const result: StoredBreathingDetection | undefined = await this.wrapRequest(store.get(id));
+      return result ?? null;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get breathing detection',
+        'breathing_detections',
+        id,
+        error,
+      );
+    }
+  }
+
+  /** Retrieve all breathing-detection records for a session (all versions). */
+  async getBreathingDetectionsBySessionId(sessionId: string): Promise<StoredBreathingDetection[]> {
+    try {
+      return await this.cursorQuery<StoredBreathingDetection>(
+        'breathing_detections',
+        'sessionId',
+        IDBKeyRange.only(sessionId),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get breathing detections by sessionId',
+        'breathing_detections',
+        sessionId,
+        error,
+      );
+    }
+  }
+
+  /** Retrieve breathing-detection records within a date range (inclusive, YYYY-MM-DD). */
+  async getBreathingDetectionsByDateRange(
+    start: string,
+    end: string,
+  ): Promise<StoredBreathingDetection[]> {
+    try {
+      return await this.cursorQuery<StoredBreathingDetection>(
+        'breathing_detections',
+        'date',
+        IDBKeyRange.bound(start, end),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get breathing detections by date range',
+        'breathing_detections',
+        undefined,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Bulk fetch breathing-detection records for a set of composite ids in ONE
+   * read transaction. Returns a Map keyed by `sessionId` for O(1) join in the
+   * catalog. Misses (no row for an id) are simply absent from the map.
+   *
+   * Callers pass current-version ids (built from the current `algoVersion` +
+   * `paramHash`), so every hit is a current-version record and no client-side
+   * version filtering is needed. All `get`s are issued on the same transaction
+   * without awaiting between them, so the transaction stays continuously active
+   * and cannot auto-commit early (same discipline as
+   * {@link deleteIntegrationDataBySource}).
+   */
+  async getBreathingDetectionsByIds(
+    ids: readonly string[],
+  ): Promise<Map<string, StoredBreathingDetection>> {
+    const result = new Map<string, StoredBreathingDetection>();
+    if (ids.length === 0) return result;
+    try {
+      const tx = this.createReadTransaction('breathing_detections');
+      const store = tx.objectStore('breathing_detections');
+
+      // Issue every get up front on the one transaction — do NOT await between
+      // requests, so the transaction never goes idle and cannot auto-commit
+      // before all reads are queued.
+      const requests = ids.map((id) =>
+        this.wrapRequest<StoredBreathingDetection | undefined>(store.get(id)),
+      );
+
+      const records = await Promise.all(requests);
+      await this.awaitTransaction(tx);
+
+      for (const record of records) {
+        if (record) {
+          result.set(record.sessionId, record);
+        }
+      }
+      return result;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get breathing detections by ids',
+        'breathing_detections',
+        undefined,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Evict every breathing-detection row whose `algoVersion !== current`. One
+   * cursor pass over the `algoVersion` index across the full range; deletes any
+   * record at a stale version and returns the count removed. Idempotent.
+   *
+   * A single key range cannot express "not equal", so the cursor iterates the
+   * whole index and skips matching rows. The row count is bounded by the session
+   * count (at most one stale row per session per superseded version), so this is
+   * a cheap one-shot sweep — run on DB open after the migration ledger
+   * (see getDB). Mirrors {@link deleteAnalysisResultsBefore}'s cursor-delete shape.
+   */
+  async deleteBreathingDetectionsByAlgoVersionNotMatching(
+    currentAlgoVersion: number,
+  ): Promise<number> {
+    try {
+      const db = this.getDB();
+      const tx = db.transaction('breathing_detections', 'readwrite');
+      const store = tx.objectStore('breathing_detections');
+      const index = store.index('algoVersion');
+      let deleted = 0;
+
+      await new Promise<void>((resolve, reject) => {
+        const request = index.openCursor();
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (cursor) {
+            const record = cursor.value as StoredBreathingDetection;
+            if (record.algoVersion !== currentAlgoVersion) {
+              cursor.delete();
+              deleted++;
+            }
+            cursor.continue();
+          } else {
+            resolve();
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
+
+      await this.wrapTransaction(tx);
+      return deleted;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_DELETE_FAILED',
+        'delete breathing detections by algoVersion not matching',
+        'breathing_detections',
+        String(currentAlgoVersion),
+        error,
+      );
+    }
+  }
+
+  /**
+   * Delete all breathing-detection records for a session (all versions).
+   *
+   * Standalone (non-cascade) counterpart for re-import "recompute this night"
+   * flows that are not full session deletes. Returns the count removed.
+   */
+  async deleteBreathingDetectionsBySessionId(sessionId: string): Promise<number> {
+    try {
+      const tx = this.createWriteTransaction('breathing_detections');
+      const store = tx.objectStore('breathing_detections');
+      const deleted = await this.deleteByIndexRangeCounting(
+        store.index('sessionId'),
+        IDBKeyRange.only(sessionId),
+      );
+      await this.awaitTransaction(tx);
+      return deleted;
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_DELETE_FAILED',
+        'delete breathing detections by sessionId',
+        'breathing_detections',
+        sessionId,
+        error,
+      );
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Settings
   // -----------------------------------------------------------------------
 
@@ -1197,6 +1490,36 @@ export class IndexedDBService {
     }
   }
 
+  /**
+   * Upsert an existing integration timeseries record in place by `id`.
+   *
+   * Unlike {@link addIntegrationTimeseries} (which uses `add` and throws
+   * `ConstraintError` on a duplicate key), this uses `put`, replacing the record
+   * stored under the same `id`. It is the write half of the merge-on-conflict
+   * upsert: the import service reads the existing record for a `(source,
+   * dataType, date)` key, folds the incoming payload in via
+   * {@link module:services/import/googlehealth/mergeTimeseries}, and writes the
+   * merged record back under the SAME `id` — so the unique `source_dataType_date`
+   * index is not violated (the key is unchanged) and the two partial-day chunks
+   * coexist as one record.
+   *
+   * @param data - The full record to store, carrying the existing record's `id`.
+   */
+  async putIntegrationTimeseries(data: IntegrationTimeseries): Promise<void> {
+    try {
+      const store = this.writeStore('integration_timeseries');
+      await this.wrapRequest(store.put(data));
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_WRITE_FAILED',
+        'put integration timeseries',
+        'integration_timeseries',
+        data.id,
+        error,
+      );
+    }
+  }
+
   /** Retrieve integration timeseries records within a date range (inclusive, YYYY-MM-DD). */
   async getIntegrationTimeseriesByDateRange(
     start: string,
@@ -1242,6 +1565,83 @@ export class IndexedDBService {
         'get integration timeseries by key',
         'integration_timeseries',
         `${source}:${dataType}:${date}`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Retrieve every integration timeseries record for a `(source, dataType)` pair.
+   *
+   * Ranges over the `source_dataType_date` compound index, so ONLY records with
+   * the matching source AND dataType are visited — the store's other lanes are
+   * never touched. Intended for small, sleep-only lanes such as `spo2_intraday`.
+   *
+   * ⚠️ Do NOT use this for `heart_rate_intraday`: every visited record's value is
+   * deserialised, and HR nights carry large (~17k-sample) blobs. To learn which
+   * HR dates exist without paying that cost, enumerate keys with
+   * {@link getIntegrationTimeseriesDatesBySourceAndType} and fetch the few needed
+   * records individually via {@link getIntegrationTimeseriesByKey}.
+   *
+   * @param source   - Integration source (e.g. `'fitbit'`).
+   * @param dataType - Timeseries data type (e.g. `'spo2_intraday'`).
+   * @returns Matching records in ascending `date` order.
+   */
+  async getIntegrationTimeseriesBySourceAndType(
+    source: string,
+    dataType: string,
+  ): Promise<IntegrationTimeseries[]> {
+    try {
+      // `[source, dataType]` (length 2) sorts before any `[source, dataType, date]`
+      // key; an array (`[]`) sorts AFTER any string date, so the bound captures
+      // exactly the `(source, dataType, *)` slice of the compound index.
+      return await this.cursorQuery<IntegrationTimeseries>(
+        'integration_timeseries',
+        'source_dataType_date',
+        IDBKeyRange.bound([source, dataType], [source, dataType, []]),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration timeseries by source and type',
+        'integration_timeseries',
+        `${source}:${dataType}`,
+        error,
+      );
+    }
+  }
+
+  /**
+   * Enumerate the dates of every `(source, dataType)` timeseries record WITHOUT
+   * materialising their value blobs.
+   *
+   * Walks the `source_dataType_date` compound index with a KEY-ONLY cursor
+   * ({@link IDBIndex.openKeyCursor}), which yields each entry's
+   * `[source, dataType, date]` index key but never loads the record value — so a
+   * full night of ~17k heart-rate samples is not deserialised. Lets a caller
+   * discover which dates exist for the cost of an index walk, then fetch only the
+   * few records it actually needs via {@link getIntegrationTimeseriesByKey}.
+   *
+   * @param source   - Integration source (e.g. `'fitbit'`).
+   * @param dataType - Timeseries data type (e.g. `'heart_rate_intraday'`).
+   * @returns The record dates (YYYY-MM-DD), in ascending index order.
+   */
+  async getIntegrationTimeseriesDatesBySourceAndType(
+    source: string,
+    dataType: string,
+  ): Promise<string[]> {
+    try {
+      return await this.keyCursorDates(
+        'integration_timeseries',
+        'source_dataType_date',
+        IDBKeyRange.bound([source, dataType], [source, dataType, []]),
+      );
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_READ_FAILED',
+        'get integration timeseries dates by source and type',
+        'integration_timeseries',
+        `${source}:${dataType}`,
         error,
       );
     }
@@ -1366,6 +1766,85 @@ export class IndexedDBService {
   // -----------------------------------------------------------------------
 
   /**
+   * Atomically delete EVERY record for a given integration `source` across all
+   * three integration stores: daily summaries (`integration_data`), intra-night
+   * timeseries (`integration_timeseries`), and import history
+   * (`integration_import_history`). All three stores expose a non-unique
+   * `source` index, so each deletion is a cursor sweep over `source = source`.
+   *
+   * The three sweeps share ONE multi-store readwrite transaction, so the purge
+   * either fully succeeds or fully rolls back — a disconnect→Delete can never
+   * leave a partial residue (e.g. orphaned hourly series or import provenance)
+   * for a source the user asked to forget. This is the total-wipe primitive that
+   * {@link import('@/services/weather/weatherDataService') deleteAllWeatherData}
+   * builds on.
+   *
+   * @param source - Integration source to purge (e.g. `'weather'`, `'fitbit'`).
+   * @returns Per-store counts of records actually removed.
+   */
+  async deleteIntegrationDataBySource(
+    source: IntegrationSource,
+  ): Promise<{ dailyDeleted: number; timeseriesDeleted: number; importRecordsDeleted: number }> {
+    try {
+      const tx = this.createWriteTransaction(
+        'integration_data',
+        'integration_timeseries',
+        'integration_import_history',
+      );
+
+      // Resolve all three store handles synchronously up front. The three
+      // cursor sweeps below run back-to-back on this one transaction; grabbing
+      // the handles before the first `await` keeps the transaction continuously
+      // active so it cannot auto-commit at a microtask boundary between sweeps.
+      const dailyStore = tx.objectStore('integration_data');
+      const timeseriesStore = tx.objectStore('integration_timeseries');
+      const importStore = tx.objectStore('integration_import_history');
+
+      // Kick off all three cursor sweeps without awaiting between them: each
+      // opens a request immediately, so the transaction stays continuously busy
+      // and cannot auto-commit before every sweep has been issued. Then await
+      // their counts together and finally the transaction itself.
+      //
+      // `integration_data` and `integration_import_history` carry a dedicated
+      // non-unique `source` index. `integration_timeseries` has no standalone
+      // `source` index — only the compound `source_dataType_date` index — so we
+      // sweep it via a prefix-bounded range on that index, which selects every
+      // entry whose first key component is `source` regardless of dataType/date.
+      const dailyPromise = this.deleteByIndexRangeCounting(
+        dailyStore.index('source'),
+        IDBKeyRange.only(source),
+      );
+      const timeseriesPromise = this.deleteByIndexRangeCounting(
+        timeseriesStore.index('source_dataType_date'),
+        IDBKeyRange.bound([source], [source, []], false, false),
+      );
+      const importPromise = this.deleteByIndexRangeCounting(
+        importStore.index('source'),
+        IDBKeyRange.only(source),
+      );
+
+      const [dailyDeleted, timeseriesDeleted, importRecordsDeleted] = await Promise.all([
+        dailyPromise,
+        timeseriesPromise,
+        importPromise,
+      ]);
+
+      // Await transaction completion so any failed delete rolls back the batch.
+      await this.awaitTransaction(tx);
+
+      return { dailyDeleted, timeseriesDeleted, importRecordsDeleted };
+    } catch (error) {
+      throw this.wrapError(
+        'STORAGE_DELETE_FAILED',
+        'delete integration data by source',
+        'integration_data',
+        source,
+        error,
+      );
+    }
+  }
+
+  /**
    * Check whether any integration data exists for a given source.
    *
    * Opens a cursor on the `source` index of `integration_data` and returns
@@ -1473,6 +1952,11 @@ export class IndexedDBService {
     if (oldVersion < 3) {
       this.migrateV2ToV3(db, tx);
     }
+
+    // v3 -> v4: add the breathing_detections per-night detection cache store.
+    if (oldVersion < 4) {
+      this.migrateV3ToV4(db);
+    }
   }
 
   /**
@@ -1525,6 +2009,19 @@ export class IndexedDBService {
       store.createIndex('dataType', 'dataType', { unique: false });
       store.createIndex('source_dataType_date', ['source', 'dataType', 'date'], { unique: true });
     }
+  }
+
+  /**
+   * v3 -> v4 migration: add the `breathing_detections` per-night PB/CSR detection
+   * cache store. Additive only — creates one new object store with four indexes;
+   * touches no existing data. See docs/analysis/breathing-detection-cache-storage.md.
+   */
+  private migrateV3ToV4(db: IDBDatabase): void {
+    const store = db.createObjectStore('breathing_detections', { keyPath: 'id' });
+    store.createIndex('sessionId', 'sessionId', { unique: false });
+    store.createIndex('date', 'date', { unique: false });
+    store.createIndex('algoVersion', 'algoVersion', { unique: false });
+    store.createIndex('computedAt', 'computedAt', { unique: false });
   }
 
   private createSchema(db: IDBDatabase): void {
@@ -1590,6 +2087,13 @@ export class IndexedDBService {
     });
     integrationImports.createIndex('source', 'source', { unique: false });
     integrationImports.createIndex('importedAt', 'importedAt', { unique: false });
+
+    // breathing_detections (v4) — per-night PB/CSR detection cache.
+    const breathing = db.createObjectStore('breathing_detections', { keyPath: 'id' });
+    breathing.createIndex('sessionId', 'sessionId', { unique: false });
+    breathing.createIndex('date', 'date', { unique: false });
+    breathing.createIndex('algoVersion', 'algoVersion', { unique: false });
+    breathing.createIndex('computedAt', 'computedAt', { unique: false });
   }
 
   // -----------------------------------------------------------------------
@@ -1664,6 +2168,43 @@ export class IndexedDBService {
   }
 
   /**
+   * Walk an index range with a KEY-ONLY cursor and collect the `date` component
+   * of each compound `[source, dataType, date]` index key.
+   *
+   * Uses {@link IDBIndex.openKeyCursor}, which visits index entries WITHOUT
+   * loading the underlying record value — so large payloads (e.g. full
+   * heart-rate nights) are never deserialised. Assumes a three-element compound
+   * key whose third element is the date string; entries not matching that shape
+   * are skipped defensively.
+   */
+  private keyCursorDates(
+    storeName: StoreName,
+    indexName: string,
+    range: IDBKeyRange,
+  ): Promise<string[]> {
+    return new Promise<string[]>((resolve, reject) => {
+      const store = this.readStore(storeName);
+      const index = store.index(indexName);
+      const dates: string[] = [];
+      const request = index.openKeyCursor(range);
+
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          const key = cursor.key;
+          if (Array.isArray(key) && typeof key[2] === 'string') {
+            dates.push(key[2]);
+          }
+          cursor.continue();
+        } else {
+          resolve(dates);
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
    * Delete every record in `store` whose `indexName` value equals `key`, using
    * a cursor on the given index. The provided `store` MUST already belong to an
    * active readwrite transaction; deletions are enqueued on that transaction and
@@ -1683,6 +2224,34 @@ export class IndexedDBService {
           cursor.continue();
         } else {
           resolve();
+        }
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /**
+   * Delete every record reachable through `index` within `range`, returning the
+   * number of records deleted. The index MUST belong to a store in an active
+   * readwrite transaction; deletions are enqueued on that transaction and are
+   * not committed until the caller awaits the transaction itself.
+   *
+   * Accepting an already-resolved index (rather than a store + index name) lets
+   * callers select the index synchronously up front, keeping a multi-store
+   * transaction continuously busy across concurrent sweeps.
+   */
+  private deleteByIndexRangeCounting(index: IDBIndex, range: IDBKeyRange): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      let deleted = 0;
+      const request = index.openCursor(range);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          cursor.delete();
+          deleted++;
+          cursor.continue();
+        } else {
+          resolve(deleted);
         }
       };
       request.onerror = () => reject(request.error);

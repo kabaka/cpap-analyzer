@@ -154,12 +154,93 @@
   margin-top: var(--space-4);
 }
 
+/* Data-persistence (eviction-protection) indicator */
+.persistenceInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.persistenceStatus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Status pill: icon + word, so the state is never signalled by color alone. */
+.persistenceBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  align-self: flex-start;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  margin: 0;
+}
+
+.persistenceBadgeOk {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.persistenceBadgeWarn {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.persistenceBadgeIcon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.persistenceAction {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
 /* Integration panels */
 .integrationPanel {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   padding-top: var(--space-2);
+}
+
+/* Accordion trigger with an integration icon + "connects online" pill. */
+.integrationTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.integrationTriggerIcon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.onlinePill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-2);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Green "retained-on-device" variant of the online pill (visual spec §2.4).
+   Color is never the sole signal — the pill always carries the word "On-device". */
+.onDevicePill {
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 .comingSoon {

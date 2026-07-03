@@ -41,12 +41,50 @@ const CSP_DIRECTIVES = [
   // data: needed because Vite may inline small font files (e.g. KaTeX woff2)
   // as data: URIs even with assetsInlineLimit: 0 in edge cases.
   "font-src 'self' data:",
-  // No live external network calls exist yet — Fitbit/weather/LLM integrations
-  // are scaffolded in settings but unimplemented ("coming soon"). When they
-  // ship, add their hosts here:
-  //   https://api.fitbit.com, https://api.openweathermap.org,
-  //   https://api.openai.com, https://api.anthropic.com
-  "connect-src 'self'",
+  // The Weather & Environmental Data integration (opt-in, off by default) is
+  // the first feature that makes an outbound network request. It calls the
+  // keyless Open-Meteo API and ONLY these four hosts — explicit, minimal, and
+  // auditable (no wildcards; nothing but exact host origins). Per the weather
+  // integration design reference §4.1 and the privacy contract §5, only rounded
+  // coordinates and calendar dates leave the device; no identifiers are sent.
+  //
+  // The AI Insights integration (opt-in, off by default; ADR 0024) adds the
+  // named cloud-backend hosts below. Only the grounded metric snapshot egresses,
+  // and only after explicit two-gate consent. As with weather, every entry is an
+  // exact origin — no wildcards.
+  'connect-src ' +
+    [
+      "'self'",
+      // — Weather (Open-Meteo, keyless) —
+      'https://archive-api.open-meteo.com',
+      'https://api.open-meteo.com',
+      'https://air-quality-api.open-meteo.com',
+      'https://geocoding-api.open-meteo.com',
+      // — AI Insights: Claude (Anthropic) browser-direct backend —
+      // BYO-key cloud backend; the request carries the user's own key as the
+      // auth header (never our key; we have no backend — ADR 0024 §3/§4).
+      'https://api.anthropic.com',
+      // — AI Insights: OpenAI-compatible backend —
+      // KNOWN LIMITATION (ADR 0024 §4 "CSP"): a meta-tag CSP cannot allowlist a
+      // host the user TYPES at runtime (an arbitrary OpenAI-compatible base URL)
+      // without a wildcard, and a wildcard `connect-src` is unacceptable — it
+      // would re-open the exfiltration surface that ADR 0015/0022 closed.
+      // Resolution per the ADR: ship ONLY the named OpenAI host as an opt-in
+      // preset (below) plus loopback origins for local servers; a genuinely
+      // arbitrary REMOTE host is unsupported this phase rather than allowed via
+      // a wildcard. (Future named presets — OpenRouter, Together — would be added
+      // here as exact origins.)
+      'https://api.openai.com',
+      // Loopback origins for local OpenAI-compatible servers (Ollama, LM Studio)
+      // so they work out of the box and keep data on-device. NOTE: connect-src
+      // host syntax has no valid port wildcard, so we cannot express
+      // `http://localhost:*`; these bare origins match the DEFAULT ports only
+      // (http: → 80). A non-default local port (e.g. Ollama's 11434) is a known
+      // limitation — see ADR 0024 §4; broadening to per-port entries or a
+      // documented setup note is a follow-up for the provider wave.
+      'http://localhost',
+      'http://127.0.0.1',
+    ].join(' '),
   // Module workers via new Worker(new URL(...), { type: 'module' }) — edfParser,
   // downsample, analysis workers. blob: is a safe fallback for bundled workers.
   "worker-src 'self' blob:",

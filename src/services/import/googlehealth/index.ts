@@ -24,7 +24,7 @@ export type {
 export { scanGoogleHealthExport } from './scanner';
 
 // Parsers
-export type { ParsedRecord } from './parsers';
+export type { ParsedRecord, CoreProgressReport, CoreProgressCallback } from './parsers';
 export {
   parseSleepFiles,
   parseSleepScoreFile,
@@ -39,6 +39,12 @@ export {
   parseTemperatureFiles,
   parseActivityFiles,
   parseSnoringFiles,
+  // Worker-safe parse cores (ADR 0027) — operate on decoded (name, text).
+  parseHeartRateIntradayCore,
+  parseSpO2IntradayCore,
+  parseHRVDetailCore,
+  parseSnoringCore,
+  DEFAULT_CORE_CHUNK_SIZE,
 } from './parsers';
 
 // CSV utilities

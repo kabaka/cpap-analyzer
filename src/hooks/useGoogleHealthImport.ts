@@ -2,39 +2,29 @@
  * Hook to manage the Google Health import workflow:
  *   select directory → scan → preview → import → complete.
  *
- * Creates a {@link GoogleHealthImportService} on demand, tracks scan results
- * and import progress in React state, and integrates with the global app store
- * for status reporting.
+ * Since ADR 0026 the import lifecycle lives on the module-level
+ * {@link importController} OUTSIDE the React tree, and progress lives in
+ * {@link useImportStore}. This hook is now a thin subscribe + dispatch adapter:
+ * it dispatches scan/start/cancel to the controller and derives import state by
+ * subscribing to the store. The scan RESULT (a UI selection concern, not job
+ * lifecycle) stays in local React state.
+ *
+ * The PUBLIC API is unchanged so the import wizard and existing tests keep
+ * working: `{ scan, startImport, scanResult, progress, isActive, result, error,
+ * reset }` (the legacy {@link GoogleHealthImportProgress} the service emits).
  *
  * @module hooks/useGoogleHealthImport
  */
 
 import { useState, useCallback, useRef } from 'react';
+import { useStore } from 'zustand';
+
 import type { GoogleHealthScanResult } from '@/types/fitbit';
 import type { IntegrationImportRecord } from '@/types/storage';
 import type { GoogleHealthImportProgress } from '@/services/import/types';
-import { GoogleHealthImportService } from '@/services/import/googlehealth/GoogleHealthImportService';
-import { getDB } from '@/services/storage/getDB';
+import { importController } from '@/services/import/ImportController';
+import { useImportStore, selectLatestJobOfKind } from '@/stores/useImportStore';
 import { useAppStore } from '@/stores/useAppStore';
-import { useDataStore } from '@/stores/useDataStore';
-
-// ---------------------------------------------------------------------------
-// Idle progress constant
-// ---------------------------------------------------------------------------
-
-const IDLE_PROGRESS: GoogleHealthImportProgress = {
-  status: 'idle',
-  currentDataType: '',
-  dataTypesTotal: 0,
-  dataTypesProcessed: 0,
-  recordsProcessed: 0,
-  recordsTotal: 0,
-  recordsSkipped: 0,
-  errors: [],
-  warnings: [],
-  startTime: 0,
-  currentStage: '',
-};
 
 // ---------------------------------------------------------------------------
 // Public hook interface
@@ -69,32 +59,25 @@ export interface UseGoogleHealthImportResult {
 
 export function useGoogleHealthImport(): UseGoogleHealthImportResult {
   const [scanResult, setScanResult] = useState<GoogleHealthScanResult | null>(null);
-  const [progress, setProgress] = useState<GoogleHealthImportProgress | null>(null);
-  const [isActive, setIsActive] = useState(false);
-  const [result, setResult] = useState<IntegrationImportRecord | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
-  /** Prevents state updates after the user has called reset(). */
-  const abortRef = useRef(false);
-
-  /** Guards against concurrent imports (avoids stale-closure on isActive). */
-  const activeRef = useRef(false);
-
-  /** Lazily created service instance, reused across scan and import. */
-  const serviceRef = useRef<GoogleHealthImportService | null>(null);
+  const trackedJobId = useRef<string | null>(null);
 
   const setImportStatus = useAppStore((s) => s.setImportStatus);
-  const setImportProgress = useAppStore((s) => s.setImportProgress);
-  const setLastImportAt = useDataStore((s) => s.setLastImportAt);
 
-  /** Ensure the service is initialized. */
-  const getService = useCallback(async (): Promise<GoogleHealthImportService> => {
-    if (!serviceRef.current) {
-      const db = await getDB();
-      serviceRef.current = new GoogleHealthImportService(db);
-    }
-    return serviceRef.current;
-  }, []);
+  // Subscribe to the latest Fitbit job entry from the store.
+  const entry = useStore(useImportStore, (s) => selectLatestJobOfKind(s, 'fitbit'));
+
+  const legacyProgress = entry && entry.legacy.kind === 'fitbit' ? entry.legacy.progress : null;
+  const status = entry?.progress.status ?? null;
+  const importActive = status === 'scanning' || status === 'running';
+  const result = entry?.result && entry.result.kind === 'fitbit' ? entry.result.record : null;
+  const importError = entry?.error ?? null;
+
+  if (entry && entry.progress.jobId !== trackedJobId.current) {
+    trackedJobId.current = entry.progress.jobId;
+  }
 
   // -----------------------------------------------------------------------
   // Scan
@@ -102,40 +85,30 @@ export function useGoogleHealthImport(): UseGoogleHealthImportResult {
 
   const scan = useCallback(
     async (dirHandle: FileSystemDirectoryHandle): Promise<GoogleHealthScanResult> => {
-      setIsActive(true);
-      setError(null);
+      setScanning(true);
+      setScanError(null);
       setScanResult(null);
       setImportStatus('scanning');
-      abortRef.current = false;
 
       try {
-        const service = await getService();
-        const result = await service.scan(dirHandle);
-
-        if (!abortRef.current) {
-          setScanResult(result);
-          setImportStatus('idle');
-        }
-
-        return result;
+        const res = await importController.scanFitbit(dirHandle);
+        setScanResult(res);
+        setImportStatus('idle');
+        return res;
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Scan failed';
-        if (!abortRef.current) {
-          setError(message);
-          setImportStatus('error');
-        }
+        setScanError(message);
+        setImportStatus('error');
         throw err;
       } finally {
-        if (!abortRef.current) {
-          setIsActive(false);
-        }
+        setScanning(false);
       }
     },
-    [getService, setImportStatus],
+    [setImportStatus],
   );
 
   // -----------------------------------------------------------------------
-  // Import
+  // Import (dispatch to controller; store drives state)
   // -----------------------------------------------------------------------
 
   const startImport = useCallback(
@@ -144,53 +117,14 @@ export function useGoogleHealthImport(): UseGoogleHealthImportResult {
       scanRes: GoogleHealthScanResult,
       selectedDataTypes: string[],
     ): Promise<void> => {
-      if (activeRef.current) return;
-      activeRef.current = true;
-
-      setIsActive(true);
-      setError(null);
-      setResult(null);
-      setProgress(IDLE_PROGRESS);
-      setImportStatus('importing');
-      abortRef.current = false;
-
-      try {
-        const service = await getService();
-
-        const handleProgress = (p: GoogleHealthImportProgress): void => {
-          if (abortRef.current) return;
-          setProgress(p);
-          setImportProgress({
-            current: p.dataTypesProcessed,
-            total: p.dataTypesTotal,
-          });
-        };
-
-        const importRecord = await service.import(dirHandle, scanRes, {
-          selectedDataTypes,
-          skipDuplicates: true,
-          onProgress: handleProgress,
-        });
-
-        if (!abortRef.current) {
-          setResult(importRecord);
-          setImportStatus('complete');
-          setLastImportAt(new Date().toISOString());
-        }
-      } catch (err) {
-        if (!abortRef.current) {
-          const message = err instanceof Error ? err.message : 'Import failed';
-          setError(message);
-          setImportStatus('error');
-        }
-      } finally {
-        activeRef.current = false;
-        if (!abortRef.current) {
-          setIsActive(false);
-        }
-      }
+      const outcome = importController.startFitbit(
+        { dirHandle, scanResult: scanRes, selectedDataTypes },
+        { skipDuplicates: true },
+      );
+      if (outcome.ok) trackedJobId.current = outcome.jobId;
+      return Promise.resolve();
     },
-    [getService, setImportStatus, setImportProgress, setLastImportAt],
+    [],
   );
 
   // -----------------------------------------------------------------------
@@ -198,27 +132,30 @@ export function useGoogleHealthImport(): UseGoogleHealthImportResult {
   // -----------------------------------------------------------------------
 
   const reset = useCallback(() => {
-    abortRef.current = true;
-    activeRef.current = false;
+    const jobId = trackedJobId.current;
+    if (jobId) {
+      const current = useImportStore.getState().jobs[jobId];
+      const s = current?.progress.status;
+      if (s === 'scanning' || s === 'running') {
+        importController.cancel(jobId);
+      }
+      importController.dismiss(jobId);
+      trackedJobId.current = null;
+    }
     setScanResult(null);
-    setProgress(null);
-    setIsActive(false);
-    setResult(null);
-    setError(null);
+    setScanError(null);
+    setScanning(false);
     setImportStatus('idle');
-    setImportProgress({ current: 0, total: 0 });
-    // Drop the service reference so next use gets a fresh one.
-    serviceRef.current = null;
-  }, [setImportStatus, setImportProgress]);
+  }, [setImportStatus]);
 
   return {
     scan,
     startImport,
     scanResult,
-    progress,
-    isActive,
+    progress: legacyProgress,
+    isActive: scanning || importActive,
     result,
-    error,
+    error: scanError ?? importError,
     reset,
   };
 }
