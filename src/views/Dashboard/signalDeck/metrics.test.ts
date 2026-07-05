@@ -4,13 +4,14 @@ import type { NightlyAggregate } from '@/types';
 
 import {
   ahiHistogram,
-  classifyTherapyIndex,
-  computeTherapyIndex,
+  classifyGoodNightRate,
   DEFAULT_AHI_HISTOGRAM_EDGES,
+  GOOD_NIGHT_AHI_MAX,
+  GOOD_NIGHT_MIN_HOURS,
+  goodNightRate,
   leakDistribution,
   monthlyMeanAhi,
   seriesMean,
-  THERAPY_INDEX_WEIGHTS,
 } from './metrics';
 
 // ---------------------------------------------------------------------------
@@ -113,115 +114,165 @@ describe('seriesMean', () => {
 });
 
 // ---------------------------------------------------------------------------
-// classifyTherapyIndex + weights
+// classifyGoodNightRate + gate constants
 // ---------------------------------------------------------------------------
 
-describe('classifyTherapyIndex', () => {
-  it('maps scores to bands at the documented boundaries', () => {
-    expect(classifyTherapyIndex(85)).toBe('Dialed in');
-    expect(classifyTherapyIndex(84.999)).toBe('On track');
-    expect(classifyTherapyIndex(70)).toBe('On track');
-    expect(classifyTherapyIndex(69.999)).toBe('Needs attention');
-    expect(classifyTherapyIndex(55)).toBe('Needs attention');
-    expect(classifyTherapyIndex(54.999)).toBe('Off track');
-    expect(classifyTherapyIndex(0)).toBe('Off track');
+describe('classifyGoodNightRate', () => {
+  it('maps rates to bands at the documented boundaries', () => {
+    expect(classifyGoodNightRate(85)).toBe('Excellent');
+    expect(classifyGoodNightRate(84.999)).toBe('Good');
+    expect(classifyGoodNightRate(70)).toBe('Good');
+    expect(classifyGoodNightRate(69.999)).toBe('Fair');
+    expect(classifyGoodNightRate(50)).toBe('Fair');
+    expect(classifyGoodNightRate(49.999)).toBe('Low');
+    expect(classifyGoodNightRate(0)).toBe('Low');
   });
 });
 
-describe('THERAPY_INDEX_WEIGHTS', () => {
-  it('sums to 1', () => {
-    const { ahi, adherence, usage, leak } = THERAPY_INDEX_WEIGHTS;
-    expect(ahi + adherence + usage + leak).toBeCloseTo(1, 12);
+describe('good-night gate constants', () => {
+  it('sources the gates from the canonical clinical thresholds', () => {
+    // AASM normal/mild residual-AHI boundary and the CMS usage floor.
+    expect(GOOD_NIGHT_AHI_MAX).toBe(5);
+    expect(GOOD_NIGHT_MIN_HOURS).toBe(4);
   });
 });
 
 // ---------------------------------------------------------------------------
-// computeTherapyIndex
+// goodNightRate
 // ---------------------------------------------------------------------------
 
-describe('computeTherapyIndex', () => {
-  it('computes the hand-verified composite for two clean nights', () => {
-    // Night A: ahi 4, usage 8h, leak 6.  Night B: ahi 8, usage 8h, leak 18.
-    // Equal usage hours → pooled AHI is the simple mean = 6.
-    //   sAHI     = (15 - 6)/15*100                 = 60
-    //   sAdhere  = 1.0 * 100                        = 100  (both ≥ 4h)
-    //   sUsage   = clamp(8/7.5*100, 0, 100)         = 100
-    //   sLeak    = (24 - 12)/24*100                 = 50   (mean leak = 12)
-    //   score    = 0.40*60 + 0.28*100 + 0.20*100 + 0.12*50 = 78
-    const result = computeTherapyIndex([
-      makeNight({ ahi: 4, usageHours: 8, leakMedian: 6 }),
-      makeNight({ ahi: 8, usageHours: 8, leakMedian: 18 }),
+describe('goodNightRate', () => {
+  it('scores 100 when every night passes both gates', () => {
+    const result = goodNightRate([
+      makeNight({ ahi: 1, usageHours: 8 }),
+      makeNight({ ahi: 4.9, usageHours: 6 }),
+      makeNight({ ahi: 0, usageHours: 4 }),
     ]);
-
-    expect(result.score).toBe(78);
-    expect(result.label).toBe('On track');
-    expect(result.severityForLabel).toBe('mild');
-    expect(result.subscores.ahi).toBeCloseTo(60, 10);
-    expect(result.subscores.adherence).toBeCloseTo(100, 10);
-    expect(result.subscores.usage).toBeCloseTo(100, 10);
-    expect(result.subscores.leak).toBeCloseTo(50, 10);
-    expect(result.nightsUsed).toBe(2);
-  });
-
-  it('renormalises over the remaining weights when no AHI is defined', () => {
-    // Both nights have null AHI → sAHI null, dropped from the composite.
-    //   sAdhere = 100, sUsage = 100 (8h), sLeak = (24-6)/24*100 = 75
-    //   composite = (0.28*100 + 0.20*100 + 0.12*75) / (0.28+0.20+0.12)
-    //             = (28 + 20 + 9) / 0.60 = 57 / 0.60 = 95
-    const result = computeTherapyIndex([
-      makeNight({ ahi: null, usageHours: 8, leakMedian: 6 }),
-      makeNight({ ahi: null, usageHours: 8, leakMedian: 6 }),
-    ]);
-
-    expect(result.subscores.ahi).toBeNull();
-    expect(result.score).toBe(95);
-    expect(result.label).toBe('Dialed in');
+    expect(result.rate).toBe(100);
+    expect(result.goodNights).toBe(3);
+    expect(result.assessedNights).toBe(3);
+    expect(result.effectiveRate).toBe(100);
+    expect(result.adherentRate).toBe(100);
+    expect(result.label).toBe('Excellent');
     expect(result.severityForLabel).toBe('normal');
-    expect(result.nightsUsed).toBe(2);
   });
 
-  it('duration-weights the pooled AHI (short night does not dominate)', () => {
-    // Night A: ahi 2 over 8h; Night B: ahi 20 over 2h.
-    // pooled = (2*8 + 20*2)/(8+2) = (16+40)/10 = 5.6
-    //   sAHI = (15 - 5.6)/15*100 = 62.6666...
-    const result = computeTherapyIndex([
-      makeNight({ ahi: 2, usageHours: 8, leakMedian: 12 }),
-      makeNight({ ahi: 20, usageHours: 2, leakMedian: 12 }),
+  it('scores 0 when no night passes both gates', () => {
+    const result = goodNightRate([
+      makeNight({ ahi: 12, usageHours: 8 }), // adherent but not effective
+      makeNight({ ahi: 1, usageHours: 2 }), // effective but not adherent
     ]);
-    expect(result.subscores.ahi).toBeCloseTo(((15 - 5.6) / 15) * 100, 8);
+    expect(result.rate).toBe(0);
+    expect(result.goodNights).toBe(0);
+    expect(result.assessedNights).toBe(2);
+    // Each night passes exactly one gate, so the component rates are non-zero.
+    expect(result.effectiveRate).toBe(50);
+    expect(result.adherentRate).toBe(50);
+    expect(result.label).toBe('Low');
+    expect(result.severityForLabel).toBe('severe');
   });
 
-  it('clamps a very high AHI sub-score to 0', () => {
-    const result = computeTherapyIndex([makeNight({ ahi: 40, usageHours: 8 })]);
-    expect(result.subscores.ahi).toBe(0);
-  });
-
-  it('counts nights below the CMS floor as non-compliant', () => {
-    // One 8h (compliant) + one 3h (non-compliant) → complianceRate = 0.5
-    const result = computeTherapyIndex([
-      makeNight({ usageHours: 8 }),
-      makeNight({ usageHours: 3 }),
+  it('computes a hand-verified mix where component rates differ from the combined rate', () => {
+    // 5 recorded nights:
+    //   1) ahi 2,   usage 8  → effective ✓, adherent ✓ → GOOD
+    //   2) ahi 4,   usage 5  → effective ✓, adherent ✓ → GOOD
+    //   3) ahi 3,   usage 7  → effective ✓, adherent ✓ → GOOD
+    //   4) ahi 10,  usage 8  → effective ✗, adherent ✓ → not good (adherent only)
+    //   5) ahi 1,   usage 2  → effective ✓, adherent ✗ → not good (effective only)
+    // goodNights = 3 → rate = 60
+    // effectiveNights = 4 (1,2,3,5) → effectiveRate = 80
+    // adherentNights  = 4 (1,2,3,4) → adherentRate  = 80
+    const result = goodNightRate([
+      makeNight({ ahi: 2, usageHours: 8 }),
+      makeNight({ ahi: 4, usageHours: 5 }),
+      makeNight({ ahi: 3, usageHours: 7 }),
+      makeNight({ ahi: 10, usageHours: 8 }),
+      makeNight({ ahi: 1, usageHours: 2 }),
     ]);
-    expect(result.subscores.adherence).toBeCloseTo(50, 10);
+    expect(result.rate).toBe(60);
+    expect(result.goodNights).toBe(3);
+    expect(result.assessedNights).toBe(5);
+    expect(result.effectiveRate).toBe(80);
+    expect(result.adherentRate).toBe(80);
+    // Component rates both exceed the combined rate.
+    expect(result.effectiveRate).toBeGreaterThan(result.rate ?? 0);
+    expect(result.adherentRate).toBeGreaterThan(result.rate ?? 0);
+    expect(result.label).toBe('Fair');
+    expect(result.severityForLabel).toBe('moderate');
   });
 
-  it('returns a well-defined no-data sentinel for empty input', () => {
-    const result = computeTherapyIndex([]);
-    expect(result.nightsUsed).toBe(0);
-    expect(result.score).toBe(0);
-    expect(result.label).toBe('Off track');
-    expect(result.subscores).toEqual({
-      ahi: null,
-      adherence: null,
-      usage: null,
-      leak: null,
+  it('counts a null-AHI short night as not-good and keeps it in the denominator', () => {
+    // Night 1 is good. Night 2 has a null AHI (below the rate-validity floor)
+    // and a short usage — it fails BOTH gates but still counts as an assessed
+    // night, so the rate is 1/2 = 50, not 1/1 = 100.
+    const result = goodNightRate([
+      makeNight({ ahi: 2, usageHours: 8 }),
+      makeNight({ ahi: null, usageHours: 0.5 }),
+    ]);
+    expect(result.assessedNights).toBe(2);
+    expect(result.goodNights).toBe(1);
+    expect(result.rate).toBe(50);
+    // A null AHI can never be effective (control cannot be confirmed).
+    expect(result.effectiveRate).toBe(50);
+    expect(result.adherentRate).toBe(50);
+  });
+
+  it('treats a null AHI as not effective even when the night is adherent', () => {
+    // Long, well-used night but AHI is null → cannot confirm control → not good.
+    const result = goodNightRate([makeNight({ ahi: null, usageHours: 8 })]);
+    expect(result.effectiveRate).toBe(0);
+    expect(result.adherentRate).toBe(100);
+    expect(result.rate).toBe(0);
+    expect(result.goodNights).toBe(0);
+    expect(result.assessedNights).toBe(1);
+  });
+
+  it('applies the gate boundaries exactly (AHI 5 fails effective, usage 4.0 passes adherent)', () => {
+    // AHI exactly at GOOD_NIGHT_AHI_MAX (5) is NOT effective (strict <).
+    const atAhiCeiling = goodNightRate([makeNight({ ahi: 5, usageHours: 8 })]);
+    expect(atAhiCeiling.effectiveRate).toBe(0);
+    expect(atAhiCeiling.rate).toBe(0);
+
+    // usage exactly at GOOD_NIGHT_MIN_HOURS (4.0) IS adherent (inclusive ≥).
+    const atUsageFloor = goodNightRate([makeNight({ ahi: 2, usageHours: 4 })]);
+    expect(atUsageFloor.adherentRate).toBe(100);
+    expect(atUsageFloor.rate).toBe(100);
+
+    // Just below the usage floor is NOT adherent.
+    const belowUsageFloor = goodNightRate([makeNight({ ahi: 2, usageHours: 3.999 })]);
+    expect(belowUsageFloor.adherentRate).toBe(0);
+    expect(belowUsageFloor.rate).toBe(0);
+  });
+
+  it('rounds the reported rates to integers', () => {
+    // 1 of 3 good → 33.333… → 33; effective 2/3 → 67; adherent 2/3 → 67.
+    const result = goodNightRate([
+      makeNight({ ahi: 2, usageHours: 8 }), // good
+      makeNight({ ahi: 2, usageHours: 2 }), // effective only
+      makeNight({ ahi: 10, usageHours: 8 }), // adherent only
+    ]);
+    expect(result.rate).toBe(33);
+    expect(result.effectiveRate).toBe(67);
+    expect(result.adherentRate).toBe(67);
+  });
+
+  it('returns the null sentinel for empty input', () => {
+    expect(goodNightRate([])).toEqual({
+      rate: null,
+      goodNights: 0,
+      assessedNights: 0,
+      effectiveRate: null,
+      adherentRate: null,
+      label: null,
+      severityForLabel: null,
     });
   });
 
   it('is deterministic and order-independent', () => {
-    const a = makeNight({ ahi: 4, usageHours: 8, leakMedian: 6 });
-    const b = makeNight({ ahi: 8, usageHours: 8, leakMedian: 18 });
-    expect(computeTherapyIndex([a, b])).toEqual(computeTherapyIndex([b, a]));
+    const a = makeNight({ ahi: 2, usageHours: 8 });
+    const b = makeNight({ ahi: 10, usageHours: 8 });
+    const c = makeNight({ ahi: 1, usageHours: 2 });
+    expect(goodNightRate([a, b, c])).toEqual(goodNightRate([c, b, a]));
   });
 });
 

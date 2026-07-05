@@ -21,17 +21,18 @@
  *   never coerced to `0`.
  *
  * ## Non-diagnostic
- * Nothing in this module diagnoses. The {@link computeTherapyIndex} composite in
- * particular is an explicitly heuristic, non-clinical summary (see its JSDoc);
- * the UI must label it as such.
+ * Nothing in this module diagnoses. The {@link goodNightRate} metric counts the
+ * fraction of nights that clear two established clinical gates (residual AHI and
+ * CMS usage); its qualitative label/colour bands are an explicitly heuristic
+ * presentation layer (see its JSDoc). The UI must present the label as a rough
+ * summary, not a medical assessment.
  *
  * @module views/Dashboard/signalDeck/metrics
  */
 
 import type { AhiSeverity } from '@/analysis/clinical';
 import { classifyAhiSeverity } from '@/analysis/clinical';
-import { CMS_COMPLIANCE_HOURS } from '@/analysis/clinical';
-import { LEAK_NOTICE_LPM } from '@/analysis/uncertainty/constants';
+import { AHI_SEVERITY_THRESHOLDS, CMS_COMPLIANCE_HOURS } from '@/analysis/clinical';
 import { pooledRate } from '@/analysis/uncertainty/rateIndex';
 import { percentile } from '@/analysis/descriptive';
 import type { NightlyAggregate } from '@/types';
@@ -39,19 +40,6 @@ import type { NightlyAggregate } from '@/types';
 // ---------------------------------------------------------------------------
 // Small internal numeric helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Clamp `x` into the closed interval `[lo, hi]`.
- *
- * Non-finite inputs (`NaN`, `±Infinity`) collapse to `lo` so a sub-score can
- * never leak a non-finite value into a weighted composite.
- */
-function clamp(x: number, lo: number, hi: number): number {
-  if (!Number.isFinite(x)) return lo;
-  if (x < lo) return lo;
-  if (x > hi) return hi;
-  return x;
-}
 
 /** Round to the nearest integer (half-up), matching the dashboard's display. */
 function roundScore(x: number): number {
@@ -87,234 +75,194 @@ export function seriesMean(values: readonly (number | null)[]): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Therapy Index — heuristic composite (NON-DIAGNOSTIC)
+// 1. Good-night rate — grounded two-gate therapy summary
 // ---------------------------------------------------------------------------
 
-/** Qualitative band label for the {@link computeTherapyIndex} composite. */
-export type TherapyIndexLabel = 'Dialed in' | 'On track' | 'Needs attention' | 'Off track';
+/**
+ * Residual-AHI ceiling (events/hour, **exclusive**) for the "effective" gate of
+ * a good night.
+ *
+ * Sourced from the canonical AHI bands — `AHI_SEVERITY_THRESHOLDS.mild` (= 5) is
+ * the AASM boundary between the *normal* and *mild* residual-AHI bands. A night
+ * is "effective" only when its AHI is **strictly below** this value, i.e. it
+ * sits in the normal band. Not hardcoded; re-derived from the clinical module so
+ * the definition tracks the canonical thresholds.
+ */
+export const GOOD_NIGHT_AHI_MAX: number = AHI_SEVERITY_THRESHOLDS.mild;
 
 /**
- * Heuristic weights for the four Therapy Index sub-scores.
+ * Minimum on-therapy hours (**inclusive**) for the "adherent" gate of a good
+ * night.
  *
- * These are a **product/UX heuristic**, not a validated clinical instrument.
- * They are exported so the weighting is auditable and testable rather than
- * buried as magic numbers. AHI dominates because residual AHI is the primary
- * therapy-efficacy signal; adherence is next; usage duration and leak are
- * softer, secondary contributors. The weights sum to `1`.
- *
- * When a sub-score is unavailable for a window (only the AHI sub-score can be,
- * when no night reaches the rate-validity floor) the composite renormalises
- * over the remaining weights — it does not treat the missing sub-score as `0`.
+ * Sourced from {@link CMS_COMPLIANCE_HOURS} (= 4 h) — the U.S. CMS per-night
+ * usage floor for adherence. A night is "adherent" when `usageHours` is at or
+ * above this value. Not hardcoded.
  */
-export const THERAPY_INDEX_WEIGHTS = {
-  /** AHI efficacy sub-score weight. */
-  ahi: 0.4,
-  /** Adherence (fraction of compliant nights) sub-score weight. */
-  adherence: 0.28,
-  /** Usage-duration sub-score weight. */
-  usage: 0.2,
-  /** Leak-control sub-score weight. */
-  leak: 0.12,
-} as const;
+export const GOOD_NIGHT_MIN_HOURS: number = CMS_COMPLIANCE_HOURS;
 
 /**
- * The four normalised (0–100) sub-scores behind a Therapy Index.
+ * Qualitative presentation band for a {@link goodNightRate} percentage.
  *
- * Every field is `number | null`. In practice only {@link ahi} can be `null`
- * (when no night in the window reaches the rate-validity floor, so there is no
- * defined pooled AHI). When `nightsUsed > 0` the adherence / usage / leak
- * sub-scores are always defined numbers. All four are `null` in the no-data
- * result. `null` here means "not measurable", never "scored zero".
+ * These labels (and their colour severities) are a **heuristic presentation
+ * layer**, not a clinical instrument — see {@link classifyGoodNightRate}.
  */
-export interface TherapyIndexSubscores {
-  /** AHI efficacy sub-score, `null` when there is no defined pooled AHI. */
-  readonly ahi: number | null;
-  /** Adherence sub-score (fraction of compliant nights × 100). */
-  readonly adherence: number | null;
-  /** Usage-duration sub-score. */
-  readonly usage: number | null;
-  /** Leak-control sub-score. */
-  readonly leak: number | null;
+export type GoodNightRateLabel = 'Excellent' | 'Good' | 'Fair' | 'Low';
+
+/** Result of {@link goodNightRate}. */
+export interface GoodNightRateResult {
+  /**
+   * Percentage of recorded nights that pass **both** gates (effective AND
+   * adherent), rounded to an integer for display, or `null` when
+   * `assessedNights === 0`. This is the grounded metric.
+   */
+  readonly rate: number | null;
+  /** Count of nights passing both gates. */
+  readonly goodNights: number;
+  /**
+   * Denominator: every recorded night in the window (`nights.length`). A short
+   * or aborted night is a legitimately not-good therapy night and counts as a
+   * failure, so it stays in the denominator rather than being dropped.
+   */
+  readonly assessedNights: number;
+  /**
+   * Percentage of recorded nights passing **gate 1 alone**
+   * (`ahi != null && ahi < GOOD_NIGHT_AHI_MAX`), rounded for display, or `null`
+   * when `assessedNights === 0`.
+   */
+  readonly effectiveRate: number | null;
+  /**
+   * Percentage of recorded nights passing **gate 2 alone**
+   * (`usageHours >= GOOD_NIGHT_MIN_HOURS`), rounded for display, or `null` when
+   * `assessedNights === 0`.
+   */
+  readonly adherentRate: number | null;
+  /** Qualitative band for {@link rate}, or `null` when there is no data. */
+  readonly label: GoodNightRateLabel | null;
+  /**
+   * Severity token the UI maps to the band colour, or `null` when there is no
+   * data. This is the band's colour mapping only — it is **not** a clinical AHI
+   * severity for the window.
+   */
+  readonly severityForLabel: AhiSeverity | null;
 }
 
-/** Result of {@link computeTherapyIndex}. */
-export interface TherapyIndexResult {
-  /**
-   * Composite score, integer 0–100. `0` with `nightsUsed === 0` is the no-data
-   * sentinel (see {@link computeTherapyIndex}); a genuine `0` from very poor
-   * therapy also exists, so branch on `nightsUsed`, not on `score`, to detect
-   * the empty state.
-   */
-  readonly score: number;
-  /** Qualitative band for {@link score} (see {@link classifyTherapyIndex}). */
-  readonly label: TherapyIndexLabel;
-  /**
-   * Severity token the UI maps to the band colour. This is the band's colour
-   * mapping only — it is **not** a clinical AHI severity for the window.
-   */
-  readonly severityForLabel: AhiSeverity;
-  /** The four sub-scores that produced {@link score}. */
-  readonly subscores: TherapyIndexSubscores;
-  /** Number of nights included in the composite (0 = no-data sentinel). */
-  readonly nightsUsed: number;
-}
-
 /**
- * Map a Therapy Index score to its qualitative band.
+ * Map a good-night-rate percentage to its qualitative presentation band.
  *
- * Bands: `≥ 85` → `'Dialed in'`, `≥ 70` → `'On track'`, `≥ 55` →
- * `'Needs attention'`, otherwise `'Off track'`. Pure and deterministic.
+ * ## Heuristic presentation bands only
+ * The cut points here drive **only** the qualitative label and its colour; the
+ * good-night rate itself (a fraction of nights clearing two established clinical
+ * gates) is the grounded metric. The `70` cut loosely mirrors the CMS
+ * "≥ 70 % of nights" adherence convention, but the labels are a UX affordance,
+ * not a clinical classification.
  *
- * @param score - Composite score (any real number; typically 0–100).
+ * Bands: `≥ 85` → `'Excellent'`, `≥ 70` → `'Good'`, `≥ 50` → `'Fair'`,
+ * otherwise `'Low'`. Pure and deterministic.
+ *
+ * @param rate - Good-night-rate percentage (any real number; typically 0–100).
  * @returns The band label.
  */
-export function classifyTherapyIndex(score: number): TherapyIndexLabel {
-  if (score >= 85) return 'Dialed in';
-  if (score >= 70) return 'On track';
-  if (score >= 55) return 'Needs attention';
-  return 'Off track';
+export function classifyGoodNightRate(rate: number): GoodNightRateLabel {
+  if (rate >= 85) return 'Excellent';
+  if (rate >= 70) return 'Good';
+  if (rate >= 50) return 'Fair';
+  return 'Low';
 }
 
-/** Band → colour-severity mapping for {@link TherapyIndexResult.severityForLabel}. */
-function severityForTherapyLabel(label: TherapyIndexLabel): AhiSeverity {
+/** Band → colour-severity mapping for {@link GoodNightRateResult.severityForLabel}. */
+function severityForGoodNightLabel(label: GoodNightRateLabel): AhiSeverity {
   switch (label) {
-    case 'Dialed in':
+    case 'Excellent':
       return 'normal';
-    case 'On track':
+    case 'Good':
       return 'mild';
-    case 'Needs attention':
+    case 'Fair':
       return 'moderate';
-    case 'Off track':
+    case 'Low':
       return 'severe';
   }
 }
 
-/**
- * A "full night" usage ceiling, in hours, for the usage sub-score.
- *
- * The usage sub-score reaches 100 at this many hours. `7.5 h` is a
- * generous-but-attainable full night (above the 6 h "good adherence" target and
- * below an implausibly long recording), so a well-adhering user saturates the
- * sub-score rather than being penalised for not sleeping 8+ hours on the
- * machine. Heuristic, not a clinical target.
- */
-export const THERAPY_INDEX_USAGE_CEILING_HOURS = 7.5;
-
-/**
- * The AHI anchor, in events/hour, for the AHI sub-score.
- *
- * The AHI sub-score is `(anchor − pooledAHI) / anchor × 100` clamped to
- * `[0, 100]`: `0` maps to 100, the anchor maps to 0. We anchor on the
- * moderate-severity threshold (AHI 15) so that a pooled AHI at or above the
- * moderate cutoff scores 0 and a controlled AHI near 0 scores ~100. Sourced
- * from the canonical AHI bands, not hardcoded.
- */
-const THERAPY_INDEX_AHI_ANCHOR = 15;
-
-/** No-data sentinel returned by {@link computeTherapyIndex} for zero usable nights. */
-const THERAPY_INDEX_EMPTY: TherapyIndexResult = {
-  score: 0,
-  label: 'Off track',
-  severityForLabel: 'severe',
-  subscores: { ahi: null, adherence: null, usage: null, leak: null },
-  nightsUsed: 0,
+/** No-data sentinel returned by {@link goodNightRate} for zero recorded nights. */
+const GOOD_NIGHT_RATE_EMPTY: GoodNightRateResult = {
+  rate: null,
+  goodNights: 0,
+  assessedNights: 0,
+  effectiveRate: null,
+  adherentRate: null,
+  label: null,
+  severityForLabel: null,
 };
 
 /**
- * Compute the composite **Therapy Index** — a heuristic 0–100 summary of overall
- * therapy quality over a window of nights.
+ * Compute the **good-night rate** — the fraction of recorded nights that were
+ * both clinically effective and adherent, over a window of nights.
  *
- * ## This is a NON-DIAGNOSTIC heuristic
- * The Therapy Index is a product-level convenience summary, NOT a validated
- * clinical score and NOT a diagnosis. It blends four normalised sub-scores with
- * {@link THERAPY_INDEX_WEIGHTS}. The UI **must** present it as a heuristic
- * ("a rough at-a-glance summary"), not as a medical assessment, and should keep
- * the underlying metrics (AHI, adherence, usage, leak) directly visible.
+ * ## Definition of a "good night" (two gates, both required)
+ * - **Effective** — `ahi != null && ahi < GOOD_NIGHT_AHI_MAX` (AHI in the normal
+ *   band, `< 5`). A `null` AHI means the recording fell below the rate-validity
+ *   floor, so residual control *cannot be confirmed*; such a night is treated as
+ *   **not** effective, never as a pass.
+ * - **Adherent** — `usageHours >= GOOD_NIGHT_MIN_HOURS` (`≥ 4 h`, the CMS floor).
  *
- * ## Sub-scores (each clamped to 0–100)
- * - **AHI** — `(15 − pooledAHI) / 15 × 100`, anchored on the moderate cutoff
- *   (AHI 15). `pooledAHI` is the duration-weighted {@link pooledRate} over the
- *   window, which naturally excludes nights below the rate-validity floor
- *   (their `ahi` is `null`). `null` when no night qualifies.
- * - **Adherence** — `complianceRate × 100`, where `complianceRate` is the
- *   fraction of nights with `usageHours ≥ CMS_COMPLIANCE_HOURS` (4 h).
- * - **Usage** — `meanUsageHours / 7.5 × 100`
- *   (see {@link THERAPY_INDEX_USAGE_CEILING_HOURS}).
- * - **Leak** — `(LEAK_NOTICE_LPM − meanLeakMedian) / LEAK_NOTICE_LPM × 100`,
- *   where `meanLeakMedian` is the mean of the nightly median leaks.
+ * A night is "good" only when it clears **both** gates.
  *
- * ## Composite
- * `round(Σ wᵢ·sᵢ / Σ wᵢ)` over the **available** sub-scores. With all four
- * present this is `round(0.40·AHI + 0.28·Adherence + 0.20·Usage + 0.12·Leak)`.
- * When the AHI sub-score is unavailable, the composite renormalises over the
- * remaining three weights (it is not treated as 0).
+ * ## Denominator — all recorded nights
+ * The denominator is every recorded night in the window (`nights.length`), not
+ * just the effective or the adherent ones. A short or aborted night (including a
+ * null-AHI night) is a legitimately not-good therapy night and counts as a
+ * failure. This keeps the metric honest: skipping weak nights would inflate it.
+ *
+ * ## Grounded metric vs. heuristic label
+ * {@link GoodNightRateResult.rate} is the grounded, non-diagnostic count. The
+ * accompanying {@link GoodNightRateResult.label} / `severityForLabel` are a
+ * heuristic presentation layer (see {@link classifyGoodNightRate}); the UI must
+ * present the label as a rough summary, not a medical assessment.
+ *
+ * ## Component rates
+ * {@link GoodNightRateResult.effectiveRate} and `adherentRate` report each gate
+ * in isolation (over the same all-nights denominator), so the UI can show *why*
+ * the combined rate is what it is. They can each exceed `rate`, since a night
+ * may pass one gate but not the other.
  *
  * ## No-data result
- * With zero nights the function returns a well-defined sentinel: `score 0`,
- * `nightsUsed 0`, all sub-scores `null`, `label 'Off track'`. Detect the empty
- * state via `nightsUsed === 0` (a real score can also be 0). The UI should show
- * an empty state rather than a red "Off track" verdict.
+ * With zero recorded nights the function returns a well-defined sentinel:
+ * `rate null`, `goodNights 0`, `assessedNights 0`, `effectiveRate null`,
+ * `adherentRate null`, `label null`, `severityForLabel null`.
  *
- * @param nights - The window of nightly aggregates to summarise.
- * @returns The composite score, band, colour-severity, sub-scores, and the
- *   number of nights used. Deterministic.
+ * @param nights - The window of nightly aggregates to summarise (not mutated).
+ * @returns The good-night rate, its component rates, the counts, and the
+ *   heuristic label/colour. Deterministic.
  */
-export function computeTherapyIndex(nights: readonly NightlyAggregate[]): TherapyIndexResult {
-  const nightsUsed = nights.length;
-  if (nightsUsed === 0) return THERAPY_INDEX_EMPTY;
+export function goodNightRate(nights: readonly NightlyAggregate[]): GoodNightRateResult {
+  const assessedNights = nights.length;
+  if (assessedNights === 0) return GOOD_NIGHT_RATE_EMPTY;
 
-  // --- Pooled AHI (duration-weighted; null-AHI nights excluded by pooledRate)
-  const pooledAhi = pooledRate(nights.map((n) => ({ rate: n.ahi, hours: n.usageHours })));
+  let goodNights = 0;
+  let effectiveNights = 0;
+  let adherentNights = 0;
 
-  // --- Adherence: fraction of nights meeting the CMS compliance floor --------
-  let compliantCount = 0;
   for (const n of nights) {
-    if (n.usageHours >= CMS_COMPLIANCE_HOURS) compliantCount += 1;
+    const effective = n.ahi !== null && n.ahi < GOOD_NIGHT_AHI_MAX;
+    const adherent = n.usageHours >= GOOD_NIGHT_MIN_HOURS;
+    if (effective) effectiveNights += 1;
+    if (adherent) adherentNights += 1;
+    if (effective && adherent) goodNights += 1;
   }
-  const complianceRate = compliantCount / nightsUsed;
 
-  // --- Mean usage hours and mean nightly median leak -------------------------
-  const meanUsageHours = seriesMean(nights.map((n) => n.usageHours));
-  const meanLeakMedian = seriesMean(nights.map((n) => n.leakMedian));
-
-  // --- Sub-scores (each clamped 0–100; AHI is null when undefined) -----------
-  const sAhi =
-    pooledAhi === null
-      ? null
-      : clamp(((THERAPY_INDEX_AHI_ANCHOR - pooledAhi) / THERAPY_INDEX_AHI_ANCHOR) * 100, 0, 100);
-  const sAdherence = clamp(complianceRate * 100, 0, 100);
-  const sUsage =
-    meanUsageHours === null
-      ? null
-      : clamp((meanUsageHours / THERAPY_INDEX_USAGE_CEILING_HOURS) * 100, 0, 100);
-  const sLeak =
-    meanLeakMedian === null
-      ? null
-      : clamp(((LEAK_NOTICE_LPM - meanLeakMedian) / LEAK_NOTICE_LPM) * 100, 0, 100);
-
-  // --- Weighted composite over the AVAILABLE sub-scores (renormalised) -------
-  const terms: Array<{ value: number; weight: number }> = [];
-  if (sAhi !== null) terms.push({ value: sAhi, weight: THERAPY_INDEX_WEIGHTS.ahi });
-  if (sAdherence !== null)
-    terms.push({ value: sAdherence, weight: THERAPY_INDEX_WEIGHTS.adherence });
-  if (sUsage !== null) terms.push({ value: sUsage, weight: THERAPY_INDEX_WEIGHTS.usage });
-  if (sLeak !== null) terms.push({ value: sLeak, weight: THERAPY_INDEX_WEIGHTS.leak });
-
-  let weighted = 0;
-  let totalWeight = 0;
-  for (const t of terms) {
-    weighted += t.value * t.weight;
-    totalWeight += t.weight;
-  }
-  const score = totalWeight > 0 ? roundScore(weighted / totalWeight) : 0;
-  const label = classifyTherapyIndex(score);
+  const rate = roundScore((goodNights / assessedNights) * 100);
+  const effectiveRate = roundScore((effectiveNights / assessedNights) * 100);
+  const adherentRate = roundScore((adherentNights / assessedNights) * 100);
+  const label = classifyGoodNightRate(rate);
 
   return {
-    score,
+    rate,
+    goodNights,
+    assessedNights,
+    effectiveRate,
+    adherentRate,
     label,
-    severityForLabel: severityForTherapyLabel(label),
-    subscores: { ahi: sAhi, adherence: sAdherence, usage: sUsage, leak: sLeak },
-    nightsUsed,
+    severityForLabel: severityForGoodNightLabel(label),
   };
 }
 

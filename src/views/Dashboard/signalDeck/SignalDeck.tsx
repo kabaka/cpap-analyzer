@@ -1,9 +1,10 @@
 /**
  * Signal Deck — the dense, monospace "command surface" home dashboard.
  *
- * Owns the deck's data hooks and composes the panels: the Therapy-Index verdict,
- * the 12-month AHI calendar spine, alert cards, signal small-multiples,
- * distributions, wearable lanes, the TECSA dumbbell, and the session log.
+ * Owns the deck's data hooks and composes the panels: the good-night-rate
+ * verdict, the 12-month AHI calendar spine, alert cards, signal small-multiples,
+ * distributions, wearable lanes, the TECSA dumbbell, the (opt-in) weather panel,
+ * and the session log.
  *
  * ## Windowing
  * The 30D/90D toggle drives the global `dateRange` (30d / 90d presets), which the
@@ -52,7 +53,8 @@ import SmallMultiples from './SmallMultiples';
 import TecsaDumbbell from './TecsaDumbbell';
 import VerdictCard from './VerdictCard';
 import WearableLanes from './WearableLanes';
-import { computeTherapyIndex, seriesMean } from './metrics';
+import WeatherPanel from './WeatherPanel';
+import { goodNightRate, seriesMean } from './metrics';
 import styles from './SignalDeck.module.css';
 
 type WindowKey = '30d' | '90d';
@@ -163,6 +165,7 @@ export function SignalDeck(): JSX.Element {
 
   const ahiThresholds = useSettingsStore((s) => s.analysisParams.ahi);
   const displayPrefs = useSettingsStore((s) => s.display);
+  const weatherEnabled = useSettingsStore((s) => s.integrations.weather.enabled);
 
   const error = sessionsError ?? statsError ?? aggError;
   const loading = statsLoading || sessionsLoading || aggLoading;
@@ -187,7 +190,7 @@ export function SignalDeck(): JSX.Element {
     [nightDates, hrvSummaries],
   );
 
-  const therapyIndex = useMemo(() => computeTherapyIndex(sortedAggregates), [sortedAggregates]);
+  const goodNight = useMemo(() => goodNightRate(sortedAggregates), [sortedAggregates]);
 
   const insights = useMemo(() => {
     if (!stats || aggregates.length === 0) return [];
@@ -234,8 +237,6 @@ export function SignalDeck(): JSX.Element {
     const last = sortedAggregates[sortedAggregates.length - 1]?.date;
     return `${shortDate(first ?? '')} – ${shortDate(last ?? '')} · ${sortedAggregates.length} nights`;
   }, [sortedAggregates, sessions.length]);
-
-  const ahiSeverity = stats ? classifyAhiSeverity(stats.meanAHI) : null;
 
   // Empty state: no sessions, not loading, no error.
   const hasData = sessions.length > 0 || loading;
@@ -284,8 +285,7 @@ export function SignalDeck(): JSX.Element {
           {/* Top: verdict + calendar spine + alerts */}
           <div className={styles.topGrid}>
             <VerdictCard
-              therapyIndex={therapyIndex}
-              ahiSeverity={ahiSeverity}
+              goodNight={goodNight}
               narrative={narrative}
               buildRequest={buildRangeRequest}
             />
@@ -327,6 +327,9 @@ export function SignalDeck(): JSX.Element {
                 trailing-12-month window, not the 30/90D toggle window. */}
             <TecsaDumbbell loading={loading} dateRange={wideRange} />
           </div>
+
+          {/* Weather & air quality — only when the integration is enabled. */}
+          {weatherEnabled && <WeatherPanel />}
 
           {/* Session log */}
           <SessionLog sessions={sessions} aggregates={sortedAggregates} />

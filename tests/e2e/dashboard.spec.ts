@@ -294,7 +294,7 @@ test.describe('Dashboard — Signal Deck Values After Import', () => {
 
     // The Verdict card's deterministic range summary names the pooled severity
     // as visible text, e.g. "pooled AHI is 5.2/h (mild)".
-    const verdict = page.getByRole('region', { name: 'Therapy Index verdict' });
+    const verdict = page.getByRole('region', { name: 'Good-night rate verdict' });
     await expect(verdict.getByText(/\(mild\)/i)).toBeVisible();
 
     // The Session-log AHI cell also carries the severity word in its accessible

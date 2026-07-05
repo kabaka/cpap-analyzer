@@ -42,7 +42,9 @@
   font-weight: var(--font-weight-semibold);
   font-size: 9px;
   letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--color-text-muted);
+  margin-top: 2px;
 }
 
 .verdictText {
@@ -66,11 +68,19 @@
   margin-top: 4px;
 }
 
+.count {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  color: var(--color-text-primary);
+  margin-top: 8px;
+}
+
 .subBars {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .subRow {
@@ -84,7 +94,8 @@
   font-weight: var(--font-weight-medium);
   font-size: 9.5px;
   color: var(--color-text-secondary);
-  width: 52px;
+  width: 62px;
+  white-space: nowrap;
 }
 
 .subTrack {
@@ -106,7 +117,7 @@
   font-weight: var(--font-weight-semibold);
   font-size: 9.5px;
   color: var(--color-text-primary);
-  width: 26px;
+  width: 34px;
   text-align: right;
 }
 

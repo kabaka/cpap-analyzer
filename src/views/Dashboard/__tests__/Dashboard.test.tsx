@@ -186,8 +186,8 @@ describe('Dashboard', () => {
     expect(screen.getByRole('heading', { name: 'Signal small-multiples' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Session log' })).toBeInTheDocument();
 
-    // Verdict card: "Therapy index" eyebrow + non-diagnostic range summary.
-    expect(screen.getByText('Therapy index')).toBeInTheDocument();
+    // Verdict card: "Good-night rate" eyebrow + non-diagnostic range summary.
+    expect(screen.getByText('Good-night rate')).toBeInTheDocument();
     expect(screen.getByText('Range summary')).toBeInTheDocument();
 
     // The empty state must NOT be shown when data exists.
