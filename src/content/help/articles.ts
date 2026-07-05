@@ -195,39 +195,82 @@ export const helpArticles: readonly HelpArticle[] = [
     slug: 'dashboard',
     title: 'Dashboard Guide',
     summary:
-      'Understanding KPI cards, trend charts, compliance tracking, and the date range selector.',
+      'Reading the Signal Deck home dashboard: the Therapy Index verdict and how it is computed, the 12-month AHI calendar spine, alert cards, the signal small-multiples rail, distribution plots, wearable correlation lanes, the TECSA trajectory, the session log, and the 30D/90D analysis window.',
     icon: 'dashboard',
     sections: [
       {
-        heading: 'Overview',
+        heading: 'Overview — the Signal Deck',
         paragraphs: [
-          'The Dashboard provides a high-level summary of your CPAP therapy. It shows key performance indicators (KPIs), trend charts, and compliance status at a glance. Use the date range selector to focus on specific periods.',
+          'The Dashboard is the app\'s home view: a dense, single-surface therapy overview called the "Signal Deck". It replaces the earlier "Control Room" dashboard (KPI cards plus a sessions table) with a set of purpose-built panels — a headline Therapy Index verdict, a long-horizon AHI calendar, alert cards, a rail of signal small-multiples, distribution plots, wearable correlation lanes, a treatment-emergent central-apnea trajectory, and a session log — laid out so a data-literate reader can take in the shape of their therapy at a glance and then drill into Sessions, Trends, or Explore for detail.',
+          'The deck is theme-aware (light, dark, and custom themes) and, like the rest of the app, is computed entirely in your browser: nothing on this page is uploaded, and the header carries a "LOCAL · NO UPLOAD" badge as a reminder. Two windows are in play at once. Most panels follow the 30D/90D analysis-window toggle in the header (described at the end of this guide); the AHI calendar spine and the TECSA trajectory deliberately ignore the toggle and always cover a trailing 12 months, because they exist to show long-horizon structure that a 30- or 90-day window would hide.',
         ],
       },
       {
-        heading: 'KPI cards',
+        heading: 'The Therapy Index verdict',
         paragraphs: [
-          'The top of the dashboard displays cards for your most important metrics: AHI ($\\text{AHI} = \\frac{\\text{apneas} + \\text{hypopneas}}{\\text{hours}}$), Usage Hours (average per night), Compliance Rate ($\\frac{\\text{nights} \\geq 4\\text{h}}{N} \\times 100\\%$), and Leak Rate (median). Each card shows the current period value, a comparison to the previous period, and a clinical status indicator (green/yellow/orange/red).',
-          'Hover over any metric label to see its definition and interpretation guide. Click "View Details" on a card to navigate to the relevant analysis view.',
+          'The top-left panel is the Therapy Index: a single 0–100 score shown as a ring gauge, with a qualitative band — Dialed in, On track, Needs attention, or Off track — four sub-score bars (AHI, Adherence, Usage, Leak), and a one-line factual summary of the window (pooled AHI and its severity, the trend direction, adherence, and mean usage). It is meant to answer "roughly, how is therapy going over this window?" in one glance before you read the specifics.',
+          'Read this first: the Therapy Index is a heuristic, at-a-glance convenience summary — not a diagnosis, not a clinical severity grade, and not a validated clinical instrument. The card says so explicitly. It is a product-level blend chosen for usefulness, not a figure any guideline defines, and its band colour is a display convention, not a clinical classification of your therapy. Treat it as a starting point that points you at which underlying metric to look at, and rely on the AHI, adherence, usage, and leak figures themselves — all of which are on this same page — for anything you actually act on. This tool does not diagnose.',
         ],
       },
       {
-        heading: 'Trend charts',
+        heading: 'How the Therapy Index is computed',
         paragraphs: [
-          'Below the KPI cards, interactive trend charts show how your key metrics change over time. The charts include nightly values (dots), a 7-day rolling average (solid line), and a LOESS trend line (dashed) for identifying non-linear patterns.',
-          'Click and drag on a chart to zoom into a specific time range. Use the toolbar to toggle between different metrics, change the rolling average window, or export the chart.',
+          'The index is a weighted blend of four normalized sub-scores, each mapped onto a 0–100 scale (higher is better) and clamped to that range. Every threshold below is the same canonical constant used elsewhere in the app, not a number invented for the dashboard.',
+          'AHI sub-score — $s_{\\text{AHI}} = \\operatorname{clamp}\\!\\left(\\frac{15 - \\text{AHI}}{15} \\times 100,\\; 0,\\; 100\\right)$, where AHI is the duration-weighted (pooled) AHI over the window. It is anchored on the moderate-severity cutoff of 15 events/h: a controlled AHI near 0 scores ~100, and a pooled AHI at or above 15 scores 0. Nights too short to yield a trustworthy rate contribute no AHI (they are excluded from the pool, never counted as 0).',
+          'Adherence sub-score — $s_{\\text{adherence}} = \\text{(fraction of nights with usage} \\geq 4\\text{h)} \\times 100$. The 4-hour floor is the CMS/Medicare definition of an adherent night. This is the simple proportion of compliant nights over the window, not the windowed 30-day 70%-of-nights compliance test.',
+          'Usage sub-score — $s_{\\text{usage}} = \\operatorname{clamp}\\!\\left(\\frac{\\bar{u}}{7.5} \\times 100,\\; 0,\\; 100\\right)$, where $\\bar{u}$ is mean usage hours per night. The 7.5 h ceiling is a generous-but-attainable "full night" (above the 6 h good-adherence target), so a well-adhering user saturates this sub-score rather than being penalized for not sleeping 8+ hours on the machine. It is a heuristic ceiling, not a clinical target.',
+          'Leak sub-score — $s_{\\text{leak}} = \\operatorname{clamp}\\!\\left(\\frac{24 - \\bar{L}}{24} \\times 100,\\; 0,\\; 100\\right)$, where $\\bar{L}$ is the mean of the nightly median leaks. It is anchored on the ResMed large-leak notice level of ~24 L/min (a device convention, mask-dependent, not an AASM standard). Because it uses the nightly median leak, it reflects typical leak, not brief spikes.',
+          'Composite — the four sub-scores are combined as $\\text{score} = \\operatorname{round}\\!\\left(\\sum_i w_i s_i \\,\\big/\\, \\sum_i w_i\\right)$ with weights $w = (0.40,\\, 0.28,\\, 0.20,\\, 0.12)$ for AHI, adherence, usage, and leak respectively. AHI dominates because residual AHI is the primary therapy-efficacy signal; adherence is next; usage duration and leak are softer, secondary contributors. If a sub-score is unavailable for the window (only the AHI sub-score can be, when no night reaches the rate-validity floor), the composite renormalizes over the remaining weights — the missing sub-score is never treated as 0. The bands are: score $\\geq 85$ → Dialed in, $\\geq 70$ → On track, $\\geq 55$ → Needs attention, otherwise Off track.',
+          'These weights, anchors, and ceilings are deliberate product choices, exposed here so the score is auditable rather than a black box. They are not derived from, and do not correspond to, any clinical scoring system.',
         ],
       },
       {
-        heading: 'Compliance tracking',
+        heading: 'AHI calendar spine and monthly means',
         paragraphs: [
-          'The compliance card shows the percentage of nights in the selected date range that met the ≥ 4-hour usage target, and a calendar heatmap marks which nights met the target (green) and which did not (red). For reference, the Medicare/insurance adherence standard is ≥ 4 hours/night on ≥ 70% of nights (21 of 30) over a consecutive 30-day period within the first 90 days of therapy (CMS LCD L33718). The card reports the simple proportion of compliant nights over whatever range you have selected — it is not the windowed 30-day test, so compare it against that standard rather than reading it as the standard itself.',
+          "To the right of the verdict is a 12-month nightly-AHI calendar heatmap — one cell per night, coloured by that night's AHI using the same fixed clinical severity bands as the Sessions calendar and the Trends severity zones (Normal < 5, Mild 5–<15, Moderate 15–<30, Severe ≥ 30 events/h) — with a monthly-mean strip beneath it showing each calendar month's duration-weighted (pooled) AHI. This is the deck's longitudinal spine: it always covers a trailing 12 months regardless of the 30D/90D toggle, so seasonal drift, a stretch of missed nights, or a step change after a settings adjustment stays visible. As with every calendar in the app, missed nights and nights too short to yield an AHI are shown as distinct non-value states rather than being coloured or counted as 0.",
         ],
       },
       {
-        heading: 'Date range selector',
+        heading: 'Alert cards',
         paragraphs: [
-          'Use the date range selector to filter all dashboard data. Preset ranges include: Last 7 days, Last 30 days, Last 90 days, Last 6 months, Last year, and All time. You can also set a custom range by clicking the start and end dates. All KPI cards and charts update dynamically when the range changes.',
+          'Below the calendar sits a short stack of alert cards: a handful of automatically generated, plain-language observations about the current window — for example an AHI trending up or down beyond a noticeable threshold, adherence above or below the CMS reference, or a mean usage that clears or falls short of the recommended target. They are ordered with warnings first, then neutral notes, then positive ones, and are capped at a few at a time so the panel stays a summary rather than a wall of text. These are descriptive prompts drawn from your own metrics, not clinical advice; use them as pointers to which panel or view to inspect next.',
+        ],
+      },
+      {
+        heading: 'Signal small-multiples rail',
+        paragraphs: [
+          'The small-multiples rail is a row of compact sparklines — one small multiple per signal — over the active 30D/90D window, so you can scan the recent trajectory of several signals side by side at the same time scale. It covers your core CPAP metrics and, when a wearable is connected, resting heart rate and heart-rate variability (HRV). Each cell is a quick-read trend, not a precise chart; open Trends for a full-resolution, interactive view with rolling statistics and severity zones. Where a signal has no data (for example the wearable lanes when no wearable is connected), the cell reads "—" rather than drawing a misleading flat line at zero.',
+        ],
+      },
+      {
+        heading: 'Distribution plots',
+        paragraphs: [
+          "The distributions row summarizes the shape of the window, not just its averages. The AHI histogram bins each night's AHI (with finer resolution across the clinically interesting low range and an open final bin for severe nights), so you can see whether your nights cluster tightly in the normal band or have a long right tail of bad nights that a mean would mask. The leak spread box plot summarizes the distribution of nightly median leaks — quartiles, with whiskers at the 2nd and 98th percentiles to trim lone outlier nights, and the min/max reported separately — giving a robust picture of typical nightly leak across the window. The per-night event mix shows the composition of scored events (obstructive, central, mixed, and hypopnea) so you can see which event types dominate — a rising central share, for instance, is worth following up in the TECSA panel and in Explore.",
+          "A histogram or box plot summarizes only the nights that have a valid value for the metric; nights below the rate-validity floor contribute no AHI and are excluded rather than counted as 0, and the leak box plot describes nightly medians, so brief in-night leak spikes it cannot show are best inspected in a session's per-session leak chart.",
+        ],
+      },
+      {
+        heading: 'Wearable correlation lanes',
+        paragraphs: [
+          'When you have connected a wearable (an opt-in integration; no wearable data is fetched or stored unless you enable it), the deck adds a set of correlation lanes that align nightly resting heart rate, overnight SpO₂, and HRV against your therapy nights over the active window, so you can eyeball whether these physiological signals move with your CPAP metrics. If no wearable is connected, this panel is replaced by a short prompt explaining what connecting one would add, and the heart-rate and HRV cells elsewhere on the deck read "—". These lanes are exploratory context, not a clinical measurement, and visual co-movement is not causation — the Explore view has the dedicated correlation and event-triggered analyses for a rigorous look.',
+        ],
+      },
+      {
+        heading: 'TECSA trajectory',
+        paragraphs: [
+          'TECSA — treatment-emergent central sleep apnea — is the phenomenon in which central apneas appear or persist after obstructive events are controlled by pressure therapy. The TECSA panel plots a long-horizon trajectory of the relevant central-apnea signal over a trailing 12 months (again independent of the 30D/90D toggle, because a treatment-emergent pattern only reveals itself over months), so a rising central component is visible as a trend rather than as the noise of any single night. It is a screening-oriented indicator to help you notice a pattern worth raising with your clinician; it is not a diagnosis of central sleep apnea, and only a sleep physician can make that determination.',
+        ],
+      },
+      {
+        heading: 'Session log',
+        paragraphs: [
+          'At the foot of the deck is a session log: a compact, chronological list of the nights in the active window, each with its key figures, as a quick index into recent therapy. Selecting a night takes you to its full session detail (event breakdown, pressure profile, leak statistics, and the high-resolution signal viewer). For sorting, filtering, calendar colouring, and page-by-page browsing across your whole history, use the Sessions view.',
+        ],
+      },
+      {
+        heading: 'Analysis window (30D / 90D)',
+        paragraphs: [
+          "The header carries a 30D/90D segmented toggle that sets the analysis window for the deck's window-following panels — the Therapy Index, alert cards, small-multiples rail, distribution plots, wearable lanes, and session log all recompute when you switch it. The AHI calendar spine and the TECSA trajectory intentionally do not follow the toggle: they always span a trailing 12 months, as the deck's fixed longitudinal reference. For arbitrary custom ranges, presets beyond 90 days, or an all-time view, use the date range controls in Sessions and Trends.",
         ],
       },
     ],
