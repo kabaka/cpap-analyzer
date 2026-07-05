@@ -1,0 +1,76 @@
+.row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  padding: 11px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
+  border-left-width: 3px;
+  background: var(--color-surface-tertiary);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.glyph {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.tag {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.detail {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+/* Severity tones — accent the left border, glyph, and tag text. */
+.warning {
+  border-left-color: var(--color-status-mild);
+  background: var(--color-status-mild-bg);
+}
+.warning .glyph,
+.warning .tag {
+  color: var(--color-status-mild);
+}
+
+.neutral {
+  border-left-color: var(--color-border-emphasis);
+}
+.neutral .glyph,
+.neutral .tag {
+  color: var(--color-text-secondary);
+}
+
+.positive {
+  border-left-color: var(--color-status-normal);
+  background: var(--color-status-normal-bg);
+}
+.positive .glyph,
+.positive .tag {
+  color: var(--color-status-normal);
+}
+
+@media (max-width: 720px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+}

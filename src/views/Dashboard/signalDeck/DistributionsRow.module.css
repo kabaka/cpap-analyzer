@@ -1,0 +1,74 @@
+/* Shared styling for the three distribution panels (histogram / box / event mix). */
+
+.panel {
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 15px 16px;
+  min-width: 0;
+}
+
+.title {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  margin: 0 0 2px;
+}
+
+.subtitle {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin: 0 0 10px;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.empty {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 12px 0;
+}
+
+/* Event mix header with inline legend */
+.eventHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.legend {
+  display: flex;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+  font-size: 9px;
+  color: var(--color-text-secondary);
+}
+
+.legendSwatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}

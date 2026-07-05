@@ -1,23 +1,41 @@
+/**
+ * Weather panel styling for the Signal Deck.
+ *
+ * Matches the deck's shared panel treatment (surface-secondary card, subtle
+ * border, monospace uppercase section title) so it reads as one system with the
+ * other panels. Tile labels/values stay token-driven for theme correctness.
+ */
+
 .card {
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 15px 16px;
+  min-width: 0;
   overflow: hidden;
 }
 
 .title {
-  font-size: var(--font-size-lg);
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-1) 0;
+  text-transform: uppercase;
+  margin: 0;
 }
 
 .asOfCaption {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+  font-size: 10px;
   color: var(--color-text-muted);
-  margin: 0 0 var(--space-4) 0;
+  margin: 4px 0 12px 0;
 }
 
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: var(--space-3);
 }
 
@@ -27,7 +45,7 @@
   flex-direction: column;
   gap: var(--space-1);
   padding: var(--space-3);
-  background: var(--color-surface-secondary);
+  background: var(--color-surface-tertiary);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-subtle);
   transition: border-color var(--transition-fast);
@@ -44,11 +62,12 @@
 }
 
 .statLabel {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: 9.5px;
   font-weight: var(--font-weight-medium);
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-wide);
+  letter-spacing: 0.08em;
   line-height: var(--line-height-tight);
 }
 
@@ -61,14 +80,15 @@
 .statValue {
   font-family: var(--font-family-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   line-height: var(--line-height-tight);
 }
 
 .statUnit {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: 9.5px;
   font-weight: var(--font-weight-normal);
   color: var(--color-text-muted);
 }
@@ -113,12 +133,14 @@
 }
 
 .footerDays {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: 10px;
   color: var(--color-text-muted);
 }
 
 .exploreLink {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: 10px;
   font-weight: var(--font-weight-medium);
   color: var(--color-text-link);
   text-decoration: none;
@@ -139,18 +161,18 @@
 /* Skeleton */
 .skeletonGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: var(--space-3);
 }
 
 .skeletonCard {
-  height: 72px;
+  height: 64px;
   background: var(--color-surface-tertiary);
   border-radius: var(--radius-md);
-  animation: pulse 1.5s ease-in-out infinite;
+  animation: wp-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes pulse {
+@keyframes wp-pulse {
   0%,
   100% {
     opacity: 1;
@@ -163,7 +185,7 @@
 @media (max-width: 1199px) {
   .statsGrid,
   .skeletonGrid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
@@ -171,5 +193,11 @@
   .statsGrid,
   .skeletonGrid {
     grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonCard {
+    animation: none;
   }
 }

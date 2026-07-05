@@ -4,9 +4,9 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import type { UseWeatherNightlyResult } from '@/hooks/useWeatherNightly';
 import type { WeatherNightly } from '@/analysis/weather';
 
-// Mockable hook return — the panel now sources its nightly metrics from the
-// single shared canonical hook, so the overnight numbers are identical to the
-// correlation surface (no panel-local overnight window anymore).
+// Mockable hook return — the panel sources its nightly metrics from the single
+// shared canonical hook, so the overnight numbers are identical to the
+// correlation surface (no panel-local overnight window).
 const nightlyState: { value: UseWeatherNightlyResult } = {
   value: { data: [], latest: null, loading: false, error: null },
 };
@@ -15,7 +15,7 @@ vi.mock('@/hooks/useWeatherNightly', () => ({
   useWeatherNightly: () => nightlyState.value,
 }));
 
-import WeatherOverview from './WeatherOverview';
+import WeatherPanel from './WeatherPanel';
 
 function enableWeather(enabled: boolean) {
   useSettingsStore.getState().updateIntegration('weather', { enabled });
@@ -56,7 +56,7 @@ function nightly(date: string, overrides: Partial<WeatherNightly> = {}): Weather
   };
 }
 
-describe('WeatherOverview', () => {
+describe('WeatherPanel', () => {
   beforeEach(() => {
     nightlyState.value = { data: [], latest: null, loading: false, error: null };
     enableWeather(true);
@@ -64,24 +64,24 @@ describe('WeatherOverview', () => {
 
   it('renders nothing when the integration is disabled', () => {
     enableWeather(false);
-    const { container } = render(<WeatherOverview />);
+    const { container } = render(<WeatherPanel />);
     expect(container.firstChild).toBeNull();
   });
 
   it('shows a loading skeleton while data loads', () => {
     nightlyState.value = { data: [], latest: null, loading: true, error: null };
-    render(<WeatherOverview />);
+    render(<WeatherPanel />);
     expect(screen.getByLabelText('Weather data loading')).toBeInTheDocument();
   });
 
   it('shows an error state on failure', () => {
     nightlyState.value = { data: [], latest: null, loading: false, error: 'boom' };
-    render(<WeatherOverview />);
+    render(<WeatherPanel />);
     expect(screen.getByRole('alert')).toHaveTextContent(/failed to load/i);
   });
 
   it('shows the unsynced CTA when enabled but no data', () => {
-    render(<WeatherOverview />);
+    render(<WeatherPanel />);
     expect(screen.getByText(/no weather data yet/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sync now' })).toBeInTheDocument();
   });
@@ -90,7 +90,10 @@ describe('WeatherOverview', () => {
     const today = new Date().toISOString().slice(0, 10);
     const latest = nightly(today);
     nightlyState.value = { data: [latest], latest, loading: false, error: null };
-    render(<WeatherOverview />);
+    render(<WeatherPanel />);
+
+    // Accessible name preserved (asserted by the e2e too).
+    expect(screen.getByLabelText('Weather and air quality overview')).toBeInTheDocument();
 
     expect(screen.getByText(/^As of /)).toBeInTheDocument();
     // The headline tiles are present and driven by the nightly record.

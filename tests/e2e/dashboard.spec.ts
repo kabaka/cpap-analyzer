@@ -1,13 +1,14 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Dashboard E2E Tests — Phase 5
+ * Dashboard E2E Tests — Signal Deck
  *
- * Tests the full dashboard lifecycle:
- * 1. Empty state → import wizard → dashboard transition
- * 2. KPI card values after data injection
- * 3. Date range preset switching with different session counts
- * 4. Session table column sorting
+ * Tests the full dashboard lifecycle against the "Signal Deck" home layout:
+ * 1. Empty state → import wizard → populated dashboard transition
+ * 2. Signal small-multiples + Session log values after data injection
+ * 3. 30D / 90D analysis-window switching (segmented control) changes the
+ *    Session-log row count
+ * 4. Severity surfacing (a mild-AHI night is labelled "mild" in the deck)
  *
  * Data is injected directly into IndexedDB via page.evaluate() to avoid
  * browser-specific quirks with webkitdirectory file inputs.
@@ -218,294 +219,143 @@ test.describe('Dashboard — Empty State → Import → Dashboard Transition', (
     const aggregate = makeAggregate('agg-transition-1', 'sess-transition-1', date, 4.1, 5.0, 7.5);
     await injectTestData(page, [session], [aggregate]);
 
-    // 5. Navigate back to dashboard — should show populated dashboard, not empty state
+    // 5. Navigate back to dashboard — should show the populated Signal Deck,
+    //    not the empty state.
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'CPAP Analyzer' })).not.toBeVisible();
 
-    // KPI cards should be present
-    const kpiSection = page.locator('section[aria-label="Key performance indicators"]');
-    await expect(kpiSection).toBeVisible();
-    await expect(kpiSection.getByText('AHI')).toBeVisible();
-    await expect(kpiSection.getByText('Compliance')).toBeVisible();
+    // The deck's analysis-window control and Session log should be present.
+    await expect(page.getByRole('radio', { name: 'Last 30 days' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Session log' })).toBeVisible();
+    await expect(page.getByRole('table').locator('tbody tr')).toHaveCount(1);
   });
 });
 
-test.describe('Dashboard — KPI Values After Import', () => {
-  test('displays correct KPI values from injected data', async ({ page }) => {
+test.describe('Dashboard — Signal Deck Values After Import', () => {
+  test('small-multiples and Session log show the injected values', async ({ page }) => {
     const date = daysAgoStr(3);
-    const session = makeSession('sess-kpi-1', date, 480, 420);
-    const aggregate = makeAggregate('agg-kpi-1', 'sess-kpi-1', date, 5.2, 8.1, 7.0);
+    const session = makeSession('sess-vals-1', date, 480, 420);
+    // AHI 5.2, leakMedian 4.5, usageHours 7.0. A single night, so the pooled
+    // (usage-hours-weighted) mean AHI equals the night's AHI → 5.2.
+    const aggregate = makeAggregate('agg-vals-1', 'sess-vals-1', date, 5.2, 4.5, 7.0);
 
     await setupDashboardWithData(page, [session], [aggregate]);
 
-    // Verify dashboard heading
     await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 
-    // Verify KPI section exists
-    const kpiSection = page.locator('section[aria-label="Key performance indicators"]');
-    await expect(kpiSection).toBeVisible();
+    // Signal small-multiples panel: AHI cell shows the pooled value.
+    const smallMultiples = page
+      .getByRole('heading', { name: 'Signal small-multiples' })
+      .locator('..');
+    await expect(smallMultiples).toBeVisible();
+    await expect(smallMultiples.getByText('AHI', { exact: true })).toBeVisible();
+    await expect(smallMultiples.getByText('5.2')).toBeVisible();
 
-    // AHI card — value should be 5.2
-    await expect(kpiSection.getByText('5.2')).toBeVisible();
-    await expect(kpiSection.getByText('events/hr')).toBeVisible();
-
-    // Leak Rate card — leak displays as a whole number (L/min) per the
-    // measurement-uncertainty precision rules, so 8.1 renders as "8".
-    await expect(kpiSection.getByText('8', { exact: true })).toBeVisible();
-    await expect(kpiSection.getByText('L/min')).toBeVisible();
-
-    // Usage card — value should be 7.0
-    await expect(kpiSection.getByText('7.0')).toBeVisible();
-    await expect(kpiSection.getByText('hrs/night')).toBeVisible();
-
-    // Compliance card — 1 compliant session out of 1 = 100%
-    await expect(kpiSection.getByRole('article', { name: /Compliance: 100 %/ })).toBeVisible();
+    // Session log renders exactly one row carrying the injected AHI (the AHI
+    // cell's accessible name embeds the numeric value and severity word).
+    const table = page.getByRole('table');
+    await expect(table).toBeVisible();
+    await expect(table.locator('tbody tr')).toHaveCount(1);
+    await expect(table.getByRole('cell', { name: /AHI 5\.2/ })).toBeVisible();
   });
 
-  test('shows Recent Sessions section with session table', async ({ page }) => {
+  test('renders the Session log table with its column headers', async ({ page }) => {
     const date = daysAgoStr(1);
-    const session = makeSession('sess-table-1', date, 450, 400);
-    const aggregate = makeAggregate('agg-table-1', 'sess-table-1', date, 2.8, 3.5, 6.7);
+    const session = makeSession('sess-log-1', date, 450, 400);
+    const aggregate = makeAggregate('agg-log-1', 'sess-log-1', date, 2.8, 3.5, 6.7);
 
     await setupDashboardWithData(page, [session], [aggregate]);
 
-    // Recent Sessions heading
-    await expect(page.getByRole('heading', { name: 'Recent Sessions' })).toBeVisible();
+    // Session log heading (replaces the old "Recent Sessions").
+    await expect(page.getByRole('heading', { name: 'Session log' })).toBeVisible();
 
-    // Table should be rendered with column headers
+    // Native <th scope="col"> headers — Date, Dur, Usage, AHI, Leak, Events,
+    // Event mix. These are NOT sortable (no aria-sort / column-click sort).
     await expect(page.getByRole('columnheader', { name: 'Date' })).toBeVisible();
-    await expect(page.getByRole('columnheader', { name: 'Duration' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Dur' })).toBeVisible();
     await expect(page.getByRole('columnheader', { name: 'Usage' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'AHI' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Leak' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Events' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Event mix' })).toBeVisible();
 
-    // At least one data row should exist
-    const rows = page.locator('tbody tr');
-    await expect(rows).toHaveCount(1);
+    // One data row.
+    await expect(page.getByRole('table').locator('tbody tr')).toHaveCount(1);
   });
 
-  test('renders severity badge for mild AHI', async ({ page }) => {
+  test('surfaces "mild" severity for a mild-AHI night', async ({ page }) => {
     const date = daysAgoStr(2);
     const session = makeSession('sess-severity-1', date);
-    // AHI 5.2 → mild severity (5 ≤ AHI < 15)
+    // AHI 5.2 → mild severity (5 ≤ AHI < 15).
     const aggregate = makeAggregate('agg-severity-1', 'sess-severity-1', date, 5.2);
 
     await setupDashboardWithData(page, [session], [aggregate]);
 
-    const kpiSection = page.locator('section[aria-label="Key performance indicators"]');
-    await expect(kpiSection.getByText('mild')).toBeVisible();
+    // The Verdict card's deterministic range summary names the pooled severity
+    // as visible text, e.g. "pooled AHI is 5.2/h (mild)".
+    const verdict = page.getByRole('region', { name: 'Good-night rate verdict' });
+    await expect(verdict.getByText(/\(mild\)/i)).toBeVisible();
+
+    // The Session-log AHI cell also carries the severity word in its accessible
+    // name, so colour is never the sole severity signal.
+    await expect(page.getByRole('cell', { name: /AHI 5\.2, Mild/i })).toBeVisible();
   });
 });
 
-test.describe('Dashboard — Date Range Preset Switching', () => {
-  // Create sessions across different date ranges:
-  // - 2 sessions within last 7 days
-  // - 2 sessions within last 30 days but outside 7 days
-  // - 1 session outside 30 days but within 90 days
+test.describe('Dashboard — Window Switching (30D / 90D)', () => {
+  // The deck header's SegmentedControl toggles the global analysis window
+  // between the 30-day (default) and 90-day presets. Nights inside 30 days show
+  // under 30D; nights between 30 and 90 days only appear once 90D is selected.
   //
-  // Expected counts:
-  //   Last 7 days  → 2
-  //   Last 30 days → 4 (default)
-  //   Last 90 days → 5
-  //   All time     → 5
+  // Expected Session-log row counts:
+  //   30D (default) → 3 (nights at 5, 12, 20 days ago)
+  //   90D           → 5 (adds nights at 45 and 60 days ago)
 
-  function createMultiRangeSessions() {
-    const recentDate1 = daysAgoStr(1);
-    const recentDate2 = daysAgoStr(3);
-    const midDate1 = daysAgoStr(15);
-    const midDate2 = daysAgoStr(20);
-    const oldDate1 = daysAgoStr(60);
+  function createWindowedSessions() {
+    const withinDays = [5, 12, 20]; // inside the default 30-day window
+    const olderDays = [45, 60]; // outside 30 days, inside 90 days
+    const allDays = [...withinDays, ...olderDays];
 
-    const sessions = [
-      makeSession('sess-range-r1', recentDate1, 480, 420),
-      makeSession('sess-range-r2', recentDate2, 450, 400),
-      makeSession('sess-range-m1', midDate1, 420, 380),
-      makeSession('sess-range-m2', midDate2, 400, 350),
-      makeSession('sess-range-o1', oldDate1, 500, 450),
-    ];
-
-    const aggregates = [
-      makeAggregate('agg-range-r1', 'sess-range-r1', recentDate1, 3.0, 4.0, 7.5),
-      makeAggregate('agg-range-r2', 'sess-range-r2', recentDate2, 4.0, 5.0, 6.5),
-      makeAggregate('agg-range-m1', 'sess-range-m1', midDate1, 5.0, 6.0, 8.0),
-      makeAggregate('agg-range-m2', 'sess-range-m2', midDate2, 2.0, 3.0, 5.0),
-      makeAggregate('agg-range-o1', 'sess-range-o1', oldDate1, 6.0, 7.0, 7.0),
-    ];
+    const sessions = allDays.map((d, i) => makeSession(`sess-win-${i}`, daysAgoStr(d), 480, 420));
+    const aggregates = allDays.map((d, i) =>
+      makeAggregate(`agg-win-${i}`, `sess-win-${i}`, daysAgoStr(d), 3.0 + i, 4.0 + i, 7.0),
+    );
 
     return { sessions, aggregates };
   }
 
-  test('default 30-day range shows correct session count', async ({ page }) => {
-    const { sessions, aggregates } = createMultiRangeSessions();
+  test('default 30D window shows only the nights within 30 days', async ({ page }) => {
+    const { sessions, aggregates } = createWindowedSessions();
     await setupDashboardWithData(page, sessions, aggregates);
 
-    // Default is "Last 30 days" → 4 sessions
-    await expect(page.locator('tbody tr')).toHaveCount(4);
+    // 30D is the default preset and is the selected segment.
+    await expect(page.getByRole('radio', { name: 'Last 30 days' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+
+    // Only the three within-30-day nights render in the Session log.
+    await expect(page.getByRole('table').locator('tbody tr')).toHaveCount(3);
   });
 
-  test('switching to "Last 7 days" reduces session count', async ({ page }) => {
-    const { sessions, aggregates } = createMultiRangeSessions();
+  test('switching to 90D reveals the older nights', async ({ page }) => {
+    const { sessions, aggregates } = createWindowedSessions();
     await setupDashboardWithData(page, sessions, aggregates);
 
-    // Default shows 4 sessions
-    await expect(page.locator('tbody tr')).toHaveCount(4);
+    const rows = page.getByRole('table').locator('tbody tr');
 
-    // Open the date range selector and switch to "Last 7 days"
-    await page.getByRole('combobox', { name: 'Date range' }).click();
-    await page.getByRole('option', { name: 'Last 7 days' }).click();
+    // Default 30D → 3 rows.
+    await expect(rows).toHaveCount(3);
 
-    // Should now show only 2 sessions
-    await expect(page.locator('tbody tr')).toHaveCount(2);
-  });
+    // Toggle to the 90-day window via the segmented control.
+    await page.getByRole('radio', { name: 'Last 90 days' }).click();
+    await expect(page.getByRole('radio', { name: 'Last 90 days' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
 
-  test('switching to "All time" shows all sessions', async ({ page }) => {
-    const { sessions, aggregates } = createMultiRangeSessions();
-    await setupDashboardWithData(page, sessions, aggregates);
-
-    // Default shows 4 sessions
-    await expect(page.locator('tbody tr')).toHaveCount(4);
-
-    // Switch to "All time"
-    await page.getByRole('combobox', { name: 'Date range' }).click();
-    await page.getByRole('option', { name: 'All time' }).click();
-
-    // Should show all 5 sessions
-    await expect(page.locator('tbody tr')).toHaveCount(5);
-  });
-
-  test('switching presets updates table row count', async ({ page }) => {
-    const { sessions, aggregates } = createMultiRangeSessions();
-    await setupDashboardWithData(page, sessions, aggregates);
-
-    // Default (30d) → 4 rows
-    const rows = page.locator('tbody tr');
-    await expect(rows).toHaveCount(4);
-
-    // Switch to "Last 7 days" → 2 rows
-    await page.getByRole('combobox', { name: 'Date range' }).click();
-    await page.getByRole('option', { name: 'Last 7 days' }).click();
-    await expect(rows).toHaveCount(2);
-
-    // Switch to "All time" → 5 rows
-    await page.getByRole('combobox', { name: 'Date range' }).click();
-    await page.getByRole('option', { name: 'All time' }).click();
+    // The two older nights (45d, 60d) now join the three recent ones → 5 rows.
     await expect(rows).toHaveCount(5);
-  });
-});
-
-test.describe('Dashboard — Session Table Sort', () => {
-  function createSortTestSessions() {
-    const date1 = daysAgoStr(1);
-    const date2 = daysAgoStr(5);
-    const date3 = daysAgoStr(10);
-
-    const sessions = [
-      makeSession('sess-sort-1', date1, 480, 420), // 8h duration
-      makeSession('sess-sort-2', date2, 360, 330), // 6h duration
-      makeSession('sess-sort-3', date3, 540, 500), // 9h duration
-    ];
-
-    const aggregates = [
-      makeAggregate('agg-sort-1', 'sess-sort-1', date1, 3.0, 4.0, 7.0),
-      makeAggregate('agg-sort-2', 'sess-sort-2', date2, 5.0, 6.0, 5.5),
-      makeAggregate('agg-sort-3', 'sess-sort-3', date3, 2.0, 3.0, 8.3),
-    ];
-
-    return { sessions, aggregates };
-  }
-
-  test('Date column defaults to descending sort', async ({ page }) => {
-    const { sessions, aggregates } = createSortTestSessions();
-    await setupDashboardWithData(page, sessions, aggregates);
-
-    const dateHeader = page.getByRole('columnheader', { name: 'Date' });
-    await expect(dateHeader).toHaveAttribute('aria-sort', 'descending');
-
-    // Other columns should have aria-sort="none"
-    const durationHeader = page.getByRole('columnheader', { name: 'Duration' });
-    await expect(durationHeader).toHaveAttribute('aria-sort', 'none');
-  });
-
-  test('clicking Date column toggles sort direction', async ({ page }) => {
-    const { sessions, aggregates } = createSortTestSessions();
-    await setupDashboardWithData(page, sessions, aggregates);
-
-    const dateHeader = page.getByRole('columnheader', { name: 'Date' });
-
-    // Initial: descending
-    await expect(dateHeader).toHaveAttribute('aria-sort', 'descending');
-
-    // Click → ascending
-    await dateHeader.click();
-    await expect(dateHeader).toHaveAttribute('aria-sort', 'ascending');
-
-    // Click again → descending
-    await dateHeader.click();
-    await expect(dateHeader).toHaveAttribute('aria-sort', 'descending');
-  });
-
-  test('clicking a different column changes sort target', async ({ page }) => {
-    const { sessions, aggregates } = createSortTestSessions();
-    await setupDashboardWithData(page, sessions, aggregates);
-
-    const dateHeader = page.getByRole('columnheader', { name: 'Date' });
-    const durationHeader = page.getByRole('columnheader', { name: 'Duration' });
-
-    // Initial: Date descending
-    await expect(dateHeader).toHaveAttribute('aria-sort', 'descending');
-    await expect(durationHeader).toHaveAttribute('aria-sort', 'none');
-
-    // Click Duration → Duration becomes descending, Date becomes none
-    await durationHeader.click();
-    await expect(durationHeader).toHaveAttribute('aria-sort', 'descending');
-    await expect(dateHeader).toHaveAttribute('aria-sort', 'none');
-
-    // Click Duration again → toggles to ascending
-    await durationHeader.click();
-    await expect(durationHeader).toHaveAttribute('aria-sort', 'ascending');
-  });
-
-  test('sort indicators (▲/▼) appear on active sort column', async ({ page }) => {
-    const { sessions, aggregates } = createSortTestSessions();
-    await setupDashboardWithData(page, sessions, aggregates);
-
-    const dateHeader = page.getByRole('columnheader', { name: 'Date' });
-
-    // Default: descending arrow
-    await expect(dateHeader.getByText('▼')).toBeVisible();
-
-    // Click → ascending arrow
-    await dateHeader.click();
-    await expect(dateHeader.getByText('▲')).toBeVisible();
-
-    // Switch to Duration
-    const durationHeader = page.getByRole('columnheader', { name: 'Duration' });
-    await durationHeader.click();
-    await expect(durationHeader.getByText('▼')).toBeVisible();
-
-    // Date column should no longer have a sort arrow
-    await expect(dateHeader.getByText('▲')).not.toBeVisible();
-    await expect(dateHeader.getByText('▼')).not.toBeVisible();
-  });
-
-  test('table always shows all rows regardless of sort', async ({ page }) => {
-    const { sessions, aggregates } = createSortTestSessions();
-    await setupDashboardWithData(page, sessions, aggregates);
-
-    const rows = page.locator('tbody tr');
-
-    // 3 rows initially
-    await expect(rows).toHaveCount(3);
-
-    // Sort by Date ascending — still 3 rows
-    await page.getByRole('columnheader', { name: 'Date' }).click();
-    await expect(rows).toHaveCount(3);
-
-    // Sort by Duration — still 3 rows
-    await page.getByRole('columnheader', { name: 'Duration' }).click();
-    await expect(rows).toHaveCount(3);
-
-    // Sort by Usage — still 3 rows
-    await page.getByRole('columnheader', { name: 'Usage' }).click();
-    await expect(rows).toHaveCount(3);
   });
 });
