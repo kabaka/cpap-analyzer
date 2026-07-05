@@ -1,0 +1,216 @@
+/**
+ * Signal Deck — dense monospace "command surface" dashboard.
+ *
+ * All colours/surfaces come from design tokens so the deck is theme-aware. In
+ * dark mode this lands close to the source mock (near-black surfaces); in light
+ * mode it stays legible. The defining aesthetic — monospace numerals/labels — is
+ * theme-independent (`--font-family-mono`).
+ */
+
+.deck {
+  max-width: 1360px;
+  margin: 0 auto;
+  width: 100%;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Terminal header bar --------------------------------------------------- */
+.terminal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  height: 52px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-secondary);
+}
+
+.terminalLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.terminalRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* The real <h1>, styled as the terminal brand. Visually "CPAP//ANALYZER". */
+.brand {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.brandSlash {
+  color: var(--color-primary);
+}
+
+.brandDivider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border-default);
+}
+
+.section {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.localBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+  font-size: 10.5px;
+  color: var(--color-status-normal);
+  white-space: nowrap;
+}
+
+.pulseDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-status-normal);
+  animation: sd-pulse 1.6s ease-in-out infinite;
+}
+
+.coverage {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+  font-size: 10.5px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* Layout grids ---------------------------------------------------------- */
+.topGrid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: var(--space-3);
+}
+
+.rightColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.alertsRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+}
+
+.distributionsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.4fr;
+  gap: var(--space-3);
+}
+
+.wearableGrid {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: var(--space-3);
+}
+
+/* Shared panel surface -------------------------------------------------- */
+.panel {
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 15px 16px;
+  min-width: 0;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 12px;
+}
+
+.panelTitle {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.panelSub {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.errorBanner {
+  border-left: 3px solid var(--color-error);
+}
+
+.errorMessage {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin: 0;
+  padding: var(--space-2) 0;
+}
+
+@keyframes sd-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulseDot {
+    animation: none;
+  }
+}
+
+/* Responsive: collapse the dense grids on narrower viewports. */
+@media (max-width: 1100px) {
+  .topGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .distributionsGrid,
+  .wearableGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .alertsRow {
+    grid-template-columns: 1fr;
+  }
+}

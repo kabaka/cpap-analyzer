@@ -1,0 +1,106 @@
+.panel {
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+}
+
+.title {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  margin: 0 0 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+}
+
+.cell {
+  padding: 8px 10px;
+  border-right: 1px solid var(--color-border-subtle);
+  min-width: 0;
+}
+
+.cell:last-child {
+  border-right: none;
+}
+
+.label {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+.valueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 4px 0 6px;
+}
+
+.value {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 17px;
+  line-height: 1;
+  color: var(--color-text-primary);
+}
+
+.delta {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.deltaNeutral {
+  color: var(--color-text-muted);
+}
+.deltaGood {
+  color: var(--color-status-normal);
+}
+.deltaBad {
+  color: var(--color-status-moderate);
+}
+
+.spark {
+  height: 28px;
+}
+
+.unit {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-normal);
+  font-size: 8.5px;
+  color: var(--color-text-muted);
+  margin-top: 3px;
+}
+
+/* On narrow viewports the 8-up row wraps to a denser grid rather than shrinking
+   each cell into unreadability. */
+@media (max-width: 960px) {
+  .grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px 2px;
+  }
+  .cell:nth-child(4n) {
+    border-right: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cell:nth-child(2n) {
+    border-right: none;
+  }
+}
