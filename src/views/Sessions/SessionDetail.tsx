@@ -1,31 +1,36 @@
 /**
- * Session Detail view — comprehensive single-session analysis.
+ * Session Detail view — comprehensive single-night analysis (redesigned).
  *
- * Displays session header, key therapy metrics (AHI, leak, pressure, SpO₂),
- * an event timeline visualisation, and an event summary table.
- * Supports a nested child route for the Signal Viewer via `<Outlet />`.
+ * Layout (top → bottom):
+ *  - Header bar: breadcrumb, date title, mono time range, machine meta, and the
+ *    Prev/Next-night + Export-report actions.
+ *  - Hero: a 300px "Night assessment" verdict card (two-gate, NON-composite —
+ *    see ADR 0031) hosting the two opt-in AI insight triggers in its narrative
+ *    header, beside a 3-column KPI grid with trailing-baseline deltas + sparklines.
+ *  - Signals: the embedded {@link CompactSignalViewer}.
+ *  - Events row: respiratory-event breakdown + expandable event clusters.
+ *  - Session statistics: pressure / ventilation / leak / oxygenation groups.
+ *  - Physiology row (gated): Fitbit sleep stages, Fitbit physiology, weather.
+ *  - Footer: non-diagnostic disclaimer + "Raw data →".
+ *
+ * ## Honest gaps, never fabricated zeros
+ * Every value is mapped to REAL data. A `null` metric renders as an em dash
+ * ("—"), NEVER as `0`. Cards that depend on absent integrations (Fitbit /
+ * weather) are omitted or shown as a subtle CTA — they never invent numbers.
+ *
+ * The nested Signal Viewer child route is preserved via `<Outlet />`.
  *
  * @module views/Sessions/SessionDetail
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Link, Outlet, useMatch, useNavigate, useParams } from 'react-router-dom';
-import {
-  Badge,
-  Button,
-  Card,
-  Skeleton,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-  Tooltip,
-} from '@/components/ui';
-import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
-import { formatMetric } from '@/analysis/uncertainty';
-import { classifyAhiSeverity } from '@/analysis/clinical';
+
+import { Badge, Button, Skeleton } from '@/components/ui';
+import { AqiSwatch } from '@/components/domain/weather';
+import { EventTypeSwatch } from '@/components/events/EventTypeSwatch';
+import { EVENT_TYPE_META, eventLabel } from '@/components/events/eventTypeMeta';
+import { useChartColors } from '@/components/charts/useChartColors';
 import {
   InsightTrigger,
   buildClinicalContextInput,
@@ -34,21 +39,61 @@ import {
   machineClassOf,
   nightScopeLabel,
 } from '@/components/insights';
+import type { InsightRequest } from '@/components/insights';
+
+import {
+  AHI_SEVERITY_THRESHOLDS,
+  RECOMMENDED_USAGE_HOURS,
+  classifyAhiSeverity,
+  type AhiSeverity,
+} from '@/analysis/clinical';
+import { formatMetric } from '@/analysis/uncertainty';
+import { convertTemperature } from '@/analysis/weather/units';
+
+import { useSessionDetail, useEventData } from '@/hooks/useSignalData';
+import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
+import { useSessionData } from '@/hooks/useSessionData';
+import { useWearableSummary } from '@/hooks/useWearableSummary';
+import { useWearableDayData } from '@/hooks/useWearableData';
+import { useWeatherNightly } from '@/hooks/useWeatherNightly';
 import { useSettingsStore } from '@/stores/useSettingsStore';
-import { EventTypeSwatch } from '@/components/events/EventTypeSwatch';
-import { eventLabel } from '@/components/events/eventTypeMeta';
+
+import { parseLocalDate } from '@/utils/formatDate';
+import type { Event, MachineType, NightlyAggregate, Session } from '@/types';
+import type {
+  FitbitHRVDaily,
+  FitbitRestingHeartRate,
+  FitbitSleepSession,
+  FitbitSpO2Daily,
+} from '@/types/fitbit';
+
+import Sparkline from '@/views/Dashboard/signalDeck/Sparkline';
+import { severityLabel, severityVar } from '@/views/Dashboard/signalDeck/severityTokens';
+
+import CompactSignalViewer from './CompactSignalViewer';
 import { formatClockTime } from './hoverReadout';
-import { sessionWallClockEpoch } from './signalLanes';
-import type { Event, EventType, MachineType, NightlyAggregate } from '@/types';
+import { sessionDateKey, sessionWallClockEpoch } from './signalLanes';
+import {
+  assessNight,
+  baselineDelta,
+  centralFraction,
+  componentStatuses,
+  longestApnea,
+  respiratoryBreakdown,
+  sessionClusters,
+  type ClusterSummary,
+  type ComponentStatus,
+  type SessionClustersResult,
+} from './sessionAssessment';
 import styles from './SessionDetail.module.css';
 
 // ── Constants ────────────────────────────────────────────────────
 
-/**
- * Maximum number of individual events rendered in the Events list. Keeps the
- * list bounded without virtualization; overflow links out to the Event Explorer.
- */
-const EVENTS_LIST_CAP = 50;
+/** Trailing window (nights) for the "vs 30-night" baseline + KPI sparklines. */
+const BASELINE_WINDOW_DAYS = 35;
+
+/** Minimum prior nights required before we render a baseline delta (never a fake 0). */
+const MIN_PRIOR_NIGHTS = 3;
 
 /** Human-readable labels for machine therapy modes. */
 const MACHINE_TYPE_LABELS: Record<MachineType, string> = {
@@ -59,55 +104,44 @@ const MACHINE_TYPE_LABELS: Record<MachineType, string> = {
   asv: 'ASV',
 };
 
-/** Color mapping for event types on the timeline. */
-const EVENT_COLORS: Record<string, string> = {
-  ObstructiveApnea: 'var(--color-status-severe)',
-  CentralApnea: 'var(--color-status-moderate)',
-  MixedApnea: 'var(--color-status-moderate)',
-  UnclassifiedApnea: 'var(--color-chart-2)',
-  Hypopnea: 'var(--color-status-mild)',
-  RERA: 'var(--color-chart-4)',
-  FlowLimitation: 'var(--color-chart-6)',
-  LargeLeak: 'var(--color-chart-5)',
-  PeriodicBreathing: 'var(--color-chart-5)',
-  ClearAirway: 'var(--color-chart-3)',
-  Vibratory: 'var(--color-text-muted)',
-  ChecksumError: 'var(--color-text-muted)',
-};
+// ── Formatting helpers ───────────────────────────────────────────
 
-/** Human-readable labels for event types. */
-const EVENT_TYPE_LABELS: Record<EventType, string> = {
-  ObstructiveApnea: 'Obstructive Apnea',
-  CentralApnea: 'Central Apnea',
-  MixedApnea: 'Mixed Apnea',
-  UnclassifiedApnea: 'Unclassified Apnea',
-  Hypopnea: 'Hypopnea',
-  RERA: 'RERA',
-  FlowLimitation: 'Flow Limitation',
-  LargeLeak: 'Large Leak',
-  PeriodicBreathing: 'Periodic Breathing',
-  ClearAirway: 'Clear Airway',
-  Vibratory: 'Vibratory Snore',
-  ChecksumError: 'Checksum Error',
-};
+/** Format a `YYYY-MM-DD` date to a long, human-friendly form. */
+function formatDateLong(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString(undefined, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
 
-/** Display order for the event summary table. */
-const EVENT_TYPE_ORDER: EventType[] = [
-  'ObstructiveApnea',
-  'CentralApnea',
-  'MixedApnea',
-  'UnclassifiedApnea',
-  'Hypopnea',
-  'RERA',
-  'FlowLimitation',
-  'LargeLeak',
-  'PeriodicBreathing',
-];
+/**
+ * Format a number to a fixed decimal string, honouring the honesty rule:
+ * `null`/`undefined`/`NaN` render as an em dash, never as `0`.
+ */
+function fmt(value: number | null | undefined, decimals = 1): string {
+  if (value == null || Number.isNaN(value)) return '—';
+  return value.toFixed(decimals);
+}
 
-// ── Helpers ──────────────────────────────────────────────────────
+/** Format minutes to `Xh Ym` (or `Ym` under an hour). */
+function formatDuration(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes)) return '—';
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return h === 0 ? `${m}m` : `${h}h ${m}m`;
+}
 
-/** Map AHI severity to Badge variant. */
-function ahiBadgeVariant(severity: string): 'success' | 'warning' | 'danger' {
+/** Whether this machine type carries bilevel (EPAP/IPAP/PS) pressure data. */
+function isBilevel(type: MachineType): boolean {
+  return type === 'bipap' || type === 'vpap' || type === 'asv';
+}
+
+/** AHI severity → Badge variant. */
+function ahiBadgeVariant(severity: AhiSeverity): 'success' | 'warning' | 'danger' {
   switch (severity) {
     case 'normal':
       return 'success';
@@ -119,672 +153,834 @@ function ahiBadgeVariant(severity: string): 'success' | 'warning' | 'danger' {
   }
 }
 
-/** Format a date string (YYYY-MM-DD) to a human-friendly format. */
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString(undefined, {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-}
-
-/** Format an ISO timestamp to a locale time string. */
-function formatTime(isoStr: string): string {
-  return new Date(isoStr).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-/** Format minutes to Xh Ym. */
-function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  if (h === 0) return `${m}m`;
-  return `${h}h ${m}m`;
-}
-
-/** Format a number to a fixed decimal string, with fallback. */
-function fmt(value: number | null | undefined, decimals = 1, fallback = '—'): string {
-  if (value == null || Number.isNaN(value)) return fallback;
-  return value.toFixed(decimals);
-}
-
-/** Whether this machine type has bilevel pressure data. */
-function isBilevel(type: MachineType): boolean {
-  return type === 'bipap' || type === 'vpap' || type === 'asv';
-}
-
-// ── EventTimeline component ──────────────────────────────────────
-
-interface EventTimelineProps {
-  events: Event[];
-  sessionStart: number;
-  sessionEnd: number;
-  /**
-   * Session start in the wall-clock-as-UTC convention (see
-   * {@link sessionWallClockEpoch}). Used to format clock times so the tooltip,
-   * the Signal Viewer crosshair, and the X-axis all agree to the second.
-   */
-  wallClockEpoch: number;
-}
-
-function EventTimeline({ events, sessionStart, sessionEnd, wallClockEpoch }: EventTimelineProps) {
-  const sessionDurationMs = sessionEnd - sessionStart;
-
-  if (sessionDurationMs <= 0) return null;
-
-  return (
-    <div className={styles.timelineSection}>
-      <h2 className={styles.sectionTitle}>Event Timeline</h2>
-      <div
-        className={styles.timelineContainer}
-        role="img"
-        aria-label={`Event timeline showing ${events.length} events across the session`}
-      >
-        {events.map((event) => {
-          const leftPct = ((event.timestamp - sessionStart) / sessionDurationMs) * 100;
-          const widthPct = ((event.duration * 1000) / sessionDurationMs) * 100;
-          const color = EVENT_COLORS[event.type] ?? 'var(--color-text-muted)';
-
-          return (
-            <Tooltip
-              key={event.id}
-              content={`${formatClockTime(
-                wallClockEpoch,
-                event.timestamp - sessionStart,
-              )} · ${EVENT_TYPE_LABELS[event.type] ?? event.type} · ${event.duration.toFixed(1)}s`}
-              side="top"
-            >
-              <div
-                className={styles.timelineEvent}
-                data-left={Math.max(0, Math.min(leftPct, 100))}
-                data-width={Math.max(0.3, Math.min(widthPct, 100 - leftPct))}
-                data-color={color}
-                ref={(el) => {
-                  if (el) {
-                    el.style.setProperty('--evt-left', `${Math.max(0, Math.min(leftPct, 100))}%`);
-                    el.style.setProperty(
-                      '--evt-width',
-                      `${Math.max(0.3, Math.min(widthPct, 100 - leftPct))}%`,
-                    );
-                    el.style.setProperty('--evt-color', color);
-                  }
-                }}
-              />
-            </Tooltip>
-          );
-        })}
-      </div>
-      <div className={styles.timelineLabels}>
-        <span>{formatTime(new Date(sessionStart).toISOString())}</span>
-        <span>{formatTime(new Date(sessionEnd).toISOString())}</span>
-      </div>
-      <div className={styles.timelineLegend}>
-        {[
-          { label: 'Obstructive', color: 'var(--color-status-severe)' },
-          { label: 'Central', color: 'var(--color-status-moderate)' },
-          { label: 'Hypopnea', color: 'var(--color-status-mild)' },
-          { label: 'RERA', color: 'var(--color-chart-4)' },
-          { label: 'Other', color: 'var(--color-text-muted)' },
-        ].map((item) => (
-          <span key={item.label} className={styles.legendItem}>
-            <span
-              className={styles.legendSwatch}
-              ref={(el) => {
-                if (el) el.style.setProperty('--swatch-color', item.color);
-              }}
-            />
-            {item.label}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── EventSummaryTable component ──────────────────────────────────
-
-interface EventSummary {
-  type: EventType;
-  label: string;
-  count: number;
-  totalDurationSec: number;
-  avgDurationSec: number;
-  color: string;
-}
-
-interface EventSummaryTableProps {
-  events: Event[];
-}
-
-function EventSummaryTable({ events }: EventSummaryTableProps) {
-  const summaries = useMemo<EventSummary[]>(() => {
-    const map = new Map<EventType, { count: number; totalDuration: number }>();
-
-    for (const event of events) {
-      const existing = map.get(event.type);
-      if (existing) {
-        existing.count += 1;
-        existing.totalDuration += event.duration;
-      } else {
-        map.set(event.type, { count: 1, totalDuration: event.duration });
-      }
-    }
-
-    return EVENT_TYPE_ORDER.filter((type) => map.has(type))
-      .map((type) => {
-        const data = map.get(type);
-        if (!data) return null;
-        return {
-          type,
-          label: EVENT_TYPE_LABELS[type],
-          count: data.count,
-          totalDurationSec: data.totalDuration,
-          avgDurationSec: data.count > 0 ? data.totalDuration / data.count : 0,
-          color: EVENT_COLORS[type] ?? 'var(--color-text-muted)',
-        };
-      })
-      .filter((s): s is EventSummary => s !== null);
-  }, [events]);
-
-  if (summaries.length === 0) return null;
-
-  return (
-    <div className={styles.tableSection}>
-      <h2 className={styles.sectionTitle}>Event Summary</h2>
-      <Card padding={false}>
-        <div className={styles.tableWrapper}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Event Type</TableHead>
-                <TableHead className={styles.numericHead}>Count</TableHead>
-                <TableHead className={styles.numericHead}>Total Duration</TableHead>
-                <TableHead className={styles.numericHead}>Avg Duration</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {summaries.map((s) => (
-                <TableRow key={s.type}>
-                  <TableCell>
-                    <span className={styles.typeCell}>
-                      <span
-                        className={styles.eventDot}
-                        ref={(el) => {
-                          if (el) el.style.setProperty('--dot-color', s.color);
-                        }}
-                        aria-hidden="true"
-                      />
-                      {s.label}
-                    </span>
-                  </TableCell>
-                  <TableCell className={styles.numericCell}>{s.count}</TableCell>
-                  <TableCell className={styles.numericCell}>
-                    {formatDuration(s.totalDurationSec / 60)}
-                  </TableCell>
-                  <TableCell className={styles.numericCell}>
-                    {s.avgDurationSec.toFixed(1)}s
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ── EventsList component ─────────────────────────────────────────
-
-interface EventsListProps {
-  events: Event[];
-  sessionId: string;
-  /** Raw session start epoch ms — turns absolute timestamps into offsets. */
-  sessionStart: number;
-  /**
-   * Session start in the wall-clock-as-UTC convention (see
-   * {@link sessionWallClockEpoch}). Used to format each event's clock time so
-   * the list, the timeline tooltip, the Signal Viewer crosshair, and the X-axis
-   * all agree to the second.
-   */
-  wallClockEpoch: number;
-}
+// ── Deterministic narrative (factual, non-diagnostic) ────────────
 
 /**
- * Chronological list of individual respiratory events for a session. Each row
- * is a button that deep-links into the Signal Viewer framed on the event. The
- * list is capped at {@link EVENTS_LIST_CAP}; overflow links to the Event
- * Explorer. Renders a positive empty state when the session has zero events.
+ * Build a short, deterministic one-line narrative from real numbers only.
+ * Factual and non-diagnostic (mirrors `SignalDeck.buildNarrative`): it restates
+ * already-computed metrics and names no condition. Null clauses are dropped.
  */
-function EventsList({ events, sessionId, sessionStart, wallClockEpoch }: EventsListProps) {
-  const navigate = useNavigate();
-  /**
-   * Index of the row that currently holds tabindex=0 (roving tabindex pattern,
-   * mirroring {@link EventTable}). Arrow keys move focus along this index; every
-   * other row holds tabindex=-1 so the whole grid is a single Tab stop rather
-   * than one stop per row. Header/cell column semantics are preserved because
-   * the grid is built from real `columnheader`/`gridcell` roles.
-   */
-  const [focusedRowIndex, setFocusedRowIndex] = useState(0);
-  const gridRef = useRef<HTMLDivElement>(null);
-
-  const sorted = useMemo(() => {
-    return [...events].sort((a, b) => a.timestamp - b.timestamp);
-  }, [events]);
-
-  const rows = useMemo(() => sorted.slice(0, EVENTS_LIST_CAP), [sorted]);
-
-  // Clamp the roving index whenever the row count shrinks (e.g. the session's
-  // events change between renders) so it never points past the last row.
-  const clampedFocusIndex = rows.length === 0 ? 0 : Math.min(focusedRowIndex, rows.length - 1);
-
-  const openEvent = useCallback(
-    (event: Event) => {
-      // Device events carry `duration` in SECONDS. When meaningful, pass the
-      // event END (`te`) so the Signal Viewer frames the whole event rather than
-      // centering a fixed window on its start. Mirrors EventExplorer/EventTable.
-      const base = `/sessions/${sessionId}/signals?t=${event.timestamp}`;
-      const url =
-        event.duration > 0 ? `${base}&te=${event.timestamp + event.duration * 1000}` : base;
-      navigate(url);
-    },
-    [navigate, sessionId],
+function buildSessionNarrative(aggregate: NightlyAggregate): string {
+  const clauses: string[] = [];
+  clauses.push(
+    aggregate.ahi != null
+      ? `AHI ${aggregate.ahi.toFixed(1)}/h over ${aggregate.usageHours.toFixed(1)} h of use`
+      : `${aggregate.usageHours.toFixed(1)} h of use (AHI undefined — recording too short for a rate)`,
   );
+  if (Number.isFinite(aggregate.leakMedian)) {
+    clauses.push(`median leak ${aggregate.leakMedian.toFixed(1)} L/min`);
+  }
+  if (Number.isFinite(aggregate.pressureP95)) {
+    clauses.push(`95th-percentile pressure ${aggregate.pressureP95.toFixed(1)} cmH₂O`);
+  }
+  return `${clauses.join('; ')}.`;
+}
 
-  /** Move the roving-tabindex focus to a row and pull DOM focus to it. */
-  const moveFocusTo = useCallback(
-    (nextIndex: number) => {
-      if (rows.length === 0) return;
-      const clamped = Math.max(0, Math.min(rows.length - 1, nextIndex));
-      setFocusedRowIndex(clamped);
-      const el = gridRef.current?.querySelector<HTMLDivElement>(`[data-row-index="${clamped}"]`);
-      el?.focus();
-    },
-    [rows.length],
-  );
+// ── Night assessment (verdict) card ──────────────────────────────
 
-  const handleRowKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>, index: number, event: Event) => {
-      switch (e.key) {
-        case 'ArrowDown':
-          e.preventDefault();
-          moveFocusTo(index + 1);
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          moveFocusTo(index - 1);
-          break;
-        case 'Home':
-          e.preventDefault();
-          moveFocusTo(0);
-          break;
-        case 'End':
-          e.preventDefault();
-          moveFocusTo(rows.length - 1);
-          break;
-        case 'Enter':
-        case ' ':
-          e.preventDefault();
-          openEvent(event);
-          break;
-        default:
-          break;
-      }
-    },
-    [moveFocusTo, openEvent, rows.length],
+/**
+ * Pass/fail state of a single good-night gate. `unknown` is used only for the
+ * Effective gate when AHI is `null` (cannot confirm), and is treated as NOT
+ * passing — never as a pass.
+ */
+type GateState = 'pass' | 'fail' | 'unknown';
+
+/** Map a gate state to its glyph (paired with sr-only text — never colour-only). */
+function gateGlyph(state: GateState): string {
+  if (state === 'pass') return '✓';
+  if (state === 'unknown') return '?';
+  return '✗';
+}
+
+/** Human-readable gate outcome for the accessible name (WCAG 1.4.1). */
+function gateStateText(state: GateState): string {
+  if (state === 'pass') return 'passed';
+  if (state === 'unknown') return 'cannot confirm';
+  return 'not passing';
+}
+
+interface NightAssessmentCardProps {
+  readonly aggregate: NightlyAggregate;
+  readonly buildNightRequest: () => InsightRequest;
+  readonly buildClinicalRequest: () => InsightRequest;
+}
+
+function ComponentStrip({ statuses }: { statuses: readonly ComponentStatus[] }): JSX.Element {
+  return (
+    <div className={styles.componentStrip}>
+      {statuses.map((c) => (
+        <div key={c.key} className={styles.componentSegmentWrap}>
+          <span
+            className={styles.componentSegment}
+            style={{
+              background: c.severity ? severityVar(c.severity) : 'var(--color-border-emphasis)',
+            }}
+            aria-hidden="true"
+          />
+          <span className={styles.componentLabel}>{c.label}</span>
+          <span className={styles.componentSeverity}>
+            {c.severity ? severityLabel(c.severity) : '—'}
+          </span>
+        </div>
+      ))}
+    </div>
   );
+}
+
+function NightAssessmentCard({
+  aggregate,
+  buildNightRequest,
+  buildClinicalRequest,
+}: NightAssessmentCardProps): JSX.Element {
+  const verdict = assessNight(aggregate);
+  const statuses = componentStatuses(aggregate);
+
+  // Two independent, discrete gates — NOT a 0–100 composite score (ADR 0031).
+  const effectiveState: GateState =
+    verdict.effective === null ? 'unknown' : verdict.effective ? 'pass' : 'fail';
+  const adherentState: GateState = verdict.adherent ? 'pass' : 'fail';
+  const gatesPassed = (verdict.effective === true ? 1 : 0) + (verdict.adherent ? 1 : 0);
+  const verdictVar = severityVar(verdict.severityForVerdict);
 
   return (
-    <section className={styles.eventsSection} aria-label="Individual events">
-      <h2 className={styles.sectionTitle}>Events</h2>
-
-      {rows.length === 0 ? (
-        <Card>
-          <div className={styles.eventsEmpty}>
-            <span className={styles.eventsEmptyIcon} aria-hidden="true">
-              ✓
+    <section className={styles.verdictCard} aria-label="Night assessment">
+      <div className={styles.verdictHead}>
+        {/* Discrete two-gate hero: one pip per gate (pass/fail/cannot-confirm),
+            NOT a continuous ring implying a composite score (ADR 0031). */}
+        <div
+          className={styles.gateHero}
+          role="img"
+          aria-label={
+            `Verdict: ${verdict.verdictWord}. ${gatesPassed} of 2 gates passed. ` +
+            `Effective gate ${gateStateText(effectiveState)}. ` +
+            `Adherent gate ${gateStateText(adherentState)}.`
+          }
+        >
+          <span className={styles.verdictWord} style={{ color: verdictVar }}>
+            {verdict.verdictWord}
+          </span>
+          <div className={styles.gatePips} aria-hidden="true">
+            <span className={styles.gatePip} data-state={effectiveState}>
+              <span className={styles.gatePipGlyph}>{gateGlyph(effectiveState)}</span>
+              <span className={styles.gatePipLabel}>Effective</span>
             </span>
-            <p className={styles.eventsEmptyTitle}>No respiratory events recorded</p>
-            <p className={styles.eventsEmptyBody}>
-              This session had no scored apnea, hypopnea, or related events. That&apos;s a clean
-              night.
-            </p>
+            <span className={styles.gatePip} data-state={adherentState}>
+              <span className={styles.gatePipGlyph}>{gateGlyph(adherentState)}</span>
+              <span className={styles.gatePipLabel}>Adherent</span>
+            </span>
           </div>
-        </Card>
-      ) : (
-        <>
-          <Card padding={false}>
-            <div className={styles.tableWrapper}>
-              {/*
-               * Accessible clickable grid (mirrors EventExplorer/EventTable):
-               * a real columnheader row plus per-event rows whose gridcells are
-               * the Time / Type / Duration columns, so the column headers
-               * associate with actual per-column cells. The row itself is the
-               * activatable control that deep-links into the Signal Viewer.
-               */}
-              <div
-                ref={gridRef}
-                role="grid"
-                aria-label="Individual events"
-                aria-rowcount={rows.length + 1}
-                className={styles.eventGrid}
-              >
-                <div className={styles.eventHeaderRow} role="row" aria-rowindex={1}>
-                  <span role="columnheader" className={styles.eventHeaderCell}>
-                    Time
-                  </span>
-                  <span role="columnheader" className={styles.eventHeaderCell}>
-                    Type
-                  </span>
-                  <span
-                    role="columnheader"
-                    className={`${styles.eventHeaderCell} ${styles.eventCellNumeric}`}
-                  >
-                    Duration
-                  </span>
-                  <span role="columnheader" className={styles.eventHeaderCell} aria-hidden="true" />
-                </div>
-
-                {rows.map((event, index) => {
-                  const clock = formatClockTime(wallClockEpoch, event.timestamp - sessionStart);
-                  const label = eventLabel(event.type);
-                  const durationStr = `${event.duration.toFixed(1)}s`;
-                  const isFocused = index === clampedFocusIndex;
-                  return (
-                    <div
-                      key={event.id}
-                      role="row"
-                      aria-rowindex={index + 2}
-                      data-row-index={index}
-                      tabIndex={isFocused ? 0 : -1}
-                      className={styles.eventRow}
-                      onClick={() => openEvent(event)}
-                      onFocus={() => setFocusedRowIndex(index)}
-                      onKeyDown={(e) => handleRowKeyDown(e, index, event)}
-                      title="Open in Signal Viewer"
-                      aria-label={`${label} at ${clock}, ${event.duration.toFixed(
-                        1,
-                      )} seconds. Open in Signal Viewer.`}
-                    >
-                      <span role="gridcell" className={styles.eventTimeCell}>
-                        {clock}
-                      </span>
-                      <span role="gridcell" className={styles.eventTypeCell}>
-                        <EventTypeSwatch type={event.type} />
-                        <span className={styles.eventTypeLabel}>{label}</span>
-                      </span>
-                      <span
-                        role="gridcell"
-                        className={`${styles.eventDurationCell} ${styles.eventCellNumeric}`}
-                      >
-                        {durationStr}
-                      </span>
-                      <span role="gridcell" className={styles.eventChevronCell} aria-hidden="true">
-                        ›
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </Card>
-
-          <div className={styles.eventsFooter}>
-            {sorted.length > EVENTS_LIST_CAP ? (
-              <>
-                <span>
-                  Showing the first {EVENTS_LIST_CAP} of {sorted.length} events.
+          <span className={styles.verdictGates}>{gatesPassed} of 2 gates</span>
+        </div>
+        <div className={styles.verdictText}>
+          <div className={styles.verdictEyebrow}>Night assessment</div>
+          <ul className={styles.gateList}>
+            <li className={styles.gateRow}>
+              <span className={styles.gateIcon} data-state={effectiveState} aria-hidden="true">
+                {gateGlyph(effectiveState)}
+              </span>
+              <span className={styles.gateText}>
+                <span className={styles.gateName}>
+                  Effective
+                  <span className={styles.srOnly}> — {gateStateText(effectiveState)}</span>
                 </span>
-                <Link
-                  to={`/explore/events?sessions=${sessionId}`}
-                  className={styles.eventsViewAllLink}
-                >
-                  View all in Event Explorer →
-                </Link>
-              </>
-            ) : (
-              <span>Showing all {sorted.length} events.</span>
-            )}
-          </div>
-        </>
-      )}
+                <span className={styles.gateDetail}>AHI {fmt(verdict.ahi)} (target &lt;5)</span>
+              </span>
+            </li>
+            <li className={styles.gateRow}>
+              <span className={styles.gateIcon} data-state={adherentState} aria-hidden="true">
+                {gateGlyph(adherentState)}
+              </span>
+              <span className={styles.gateText}>
+                <span className={styles.gateName}>
+                  Adherent
+                  <span className={styles.srOnly}> — {gateStateText(adherentState)}</span>
+                </span>
+                <span className={styles.gateDetail}>
+                  {verdict.usageHours.toFixed(1)} h used (≥4 h)
+                </span>
+                <span className={styles.gateNote}>
+                  ≥4 h is the CMS compliance minimum, not a clinical optimum (
+                  {RECOMMENDED_USAGE_HOURS}
+                  {' h+ recommended).'}
+                </span>
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <p className={styles.verdictNarrativeText}>{buildSessionNarrative(aggregate)}</p>
+
+      <ComponentStrip statuses={statuses} />
+
+      <p className={styles.verdictCaption}>A summary, not a diagnosis.</p>
+
+      <div className={styles.verdictAiRow}>
+        <span className={styles.verdictAiLabel}>Explain</span>
+        <div className={styles.verdictAiTriggers}>
+          <InsightTrigger
+            label="Summarize night"
+            ariaLabel="Summarize this night with AI"
+            appearance="subtle"
+            buildRequest={buildNightRequest}
+          />
+          <InsightTrigger
+            label="Clinical context"
+            ariaLabel="Explain this night's compliance and severity context with AI"
+            appearance="subtle"
+            buildRequest={buildClinicalRequest}
+          />
+        </div>
+      </div>
     </section>
   );
 }
 
-// ── Metric Cards ─────────────────────────────────────────────────
+// ── KPI grid ─────────────────────────────────────────────────────
+
+type KpiPolarity = 'lower' | 'higher' | 'neutral';
+
+interface KpiCardProps {
+  readonly label: string;
+  readonly value: number | null;
+  readonly decimals: number;
+  readonly unit: string;
+  readonly polarity: KpiPolarity;
+  /** Trailing series (oldest → newest, incl. current) for the sparkline. */
+  readonly series: readonly (number | null)[];
+  /** Count of finite prior nights (delta suppressed below MIN_PRIOR_NIGHTS). */
+  readonly priorCount: number;
+  readonly delta: number | null;
+  readonly direction: 'up' | 'down' | 'unchanged';
+  readonly sparkColor: string;
+  readonly badge?:
+    | {
+        readonly text: string;
+        readonly variant: 'success' | 'warning' | 'danger' | 'info' | 'default';
+      }
+    | undefined;
+}
+
+function KpiCard(props: KpiCardProps): JSX.Element {
+  const {
+    label,
+    value,
+    decimals,
+    unit,
+    polarity,
+    series,
+    priorCount,
+    delta,
+    direction,
+    sparkColor,
+    badge,
+  } = props;
+
+  const showDelta = delta != null && direction !== 'unchanged' && priorCount >= MIN_PRIOR_NIGHTS;
+
+  // Judge favourability for colour + the accessible label; never colour-only.
+  let deltaColor = 'var(--color-text-muted)';
+  let judgement: 'favorable' | 'unfavorable' | 'neutral' = 'neutral';
+  if (showDelta && polarity !== 'neutral') {
+    const good = (direction === 'down') === (polarity === 'lower');
+    judgement = good ? 'favorable' : 'unfavorable';
+    deltaColor = good ? 'var(--color-status-normal)' : 'var(--color-status-severe)';
+  }
+  const arrow = direction === 'up' ? '▲' : '▼';
+  const directionWord = direction === 'up' ? 'increased' : 'decreased';
+  // Carry BOTH direction and favourability into the accessible name so an AT
+  // user learns which way the metric moved and whether that is good/bad — colour
+  // and the ▲/▼ glyph are never the sole signal (WCAG 1.4.1).
+  const deltaSrText =
+    judgement === 'neutral' ? `${directionWord} — ` : `${directionWord}, ${judgement} — `;
+
+  return (
+    <div className={styles.kpiCard}>
+      <div className={styles.kpiHead}>
+        <span className={styles.kpiLabel}>{label}</span>
+        {badge ? (
+          <Badge variant={badge.variant} size="sm">
+            {badge.text}
+          </Badge>
+        ) : null}
+      </div>
+      <div className={styles.kpiValueRow}>
+        <span className={styles.kpiValue}>{fmt(value, decimals)}</span>
+        <span className={styles.kpiUnit}>{unit}</span>
+      </div>
+      <div className={styles.kpiFoot}>
+        {showDelta ? (
+          <span
+            className={styles.kpiDelta}
+            style={{ color: deltaColor }}
+            title={`${judgement === 'neutral' ? 'Changed' : judgement} versus the trailing 30-night baseline`}
+          >
+            <span className={styles.srOnly}>{deltaSrText}</span>
+            <span aria-hidden="true">{arrow}</span> {Math.abs(delta as number).toFixed(decimals)}{' '}
+            <span className={styles.kpiDeltaMuted}>vs 30-night</span>
+          </span>
+        ) : (
+          <span className={styles.kpiDeltaMuted}>
+            {priorCount > 0 ? 'baseline building' : 'no baseline yet'}
+          </span>
+        )}
+        <span className={styles.kpiSpark}>
+          <Sparkline values={series} color={sparkColor} width={96} height={26} fill />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Respiratory events card ──────────────────────────────────────
+
+interface RespiratoryEventsCardProps {
+  readonly aggregate: NightlyAggregate;
+  readonly events: readonly Event[];
+  readonly wallClockEpoch: number;
+  readonly sessionStart: number;
+}
+
+function RespiratoryEventsCard({
+  aggregate,
+  events,
+  wallClockEpoch,
+  sessionStart,
+}: RespiratoryEventsCardProps): JSX.Element {
+  const components = respiratoryBreakdown(aggregate);
+  const maxCount = components.reduce((m, c) => Math.max(m, c.count), 0);
+  const la = longestApnea(events);
+  const central = centralFraction(aggregate);
+  const reraCount = aggregate.eventsByType.rera;
+  const flgCount = aggregate.eventsByType.flowLimitation;
+  // Non-diagnostic call-out on the canonical CAI convention (central AHI ≥ 5/h,
+  // the mild boundary) — elevated central activity, not an arbitrary fraction cut.
+  const centralElevated =
+    aggregate.ahiCentral != null && aggregate.ahiCentral >= AHI_SEVERITY_THRESHOLDS.mild;
+
+  return (
+    <div className={styles.panel}>
+      <div className={styles.panelHead}>
+        <h2 className={styles.panelTitle}>Respiratory events</h2>
+        <span className={styles.panelCount}>{aggregate.eventCount} total</span>
+      </div>
+
+      <div className={styles.respBars}>
+        {components.map((c) => {
+          const widthPct = maxCount > 0 ? (c.count / maxCount) * 100 : 0;
+          const color = EVENT_TYPE_META[c.type]?.color ?? 'var(--color-text-muted)';
+          return (
+            <div key={c.type} className={styles.respRow}>
+              <span className={styles.respLabel}>
+                <EventTypeSwatch type={c.type} />
+                <span className={styles.respLabelText}>{c.label}</span>
+              </span>
+              <span className={styles.respTrack}>
+                <span
+                  className={styles.respFill}
+                  style={{ width: `${widthPct}%`, background: color }}
+                  aria-hidden="true"
+                />
+              </span>
+              <span className={styles.respStat}>
+                <span className={styles.respRate}>
+                  {c.ratePerHour != null ? `${c.ratePerHour.toFixed(1)}/h` : '—'}
+                </span>
+                <span className={styles.respCount}>{c.count} events</span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className={styles.miniGrid}>
+        <div className={styles.miniStat}>
+          <span className={styles.miniLabel}>Longest apnea</span>
+          <span className={styles.miniValue}>{la ? `${la.durationSec.toFixed(0)}s` : '—'}</span>
+          <span className={styles.miniSub}>
+            {la
+              ? `${eventLabel(la.type)} · ${formatClockTime(wallClockEpoch, la.timestamp - sessionStart)}`
+              : 'No apneas scored'}
+          </span>
+        </div>
+        <div className={styles.miniStat}>
+          <span className={styles.miniLabel}>Central fraction</span>
+          <span className={styles.miniValue}>
+            {central != null ? `${(central * 100).toFixed(0)}%` : '—'}
+          </span>
+          <span className={styles.miniSub}>
+            {central == null ? (
+              'Needs ≥20 apneas to report'
+            ) : centralElevated ? (
+              <>
+                Elevated central activity (CAI ≥ 5/h) —{' '}
+                <Link to="/explore/breathing" className={styles.miniLink}>
+                  Breathing patterns
+                </Link>
+              </>
+            ) : (
+              'Share of apneas that were central'
+            )}
+          </span>
+        </div>
+        <div className={styles.miniStat}>
+          <span className={styles.miniLabel}>RERA</span>
+          <span className={styles.miniValue}>{reraCount}</span>
+          <span className={styles.miniSub}>Respiratory-effort arousals</span>
+        </div>
+        <div className={styles.miniStat}>
+          <span className={styles.miniLabel}>Flow limitation</span>
+          <span className={styles.miniValue}>{flgCount}</span>
+          <span className={styles.miniSub}>Flagged FLG events</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Event clusters card ──────────────────────────────────────────
 
 /**
- * Respiratory Disturbance Index: AHI + RERA index. Prefer the stored `rdi`
- * field; fall back to `ahi + ahiRera` for aggregates persisted before the
- * field existed (see {@link NightlyAggregate.rdi}).
- *
- * Returns `null` when no rate is defined (recording too short): `rdi` is null
- * and the `ahi + ahiRera` fallback cannot be formed because either operand is
- * null. Never coerces a missing rate to 0.
+ * Relative intensity band for a cluster's severity score, scaled WITHIN this
+ * night (densest cluster = highest). This is an explicitly relative, heuristic
+ * presentation cue — NOT a clinical severity — always paired with the numeric
+ * score and a word label so colour is never the sole signal.
  */
-function resolveRdi(aggregate: NightlyAggregate): number | null {
-  if (aggregate.rdi != null) return aggregate.rdi;
-  if (aggregate.ahi != null && aggregate.ahiRera != null) {
-    return aggregate.ahi + aggregate.ahiRera;
-  }
-  return null;
+function relativeBand(score: number, maxScore: number): { severity: AhiSeverity; word: string } {
+  const ratio = maxScore > 0 ? score / maxScore : 0;
+  if (ratio >= 0.66) return { severity: 'severe', word: 'High' };
+  if (ratio >= 0.33) return { severity: 'moderate', word: 'Medium' };
+  return { severity: 'mild', word: 'Low' };
 }
 
-function AHICard({ aggregate }: { aggregate: NightlyAggregate }) {
-  // aggregate.ahi is null when the recording was too short for a per-hour
-  // rate; show an em-dash with an accessible explanation rather than a 0.
-  const ahiDefined = aggregate.ahi != null;
-  const severity = ahiDefined ? classifyAhiSeverity(aggregate.ahi) : null;
-  const badgeVariant = severity ? ahiBadgeVariant(severity) : 'default';
-  const rdi = resolveRdi(aggregate);
+interface EventClustersCardProps {
+  /** Shared, memoized clustering result (computed once in the parent). */
+  readonly clusters: SessionClustersResult;
+  readonly wallClockEpoch: number;
+  readonly sessionStart: number;
+  readonly onFocusCluster: (offsetMs: number) => void;
+}
+
+function EventClustersCard({
+  clusters: clustersResult,
+  wallClockEpoch,
+  sessionStart,
+  onFocusCluster,
+}: EventClustersCardProps): JSX.Element {
+  const { clusters, summaries } = clustersResult;
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const maxScore = summaries.reduce((m, s) => Math.max(m, s.severityScore), 0);
+
+  const clusterEvents = useMemo(() => {
+    const map = new Map<string, readonly Event[]>();
+    for (const c of clusters) map.set(c.id, c.events);
+    return map;
+  }, [clusters]);
 
   return (
-    <Card className={styles.metricCard}>
-      <div className={styles.metricCardHeader}>
-        <h3 className={styles.metricCardTitle}>AHI</h3>
-        {severity ? (
-          <Badge variant={badgeVariant} size="sm">
-            {severity.charAt(0).toUpperCase() + severity.slice(1)}
-          </Badge>
-        ) : (
-          <span title="Insufficient recording time" aria-label="Not available">
-            <Badge variant="default" size="sm">
-              N/A
-            </Badge>
-          </span>
-        )}
+    <div className={styles.panel}>
+      <div className={styles.panelHead}>
+        <h2 className={styles.panelTitle}>Event clusters</h2>
+        <span className={styles.panelCount}>{summaries.length} clusters</span>
       </div>
-      <div className={styles.metricPrimary}>
-        <span
-          className={`${styles.metricValue} ${
-            severity
-              ? (styles[`ahi${severity.charAt(0).toUpperCase() + severity.slice(1)}`] ?? '')
-              : ''
-          }`}
-          title={ahiDefined ? undefined : 'Insufficient recording time'}
-        >
-          {fmt(aggregate.ahi)}
-        </span>
-        <span className={styles.metricUnit}>events/hr</span>
-      </div>
-      <div className={styles.metricSecondary}>
-        <span className={styles.metricSecondaryLabel}>RDI</span>
-        <span className={styles.metricSecondaryValue}>{fmt(rdi)}</span>
-        <span className={styles.metricSecondaryUnit}>events/hr (incl. RERA)</span>
-      </div>
-      <div className={styles.metricBreakdown}>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Obstructive</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.ahiObstructive)}</span>
-        </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Central</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.ahiCentral)}</span>
-        </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Mixed</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.ahiMixed)}</span>
-        </div>
-        {(aggregate.ahiUnclassified === null || (aggregate.ahiUnclassified ?? 0) > 0) && (
-          <div className={styles.breakdownItem}>
-            <span className={styles.breakdownLabel}>Unclassified</span>
-            <span className={styles.breakdownValue}>{fmt(aggregate.ahiUnclassified)}</span>
+
+      {summaries.length === 0 ? (
+        <p className={styles.panelEmpty}>
+          No clustered runs of events — events were isolated across the night.
+        </p>
+      ) : (
+        <ul className={styles.clusterList}>
+          {summaries.map((s: ClusterSummary) => {
+            const band = relativeBand(s.severityScore, maxScore);
+            const expanded = expandedId === s.id;
+            const startClock = formatClockTime(wallClockEpoch, s.startTime - sessionStart);
+            const endClock = formatClockTime(wallClockEpoch, s.endTime - sessionStart);
+            const evs = clusterEvents.get(s.id) ?? [];
+            return (
+              <li key={s.id} className={styles.clusterItem}>
+                <button
+                  type="button"
+                  className={styles.clusterHeader}
+                  aria-expanded={expanded}
+                  onClick={() => setExpandedId(expanded ? null : s.id)}
+                >
+                  <span className={styles.clusterChevron} aria-hidden="true">
+                    {expanded ? '▾' : '▸'}
+                  </span>
+                  <span className={styles.clusterWindow}>
+                    {startClock} – {endClock}
+                  </span>
+                  <span className={styles.clusterMeta}>
+                    {s.eventCount} events · {s.density.toFixed(1)}/min
+                  </span>
+                  <span
+                    className={styles.clusterBadge}
+                    style={{ color: severityVar(band.severity) }}
+                  >
+                    <span
+                      className={styles.clusterDot}
+                      style={{ background: severityVar(band.severity) }}
+                      aria-hidden="true"
+                    />
+                    {band.word} · {s.severityScore.toFixed(0)}
+                  </span>
+                </button>
+                {expanded && (
+                  <div className={styles.clusterBody}>
+                    <ul className={styles.clusterEvents}>
+                      {evs.map((e) => (
+                        <li key={e.id} className={styles.clusterEventRow}>
+                          <span className={styles.clusterEventTime}>
+                            {formatClockTime(wallClockEpoch, e.timestamp - sessionStart)}
+                          </span>
+                          <span className={styles.clusterEventType}>
+                            <EventTypeSwatch type={e.type} />
+                            <span>{eventLabel(e.type)}</span>
+                          </span>
+                          <span className={styles.clusterEventDuration}>
+                            {e.duration.toFixed(1)}s
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => onFocusCluster(s.startTime - sessionStart)}
+                    >
+                      View in signal viewer
+                    </Button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <p className={styles.panelCaption}>
+        Severity = cluster duration × event density. Intensity bands are relative to this night.
+      </p>
+    </div>
+  );
+}
+
+// ── Session statistics card ──────────────────────────────────────
+
+interface StatRow {
+  readonly label: string;
+  readonly value: string;
+}
+
+function StatGroup({ title, rows }: { title: string; rows: readonly StatRow[] }): JSX.Element {
+  return (
+    <div className={styles.statGroup}>
+      <h3 className={styles.statGroupTitle}>{title}</h3>
+      <dl className={styles.statList}>
+        {rows.map((r) => (
+          <div key={r.label} className={styles.statRow}>
+            <dt className={styles.statLabel}>{r.label}</dt>
+            <dd className={styles.statValue}>{r.value}</dd>
           </div>
-        )}
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Hypopnea</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.ahiHypopnea)}</span>
-        </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>RERA</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.ahiRera)}</span>
-        </div>
-      </div>
-    </Card>
+        ))}
+      </dl>
+    </div>
   );
 }
 
-function LeakCard({ aggregate }: { aggregate: NightlyAggregate }) {
-  return (
-    <Card className={styles.metricCard}>
-      <div className={styles.metricCardHeader}>
-        <h3 className={styles.metricCardTitle}>Leak Rate</h3>
-      </div>
-      <div className={styles.metricPrimary}>
-        <span className={styles.metricValue}>
-          {formatMetric('leakMedian', aggregate.leakMedian)}
-        </span>
-        <span className={styles.metricUnit}>L/min median</span>
-      </div>
-      <div className={styles.metricBreakdown}>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>95th %ile</span>
-          <span className={styles.breakdownValue}>
-            {formatMetric('leakP95', aggregate.leakP95)}
-          </span>
-        </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Max</span>
-          <span className={styles.breakdownValue}>
-            {formatMetric('leakMax', aggregate.leakMax)}
-          </span>
-        </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Large Leak</span>
-          <span className={styles.breakdownValue}>
-            {formatDuration(aggregate.leakDurationMinutes)}
-          </span>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-function PressureCard({
+/**
+ * A few aggregate metrics are deliberately NOT surfaced here. These are honest
+ * PRESENTATION choices, not ResMed data limitations:
+ *  - Flow-limitation median — omitted because it has no validated absolute scale
+ *    (the flag count is shown instead).
+ *  - T90 in minutes — not currently computed (it is bounded by SpO₂ coverage);
+ *    "% of night <90%" is shown instead.
+ *  - Largest-leak timestamp — a single instantaneous maximum is noise-prone, so
+ *    it is not shown (leak 95th-percentile / max magnitudes are shown instead).
+ */
+function StatisticsCard({
   aggregate,
-  machineType,
+  session,
+  sleepEfficiency,
 }: {
   aggregate: NightlyAggregate;
-  machineType: MachineType;
-}) {
-  const bilevel = isBilevel(machineType);
+  session: Session;
+  sleepEfficiency: number | null;
+}): JSX.Element {
+  const bilevel = isBilevel(session.machineType);
+
+  const pressureRows: StatRow[] = [
+    { label: 'Mean', value: fmt(aggregate.pressureMean) },
+    { label: 'Median', value: fmt(aggregate.pressureMedian) },
+    { label: '95th %ile', value: fmt(aggregate.pressureP95) },
+    { label: 'Max', value: fmt(aggregate.pressureMax) },
+  ];
+  if (aggregate.epapMedian != null) {
+    pressureRows.push({ label: 'Median EPAP', value: fmt(aggregate.epapMedian) });
+  }
+  if (bilevel && aggregate.ipapMedian != null) {
+    pressureRows.push({ label: 'Median IPAP', value: fmt(aggregate.ipapMedian) });
+  }
+  if (bilevel && aggregate.pressureSupport != null) {
+    pressureRows.push({ label: 'Pressure support', value: fmt(aggregate.pressureSupport) });
+  }
+
+  const ventilationRows: StatRow[] = [
+    {
+      label: 'Tidal volume',
+      value:
+        aggregate.tidalVolumeMedian != null ? `${fmt(aggregate.tidalVolumeMedian, 0)} mL` : '—',
+    },
+    {
+      label: 'Minute vent.',
+      value: aggregate.minuteVentMean != null ? `${fmt(aggregate.minuteVentMean)} L/m` : '—',
+    },
+    {
+      label: 'Resp. rate',
+      value: aggregate.respRateMedian != null ? `${fmt(aggregate.respRateMedian, 0)} br/m` : '—',
+    },
+    { label: 'Flow limitation', value: `${aggregate.eventsByType.flowLimitation} events` },
+  ];
+
+  const leakRows: StatRow[] = [
+    { label: 'Median', value: `${fmt(aggregate.leakMedian)} L/m` },
+    { label: '95th %ile', value: `${fmt(aggregate.leakP95)} L/m` },
+    { label: 'Max', value: `${fmt(aggregate.leakMax)} L/m` },
+    { label: 'Time >24 L/m', value: formatDuration(aggregate.leakDurationMinutes) },
+    { label: 'Episodes', value: `${aggregate.eventsByType.largeLeak}` },
+  ];
+
+  const oxyRows: StatRow[] = [];
+  if (session.hasOximetry) {
+    oxyRows.push(
+      {
+        label: 'SpO₂ mean',
+        value: aggregate.spo2Mean != null ? `${fmt(aggregate.spo2Mean)}%` : '—',
+      },
+      {
+        label: 'SpO₂ nadir',
+        value: aggregate.spo2Min != null ? `${fmt(aggregate.spo2Min, 0)}%` : '—',
+      },
+      { label: 'ODI', value: fmt(aggregate.oxygenDesaturationIndex) },
+      {
+        label: '% of night <90%',
+        value:
+          aggregate.spo2Below90Percent != null
+            ? `${formatMetric('spo2', aggregate.spo2Below90Percent)}%`
+            : '—',
+      },
+      {
+        label: 'Coverage',
+        value:
+          aggregate.spo2CoveragePercent != null
+            ? `${aggregate.spo2CoveragePercent.toFixed(0)}%`
+            : '—',
+      },
+    );
+  }
+  if (sleepEfficiency != null) {
+    oxyRows.push({ label: 'Sleep efficiency', value: `${sleepEfficiency.toFixed(0)}%` });
+  }
+  if (oxyRows.length === 0) {
+    oxyRows.push({ label: 'Oximetry', value: '— (none recorded)' });
+  }
 
   return (
-    <Card className={styles.metricCard}>
-      <div className={styles.metricCardHeader}>
-        <h3 className={styles.metricCardTitle}>Pressure</h3>
-        <Badge variant="default" size="sm">
-          cmH₂O
+    <div className={styles.statsCard}>
+      <div className={styles.panelHead}>
+        <h2 className={styles.panelTitle}>Session statistics</h2>
+        <Badge variant="info" size="sm">
+          {session.machineSettings?.therapyMode ?? MACHINE_TYPE_LABELS[session.machineType]}
         </Badge>
       </div>
-      <div className={styles.metricPrimary}>
-        <span className={styles.metricValue}>{fmt(aggregate.pressureMean)}</span>
-        <span className={styles.metricUnit}>mean</span>
+      <div className={styles.statsGrid}>
+        <StatGroup title="Pressure (cmH₂O)" rows={pressureRows} />
+        <StatGroup title="Ventilation" rows={ventilationRows} />
+        <StatGroup title="Leak" rows={leakRows} />
+        <StatGroup title="Oxygenation & sleep" rows={oxyRows} />
       </div>
-      <div className={styles.metricBreakdown}>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Median</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.pressureMedian)}</span>
-        </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>95th %ile</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.pressureP95)}</span>
-        </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Max</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.pressureMax)}</span>
-        </div>
-        {bilevel && aggregate.epapMedian != null && (
-          <div className={styles.breakdownItem}>
-            <span className={styles.breakdownLabel}>EPAP</span>
-            <span className={styles.breakdownValue}>{fmt(aggregate.epapMedian)}</span>
-          </div>
-        )}
-        {bilevel && aggregate.ipapMedian != null && (
-          <div className={styles.breakdownItem}>
-            <span className={styles.breakdownLabel}>IPAP</span>
-            <span className={styles.breakdownValue}>{fmt(aggregate.ipapMedian)}</span>
-          </div>
-        )}
-        {bilevel && aggregate.pressureSupport != null && (
-          <div className={styles.breakdownItem}>
-            <span className={styles.breakdownLabel}>PS</span>
-            <span className={styles.breakdownValue}>{fmt(aggregate.pressureSupport)}</span>
-          </div>
-        )}
-      </div>
-    </Card>
+    </div>
   );
 }
 
-function SpO2Card({ aggregate }: { aggregate: NightlyAggregate }) {
+// ── Physiology row cards (gated) ─────────────────────────────────
+
+const SLEEP_STAGE_META: readonly {
+  readonly key: keyof FitbitSleepSession['stages'];
+  readonly label: string;
+  readonly colorVar: string;
+}[] = [
+  { key: 'deep', label: 'Deep', colorVar: 'var(--color-hypno-deep)' },
+  { key: 'light', label: 'Light', colorVar: 'var(--color-hypno-light)' },
+  { key: 'rem', label: 'REM', colorVar: 'var(--color-hypno-rem)' },
+  { key: 'wake', label: 'Awake', colorVar: 'var(--color-hypno-wake)' },
+];
+
+function SleepStagesCard({ sleep }: { sleep: FitbitSleepSession }): JSX.Element {
+  const { deep, light, rem, wake } = sleep.stages;
+  const total = deep + light + rem + wake;
   return (
-    <Card className={styles.metricCard}>
-      <div className={styles.metricCardHeader}>
-        <h3 className={styles.metricCardTitle}>SpO₂</h3>
+    <div className={styles.panel}>
+      <div className={styles.panelHead}>
+        <h2 className={styles.panelTitle}>Sleep stages</h2>
+        <Badge variant="info" size="sm">
+          Fitbit
+        </Badge>
       </div>
-      <div className={styles.metricPrimary}>
-        <span className={styles.metricValue}>{fmt(aggregate.spo2Mean)}</span>
-        <span className={styles.metricUnit}>% mean</span>
+      <div className={styles.stageBar} aria-hidden="true">
+        {SLEEP_STAGE_META.map((s) => {
+          const minutes = sleep.stages[s.key];
+          const pct = total > 0 ? (minutes / total) * 100 : 0;
+          return (
+            <span
+              key={s.key}
+              className={styles.stageSeg}
+              style={{ width: `${pct}%`, background: s.colorVar }}
+            />
+          );
+        })}
       </div>
-      <div className={styles.metricBreakdown}>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Min</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.spo2Min, 0)}</span>
+      <dl className={styles.statList}>
+        {SLEEP_STAGE_META.map((s) => {
+          const minutes = sleep.stages[s.key];
+          const pct = total > 0 ? (minutes / total) * 100 : null;
+          return (
+            <div key={s.key} className={styles.statRow}>
+              <dt className={styles.statLabel}>
+                <span
+                  className={styles.stageDot}
+                  style={{ background: s.colorVar }}
+                  aria-hidden="true"
+                />
+                {s.label}
+              </dt>
+              <dd className={styles.statValue}>
+                {formatDuration(minutes)}
+                {pct != null ? <span className={styles.statPct}> · {pct.toFixed(0)}%</span> : null}
+              </dd>
+            </div>
+          );
+        })}
+        <div className={styles.statRow}>
+          <dt className={styles.statLabel}>Sleep efficiency</dt>
+          <dd className={styles.statValue}>
+            {Number.isFinite(sleep.efficiency) ? `${sleep.efficiency.toFixed(0)}%` : '—'}
+          </dd>
         </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Time &lt;90%</span>
-          <span className={styles.breakdownValue}>
-            {aggregate.spo2Below90Percent != null
-              ? `${formatMetric('spo2', aggregate.spo2Below90Percent)}%`
-              : '—'}
-          </span>
-        </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>ODI</span>
-          <span className={styles.breakdownValue}>{fmt(aggregate.oxygenDesaturationIndex)}</span>
-        </div>
-        <div className={styles.breakdownItem}>
-          <span className={styles.breakdownLabel}>Coverage</span>
-          <span className={styles.breakdownValue}>
-            {aggregate.spo2CoveragePercent != null
-              ? `${aggregate.spo2CoveragePercent.toFixed(0)}%`
-              : '—'}
-          </span>
-        </div>
-      </div>
-    </Card>
+      </dl>
+    </div>
   );
 }
 
-// ── Loading Skeleton ─────────────────────────────────────────────
+interface PhysiologyCardProps {
+  readonly restingHr: number | null;
+  readonly hrv: number | null;
+  readonly spo2Avg: number | null;
+  readonly spo2Min: number | null;
+  readonly sleepEfficiency: number | null;
+}
 
-function LoadingSkeleton() {
+function PhysiologyCard({
+  restingHr,
+  hrv,
+  spo2Avg,
+  spo2Min,
+  sleepEfficiency,
+}: PhysiologyCardProps): JSX.Element {
+  const rows: StatRow[] = [
+    { label: 'Resting HR', value: restingHr != null ? `${restingHr.toFixed(0)} bpm` : '—' },
+    { label: 'HRV (RMSSD)', value: hrv != null ? `${hrv.toFixed(0)} ms` : '—' },
+    {
+      label: 'SpO₂ (wearable)',
+      value: spo2Avg != null ? `${spo2Avg.toFixed(0)}% avg` : '—',
+    },
+    { label: 'SpO₂ nadir', value: spo2Min != null ? `${spo2Min.toFixed(0)}%` : '—' },
+    {
+      label: 'Sleep efficiency',
+      value: sleepEfficiency != null ? `${sleepEfficiency.toFixed(0)}%` : '—',
+    },
+  ];
+  return (
+    <div className={styles.panel}>
+      <div className={styles.panelHead}>
+        <h2 className={styles.panelTitle}>Physiology tonight</h2>
+        <Badge variant="info" size="sm">
+          Fitbit
+        </Badge>
+      </div>
+      <dl className={styles.statList}>
+        {rows.map((r) => (
+          <div key={r.label} className={styles.statRow}>
+            <dt className={styles.statLabel}>{r.label}</dt>
+            <dd className={styles.statValue}>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+interface EnvironmentCardProps {
+  readonly tempLow: number | null;
+  readonly tempMean: number | null;
+  readonly tempUnit: 'C' | 'F';
+  readonly humidity: number | null;
+  readonly pressure: number | null;
+  readonly aqi: number | null;
+  readonly synced: boolean;
+}
+
+function EnvironmentCard(props: EnvironmentCardProps): JSX.Element {
+  const { tempLow, tempMean, tempUnit, humidity, pressure, aqi, synced } = props;
+  return (
+    <div className={styles.panel}>
+      <div className={styles.panelHead}>
+        <h2 className={styles.panelTitle}>Environment</h2>
+        <Badge variant="info" size="sm">
+          Weather
+        </Badge>
+      </div>
+      {!synced ? (
+        <p className={styles.panelEmpty}>
+          Weather is enabled but this night has not been synced yet. Sync weather in Settings to see
+          overnight conditions.
+        </p>
+      ) : (
+        <dl className={styles.statList}>
+          <div className={styles.statRow}>
+            <dt className={styles.statLabel}>Temp (low / mean)</dt>
+            <dd className={styles.statValue}>
+              {tempLow != null ? `${tempLow.toFixed(0)}°` : '—'} /{' '}
+              {tempMean != null ? `${tempMean.toFixed(0)}°${tempUnit}` : '—'}
+            </dd>
+          </div>
+          <div className={styles.statRow}>
+            <dt className={styles.statLabel}>Humidity</dt>
+            <dd className={styles.statValue}>
+              {humidity != null ? `${humidity.toFixed(0)}%` : '—'}
+            </dd>
+          </div>
+          <div className={styles.statRow}>
+            <dt className={styles.statLabel}>Barometric</dt>
+            <dd className={styles.statValue}>
+              {pressure != null ? `${pressure.toFixed(0)} hPa` : '—'}
+            </dd>
+          </div>
+          <div className={styles.statRow}>
+            <dt className={styles.statLabel}>Air quality</dt>
+            <dd className={styles.statValue}>
+              <AqiSwatch value={aqi} scale="us" />
+            </dd>
+          </div>
+        </dl>
+      )}
+    </div>
+  );
+}
+
+// ── Loading / error states (preserved) ───────────────────────────
+
+function LoadingSkeleton(): JSX.Element {
   return (
     <div className={styles.loadingContainer} aria-busy="true">
       <div className={styles.skeletonHeader}>
@@ -792,26 +988,16 @@ function LoadingSkeleton() {
         <Skeleton width="50%" height={32} variant="text" />
         <Skeleton width="40%" height={16} variant="text" />
       </div>
-      <div className={styles.skeletonMetrics}>
-        {Array.from({ length: 4 }, (_, i) => (
-          <Card key={i}>
-            <div className={styles.skeletonCard}>
-              <Skeleton width="40%" height={14} variant="text" />
-              <Skeleton width="60%" height={36} variant="text" />
-              <Skeleton width="100%" height={48} variant="rect" />
-            </div>
-          </Card>
-        ))}
+      <div className={styles.skeletonHero}>
+        <Skeleton width="100%" height={280} variant="rect" />
+        <Skeleton width="100%" height={280} variant="rect" />
       </div>
-      <Skeleton width="100%" height={48} variant="rect" />
-      <Skeleton width="100%" height={200} variant="rect" />
+      <Skeleton width="100%" height={220} variant="rect" />
     </div>
   );
 }
 
-// ── Error State ──────────────────────────────────────────────────
-
-function ErrorState({ message }: { message: string }) {
+function ErrorState({ message }: { message: string }): JSX.Element {
   return (
     <div className={styles.errorState} role="alert">
       <span className={styles.errorIcon} aria-hidden="true">
@@ -826,12 +1012,13 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-// ── Main Component ───────────────────────────────────────────────
+// ── Main component ───────────────────────────────────────────────
 
-export default function SessionDetail() {
+export default function SessionDetail(): JSX.Element {
   const { sessionId } = useParams<{ sessionId: string }>();
   const isChildRouteActive = useMatch('/sessions/:sessionId/signals');
   const navigate = useNavigate();
+  const colors = useChartColors();
 
   const {
     session,
@@ -843,10 +1030,10 @@ export default function SessionDetail() {
 
   const ahiThresholds = useSettingsStore((s) => s.analysisParams.ahi);
   const displayPrefs = useSettingsStore((s) => s.display);
+  const weatherEnabled = useSettingsStore((s) => s.integrations.weather.enabled);
+  const weatherUnits = useSettingsStore((s) => s.integrations.weather.units);
 
-  // Build the single-night / clinical-context insight requests from this night's
-  // aggregate. Lazy (assembled on trigger activation). Both reuse one resolved
-  // GroundingCommonInput (active thresholds + display prefs + coarse class).
+  // ── AI insight requests (preserved) ────────────────────────────
   const buildNightRequest = useCallback(() => {
     if (aggregate === null || session === null) {
       throw new Error('No aggregate to summarize');
@@ -875,6 +1062,7 @@ export default function SessionDetail() {
     };
   }, [aggregate, session, ahiThresholds, displayPrefs]);
 
+  // ── Derived time bases ─────────────────────────────────────────
   const sessionStartMs = useMemo(
     () => (session ? new Date(session.startTime).getTime() : 0),
     [session],
@@ -883,35 +1071,167 @@ export default function SessionDetail() {
     () => (session ? new Date(session.endTime).getTime() : 0),
     [session],
   );
-  // Session start in the wall-clock-as-UTC convention shared by the Signal
-  // Viewer X-axis and crosshair. Formatting event clock times against this epoch
-  // (with UTC getters, via formatClockTime) keeps every surface agreeing to the
-  // second — see hoverReadout.formatClockTime and signalLanes.sessionWallClockEpoch.
   const wallClockEpochMs = useMemo(
     () => (session ? sessionWallClockEpoch(session.startTime) : 0),
     [session],
   );
+  const dateKey = useMemo(() => (session ? sessionDateKey(session.startTime) : null), [session]);
+
+  // ── Trailing baseline aggregates (~30–35 nights ending at this night) ──
+  const sessionDate = session?.date;
+  const baselineRange = useMemo(() => {
+    const end = sessionDate ? (parseLocalDate(sessionDate) ?? new Date()) : new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - BASELINE_WINDOW_DAYS);
+    return { start, end };
+  }, [sessionDate]);
+  const { aggregates: trailing } = useNightlyAggregates(baselineRange);
+  const priorNights = useMemo(
+    () =>
+      [...trailing]
+        .filter((a) => (sessionDate ? a.date < sessionDate : false))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    [trailing, sessionDate],
+  );
+
+  // ── Prev / next night navigation ───────────────────────────────
+  const allSessionsRange = useMemo(
+    () => ({ start: new Date('2000-01-01T00:00:00'), end: new Date(Date.now() + 86_400_000) }),
+    [],
+  );
+  const { sessions: allSessions } = useSessionData(allSessionsRange);
+  const ordered = useMemo(
+    () => [...allSessions].sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    [allSessions],
+  );
+  const currentIdx = useMemo(
+    () => ordered.findIndex((s) => s.id === sessionId),
+    [ordered, sessionId],
+  );
+  const prevSession = currentIdx > 0 ? ordered[currentIdx - 1] : null;
+  const nextSession =
+    currentIdx >= 0 && currentIdx < ordered.length - 1 ? ordered[currentIdx + 1] : null;
+
+  // ── Wearable (Fitbit) — gated ──────────────────────────────────
+  const { summary: wearableSummary } = useWearableSummary();
+  const wearableAvailable = wearableSummary?.hasData ?? false;
+  const gatedDate = wearableAvailable ? dateKey : null;
+  const { data: sleepDay } = useWearableDayData('sleep_session', gatedDate);
+  const { data: restingHrDay } = useWearableDayData('heart_rate_resting', gatedDate);
+  const { data: hrvDay } = useWearableDayData('hrv_daily', gatedDate);
+  const { data: spo2Day } = useWearableDayData('spo2_daily', gatedDate);
+
+  // `dataType` guarantees the payload shape; narrow the daily union accordingly.
+  const sleep = (sleepDay?.data as FitbitSleepSession | undefined) ?? null;
+  const restingHr = restingHrDay
+    ? ((restingHrDay.data as FitbitRestingHeartRate).restingHeartRate ?? null)
+    : null;
+  const hrv = hrvDay ? ((hrvDay.data as FitbitHRVDaily).dailyRmssd ?? null) : null;
+  const spo2Avg = spo2Day ? ((spo2Day.data as FitbitSpO2Daily).avg ?? null) : null;
+  const spo2WearMin = spo2Day ? ((spo2Day.data as FitbitSpO2Daily).min ?? null) : null;
+  const sleepEfficiency = sleep && Number.isFinite(sleep.efficiency) ? sleep.efficiency : null;
+
+  // ── Weather — gated ────────────────────────────────────────────
+  const weatherRange = useMemo(
+    () => (dateKey ? { start: dateKey, end: dateKey } : null),
+    [dateKey],
+  );
+  const { latest: weatherNight } = useWeatherNightly(
+    weatherEnabled && weatherRange ? weatherRange : null,
+  );
+
+  // ── Cluster focus (lifted state for the compact signal viewer) ──
+  const [focusTime, setFocusTime] = useState<number | undefined>(undefined);
+  const signalsRef = useRef<HTMLDivElement>(null);
+
+  // Cluster the night's events ONCE and share the result with both the events
+  // panel and the default signal-viewer focus (avoids clustering twice).
+  const clustersResult = useMemo(() => sessionClusters(events), [events]);
+  const defaultFocus = useMemo(() => {
+    if (!session) return undefined;
+    const top = clustersResult.summaries[0];
+    if (top) return top.startTime - sessionStartMs;
+    const la = longestApnea(events);
+    if (la) return la.timestamp - sessionStartMs;
+    return undefined;
+  }, [clustersResult, events, session, sessionStartMs]);
+
+  const focusCluster = useCallback((offsetMs: number) => {
+    setFocusTime(offsetMs);
+    signalsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+  }, []);
 
   // ── Child route (Signal Viewer) ────────────────────────────────
   if (isChildRouteActive) {
     return <Outlet />;
   }
 
-  // ── Loading state ──────────────────────────────────────────────
+  // ── Loading / error / not-found ────────────────────────────────
   if (sessionLoading || eventsLoading) {
     return <LoadingSkeleton />;
   }
-
-  // ── Error state ────────────────────────────────────────────────
   const error = sessionError ?? eventsError;
   if (error) {
     return <ErrorState message={error} />;
   }
-
-  // ── No data ────────────────────────────────────────────────────
   if (!session) {
     return <ErrorState message="Session not found." />;
   }
+
+  // ── KPI series/deltas (aggregate-based metrics only) ───────────
+  const buildKpi = (
+    selector: (a: NightlyAggregate) => number | null,
+  ): {
+    series: (number | null)[];
+    priorCount: number;
+    delta: number | null;
+    direction: 'up' | 'down' | 'unchanged';
+  } => {
+    const current = aggregate ? selector(aggregate) : null;
+    const prior = priorNights.map(selector);
+    const priorCount = prior.filter((v): v is number => v != null && Number.isFinite(v)).length;
+    const bd = baselineDelta(current, prior);
+    return { series: [...prior, current], priorCount, delta: bd.delta, direction: bd.direction };
+  };
+
+  const ahiKpi = buildKpi((a) => a.ahi);
+  const usageKpi = buildKpi((a) => a.usageHours);
+  const leakKpi = buildKpi((a) => a.leakMedian);
+  const pressureKpi = buildKpi((a) => a.pressureP95);
+  const spo2Kpi = buildKpi((a) => a.spo2Min);
+
+  const ahiSeverity = aggregate?.ahi != null ? classifyAhiSeverity(aggregate.ahi) : null;
+
+  // SpO₂ KPI: prefer onboard oximetry, else wearable min (Fitbit). The headline
+  // value, the badge, and the trend (sparkline + delta) must all reflect the SAME
+  // source — the onboard trend series only applies when the headline is onboard,
+  // so a Fitbit fallback suppresses the delta/sparkline rather than mixing sources.
+  const spo2FromOnboard = session.hasOximetry && aggregate?.spo2Min != null;
+  const spo2Value = spo2FromOnboard ? (aggregate?.spo2Min ?? null) : spo2WearMin;
+  const spo2Badge = spo2FromOnboard
+    ? ({ text: 'Onboard', variant: 'default' } as const)
+    : spo2WearMin != null
+      ? ({ text: 'Fitbit', variant: 'info' } as const)
+      : undefined;
+
+  const showSleepCard = wearableAvailable && sleep != null;
+  const showPhysiologyCard =
+    wearableAvailable &&
+    (restingHr != null || hrv != null || spo2Avg != null || spo2WearMin != null);
+  const weatherSynced = weatherNight != null;
+  const showEnvironmentCard = weatherEnabled;
+  const showPhysiologyRow = showSleepCard || showPhysiologyCard || showEnvironmentCard;
+
+  const tempLow = weatherNight
+    ? convertTemperature(weatherNight.temperatureLow, weatherUnits.temperature)
+    : null;
+  const tempMean = weatherNight
+    ? convertTemperature(weatherNight.temperatureMean, weatherUnits.temperature)
+    : null;
+
+  const startClock = formatClockTime(wallClockEpochMs, 0).slice(0, 5);
+  const endClock = formatClockTime(wallClockEpochMs, sessionEndMs - sessionStartMs).slice(0, 5);
+  const maskType = session.machineSettings?.maskType ?? null;
 
   return (
     <div className={styles.container}>
@@ -927,72 +1247,209 @@ export default function SessionDetail() {
             </span>
             <span>{session.date}</span>
           </nav>
-          <h1 className={styles.title}>{formatDate(session.date)}</h1>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>{formatDateLong(session.date)}</h1>
+            <span className={styles.timeRange}>
+              {startClock} → {endClock}
+            </span>
+          </div>
           <div className={styles.headerMeta}>
             <span>{session.machineModel}</span>
+            {maskType ? (
+              <>
+                <span className={styles.metaDivider} aria-hidden="true" />
+                <span>Mask: {maskType}</span>
+              </>
+            ) : null}
             <span className={styles.metaDivider} aria-hidden="true" />
-            <Badge variant="info" size="sm">
-              {MACHINE_TYPE_LABELS[session.machineType]}
-            </Badge>
-            <span className={styles.metaDivider} aria-hidden="true" />
-            <span>Duration: {formatDuration(session.durationMinutes)}</span>
-            <span className={styles.metaDivider} aria-hidden="true" />
-            <span>Mask-on: {formatDuration(session.usageMinutes)}</span>
+            <span>Firmware {session.firmwareVersion}</span>
           </div>
         </div>
         <div className={styles.headerActions}>
-          {aggregate && (
-            <>
-              <InsightTrigger
-                label="Summarize this night"
-                ariaLabel="Summarize this night with AI"
-                buildRequest={buildNightRequest}
-              />
-              <InsightTrigger
-                label="Clinical context"
-                ariaLabel="Explain this night's compliance and severity context with AI"
-                appearance="subtle"
-                buildRequest={buildClinicalRequest}
-              />
-            </>
-          )}
-          <Button variant="primary" onClick={() => navigate(`/sessions/${session.id}/signals`)}>
-            View Signals
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!prevSession}
+            onClick={() => prevSession && navigate(`/sessions/${prevSession.id}`)}
+          >
+            <span aria-hidden="true">◀</span> Prev night
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!nextSession}
+            onClick={() => nextSession && navigate(`/sessions/${nextSession.id}`)}
+          >
+            Next night <span aria-hidden="true">▶</span>
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => navigate('/reports')}>
+            Export report
           </Button>
         </div>
       </header>
 
-      {/* ── Key Metrics ─────────────────────────────────────────── */}
+      {/* ── Hero: verdict + KPI grid ────────────────────────────── */}
       {aggregate && (
-        <section className={styles.metricsGrid} aria-label="Key therapy metrics">
-          <AHICard aggregate={aggregate} />
-          <LeakCard aggregate={aggregate} />
-          <PressureCard aggregate={aggregate} machineType={session.machineType} />
-          {session.hasOximetry && aggregate.spo2Mean != null && <SpO2Card aggregate={aggregate} />}
+        <section className={styles.hero} aria-label="Night overview">
+          <NightAssessmentCard
+            aggregate={aggregate}
+            buildNightRequest={buildNightRequest}
+            buildClinicalRequest={buildClinicalRequest}
+          />
+          <div className={styles.kpiGrid}>
+            <KpiCard
+              label="AHI"
+              value={aggregate.ahi}
+              decimals={1}
+              unit="/h"
+              polarity="lower"
+              series={ahiKpi.series}
+              priorCount={ahiKpi.priorCount}
+              delta={ahiKpi.delta}
+              direction={ahiKpi.direction}
+              sparkColor={colors.chart1}
+              badge={
+                ahiSeverity
+                  ? {
+                      text: ahiSeverity.charAt(0).toUpperCase() + ahiSeverity.slice(1),
+                      variant: ahiBadgeVariant(ahiSeverity),
+                    }
+                  : undefined
+              }
+            />
+            <KpiCard
+              label="Usage"
+              value={aggregate.usageHours}
+              decimals={1}
+              unit="h"
+              polarity="higher"
+              series={usageKpi.series}
+              priorCount={usageKpi.priorCount}
+              delta={usageKpi.delta}
+              direction={usageKpi.direction}
+              sparkColor={colors.chart6}
+            />
+            <KpiCard
+              label="Leak"
+              value={aggregate.leakMedian}
+              decimals={1}
+              unit="L/m"
+              polarity="lower"
+              series={leakKpi.series}
+              priorCount={leakKpi.priorCount}
+              delta={leakKpi.delta}
+              direction={leakKpi.direction}
+              sparkColor={colors.chart5}
+            />
+            <KpiCard
+              label="Pressure 95%"
+              value={aggregate.pressureP95}
+              decimals={1}
+              unit="cmH₂O"
+              polarity="neutral"
+              series={pressureKpi.series}
+              priorCount={pressureKpi.priorCount}
+              delta={pressureKpi.delta}
+              direction={pressureKpi.direction}
+              sparkColor={colors.chart2}
+            />
+            <KpiCard
+              label="SpO₂ min"
+              value={spo2Value}
+              decimals={0}
+              unit="%"
+              polarity="higher"
+              series={spo2FromOnboard ? spo2Kpi.series : []}
+              priorCount={spo2FromOnboard ? spo2Kpi.priorCount : 0}
+              delta={spo2FromOnboard ? spo2Kpi.delta : null}
+              direction={spo2FromOnboard ? spo2Kpi.direction : 'unchanged'}
+              sparkColor={colors.chart3}
+              badge={spo2Badge}
+            />
+            <KpiCard
+              label="Resting HR"
+              value={restingHr}
+              decimals={0}
+              unit="bpm"
+              polarity="lower"
+              series={[]}
+              priorCount={0}
+              delta={null}
+              direction="unchanged"
+              sparkColor={colors.chart4}
+              badge={restingHr != null ? { text: 'Fitbit', variant: 'info' } : undefined}
+            />
+          </div>
         </section>
       )}
 
-      {/* ── Event Timeline ──────────────────────────────────────── */}
-      {events.length > 0 && (
-        <EventTimeline
-          events={events}
-          sessionStart={sessionStartMs}
-          sessionEnd={sessionEndMs}
-          wallClockEpoch={wallClockEpochMs}
-        />
+      {/* ── Signals ─────────────────────────────────────────────── */}
+      <div ref={signalsRef} className={styles.signalsSection}>
+        <CompactSignalViewer sessionId={session.id} focusTime={focusTime ?? defaultFocus} />
+      </div>
+
+      {/* ── Events row ──────────────────────────────────────────── */}
+      {aggregate && (
+        <section className={styles.eventsRow} aria-label="Events">
+          <RespiratoryEventsCard
+            aggregate={aggregate}
+            events={events}
+            wallClockEpoch={wallClockEpochMs}
+            sessionStart={sessionStartMs}
+          />
+          <EventClustersCard
+            clusters={clustersResult}
+            wallClockEpoch={wallClockEpochMs}
+            sessionStart={sessionStartMs}
+            onFocusCluster={focusCluster}
+          />
+        </section>
       )}
 
-      {/* ── Event Summary Table ─────────────────────────────────── */}
-      {events.length > 0 && <EventSummaryTable events={events} />}
+      {/* ── Session statistics ──────────────────────────────────── */}
+      {aggregate && (
+        <StatisticsCard aggregate={aggregate} session={session} sleepEfficiency={sleepEfficiency} />
+      )}
 
-      {/* ── Individual Events ───────────────────────────────────── */}
-      {/* Renders whenever the session is loaded so the empty state has a home. */}
-      <EventsList
-        events={events}
-        sessionId={session.id}
-        sessionStart={sessionStartMs}
-        wallClockEpoch={wallClockEpochMs}
-      />
+      {/* ── Physiology row (gated) ──────────────────────────────── */}
+      {showPhysiologyRow && (
+        <section className={styles.physiologyRow} aria-label="Physiology and environment">
+          {showSleepCard && sleep && <SleepStagesCard sleep={sleep} />}
+          {showPhysiologyCard && (
+            <PhysiologyCard
+              restingHr={restingHr}
+              hrv={hrv}
+              spo2Avg={spo2Avg}
+              spo2Min={spo2WearMin}
+              sleepEfficiency={sleepEfficiency}
+            />
+          )}
+          {showEnvironmentCard && (
+            <EnvironmentCard
+              tempLow={tempLow}
+              tempMean={tempMean}
+              tempUnit={weatherUnits.temperature}
+              humidity={weatherNight?.humidityMean ?? null}
+              pressure={weatherNight?.pressureMslMean ?? null}
+              aqi={weatherNight?.usAqiMean ?? null}
+              synced={weatherSynced}
+            />
+          )}
+        </section>
+      )}
+
+      {/* ── Footer ──────────────────────────────────────────────── */}
+      <footer className={styles.footer}>
+        <p className={styles.footerDisclaimer}>
+          Informational only — not a medical device and not a diagnosis. All processing happens
+          locally in your browser.
+        </p>
+        <div className={styles.footerActions}>
+          <Link to={`/sessions/${session.id}/signals`} className={styles.footerLink}>
+            Raw data →
+          </Link>
+        </div>
+      </footer>
     </div>
   );
 }

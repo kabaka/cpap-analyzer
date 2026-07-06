@@ -346,6 +346,50 @@ export const glossaryEntries: readonly GlossaryEntry[] = [
     ],
   },
   {
+    id: 'leak-p95',
+    term: 'Leak P95 (95th-Percentile Leak)',
+    category: 'cpap-therapy',
+    aliases: ['95th-Percentile Leak', 'Leak 95%', 'P95 Leak'],
+    quick:
+      'The unintentional leak level that was exceeded during only 5% of the night — a robust high-water mark for mask seal.',
+    standard:
+      "Leak P95 is the 95th percentile of the night's unintentional leak: the level below which the leak stayed for 95% of the recording, and above which it sat for only the worst 5%. ResMed reports it as a primary leak-quality indicator. Because it looks at the upper tail rather than the typical value, P95 catches sustained bad stretches (a mask shifting for part of the night) that a median leak can hide, while still ignoring one-off instantaneous spikes.",
+    detailed:
+      'A percentile summarises the distribution of leak over the night: the P95 is the value that 95% of the sampled leak readings fall at or below. It is the natural companion to the median (P50, the typical leak): the median tells you how the night usually looked, and the gap between the median and the P95 tells you how much worse the bad stretches got. ResMed treats sustained unintentional leak above roughly 24 L/min as a "large leak" (a device/manufacturer convention, mask-dependent, not an AASM clinical standard), so a P95 pushing toward or past that figure means a meaningful portion of the night was spent leaking hard enough to degrade both pressure delivery and the reliability of the machine\'s flow-derived event scoring. On the Session Details page the P95 appears in the Leak group of the session-statistics panel alongside the median, maximum, time-in-large-leak, and episode count; read them together, since the maximum is the least robust figure (a single sample) and the P95 is a far steadier read of the night\'s upper tail. See the Mask Leak entry for what unintentional leak is and why it matters, and the Percentile entry for the definition.',
+    relatedTerms: ['mask-leak', 'percentile', 'median'],
+    references: [
+      'ResMed. Devices report the 95th-percentile unintentional leak as a primary leak-quality indicator; the 24 L/min large-leak flag is a device/manufacturer convention, mask-dependent, and not an AASM clinical standard.',
+    ],
+  },
+  {
+    id: 'central-fraction',
+    term: 'Central Fraction',
+    category: 'cpap-therapy',
+    aliases: ['Central Apnea Fraction', 'Central Share'],
+    quick:
+      "The share of a night's apneas that were classified as central — central apneas divided by all apneas.",
+    standard:
+      'Central fraction is a simple ratio for one night: the number of central apneas divided by the total number of apneas (obstructive + central + mixed + unclassified), expressed as a percentage. Unlike the Central Apnea Index (CAI), which is a rate per hour, the central fraction is dimensionless — it asks "of the apneas that happened, how many were central?" rather than "how many central apneas per hour?". It is undefined, and shown as a dash, on a night with no apneas at all.',
+    detailed:
+      'Central fraction = central apneas / (obstructive + central + mixed + unclassified apneas). Hypopneas and RERAs are excluded because they are not apneas. The metric is computed on the fly from the night\'s event counts; it is not a stored field, and it returns "no value" (rendered as "—", never a fabricated 0%) when the apnea total is zero, so an event-free night cannot masquerade as "0% central." A high central fraction says that, among the apneas the device did score, a large share were classified central — potentially relevant to treatment-emergent central sleep apnea (TECSA) — but two important caveats apply. First, the fraction says nothing about how many apneas there were: 2 of 2 apneas being central is 100% but clinically trivial, so always read the fraction next to the absolute counts and the AHI. Second, the central/obstructive label itself is the least reliable classification a CPAP machine makes (it rests on a forced-oscillation probe that is degraded by mask leak), so treat a single night\'s fraction as a low-precision screening signal, not a diagnosis. The Session Details page shows the central fraction as one of the summary figures under the respiratory-event breakdown. See the Central Apnea, CAI, and TECSA entries for the clinical background; this tool does not diagnose.',
+    formula:
+      '\\text{Central Fraction} = \\frac{\\text{Central Apneas}}{\\text{Obstructive} + \\text{Central} + \\text{Mixed} + \\text{Unclassified Apneas}}',
+    relatedTerms: ['central-apnea', 'cai', 'tecsa', 'ahi', 'apnea'],
+  },
+  {
+    id: 'event-cluster',
+    term: 'Event Cluster',
+    category: 'cpap-therapy',
+    aliases: ['Cluster', 'Respiratory Event Cluster'],
+    quick:
+      'A run of respiratory events bunched close together in time, rather than spread evenly across the night.',
+    standard:
+      'Respiratory events rarely occur evenly through the night; they tend to bunch into clusters — during REM sleep, in the supine position, or when pressure is momentarily inadequate. An event cluster is such a run of closely-spaced events, identified as a group so you can see the bunching that a whole-night average washes out. On the Session Details page each cluster is shown with its clock window, its event count, and its density (events per minute), and can be opened directly in the signal viewer.',
+    detailed:
+      'The application groups events into clusters using a bridged, flow-limitation-aware algorithm: events falling within a short gap of one another are joined into a single cluster (flow-limitation runs can bridge across small gaps), so a sustained stretch of disturbed breathing is treated as one episode rather than many isolated marks. Each cluster is summarised by its start and end time, the number of events it contains, its density (events per minute) and weighted density (seconds of event duration per minute), and a heuristic severity score defined as the cluster\'s time span multiplied by its event density. On the Session Details page clusters are ranked by that score and given a relative intensity band (High / Medium / Low) scaled within the night — the densest cluster of the night is "High." That band is an explicitly relative, within-night presentation cue paired with the numeric score and a word label (so colour is never the only signal); it is not a clinical severity grade and does not compare across nights. Clusters are a way to localise where a night went wrong — a dense pre-dawn cluster suggests REM-related or positional worsening worth inspecting in the signal viewer — not a diagnostic finding. This tool does not diagnose.',
+    relatedTerms: ['ahi', 'apnea', 'hypopnea', 'flow-limitation', 'rem-sleep'],
+  },
+  {
     id: 'residual-ahi',
     term: 'Residual AHI',
     category: 'cpap-therapy',

@@ -279,7 +279,7 @@ export const helpArticles: readonly HelpArticle[] = [
     slug: 'sessions',
     title: 'Sessions Guide',
     summary:
-      'How to browse sessions in the table or calendar view, read the calendar severity bands, view session details, explore signal data, measure per-lane statistics over a region using the five analysis modes (Statistics, Variability, Trend, Distribution, and Selection), and compare nights.',
+      'How to browse sessions in the table or calendar view, read the calendar severity bands, and read the redesigned single-night detail page — the two-gate Night assessment verdict, the KPI grid with trailing 30-night baseline deltas, the embedded signal viewer, the respiratory-event breakdown and event clusters, the session-statistics panel, and the gated wearable and weather cards. Also: exploring signal data, measuring per-lane statistics over a region using the five analysis modes (Statistics, Variability, Trend, Distribution, and Selection), and comparing nights.',
     icon: 'sessions',
     sections: [
       {
@@ -322,10 +322,68 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
       },
       {
-        heading: 'Session detail',
+        heading: 'Session detail — the single-night view',
         paragraphs: [
-          'Click any session to open its detail view. The detail view shows comprehensive statistics for that single night: event breakdown (obstructive, central, mixed, hypopnea), pressure profile, leak statistics, and usage timeline.',
-          'The event timeline visualizes when events occurred during the night. Clustering of events may indicate positional effects (supine vs. lateral), REM-related worsening, or pressure inadequacy during specific sleep stages.',
+          'Click any session — a table row, a calendar cell, or a night in the Dashboard session log — to open its detail view: the canonical surface for reviewing one night of therapy. The page reads top to bottom as a narrowing funnel. A header bar names the night (date, mask-on clock span, and machine) and carries Previous-/Next-night navigation and an Export-report action. Below it, a hero pairs a "Night assessment" verdict card with a grid of key-performance-indicator (KPI) tiles. Then come the embedded signal viewer, a respiratory-event breakdown and an event-cluster list, a full session-statistics panel, and — only when the relevant opt-in integrations are connected — a row of wearable and weather cards. A footer restates that the page is informational, not a diagnosis, and links to the raw data.',
+          'One principle governs the whole page: every figure is mapped to real recorded data, and a value with no computed source is shown as an explicit gap (an em dash, "—") rather than approximated or filled with a zero. A zero and a missing measurement are different facts — a zero can read as a perfect night — so the page keeps them distinct everywhere. The same rule is why some numbers you might expect are deliberately absent; see "Honest gaps and omitted metrics," below.',
+        ],
+      },
+      {
+        heading: 'Session detail — the Night assessment verdict',
+        paragraphs: [
+          'The hero card is the Night assessment. It summarises the night through two independent, clinically-grounded gates — deliberately not a single blended "quality score." (The reasoning is recorded in the project\'s architecture decision on the two-gate verdict: a lone composite number would imply a precision the data does not have and would hide which dimension actually drove the result. A "72 out of 100" could equally mean "well-controlled but barely used" or "used all night but leaking badly," and those are opposite clinical situations.)',
+          "The two gates are: Effective — the night's residual AHI (Apnea–Hypopnea Index, the scored apneas plus hypopneas per hour of mask-on time) was below 5 events/h, which is the American Academy of Sleep Medicine (AASM) boundary between the normal and mild residual bands; and Adherent — mask-on usage was at least 4 hours, the United States Centers for Medicare & Medicaid Services (CMS) per-night compliance floor. Each gate is shown on its own with a pass (✓) or fail (✗) mark, so you can always see which one held. Both thresholds are the same canonical constants used across the app (the AASM AHI severity bands and the CMS compliance hours), not numbers invented for this page — so if a clinical boundary is ever revised, this card and the Dashboard good-night rate move together.",
+          'The two gates resolve to a single heuristic verdict word — never a number: Good night (both gates passed), Fair night (adherent only — used long enough, but residual AHI at or above 5), Partial night (effective only — well-controlled, but used under 4 hours), or Rough night (neither). Read the word as a rough, at-a-glance summary and read the two gate marks for what actually happened; the word is coarse by design and does not rank two Good nights against each other (an AHI of 0.5 and of 4.9 both clear the Effective gate). The verdict word and its colour are an explicitly heuristic presentation layer — a therapy-review affordance, not a medical assessment. This tool does not diagnose.',
+          'If the night\'s AHI is unavailable — a recording too short to compute a trustworthy per-hour rate falls below the rate-validity floor and yields no AHI — the Effective gate cannot be confirmed and therefore does not pass. Critically, an unconfirmable gate is treated as "not passed," never quietly counted as a pass; a missing AHI can never inflate the verdict.',
+        ],
+      },
+      {
+        heading: 'Session detail — the KPI grid and baseline deltas',
+        paragraphs: [
+          "Beside the verdict is a grid of KPI tiles for the night's headline metrics: AHI (events/h), Usage (hours), Leak (the night's median unintentional leak, L/min), Pressure 95% (the 95th-percentile delivered pressure, cmH₂O), SpO₂ min (the night's oxygen-saturation nadir, %), and — when a wearable is connected — Resting HR (beats/min). Each tile shows the value in the night's own units, a small sparkline of the recent trajectory, and, where applicable, a severity badge (for AHI, the Normal/Mild/Moderate/Severe band).",
+          'Under each value is a baseline delta: how this night compares to a trailing 30-night baseline, drawn as "▲" or "▼ vs 30-night." The baseline is the mean of the metric over roughly the preceding month of nights, computed by skipping missing nights rather than treating them as zero, so a run of gaps does not drag the baseline toward an artificial floor. The delta simply tells you whether the night sat above or below your recent normal; the arrow direction is neutral about good-versus-bad, because that depends on the metric (a ▼ on AHI or leak is an improvement, a ▼ on usage is not). Until enough prior nights exist to form a stable baseline, the tile reads "baseline building" or "no baseline yet" instead of showing a delta against too little history — the page will not manufacture a comparison it cannot support.',
+        ],
+      },
+      {
+        heading: 'Session detail — the embedded signal viewer',
+        paragraphs: [
+          'The Signals card embeds a compact, high-resolution waveform viewer directly in the page, reusing the same optimized rendering pipeline (Canvas drawing with LTTB / min–max decimation) as the full-page viewer, so it stays responsive even on a whole night of 25 Hz data. It stacks the core lanes — Flow, Pressure, Leak, and SpO₂ (when oximetry is present) — with channel chips to toggle lanes, a per-channel readout on hover, a whole-night minimap with a draggable view window, zoom presets (whole night / event cluster / breath detail), and wheel-zoom plus drag-pan. Scored events are marked on the lanes.',
+          'The embedded viewer is for orientation and quick inspection within the night. For the complete experience — all channels, the Measure overlay and its five analysis modes, and the full toolbar — use the "Full explorer" link on the Signals card (or "Raw data →" in the footer), which opens the standalone signal viewer described in the following sections ("Signal viewer," "Measuring a region," and the Measure-mode sections). The event-cluster list also has "View in signal viewer" buttons that jump the viewer straight to a cluster\'s time window.',
+        ],
+      },
+      {
+        heading: 'Session detail — respiratory-event breakdown',
+        paragraphs: [
+          'The Respiratory events card decomposes the night\'s scored breathing events. A set of bars shows each event type with its per-hour rate and raw count: obstructive apnea, hypopnea, and central apnea are always listed (even at zero, because they are the primary AHI contributors), while mixed apnea, unclassified apnea, and RERA (respiratory effort-related arousal) appear only when they actually occurred. A per-type rate that is undefined for the recording shows "—" rather than a fabricated 0.',
+          'Four summary figures sit below the bars. Longest apnea is the duration of the single longest apnea of the night (across the obstructive, central, mixed, and unclassified classes), with its type and clock time. Central fraction is the share of apneas that were central — central apneas divided by all apneas — shown as a percentage, or "—" when there were no apneas to divide (never a fake 0%); it is a descriptive ratio, not a diagnosis of central sleep apnea. RERA gives the count of respiratory effort-related arousals scored, and Flow limitation the count of flagged flow-limitation events. See the glossary for each of these terms and their limitations — in particular, device-scored central and RERA counts are lower-precision surrogates for what a full sleep study would score.',
+        ],
+      },
+      {
+        heading: 'Session detail — event clusters',
+        paragraphs: [
+          'Events rarely fall evenly across a night; they tend to bunch — during REM, in the supine position, or when pressure is momentarily inadequate. The Event clusters card surfaces those bunches. It lists runs of closely-spaced events, each with its clock window (start–end), the number of events, and a density in events per minute. Expand a cluster to see its individual events (time, type, duration) and a button to open that window in the signal viewer.',
+          'Each cluster carries a relative intensity band — High, Medium, or Low — alongside a numeric severity score defined as the cluster\'s duration multiplied by its event density. Read this as an explicitly relative, within-night cue: the bands are scaled so the densest cluster of this night is "High," and they are always paired with the numeric score and a word label so colour is never the only signal. The bands rank clusters against each other on the same night; they are not a clinical severity grade and do not compare across nights. If the night\'s events were isolated rather than clustered, the card says so instead of inventing clusters.',
+        ],
+      },
+      {
+        heading: 'Session detail — the session statistics panel',
+        paragraphs: [
+          'The Session statistics panel is the full numeric readout for the night, grouped into four columns. Pressure lists the mean, median, 95th percentile, and maximum delivered pressure (cmH₂O), plus median EPAP — expiratory positive airway pressure — and, on bilevel machines, median IPAP and the pressure support (IPAP minus EPAP). Ventilation lists median tidal volume (mL), mean minute ventilation (L/min), median respiratory rate (breaths/min), and the flow-limitation event count. Leak lists the median, 95th-percentile (P95), and maximum unintentional leak (L/min), the time spent above the 24 L/min large-leak threshold, and the number of large-leak episodes.',
+          'The Oxygenation & sleep column appears with real values only when the data exists. When the machine (or a connected oximeter) recorded SpO₂, it lists the mean and nadir saturation, the ODI (Oxygen Desaturation Index, desaturations per hour), the percentage of the night spent below 90% saturation, and the oximetry coverage (what fraction of the night was actually measured — a low coverage means the other oximetry figures rest on a short sample). Sleep efficiency is shown when a wearable supplies it. When no oximetry was recorded at all, the column says so plainly rather than showing zeros.',
+        ],
+      },
+      {
+        heading: 'Session detail — wearable and environment cards (gated)',
+        paragraphs: [
+          "When you have connected the opt-in wearable integration (Google Health / Fitbit) and it has data for the night, the detail page adds two cards. Sleep stages shows the night's time in Deep, Light, REM, and Awake as a proportion bar with per-stage minutes and percentages, plus the wearable's sleep efficiency. Physiology tonight lists resting heart rate, HRV (heart-rate variability, as RMSSD in milliseconds), the wearable's average and nadir SpO₂, and sleep efficiency. These are drawn from your wearable export and are context alongside therapy, not a clinical measurement; any apparent link between them and your CPAP metrics is exploratory, and the Explore view has the rigorous correlation tooling.",
+          'When the opt-in weather integration is enabled, an Environment card shows the overnight conditions for the night — low and mean temperature, humidity, barometric (atmospheric) pressure, and air quality (US AQI). If weather is enabled but that particular night has not yet been synced, the card prompts you to sync rather than showing blanks. All of these cards are gated: if the integration is not connected, the card simply does not appear — the page never fabricates wearable or weather numbers to fill space. Both integrations are strictly opt-in and, like everything else, are processed and stored only in your browser.',
+        ],
+      },
+      {
+        heading: 'Session detail — honest gaps and omitted metrics',
+        paragraphs: [
+          'The detail page deliberately shows only metrics it can actually compute from your imported data, and marks anything genuinely missing with an em dash ("—") rather than a zero. A dash means "no value to show here"; a real measured zero is shown as 0. This distinction matters most for rate metrics on short recordings: a night too brief to yield a trustworthy AHI shows no AHI (and cannot pass the Effective gate) rather than a misleading near-zero rate.',
+          'For the same reason, several figures you may have seen in other CPAP tools are intentionally absent, because the app does not derive them from the current data and will not approximate them: the I:E ratio (inspiratory-to-expiratory timing) and inspiratory time, a flow-limitation median (flow limitation is reported as an event count, not a median index), a single largest-leak timestamp, T90 expressed as minutes below 90% saturation (the panel reports the percentage of the night below 90% instead), an awakenings count, and pollen (the weather integration does not fetch it). Their absence is a correctness choice, not an oversight — the page would rather omit a number than present one it cannot stand behind. If a metric you expect is missing, that is why; the figures that are shown are the ones the data supports.',
         ],
       },
       {

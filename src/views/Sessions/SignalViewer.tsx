@@ -108,6 +108,15 @@ import {
   type TrendDirection,
 } from './regionStatsModel';
 import {
+  CHANNEL_COLORS,
+  DEFAULT_CHANNEL_COLOR,
+  ENVELOPE_SAMPLES_PER_PIXEL,
+  ENVELOPE_SOURCE_OVERSCAN,
+  PADDING,
+  resolveColor,
+  type ViewportRange,
+} from './signalChannelBuild';
+import {
   applyCursorAnchoredZoom,
   pixelRangeToTimeRange,
   wheelDeltaToZoomFactor,
@@ -144,19 +153,10 @@ import {
 import styles from './SignalViewer.module.css';
 
 // ── Constants ────────────────────────────────────────────────────
-
-/** Chart palette — resolved at render time from CSS custom properties. */
-const CHANNEL_COLORS: Record<string, string> = {
-  flow: 'var(--color-chart-1)',
-  maskPressure: 'var(--color-chart-2)',
-  leak: 'var(--color-chart-3)',
-  spo2: 'var(--color-chart-4)',
-  epap: 'var(--color-chart-5)',
-  ipap: 'var(--color-chart-6)',
-};
-
-/** Fallback colour if channel name isn't in the map. */
-const DEFAULT_CHANNEL_COLOR = 'var(--color-chart-7)';
+//
+// The chart palette, PADDING, and envelope-threshold constants (plus the
+// `resolveColor` helper) are shared with the compact embedded viewer and live
+// in `./signalChannelBuild`; they are imported above.
 
 /** Event type → colour mapping (matches SessionDetail). */
 const EVENT_COLORS: Record<string, string> = {
@@ -194,37 +194,12 @@ const ZOOM_PRESETS: readonly { label: string; ms: number | null }[] = [
 /** Default pixel height per CPAP channel strip. */
 const CHANNEL_HEIGHT = 150;
 
-/** Canvas padding. */
-const PADDING = { top: 20, right: 24, bottom: 28, left: 56 } as const;
-
 /** Number of viewport pixels to downsample target. */
 const DOWNSAMPLE_MULTIPLIER = 2;
 
-/**
- * Samples-per-pixel threshold separating the two dense-CPAP render modes.
- *
- * - When the in-viewport source holds MORE than this many samples per output
- *   pixel column (zoomed OUT), the lane renders a per-column MIN/MAX ENVELOPE —
- *   a true envelope cannot hide a 1-sample spike/notch the LTTB polyline's
- *   vertex-picking can skip (the approved fidelity change).
- * - When it holds ≤ this many (zoomed IN), the lane renders the EXACT existing
- *   LTTB polyline, byte-identical to before — at that density each column holds
- *   ≈1 sample, so there is nothing to envelope.
- *
- * Set to 1.0 so the boundary is exactly "1 source sample per pixel". At the
- * boundary each column's min≈max, the envelope collapses to a ~1px ribbon, and
- * the look matches the polyline — the transition is seamless (no pop/flicker).
- */
-const ENVELOPE_SAMPLES_PER_PIXEL = 1;
-
-/**
- * Envelope source density target. The per-column min/max must be computed from a
- * source with COMFORTABLY more than one sample per pixel column, so we select a
- * pyramid level using a target of `plotWidth * this` (≥ several× the column
- * count). The pyramid preserves extrema at every level, so a coarser-but-still
- * dense level yields the same per-column extremes far cheaper than scanning raw.
- */
-const ENVELOPE_SOURCE_OVERSCAN = 4;
+// `PADDING`, `ENVELOPE_SAMPLES_PER_PIXEL`, and `ENVELOPE_SOURCE_OVERSCAN` are
+// shared with the compact embedded viewer and imported from
+// `./signalChannelBuild` above.
 
 /**
  * Vertical offset (px) from the top of the flow lane to the detection-chip band.
@@ -444,11 +419,6 @@ interface FullChannelData {
   data: Float32Array;
 }
 
-interface ViewportRange {
-  startTime: number; // ms offset from session signal start
-  endTime: number; // ms offset from session signal start
-}
-
 /**
  * The two sources a measured region can come from. `viewport` tracks the visible
  * window live (recomputed on the settled viewport); `selection` is an explicitly
@@ -464,16 +434,8 @@ interface PinnedRegion {
 }
 
 // ── Resolve CSS custom property to a computed colour value ────────
-
-function resolveColor(el: HTMLElement | null, varExpr: string): string {
-  if (!el) return varExpr;
-  const match = /^var\(([^)]+)\)$/.exec(varExpr);
-  if (!match) return varExpr;
-  const resolved = getComputedStyle(el)
-    .getPropertyValue(match[1] ?? '')
-    .trim();
-  return resolved || varExpr;
-}
+// `resolveColor` is shared with the compact viewer and imported from
+// `./signalChannelBuild` above.
 
 /** Resolve a CSS length token (e.g. `--signal-lane-height-hero`) to px. */
 function resolveLengthPx(el: HTMLElement | null, token: string, fallback: number): number {
