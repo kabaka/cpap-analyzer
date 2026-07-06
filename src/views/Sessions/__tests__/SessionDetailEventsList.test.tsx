@@ -1,19 +1,26 @@
 /**
- * SessionDetail — per-event "Events" list (EventsList) tests.
+ * SessionDetail (redesigned) — hero verdict, honest gaps, and event-cluster
+ * wall-clock tests.
  *
- * Covers the QA-mandated gaps plus ADR 0024's wall-clock-as-UTC requirement for
- * the new individual-events list on the Session Detail page. EventsList is an
- * internal component, so it is exercised through the default SessionDetail
- * export with the data hooks (useSessionDetail/useEventData) and the router
- * navigation (useNavigate) mocked — mirroring the repo's existing view-test
- * conventions (see Dashboard.test.tsx and SessionList.urlPage.test.tsx).
+ * The Session Details page was rebuilt around a two-gate night verdict, a KPI
+ * grid, an embedded compact signal viewer, a respiratory-events panel, and an
+ * expandable event-clusters panel (replacing the old flat "Events" list). This
+ * spec covers the redesigned structure:
  *
- * The Time-column assertions are derived from the SAME pure helpers the Signal
- * Viewer uses (formatClockTime + sessionWallClockEpoch), so they pin the
- * cross-surface "agree to the second" contract rather than hard-coding a string
- * that could silently diverge from the viewer convention. They are also
- * timezone-independent: sessionWallClockEpoch reduces the session start through
- * local getters, so the expected value matches under any CI timezone.
+ *  - the hero "Night assessment" verdict word + the two pass/fail gate rows;
+ *  - HONEST GAPS: a `null` AHI renders "—" (never `0`) in both the gate row and
+ *    the AHI KPI, and its Effective gate fails;
+ *  - MISSING WEARABLE hides the Fitbit sleep + physiology cards entirely;
+ *  - the event-clusters panel formats per-event Time using the SAME shared
+ *    wall-clock helpers the Signal Viewer uses (ADR 0024), preserving the
+ *    cross-surface "agree to the second" contract that the old EventsList test
+ *    guarded; and
+ *  - the cluster "View in signal viewer" affordance refocuses the embedded
+ *    viewer on the cluster's start offset.
+ *
+ * All data hooks are mocked to avoid IndexedDB/OPFS; the heavy CompactSignalViewer
+ * is replaced with a light stub that echoes its `focusTime` prop so the focus
+ * wiring is assertable.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -22,16 +29,50 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { TooltipProvider } from '@/components/ui/Tooltip/Tooltip';
 import type { Event, EventType, NightlyAggregate, Session } from '@/types';
+import { makeAggregate } from '@/services/llm/context/__tests__/fixtures';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { formatClockTime } from '../hoverReadout';
 import { sessionWallClockEpoch } from '../signalLanes';
 
 // ── Mocks ────────────────────────────────────────────────────────
-// Data hooks are mocked to avoid the IndexedDB/OPFS dependency; useNavigate is
-// mocked so deep-link URLs can be asserted directly.
+
+const SESSION_ID = 'sess-1';
 
 vi.mock('@/hooks/useSignalData', () => ({
   useSessionDetail: vi.fn(),
   useEventData: vi.fn(),
+}));
+
+// Trailing-baseline aggregates, neighbour sessions, wearable + weather hooks are
+// all mocked to their empty/idle shapes so the page renders without IndexedDB.
+const mockNightlyAggregates = vi.fn();
+vi.mock('@/hooks/useNightlyAggregates', () => ({
+  useNightlyAggregates: () => mockNightlyAggregates(),
+}));
+vi.mock('@/hooks/useSessionData', () => ({
+  useSessionData: () => ({ sessions: [], loading: false, error: null, refetch: vi.fn() }),
+}));
+
+const mockWearableSummary = vi.fn();
+vi.mock('@/hooks/useWearableSummary', () => ({
+  useWearableSummary: () => mockWearableSummary(),
+}));
+
+const mockWearableDayData = vi.fn();
+vi.mock('@/hooks/useWearableData', () => ({
+  useWearableDayData: (dataType: string, date: string | null) =>
+    mockWearableDayData(dataType, date),
+}));
+
+vi.mock('@/hooks/useWeatherNightly', () => ({
+  useWeatherNightly: () => ({ data: [], latest: null, loading: false, error: null }),
+}));
+
+// Replace the heavy embedded viewer with a stub that echoes focusTime.
+vi.mock('../CompactSignalViewer', () => ({
+  default: ({ focusTime }: { sessionId: string; focusTime?: number }) => (
+    <div data-testid="compact-signal-viewer" data-focus-time={focusTime ?? ''} />
+  ),
 }));
 
 const mockNavigate = vi.fn();
@@ -40,11 +81,7 @@ vi.mock('react-router-dom', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    // The component calls useMatch('/sessions/:sessionId/signals') to decide
-    // whether to render the child route instead of the detail page. Force it to
-    // null so the detail page (and thus the Events list) always renders.
     useMatch: () => null,
-    // useParams must yield the session id the test seeds below.
     useParams: () => ({ sessionId: SESSION_ID }),
   };
 });
@@ -58,18 +95,9 @@ const mockUseEventData = vi.mocked(useEventData);
 
 // ── Fixtures ─────────────────────────────────────────────────────
 
-const SESSION_ID = 'sess-1';
-
-/**
- * A session starting at a known local wall clock. Using `Date.UTC` for the ISO
- * string keeps the *instant* fixed; the formatting convention re-derives the
- * wall clock via local getters so the assertions stay timezone-independent.
- */
 const SESSION_START_ISO = new Date(Date.UTC(2025, 2, 15, 2, 0, 0)).toISOString();
 const SESSION_START_MS = new Date(SESSION_START_ISO).getTime();
 const SESSION_END_ISO = new Date(Date.UTC(2025, 2, 15, 10, 0, 0)).toISOString();
-
-/** The wall-clock-as-UTC epoch the Signal Viewer convention uses. */
 const WALL_CLOCK_EPOCH = sessionWallClockEpoch(SESSION_START_ISO);
 
 let eventCounter = 0;
@@ -115,25 +143,29 @@ function makeSession(overrides: Partial<Session> = {}): Session {
   } as Session;
 }
 
-const NULL_AGGREGATE: NightlyAggregate | null = null;
+interface RenderOptions {
+  readonly aggregate?: NightlyAggregate | null;
+  readonly events?: Event[];
+  readonly sessionOverrides?: Partial<Session>;
+}
 
-/** Mount SessionDetail with a given set of events (session always present). */
-function renderWithEvents(events: Event[], sessionOverrides: Partial<Session> = {}) {
+function renderDetail(opts: RenderOptions = {}) {
+  const {
+    aggregate = makeAggregate({ ahi: 3.0, usageHours: 7 }),
+    events = [],
+    sessionOverrides,
+  } = opts;
+
   mockUseSessionDetail.mockReturnValue({
     session: makeSession(sessionOverrides),
-    aggregate: NULL_AGGREGATE,
+    aggregate,
     loading: false,
     error: null,
   });
-  mockUseEventData.mockReturnValue({
-    events,
-    loading: false,
-    error: null,
-  });
+  mockUseEventData.mockReturnValue({ events, loading: false, error: null });
 
   return render(
     <MemoryRouter initialEntries={[`/sessions/${SESSION_ID}`]}>
-      {/* EventTimeline renders Radix Tooltips, supplied app-wide by RootLayout. */}
       <TooltipProvider delayDuration={0}>
         <SessionDetail />
       </TooltipProvider>
@@ -141,264 +173,269 @@ function renderWithEvents(events: Event[], sessionOverrides: Partial<Session> = 
   );
 }
 
-/** The Events list grid (skips the unrelated Event Summary table). */
-function getEventsGrid(): HTMLElement {
-  return screen.getByRole('grid', { name: 'Individual events' });
+// Default: no wearable data present.
+function noWearable() {
+  mockWearableSummary.mockReturnValue({ summary: { hasData: false }, loading: false, error: null });
+  mockWearableDayData.mockReturnValue({ data: null, loading: false, error: null });
 }
 
-/** Data rows of the Events grid (excludes the columnheader row). */
-function getDataRows(): HTMLElement[] {
-  const grid = getEventsGrid();
-  return within(grid)
-    .getAllByRole('row')
-    .filter((r) => within(r).queryAllByRole('columnheader').length === 0);
+// Default: empty trailing baseline (no prior nights → KPI deltas are suppressed).
+function emptyBaseline() {
+  mockNightlyAggregates.mockReturnValue({
+    aggregates: [],
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  });
 }
 
 // ── Tests ────────────────────────────────────────────────────────
 
-describe('SessionDetail — EventsList', () => {
+describe('SessionDetail — hero verdict', () => {
   beforeEach(() => {
     eventCounter = 0;
     vi.clearAllMocks();
+    noWearable();
+    emptyBaseline();
   });
 
-  describe('wall-clock-as-UTC agreement (ADR 0024)', () => {
-    it("renders the Time column using the Signal Viewer's formatClockTime convention", () => {
-      // Event 4h17m33s after session start. The expected string MUST come from
-      // the shared pure helpers, not a hand-typed time, so this guards against
-      // anyone swapping in toLocaleTimeString.
-      const offsetMs = (4 * 3600 + 17 * 60 + 33) * 1000;
-      const event = makeEvent({ timestamp: SESSION_START_MS + offsetMs });
-      renderWithEvents([event]);
+  it('renders the two-gate verdict word and both pass/fail gate rows with real values', () => {
+    renderDetail({ aggregate: makeAggregate({ ahi: 3.0, usageHours: 7 }) });
 
-      const expected = formatClockTime(
-        sessionWallClockEpoch(SESSION_START_ISO),
-        event.timestamp - SESSION_START_MS,
-      );
-
-      const rows = getDataRows();
-      expect(rows).toHaveLength(1);
-      const timeCell = within(rows[0] as HTMLElement).getAllByRole('gridcell')[0];
-      expect(timeCell).toHaveTextContent(expected);
-      // Sanity: it is an HH:MM:SS clock string, not a locale am/pm rendering.
-      expect(timeCell?.textContent?.trim()).toMatch(/^\d{2}:\d{2}:\d{2}$/);
-    });
-
-    it('matches the wall-clock-as-UTC epoch exactly (to the second)', () => {
-      const offsetMs = 90 * 1000; // 1m30s past start
-      const event = makeEvent({ timestamp: SESSION_START_MS + offsetMs });
-      renderWithEvents([event]);
-
-      // Independently compute the expected clock from the wall-clock epoch.
-      const d = new Date(WALL_CLOCK_EPOCH + offsetMs);
-      const hh = String(d.getUTCHours()).padStart(2, '0');
-      const mm = String(d.getUTCMinutes()).padStart(2, '0');
-      const ss = String(d.getUTCSeconds()).padStart(2, '0');
-      const expected = `${hh}:${mm}:${ss}`;
-
-      const timeCell = within(getDataRows()[0] as HTMLElement).getAllByRole('gridcell')[0];
-      expect(timeCell).toHaveTextContent(expected);
-    });
+    const card = screen.getByRole('region', { name: 'Night assessment' });
+    // Both gates pass → "Good night".
+    expect(within(card).getByText('Good night')).toBeInTheDocument();
+    // Effective gate shows the real AHI value.
+    expect(within(card).getByText('AHI 3.0 (target <5)')).toBeInTheDocument();
+    // Adherent gate shows the real usage hours.
+    expect(within(card).getByText('7.0 h used (≥4 h)')).toBeInTheDocument();
+    // Mandatory non-diagnostic caption.
+    expect(within(card).getByText('A summary, not a diagnosis.')).toBeInTheDocument();
   });
 
-  describe('chronological ascending sort', () => {
-    it('renders rows earliest-first regardless of input order', () => {
-      const early = makeEvent({ timestamp: SESSION_START_MS + 1_000, type: 'Hypopnea' });
-      const middle = makeEvent({ timestamp: SESSION_START_MS + 60_000, type: 'CentralApnea' });
-      const late = makeEvent({ timestamp: SESSION_START_MS + 3_600_000, type: 'RERA' });
+  it('hosts both opt-in AI insight triggers in the verdict card', () => {
+    // AI Insights are opt-in; enable them so the triggers render.
+    useSettingsStore.getState().updateIntegration('llm', { enabled: true });
+    renderDetail();
+    const card = screen.getByRole('region', { name: 'Night assessment' });
+    expect(
+      within(card).getByRole('button', { name: /Summarize this night with AI/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(card).getByRole('button', { name: /compliance and severity context/i }),
+    ).toBeInTheDocument();
+  });
+});
 
-      // Out of order on input.
-      renderWithEvents([late, early, middle]);
-
-      const times = getDataRows().map(
-        (row) => within(row).getAllByRole('gridcell')[0]?.textContent?.trim() ?? '',
-      );
-
-      const expected = [early, middle, late].map((e) =>
-        formatClockTime(WALL_CLOCK_EPOCH, e.timestamp - SESSION_START_MS),
-      );
-      expect(times).toEqual(expected);
-    });
+describe('SessionDetail — honest gaps (null is never 0)', () => {
+  beforeEach(() => {
+    eventCounter = 0;
+    vi.clearAllMocks();
+    noWearable();
+    emptyBaseline();
   });
 
-  describe('cap at 50', () => {
-    it('renders only 50 rows and an over-cap footer + Event Explorer link for >50 events', () => {
-      const events = Array.from({ length: 60 }, (_, i) =>
-        makeEvent({ timestamp: SESSION_START_MS + (i + 1) * 1000 }),
-      );
-      renderWithEvents(events);
+  it('renders a null AHI as "—" in the gate row and fails the Effective gate', () => {
+    renderDetail({ aggregate: makeAggregate({ ahi: null, usageHours: 7 }) });
 
-      expect(getDataRows()).toHaveLength(50);
-      expect(screen.getByText('Showing the first 50 of 60 events.')).toBeInTheDocument();
-
-      const link = screen.getByRole('link', { name: /View all in Event Explorer/ });
-      expect(link).toHaveAttribute('href', '/explore/events?sessions=sess-1');
-    });
-
-    it('renders all rows and the "all" footer with no over-cap link for <=50 events', () => {
-      const events = Array.from({ length: 5 }, (_, i) =>
-        makeEvent({ timestamp: SESSION_START_MS + (i + 1) * 1000 }),
-      );
-      renderWithEvents(events);
-
-      expect(getDataRows()).toHaveLength(5);
-      expect(screen.getByText('Showing all 5 events.')).toBeInTheDocument();
-      expect(
-        screen.queryByRole('link', { name: /View all in Event Explorer/ }),
-      ).not.toBeInTheDocument();
-    });
-
-    it('renders exactly 50 rows with the "all" footer at the boundary (=== 50)', () => {
-      const events = Array.from({ length: 50 }, (_, i) =>
-        makeEvent({ timestamp: SESSION_START_MS + (i + 1) * 1000 }),
-      );
-      renderWithEvents(events);
-
-      expect(getDataRows()).toHaveLength(50);
-      expect(screen.getByText('Showing all 50 events.')).toBeInTheDocument();
-      expect(
-        screen.queryByRole('link', { name: /View all in Event Explorer/ }),
-      ).not.toBeInTheDocument();
-    });
+    const card = screen.getByRole('region', { name: 'Night assessment' });
+    // AHI undefined → em dash, never 0.
+    expect(within(card).getByText('AHI — (target <5)')).toBeInTheDocument();
+    // Adherent (usage 7h) passes, but not effective → "Fair night".
+    expect(within(card).getByText('Fair night')).toBeInTheDocument();
   });
 
-  describe('deep-link navigation', () => {
-    it('navigates to the Signal Viewer with t and te (te = end) for a duration>0 event on click', () => {
-      const event = makeEvent({ timestamp: SESSION_START_MS + 5_000, duration: 18 });
-      renderWithEvents([event]);
-
-      fireEvent.click(getDataRows()[0] as HTMLElement);
-
-      const expectedTe = event.timestamp + event.duration * 1000;
-      expect(mockNavigate).toHaveBeenCalledTimes(1);
-      expect(mockNavigate).toHaveBeenCalledWith(
-        `/sessions/${SESSION_ID}/signals?t=${event.timestamp}&te=${expectedTe}`,
-      );
-    });
-
-    it('navigates with only t (no te) for a duration===0 event', () => {
-      const event = makeEvent({ timestamp: SESSION_START_MS + 5_000, duration: 0 });
-      renderWithEvents([event]);
-
-      fireEvent.click(getDataRows()[0] as HTMLElement);
-
-      expect(mockNavigate).toHaveBeenCalledWith(
-        `/sessions/${SESSION_ID}/signals?t=${event.timestamp}`,
-      );
-      const calledWith = mockNavigate.mock.calls[0]?.[0] as string;
-      expect(calledWith).not.toContain('&te=');
-    });
-
-    it('activates a row via the Enter key (keyboard parity with click)', () => {
-      const event = makeEvent({ timestamp: SESSION_START_MS + 5_000, duration: 30 });
-      renderWithEvents([event]);
-
-      const row = getDataRows()[0] as HTMLElement;
-      fireEvent.keyDown(row, { key: 'Enter' });
-
-      const expectedTe = event.timestamp + event.duration * 1000;
-      expect(mockNavigate).toHaveBeenCalledWith(
-        `/sessions/${SESSION_ID}/signals?t=${event.timestamp}&te=${expectedTe}`,
-      );
-    });
+  it('renders "—" (not 0) for a null AHI KPI value', () => {
+    renderDetail({ aggregate: makeAggregate({ ahi: null, usageHours: 7 }) });
+    const heroSection = screen.getByRole('region', { name: 'Night overview' });
+    // The AHI KPI card shows an em dash rather than 0.
+    const dashes = within(heroSection).getAllByText('—');
+    expect(dashes.length).toBeGreaterThan(0);
   });
 
-  describe('empty state', () => {
-    it('renders the positive empty state and the Events section with zero events', () => {
-      renderWithEvents([]);
+  it('hides the Fitbit sleep + physiology cards when no wearable data exists', () => {
+    renderDetail({ aggregate: makeAggregate({ ahi: 3, usageHours: 7 }) });
+    expect(screen.queryByText('Sleep stages')).not.toBeInTheDocument();
+    expect(screen.queryByText('Physiology tonight')).not.toBeInTheDocument();
+  });
+});
 
-      // The Events section renders regardless of events.length.
-      expect(screen.getByRole('region', { name: 'Individual events' })).toBeInTheDocument();
-      // Positive, clean-night copy.
-      expect(screen.getByText('No respiratory events recorded')).toBeInTheDocument();
-      expect(screen.getByText(/clean\s+night/i)).toBeInTheDocument();
-
-      // No grid (hence no rows) is rendered in the empty state.
-      expect(screen.queryByRole('grid', { name: 'Individual events' })).not.toBeInTheDocument();
-    });
+describe('SessionDetail — event clusters', () => {
+  beforeEach(() => {
+    eventCounter = 0;
+    vi.clearAllMocks();
+    noWearable();
+    emptyBaseline();
   });
 
-  describe('accessibility basics', () => {
-    it('exposes a grid with Time/Type/Duration column headers', () => {
-      renderWithEvents([makeEvent(), makeEvent()]);
+  it('formats expanded cluster event times via the shared wall-clock helper (ADR 0024)', () => {
+    // Three events 30s apart → one balanced cluster.
+    const events = [
+      makeEvent({ timestamp: SESSION_START_MS + 60_000 }),
+      makeEvent({ timestamp: SESSION_START_MS + 90_000 }),
+      makeEvent({ timestamp: SESSION_START_MS + 120_000 }),
+    ];
+    renderDetail({ aggregate: makeAggregate({ ahi: 5, usageHours: 7 }), events });
 
-      const grid = getEventsGrid();
-      const headers = within(grid)
-        .getAllByRole('columnheader')
-        .map((h) => h.textContent?.trim())
-        .filter((t) => t && t.length > 0);
-      expect(headers).toEqual(['Time', 'Type', 'Duration']);
-    });
+    // Expand the (single) cluster — the only button carrying aria-expanded.
+    const toggle = screen.getByRole('button', { expanded: false });
+    fireEvent.click(toggle);
 
-    it('marks each event as role="row" with a sentence aria-label', () => {
-      const event = makeEvent({
-        timestamp: SESSION_START_MS + 5_000,
-        duration: 18,
-        type: 'Hypopnea',
-      });
-      renderWithEvents([event]);
-
-      const clock = formatClockTime(WALL_CLOCK_EPOCH, event.timestamp - SESSION_START_MS);
-      const rows = getDataRows();
-      expect(rows).toHaveLength(1);
-      expect(rows[0]).toHaveAttribute(
-        'aria-label',
-        `Hypopnea at ${clock}, 18.0 seconds. Open in Signal Viewer.`,
-      );
-    });
-
-    it('uses a roving tabindex: only the focused (first) row is tabbable', () => {
-      renderWithEvents([makeEvent(), makeEvent(), makeEvent()]);
-
-      const rows = getDataRows();
-      expect(rows[0]).toHaveAttribute('tabindex', '0');
-      expect(rows[1]).toHaveAttribute('tabindex', '-1');
-      expect(rows[2]).toHaveAttribute('tabindex', '-1');
-    });
-
-    it('moves roving focus with ArrowDown/ArrowUp and Home/End', () => {
-      renderWithEvents([makeEvent(), makeEvent(), makeEvent(), makeEvent()]);
-      const rows = getDataRows();
-
-      (rows[0] as HTMLElement).focus();
-      fireEvent.keyDown(rows[0] as HTMLElement, { key: 'ArrowDown' });
-      expect(document.activeElement).toBe(rows[1]);
-
-      fireEvent.keyDown(rows[1] as HTMLElement, { key: 'End' });
-      expect(document.activeElement).toBe(rows[rows.length - 1]);
-
-      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
-      expect(document.activeElement).toBe(rows[0]);
-
-      fireEvent.keyDown(rows[0] as HTMLElement, { key: 'ArrowUp' });
-      // Clamped at the top — stays on the first row.
-      expect(document.activeElement).toBe(rows[0]);
-    });
+    const expected = formatClockTime(WALL_CLOCK_EPOCH, events[1]!.timestamp - SESSION_START_MS);
+    // The middle event's Time cell must match the Signal Viewer convention.
+    expect(screen.getAllByText(expected).length).toBeGreaterThan(0);
+    // And it is an HH:MM:SS clock, not a locale am/pm rendering.
+    expect(expected).toMatch(/^\d{2}:\d{2}:\d{2}$/);
   });
 
-  describe('enriched EventTimeline tooltip format', () => {
-    // The Radix Tooltip content only enters the accessible tree on hover, so the
-    // composed string is not assertable from a static render (full hover behavior
-    // is covered by e2e). Instead, pin the documented format
-    // "{HH:MM:SS} · {label} · {duration}s" against the SAME shared clock helper
-    // the timeline uses — this guards the wall-clock convention in the tooltip
-    // exactly as it is guarded for the list rows.
-    it("composes the tooltip as '{HH:MM:SS} · {label} · {duration}s' via the shared clock helper", () => {
-      const offsetMs = (1 * 3600 + 2 * 60 + 3) * 1000;
-      const timestamp = SESSION_START_MS + offsetMs;
-      const duration = 12;
+  it('refocuses the embedded signal viewer on the cluster start when "View in signal viewer" is clicked', () => {
+    const events = [
+      makeEvent({ timestamp: SESSION_START_MS + 60_000 }),
+      makeEvent({ timestamp: SESSION_START_MS + 90_000 }),
+      makeEvent({ timestamp: SESSION_START_MS + 120_000 }),
+    ];
+    renderDetail({ aggregate: makeAggregate({ ahi: 5, usageHours: 7 }), events });
 
-      // Mirror the EventTimeline composition (formatClockTime + label + duration).
-      const clock = formatClockTime(WALL_CLOCK_EPOCH, timestamp - SESSION_START_MS);
-      const composed = `${clock} · Obstructive Apnea · ${duration.toFixed(1)}s`;
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
+    fireEvent.click(screen.getByRole('button', { name: 'View in signal viewer' }));
 
-      expect(composed).toMatch(/^\d{2}:\d{2}:\d{2} · Obstructive Apnea · 12\.0s$/);
-      // And the clock segment is wall-clock-as-UTC, not a locale rendering.
-      const d = new Date(WALL_CLOCK_EPOCH + offsetMs);
-      const expectedClock = `${String(d.getUTCHours()).padStart(2, '0')}:${String(
-        d.getUTCMinutes(),
-      ).padStart(2, '0')}:${String(d.getUTCSeconds()).padStart(2, '0')}`;
-      expect(composed.startsWith(`${expectedClock} · `)).toBe(true);
+    const viewer = screen.getByTestId('compact-signal-viewer');
+    // Cluster starts 60s after session start → focus offset 60000ms.
+    expect(viewer).toHaveAttribute('data-focus-time', '60000');
+  });
+
+  it('shows a positive empty state when there are no clustered events', () => {
+    renderDetail({ aggregate: makeAggregate({ ahi: 1, usageHours: 7 }), events: [] });
+    expect(screen.getByText(/No clustered runs of events/i)).toBeInTheDocument();
+  });
+});
+
+describe('SessionDetail — discrete gates + accessible deltas (QA / ADR 0031)', () => {
+  beforeEach(() => {
+    eventCounter = 0;
+    vi.clearAllMocks();
+    noWearable();
+    emptyBaseline();
+  });
+
+  it('renders the hero as a DISCRETE two-gate visual carrying both outcomes as text (not a composite ring)', () => {
+    renderDetail({ aggregate: makeAggregate({ ahi: 3.0, usageHours: 7 }) });
+    // The hero is an image whose accessible name states each gate's outcome —
+    // pass/fail is conveyed as text, never colour alone (WCAG 1.4.1).
+    const hero = screen.getByRole('img', { name: /2 of 2 gates passed/i });
+    expect(hero).toHaveAccessibleName(/Effective gate passed/i);
+    expect(hero).toHaveAccessibleName(/Adherent gate passed/i);
+    // The discrete "n of 2 gates" text replaces the old percentage ring.
+    expect(screen.getByText('2 of 2 gates')).toBeInTheDocument();
+  });
+
+  it('announces the Effective gate as "cannot confirm" (text, not colour) for a null AHI', () => {
+    renderDetail({ aggregate: makeAggregate({ ahi: null, usageHours: 7 }) });
+    const hero = screen.getByRole('img', { name: /1 of 2 gates passed/i });
+    expect(hero).toHaveAccessibleName(/Effective gate cannot confirm/i);
+    expect(hero).toHaveAccessibleName(/Adherent gate passed/i);
+    // The gate row also exposes the outcome as visually-hidden text.
+    const card = screen.getByRole('region', { name: 'Night assessment' });
+    expect(within(card).getByText(/cannot confirm/i)).toBeInTheDocument();
+  });
+
+  it('carries BOTH delta direction and favourability into the accessible name', () => {
+    // Four prior nights (all AHI 10) → a real trailing baseline. Tonight AHI 3.0
+    // → the AHI KPI fell, which is FAVOURABLE (lower AHI is better).
+    const priors = ['2025-03-10', '2025-03-11', '2025-03-12', '2025-03-13'].map((date) =>
+      makeAggregate({ date, ahi: 10, usageHours: 7.3 }),
+    );
+    mockNightlyAggregates.mockReturnValue({
+      aggregates: priors,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
     });
+    renderDetail({ aggregate: makeAggregate({ ahi: 3.0, usageHours: 7 }) });
+    // The AHI delta's accessible name spells out direction + judgement as text.
+    expect(screen.getByText(/decreased, favorable/i)).toBeInTheDocument();
+  });
+});
+
+describe('SessionDetail — central fraction (gated, non-diagnostic)', () => {
+  beforeEach(() => {
+    eventCounter = 0;
+    vi.clearAllMocks();
+    noWearable();
+    emptyBaseline();
+  });
+
+  it('renders "—" with a reporting-floor note when the central fraction is not reportable', () => {
+    // No apneas at all → centralFraction() returns null (below the reportable floor).
+    renderDetail({
+      aggregate: makeAggregate({
+        ahi: 2,
+        usageHours: 7,
+        ahiCentral: 0,
+        eventsByType: {
+          obstructive: 0,
+          central: 0,
+          mixed: 0,
+          unclassified: 0,
+          hypopnea: 4,
+          rera: 1,
+          flowLimitation: 0,
+          largeLeak: 0,
+          periodicBreathing: 0,
+        },
+      }),
+    });
+    expect(screen.getByText('Needs ≥20 apneas to report')).toBeInTheDocument();
+  });
+
+  it('cross-links Breathing patterns when central activity is elevated (CAI ≥ 5/h)', () => {
+    renderDetail({ aggregate: makeAggregate({ ahi: 12, usageHours: 7, ahiCentral: 6 }) });
+    const link = screen.getByRole('link', { name: /Breathing patterns/i });
+    expect(link).toHaveAttribute('href', '/explore/breathing');
+  });
+});
+
+describe('SessionDetail — loading / error / not-found (preserved)', () => {
+  beforeEach(() => {
+    eventCounter = 0;
+    vi.clearAllMocks();
+    noWearable();
+    emptyBaseline();
+  });
+
+  it('renders the loading skeleton while data is loading', () => {
+    mockUseSessionDetail.mockReturnValue({
+      session: null,
+      aggregate: null,
+      loading: true,
+      error: null,
+    });
+    mockUseEventData.mockReturnValue({ events: [], loading: true, error: null });
+    const { container } = render(
+      <MemoryRouter initialEntries={[`/sessions/${SESSION_ID}`]}>
+        <TooltipProvider delayDuration={0}>
+          <SessionDetail />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+    expect(container.querySelector('[aria-busy="true"]')).toBeInTheDocument();
+  });
+
+  it('renders the error state on load failure', () => {
+    mockUseSessionDetail.mockReturnValue({
+      session: null,
+      aggregate: null,
+      loading: false,
+      error: 'boom',
+    });
+    mockUseEventData.mockReturnValue({ events: [], loading: false, error: null });
+    render(
+      <MemoryRouter initialEntries={[`/sessions/${SESSION_ID}`]}>
+        <TooltipProvider delayDuration={0}>
+          <SessionDetail />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('boom');
   });
 });

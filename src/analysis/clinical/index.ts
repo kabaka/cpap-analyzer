@@ -12,3 +12,4 @@
 
 export * from './ahiSeverity';
 export * from './compliance';
+export * from './oximetry';

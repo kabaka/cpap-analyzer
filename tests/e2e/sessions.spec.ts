@@ -522,36 +522,35 @@ test.describe('Session Detail', () => {
     // Machine model displayed
     await expect(page.getByText(MACHINE_MODEL)).toBeVisible();
 
-    // AHI metric card. Scope to the card so the AHI primary value is
-    // disambiguated from the RDI secondary value, which the redesigned card now
-    // also displays (RDI = AHI + RERA index; with ahiRera = 0 in the fixture,
-    // RDI numerically equals AHI = 3.2, which is why an unscoped getByText('3.2')
-    // now matches two elements).
-    await expect(page.getByRole('heading', { name: 'AHI' })).toBeVisible();
-    const ahiCard = page
-      .locator('div', { has: page.getByRole('heading', { name: 'AHI' }) })
-      .filter({ hasText: 'events/hr' })
-      .last();
-    // Primary AHI value with its unit.
-    await expect(ahiCard.getByText('3.2').first()).toBeVisible();
-    await expect(ahiCard.getByText('events/hr', { exact: true })).toBeVisible();
-    // New RDI readout (Respiratory Disturbance Index = AHI + RERA index).
-    await expect(ahiCard.getByText('RDI', { exact: true })).toBeVisible();
-    await expect(ahiCard.getByText(/events\/hr \(incl\. RERA\)/)).toBeVisible();
+    // KPI grid (redesigned). The old per-metric cards with <h2> headings + an
+    // "events/hr" / "L/min median" caption were replaced by compact KPI tiles:
+    // a label, a primary value + unit, and a trailing baseline/sparkline. There
+    // are no per-metric headings anymore. Scope to each tile via its CSS-module
+    // class (hashed at build time, matched with a [class*="…"] attribute
+    // selector — the same convention the canvas / comparison-picker tests use).
+    const ahiCard = page.locator('[class*="kpiCard"]').filter({ hasText: 'AHI' });
+    await expect(ahiCard).toBeVisible();
+    // Primary AHI value with its unit (now "/h", one decimal).
+    await expect(ahiCard.getByText('3.2')).toBeVisible();
+    await expect(ahiCard.getByText('/h', { exact: true })).toBeVisible();
 
-    // Leak Rate metric card — leak displays as a whole number (L/min) per the
-    // measurement-uncertainty precision rules, so the injected 4.5 renders as "4".
-    const leakCard = page
-      .locator('div', { has: page.getByRole('heading', { name: 'Leak Rate' }) })
-      .filter({ hasText: 'L/min median' })
-      .last();
-    await expect(leakCard.getByText('4', { exact: true })).toBeVisible();
+    // Leak KPI tile — the redesigned value carries one decimal (4.5), unit "L/m"
+    // (the old card rounded to a whole number).
+    const leakCard = page.locator('[class*="kpiCard"]').filter({ hasText: 'Leak' });
+    await expect(leakCard.getByText('4.5')).toBeVisible();
+    await expect(leakCard.getByText('L/m', { exact: true })).toBeVisible();
 
-    // Pressure metric card
-    await expect(page.getByRole('heading', { name: 'Pressure' })).toBeVisible();
+    // The Night assessment (verdict) hero and the section headings that replaced
+    // the old metric-card headings.
+    await expect(page.getByRole('region', { name: 'Night assessment' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Respiratory events' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Session statistics' })).toBeVisible();
 
-    // View Signals button
-    await expect(page.getByRole('button', { name: 'View Signals' })).toBeVisible();
+    // The full-page signal viewer is now reached via the embedded compact
+    // viewer's "Full explorer" button (the old header "View Signals" button was
+    // removed). Its accessible name is "Full explorer" (the ⤢ glyph is
+    // aria-hidden).
+    await expect(page.getByRole('button', { name: 'Full explorer' })).toBeVisible();
   });
 
   test('navigating back to Sessions link returns to list', async ({ page }) => {
@@ -578,320 +577,211 @@ test.describe('Session Detail', () => {
     await expect(page.getByText('Session not found.')).toBeVisible();
   });
 
-  test('AHI breakdown values are displayed', async ({ page }) => {
+  test('respiratory breakdown labels are displayed', async ({ page }) => {
     const { sessions, aggregates } = createTestSessions();
     await setupWithData(page, sessions, aggregates, '/sessions/sess-1');
 
-    // Wait for detail to load
-    await expect(page.getByRole('heading', { name: 'AHI' })).toBeVisible();
+    // The redesigned "Respiratory events" card replaces the old AHI-breakdown
+    // list with per-type bars. Obstructive/Hypopnea/Central are always shown.
+    await expect(page.getByRole('heading', { name: 'Respiratory events' })).toBeVisible();
 
-    // AHI breakdown items. Use exact matches: the new Events-list empty state
-    // (this session is seeded with no events) renders a sentence containing the
-    // word "hypopnea", so an unscoped substring match on "Hypopnea" would resolve
-    // to two elements. The breakdown labels are standalone single words.
-    await expect(page.getByText('Obstructive', { exact: true })).toBeVisible();
-    await expect(page.getByText('Central', { exact: true })).toBeVisible();
+    // The bar labels are the full component names ("Obstructive apnea" /
+    // "Central apnea"), not the bare AHI-subtype words the old list used.
+    await expect(page.getByText('Obstructive apnea', { exact: true })).toBeVisible();
+    await expect(page.getByText('Central apnea', { exact: true })).toBeVisible();
     await expect(page.getByText('Hypopnea', { exact: true })).toBeVisible();
   });
 
-  test('clicking View Signals navigates to signal viewer', async ({ page }) => {
+  test('Full explorer button navigates to the signal viewer', async ({ page }) => {
     const { sessions, aggregates } = createTestSessions();
     await setupWithData(page, sessions, aggregates, '/sessions/sess-1');
 
-    // Wait for detail to load
-    await expect(page.getByRole('button', { name: 'View Signals' })).toBeVisible({
-      timeout: 10000,
-    });
+    // The header "View Signals" button was removed; the embedded compact viewer
+    // now exposes a "Full explorer" button that navigates to the full-page
+    // Signal Viewer child route.
+    const fullExplorer = page.getByRole('button', { name: 'Full explorer' });
+    await expect(fullExplorer).toBeVisible({ timeout: 10000 });
+    await fullExplorer.click();
 
-    // Click View Signals
-    await page.getByRole('button', { name: 'View Signals' }).click();
+    await expect(page).toHaveURL(/\/sessions\/sess-1\/signals/);
+  });
 
-    // Should navigate to signal viewer route
+  test('footer "Raw data" link navigates to the signal viewer', async ({ page }) => {
+    const { sessions, aggregates } = createTestSessions();
+    await setupWithData(page, sessions, aggregates, '/sessions/sess-1');
+
+    // The footer offers a second route into the full Signal Viewer.
+    const rawData = page.getByRole('link', { name: /Raw data/ });
+    await expect(rawData).toBeVisible({ timeout: 10000 });
+    await expect(rawData).toHaveAttribute('href', /\/sessions\/sess-1\/signals$/);
+
+    await rawData.click();
     await expect(page).toHaveURL(/\/sessions\/sess-1\/signals/);
   });
 });
 
-test.describe('Session Detail — Events list', () => {
-  // The Events list renders each respiratory event's wall-clock Time / Type /
-  // Duration and deep-links each row into the Signal Viewer. Event timestamps
-  // are derived from the seeded session's start so the rendered clock string is
-  // deterministic. We anchor events at the session start (22:00 local) plus a
-  // few offsets and assert the rows appear in chronological order.
+test.describe('Session Detail — Events', () => {
+  // The redesigned Session Detail replaced the old flat "Individual events" grid
+  // (each row deep-linking to `/signals?t=&te=`) with two cards:
+  //   • Respiratory events — a per-type breakdown (bars + rate/count) plus mini
+  //     stats (longest apnea, central fraction, RERA, flow limitation), driven by
+  //     the aggregate and the raw events.
+  //   • Event clusters — an expandable list; expanding a cluster reveals its
+  //     member events, and a "View in signal viewer" action FOCUSES the embedded
+  //     compact viewer (sets a focus time + scrolls to it) rather than navigating
+  //     to a `/signals?t=…` deep link.
+  //
+  // The old per-event → `/signals?t=&te=` deep-link URL flow, the roving-tabindex
+  // grid, the EventTimeline hover tooltip, and the over-cap "first 50 of N" /
+  // Event Explorer footer no longer exist on this page, so their exact-URL / grid
+  // assertions were removed. The closest surviving equivalents are covered below
+  // (full-viewer navigation lives in the "Session Detail" block above; the
+  // cluster focus-in-place flow is covered here). See the task report for the
+  // capabilities that are genuinely gone.
 
   const EVENT_SESSION_ID = 'sess-1';
 
   /**
-   * Build a session + aggregate + a small chronological set of events. Events
-   * are deliberately seeded OUT of chronological order in the array so the test
-   * proves the list sorts them; the returned `chronological` array is the order
-   * we expect them rendered in.
+   * Build a session + aggregate + a dense burst of apneas that forms exactly one
+   * event cluster under the default 'balanced' preset (maxGap 120 s,
+   * minClusterSize 2). Events are 30 s apart with 15 s durations → 15 s gaps →
+   * merged into one cluster.
    */
-  function createSessionWithEvents() {
-    const date = daysAgoStr(2);
-    const session = makeSession(EVENT_SESSION_ID, date, 480, 420);
-    const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 5.0, 4.5, 7.0);
-
-    // Session starts at `${date}T22:00:00Z`; anchor event timestamps off that.
-    const sessionStartMs = new Date(session.startTime).getTime();
-
-    // Three events: a 0-duration RERA, then two timed apneas/hypopneas. Pushed
-    // out of order to exercise the chronological sort in EventsList.
-    const evtRera = makeEvent(
-      'evt-rera',
-      EVENT_SESSION_ID,
-      sessionStartMs + 60 * 60 * 1000, // +1h
-      'RERA',
-      0, // zero duration → no `&te=` on the deep link
-    );
-    const evtObstructive = makeEvent(
-      'evt-obstructive',
-      EVENT_SESSION_ID,
-      sessionStartMs + 5 * 60 * 1000, // +5m (earliest)
-      'ObstructiveApnea',
-      18, // seconds
-    );
-    const evtHypopnea = makeEvent(
-      'evt-hypopnea',
-      EVENT_SESSION_ID,
-      sessionStartMs + 30 * 60 * 1000, // +30m (middle)
-      'Hypopnea',
-      12.5,
-    );
-
-    // Insertion order is intentionally non-chronological.
-    const events = [evtRera, evtObstructive, evtHypopnea];
-    // Expected rendered order (ascending by timestamp).
-    const chronological = [evtObstructive, evtHypopnea, evtRera];
-
-    return { session, aggregate, events, chronological };
-  }
-
-  test('shows per-event wall-clock time, type, and duration in chronological order', async ({
-    page,
-  }) => {
-    const { session, aggregate, events, chronological } = createSessionWithEvents();
-    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
-
-    // The Events list is a labelled grid.
-    const grid = page.getByRole('grid', { name: 'Individual events' });
-    await expect(grid).toBeVisible({ timeout: 10000 });
-
-    // Column headers.
-    await expect(grid.getByRole('columnheader', { name: 'Time' })).toBeVisible();
-    await expect(grid.getByRole('columnheader', { name: 'Type' })).toBeVisible();
-    await expect(grid.getByRole('columnheader', { name: 'Duration' })).toBeVisible();
-
-    // One data row per seeded event (header row is a separate role="row" but
-    // carries no role="row" gridcells of data; scope rows to those with gridcells).
-    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
-    await expect(dataRows).toHaveCount(chronological.length);
-
-    // Each row, in chronological order, shows the expected clock / type / duration.
-    for (let i = 0; i < chronological.length; i++) {
-      const evt = chronological[i]!;
-      const row = dataRows.nth(i);
-      await expect(row.getByRole('gridcell').first()).toHaveText(expectedClock(evt.timestamp));
-      await expect(row).toContainText(
-        evt.type === 'ObstructiveApnea'
-          ? 'Obstructive Apnea'
-          : evt.type === 'Hypopnea'
-            ? 'Hypopnea'
-            : 'RERA',
-      );
-      await expect(row).toContainText(`${evt.duration.toFixed(1)}s`);
-    }
-
-    // Sanity: the earliest event's clock precedes the latest in the DOM order.
-    const firstClock = expectedClock(chronological[0]!.timestamp);
-    const lastClock = expectedClock(chronological[chronological.length - 1]!.timestamp);
-    expect(firstClock).not.toEqual(lastClock);
-  });
-
-  test('clicking an event row deep-links into the Signal Viewer (with te for timed events)', async ({
-    page,
-  }) => {
-    const { session, aggregate, events, chronological } = createSessionWithEvents();
-    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
-
-    const grid = page.getByRole('grid', { name: 'Individual events' });
-    await expect(grid).toBeVisible({ timeout: 10000 });
-
-    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
-
-    // The first (chronologically earliest) row is the 18s ObstructiveApnea, which
-    // has duration > 0 → the deep link carries both `t` and `te`.
-    const timedEvent = chronological[0]!;
-    expect(timedEvent.duration).toBeGreaterThan(0);
-    const expectedTe = timedEvent.timestamp + timedEvent.duration * 1000;
-
-    await dataRows.first().click();
-
-    await expect(page).toHaveURL(
-      new RegExp(
-        `/sessions/${EVENT_SESSION_ID}/signals\\?t=${timedEvent.timestamp}&te=${expectedTe}(&|$)`,
-      ),
-    );
-
-    // The Signal Viewer renders (toolbar or a graceful fallback in the sandbox).
-    await page.waitForLoadState('networkidle');
-    await expect(
-      page
-        .getByText('Signal Viewer')
-        .or(page.getByText('No Signal Data'))
-        .or(page.getByText('Failed to load signals'))
-        .or(page.getByText('Browser Not Supported')),
-    ).toBeVisible({ timeout: 10000 });
-  });
-
-  test('a zero-duration event deep-links with only t (no te)', async ({ page }) => {
-    const { session, aggregate, events, chronological } = createSessionWithEvents();
-    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
-
-    const grid = page.getByRole('grid', { name: 'Individual events' });
-    await expect(grid).toBeVisible({ timeout: 10000 });
-
-    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
-
-    // The last chronological row is the 0-duration RERA → link has `t` only.
-    const zeroDurEvent = chronological[chronological.length - 1]!;
-    expect(zeroDurEvent.duration).toBe(0);
-
-    await dataRows.last().click();
-
-    // `t` is present and there is NO `te` query param.
-    await expect(page).toHaveURL(
-      new RegExp(`/sessions/${EVENT_SESSION_ID}/signals\\?t=${zeroDurEvent.timestamp}(&|$)`),
-    );
-    await expect(page).not.toHaveURL(/[?&]te=/);
-  });
-
-  test('keyboard: focusing a row and pressing Enter deep-links into the Signal Viewer', async ({
-    page,
-  }) => {
-    const { session, aggregate, events, chronological } = createSessionWithEvents();
-    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
-
-    const grid = page.getByRole('grid', { name: 'Individual events' });
-    await expect(grid).toBeVisible({ timeout: 10000 });
-
-    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
-
-    // Focus the first row (roving-tabindex makes it the grid's single tab stop)
-    // and activate it with Enter.
-    const firstRow = dataRows.first();
-    await firstRow.focus();
-    await expect(firstRow).toBeFocused();
-    await page.keyboard.press('Enter');
-
-    const timedEvent = chronological[0]!;
-    const expectedTe = timedEvent.timestamp + timedEvent.duration * 1000;
-    await expect(page).toHaveURL(
-      new RegExp(
-        `/sessions/${EVENT_SESSION_ID}/signals\\?t=${timedEvent.timestamp}&te=${expectedTe}(&|$)`,
-      ),
-    );
-  });
-
-  test('EventTimeline tooltip shows the event wall-clock time on hover', async ({ page }) => {
-    // The EventTimeline only renders when endTime > startTime, so build a session
-    // with an explicit overnight window (the shared makeSession fixture puts both
-    // start and end on the same calendar date, which collapses the timeline). The
-    // Events list does not depend on the window; only this timeline test does.
-    const date = daysAgoStr(2);
-    const session = {
-      ...makeSession(EVENT_SESSION_ID, date, 480, 420),
-      startTime: `${date}T22:00:00Z`,
-      endTime: `${daysAgoStr(1)}T06:00:00Z`, // next calendar day → positive span
-    };
-    const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 5.0, 4.5, 7.0);
-
-    const sessionStartMs = new Date(session.startTime).getTime();
-    // One event firmly inside the window so the marker is hoverable.
-    const evt = makeEvent(
-      'evt-tl',
-      EVENT_SESSION_ID,
-      sessionStartMs + 2 * 60 * 60 * 1000, // +2h
-      'ObstructiveApnea',
-      18,
-    );
-
-    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, [evt]);
-
-    // The timeline renders one marker per event inside the labelled container.
-    const timeline = page.getByRole('img', { name: /Event timeline showing/ });
-    await expect(timeline).toBeVisible({ timeout: 10000 });
-
-    // Hover the marker. Radix renders the tooltip into a portal with
-    // role="tooltip"; assert it carries the wall-clock string the feature added.
-    const marker = timeline.locator('> *').first();
-    await marker.hover();
-
-    const tooltip = page.getByRole('tooltip');
-    await expect(tooltip).toBeVisible({ timeout: 10000 });
-
-    // The tooltip text is `HH:MM:SS · <Type> · <d.d>s`.
-    const tooltipText = (await tooltip.textContent()) ?? '';
-    expect(tooltipText).toContain(expectedClock(evt.timestamp));
-    expect(tooltipText).toMatch(/\d{2}:\d{2}:\d{2}/);
-  });
-
-  test('shows the positive empty state when the session has zero events', async ({ page }) => {
-    const date = daysAgoStr(2);
-    const session = makeSession(EVENT_SESSION_ID, date, 480, 420);
-    const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 0, 4.5, 7.0);
-
-    // No events seeded.
-    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, []);
-
-    // The Events section still renders, with a positive empty state and no grid.
-    const eventsSection = page.getByRole('region', { name: 'Individual events' });
-    await expect(eventsSection).toBeVisible({ timeout: 10000 });
-    await expect(page.getByText('No respiratory events recorded')).toBeVisible();
-
-    // No grid / data rows.
-    await expect(page.getByRole('grid', { name: 'Individual events' })).toHaveCount(0);
-  });
-
-  test('over-cap footer: shows "first 50 of N" caption and an Event Explorer link', async ({
-    page,
-  }) => {
+  function createSessionWithCluster() {
     const date = daysAgoStr(2);
     const session = makeSession(EVENT_SESSION_ID, date, 480, 420);
     const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 8.0, 4.5, 7.0);
     const sessionStartMs = new Date(session.startTime).getTime();
 
-    const TOTAL = 60; // > EVENTS_LIST_CAP (50)
-    const types = ['ObstructiveApnea', 'CentralApnea', 'Hypopnea'];
-    const events = Array.from({ length: TOTAL }, (_, i) =>
+    const events = [0, 1, 2, 3].map((i) =>
       makeEvent(
-        `evt-cap-${String(i).padStart(3, '0')}`,
+        `evt-c-${i}`,
         EVENT_SESSION_ID,
-        sessionStartMs + i * 60 * 1000, // 1-minute spacing
-        types[i % types.length]!,
-        10 + (i % 3) * 5,
+        sessionStartMs + 10 * 60 * 1000 + i * 30 * 1000, // +10m, then 30 s apart
+        'ObstructiveApnea',
+        15,
       ),
     );
 
+    return { session, aggregate, events };
+  }
+
+  test('respiratory events card shows the breakdown, total, and longest apnea', async ({
+    page,
+  }) => {
+    const date = daysAgoStr(2);
+    const session = makeSession(EVENT_SESSION_ID, date, 480, 420);
+    const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 5.0, 4.5, 7.0);
+    const sessionStartMs = new Date(session.startTime).getTime();
+
+    // A long-ish obstructive apnea drives the "Longest apnea" mini-stat, which is
+    // derived from the RAW events (not the aggregate).
+    const events = [
+      makeEvent(
+        'evt-long',
+        EVENT_SESSION_ID,
+        sessionStartMs + 20 * 60 * 1000,
+        'ObstructiveApnea',
+        42,
+      ),
+      makeEvent(
+        'evt-short',
+        EVENT_SESSION_ID,
+        sessionStartMs + 5 * 60 * 1000,
+        'ObstructiveApnea',
+        12,
+      ),
+    ];
+
     await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
 
-    const grid = page.getByRole('grid', { name: 'Individual events' });
-    await expect(grid).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('heading', { name: 'Respiratory events' })).toBeVisible({
+      timeout: 10000,
+    });
 
-    // Only the first 50 are rendered.
-    const dataRows = grid.getByRole('row').filter({ has: page.getByRole('gridcell') });
-    await expect(dataRows).toHaveCount(50);
+    // Always-present primary contributor bars.
+    await expect(page.getByText('Obstructive apnea', { exact: true })).toBeVisible();
+    await expect(page.getByText('Hypopnea', { exact: true })).toBeVisible();
+    await expect(page.getByText('Central apnea', { exact: true })).toBeVisible();
 
-    // Over-cap caption with the true total.
-    await expect(page.getByText(`Showing the first 50 of ${TOTAL} events.`)).toBeVisible();
+    // Total-events count from the aggregate (makeAggregate seeds eventCount = 12).
+    await expect(page.getByText('12 total')).toBeVisible();
 
-    // "View all in Event Explorer" link points at the Event Explorer, pre-scoped
-    // to this session via the `?sessions=<id>` param.
-    const viewAll = page.getByRole('link', { name: /View all in Event Explorer/ });
-    await expect(viewAll).toBeVisible();
-    await expect(viewAll).toHaveAttribute(
-      'href',
-      new RegExp(`/explore/events\\?sessions=${EVENT_SESSION_ID}$`),
-    );
+    // Longest-apnea mini-stat reflects the 42 s event from the raw events.
+    await expect(page.getByText('Longest apnea')).toBeVisible();
+    await expect(page.getByText('42s')).toBeVisible();
+  });
+
+  test('a dense burst forms an expandable event cluster listing its member events', async ({
+    page,
+  }) => {
+    const { session, aggregate, events } = createSessionWithCluster();
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
+
+    await expect(page.getByRole('heading', { name: 'Event clusters' })).toBeVisible({
+      timeout: 10000,
+    });
+
+    // The cluster header is a collapsed disclosure button.
+    const clusterHeader = page.locator('[class*="clusterHeader"]').first();
+    await expect(clusterHeader).toBeVisible();
+    await expect(clusterHeader).toHaveAttribute('aria-expanded', 'false');
+
+    // Expand it → member event rows (one per event) appear.
+    await clusterHeader.click();
+    await expect(clusterHeader).toHaveAttribute('aria-expanded', 'true');
+
+    const memberRows = page.locator('[class*="clusterEventRow"]');
+    await expect(memberRows).toHaveCount(events.length);
+
+    // The earliest member row shows the event's deterministic wall-clock time and
+    // its duration (15.0s).
+    await expect(memberRows.first().getByText(expectedClock(events[0]!.timestamp))).toBeVisible();
+    await expect(memberRows.first().getByText('15.0s')).toBeVisible();
+  });
+
+  test('a cluster\'s "View in signal viewer" focuses the embedded viewer (no /signals navigation)', async ({
+    page,
+  }) => {
+    const { session, aggregate, events } = createSessionWithCluster();
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
+
+    const clusterHeader = page.locator('[class*="clusterHeader"]').first();
+    await expect(clusterHeader).toBeVisible({ timeout: 10000 });
+    await clusterHeader.click();
+
+    // The focus action targets the EMBEDDED compact viewer (sets a focus time +
+    // scrolls to it); it does NOT navigate to the full-page Signal Viewer route.
+    const focusBtn = page.getByRole('button', { name: 'View in signal viewer' });
+    await expect(focusBtn).toBeVisible();
+    await focusBtn.click();
+
+    // Still on the session detail page — no `/signals` child route.
+    await expect(page).toHaveURL(new RegExp(`/sessions/${EVENT_SESSION_ID}(\\?|$)`));
+    await expect(page).not.toHaveURL(/\/signals/);
+    await expect(page.getByRole('heading', { name: 'Event clusters' })).toBeVisible();
+  });
+
+  test('sparse events show the "no clustered runs" empty state', async ({ page }) => {
+    const date = daysAgoStr(2);
+    const session = makeSession(EVENT_SESSION_ID, date, 480, 420);
+    const aggregate = makeAggregate('agg-1', EVENT_SESSION_ID, date, 5.0, 4.5, 7.0);
+    const sessionStartMs = new Date(session.startTime).getTime();
+
+    // Events minutes apart → no group reaches minClusterSize → zero clusters.
+    const events = [
+      makeEvent('evt-a', EVENT_SESSION_ID, sessionStartMs + 5 * 60 * 1000, 'ObstructiveApnea', 15),
+      makeEvent('evt-b', EVENT_SESSION_ID, sessionStartMs + 30 * 60 * 1000, 'Hypopnea', 12),
+      makeEvent('evt-c', EVENT_SESSION_ID, sessionStartMs + 60 * 60 * 1000, 'RERA', 0),
+    ];
+
+    await setupWithData(page, [session], [aggregate], `/sessions/${EVENT_SESSION_ID}`, events);
+
+    await expect(page.getByRole('heading', { name: 'Event clusters' })).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByText(/No clustered runs of events/)).toBeVisible();
+    await expect(page.locator('[class*="clusterHeader"]')).toHaveCount(0);
   });
 });
 
@@ -1112,11 +1002,12 @@ test.describe('Session List → Detail → Signal Viewer Journey', () => {
     await expect(page).toHaveURL(/\/sessions\/sess-1(\?|$)/);
 
     // 3. Session detail loads with metrics
-    await expect(page.getByRole('heading', { name: 'AHI' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'View Signals' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Respiratory events' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Full explorer' })).toBeVisible();
 
-    // 4. Click View Signals
-    await page.getByRole('button', { name: 'View Signals' }).click();
+    // 4. Enter the full-page Signal Viewer via the embedded viewer's "Full
+    //    explorer" button (the old header "View Signals" button was removed).
+    await page.getByRole('button', { name: 'Full explorer' }).click();
     await expect(page).toHaveURL(/\/sessions\/sess-1\/signals/);
 
     // 5. Signal viewer state renders (whatever state — toolbar or fallback)
@@ -1130,7 +1021,7 @@ test.describe('Session List → Detail → Signal Viewer Journey', () => {
 
     // Should return to session detail
     await expect(page).toHaveURL(/\/sessions\/sess-1(\?|$)/);
-    await expect(page.getByRole('heading', { name: 'AHI' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Respiratory events' })).toBeVisible();
   });
 });
 

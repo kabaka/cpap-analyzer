@@ -1,0 +1,310 @@
+.card {
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ── Header ─────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--font-size-md, 1rem);
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text-primary);
+}
+
+.subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ── Preset segmented buttons ───────────────────────────── */
+
+.presetGroup {
+  display: inline-flex;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.presetButton {
+  appearance: none;
+  border: none;
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 4px 10px;
+  cursor: pointer;
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.presetButton:last-child {
+  border-right: none;
+}
+
+.presetButton[data-active='true'] {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.presetButton:hover:not(:disabled) {
+  background: var(--color-surface-secondary);
+}
+
+.presetButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.presetButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+.ghostButton {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.ghostButton:hover {
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+}
+
+.ghostButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+/* ── Body ───────────────────────────────────────────────── */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.message {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm, 0.875rem);
+  margin: var(--space-2) 0;
+}
+
+/* ── Control row (chips + range readout) ────────────────── */
+
+.controlRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.chips {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-primary);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.chip[data-off='true'] {
+  opacity: 0.45;
+}
+
+.chip:hover {
+  background: var(--color-surface-secondary);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.chipDot {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-full);
+  flex: none;
+}
+
+.chip[data-off='true'] .chipDot {
+  filter: grayscale(1);
+}
+
+.rangeReadout {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* ── Plot ───────────────────────────────────────────────── */
+
+.plot {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.overlayCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ── Floating readout ───────────────────────────────────── */
+
+.floatingReadout {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 150px;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 6px 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-primary);
+  pointer-events: none;
+}
+
+.readoutTime {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--color-text-secondary);
+}
+
+.readoutRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.readoutSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.readoutLabel {
+  flex: 1;
+  color: var(--color-text-secondary);
+}
+
+.readoutValue {
+  font-variant-numeric: tabular-nums;
+}
+
+.readoutEvent {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border-subtle);
+  color: var(--color-status-severe);
+}
+
+/* ── Minimap ────────────────────────────────────────────── */
+
+.minimap {
+  width: 100%;
+  display: block;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.minimap:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Legend ─────────────────────────────────────────────── */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
