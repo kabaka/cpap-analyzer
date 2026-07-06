@@ -534,6 +534,17 @@ function RespiratoryEventsCard({
           <span className={styles.miniSub}>Flagged FLG events</span>
         </div>
       </div>
+
+      {events.length > 0 && (
+        <div className={styles.respFooter}>
+          <Link
+            to={`/explore/events?sessions=${aggregate.sessionId}`}
+            className={styles.respViewAll}
+          >
+            View all in Event Explorer →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

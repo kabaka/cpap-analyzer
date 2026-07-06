@@ -611,6 +611,31 @@
   border-radius: var(--radius-sm);
 }
 
+.respFooter {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.respViewAll {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-link);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.respViewAll:hover {
+  color: var(--color-text-link-hover);
+}
+
+.respViewAll:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* ── Event clusters ────────────────────────────────────────────── */
 
 .clusterList {
