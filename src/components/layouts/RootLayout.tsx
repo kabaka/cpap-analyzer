@@ -105,7 +105,17 @@ const SECTION_TITLES: Record<string, string> = {
 
 function sectionTitleFor(pathname: string): string {
   const firstSegment = pathname.replace(/^\/+/, '').split('/')[0] ?? '';
-  return SECTION_TITLES[firstSegment] ?? 'CPAP Analyzer';
+  // Own-property guard (same pattern as parsers/validation/physiologicalRanges).
+  // A bare `SECTION_TITLES[firstSegment]` resolves INHERITED members for keys
+  // like `toString`, `constructor`, or `__proto__` (a function / the prototype
+  // object). Those are non-nullish, so `?? 'CPAP Analyzer'` would NOT catch them
+  // and a non-string would be rendered as a React child. This header sits
+  // OUTSIDE the route error boundary, so that throw white-screens the whole app.
+  // Restricting the lookup to own keys returns the fallback for any such path.
+  if (Object.prototype.hasOwnProperty.call(SECTION_TITLES, firstSegment)) {
+    return SECTION_TITLES[firstSegment] ?? 'CPAP Analyzer';
+  }
+  return 'CPAP Analyzer';
 }
 
 function NavItemLink({

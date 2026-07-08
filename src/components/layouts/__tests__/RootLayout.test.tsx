@@ -376,4 +376,47 @@ describe('RootLayout', () => {
       expect(screen.getByText('dashboard-content')).toBeInTheDocument();
     });
   });
+
+  describe('section title — prototype-chain safety', () => {
+    // sectionTitleFor() looks the first path segment up in a plain-object title
+    // map. A bare index would resolve INHERITED members for keys like
+    // `__proto__`, `toString`, `constructor`, or `hasOwnProperty` (the prototype
+    // object / a function). Those are non-nullish, so the `?? 'CPAP Analyzer'`
+    // fallback would NOT catch them — and this header renders OUTSIDE the route
+    // error boundary, so rendering a function/object as a React child would
+    // throw and white-screen the whole app. An own-property guard must return
+    // the "CPAP Analyzer" fallback for any such path.
+    const SECTION_TITLE = requireClass(styles.sectionTitle, 'sectionTitle');
+
+    // A splat child so the layout mounts for ANY path (the trivial renderLayout
+    // route tree only knows `/` and `sessions`).
+    function renderLayoutAt(initialPath: string) {
+      return render(
+        <MemoryRouter initialEntries={[initialPath]}>
+          <Routes>
+            <Route path="/" element={<RootLayout />}>
+              <Route index element={<div>dashboard-content</div>} />
+              <Route path="*" element={<div>fallback-content</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+    }
+
+    it.each(['/__proto__', '/toString', '/constructor', '/hasOwnProperty'])(
+      'renders the fallback title (not an inherited member) for %s',
+      (path) => {
+        // Reaching the assertion at all proves rendering no longer throws.
+        const { container } = renderLayoutAt(path);
+        const title = container.querySelector(`.${SECTION_TITLE}`);
+        expect(title).not.toBeNull();
+        expect(title).toHaveTextContent('CPAP Analyzer');
+      },
+    );
+
+    it('still resolves a legitimate own-key segment to its title', () => {
+      const { container } = renderLayoutAt('/sessions');
+      expect(container.querySelector(`.${SECTION_TITLE}`)).toHaveTextContent('Sessions');
+    });
+  });
 });

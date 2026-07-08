@@ -101,7 +101,7 @@
   height: 27px;
   border-radius: 7px;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text-inverse);
   flex: none;
 }
 
@@ -343,7 +343,7 @@
   border: none;
   border-radius: var(--radius-md);
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text-inverse);
   font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
   font-size: var(--cs-fs-11);

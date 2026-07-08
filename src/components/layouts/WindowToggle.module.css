@@ -171,7 +171,7 @@
   padding: 6px 14px;
   border: none;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-text-inverse);
   font-weight: var(--font-weight-semibold);
 }
 

@@ -99,7 +99,14 @@
 
 .segmentSm.selectedSolid {
   background: var(--seg-accent, var(--color-primary));
-  color: #fff; /* on-primary white — verified AA for bold labels, spec Part D */
+  /* Theme-aware on-fill text (the app's convention, cf. Button/Select). Covers
+     BOTH the --color-primary default and the --color-ai (tone="ai") fill.
+     Hardcoded #fff was only 3.68:1 on the dark-theme primary (#3b82f6) and
+     ~2.46:1 on the dark-theme AI fuchsia (#e879f9) — both FAIL AA for these
+     10.5px bold labels (not WCAG large text). --color-text-inverse flips to
+     near-black in dark → 5.38:1 (primary) / 8.05:1 (AI), and stays #fff in
+     light → 5.17:1 (primary) / 6.32:1 (AI). */
+  color: var(--color-text-inverse);
 }
 
 .segmentSm:hover:not(.selectedSolid):not(:disabled) {
