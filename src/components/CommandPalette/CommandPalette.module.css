@@ -1,0 +1,113 @@
+/* ⌘K command palette (spec B5). */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--color-surface-overlay);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh 16px 16px;
+}
+
+.panel {
+  width: min(640px, 92vw);
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  animation: paletteIn var(--transition-fast) ease-out;
+}
+
+/* Enter motion is disabled under reduced motion (spec Part E). */
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+
+@keyframes paletteIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Input row ── */
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  flex: none;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.searchIcon {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--font-family-mono);
+  font-size: 14px;
+  color: var(--color-text-primary);
+  caret-color: var(--color-primary);
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ── Results ── */
+
+.results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+
+/* ── Footer hint bar ── */
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 34px;
+  flex: none;
+  padding: 0 12px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  color: var(--color-text-muted);
+}
+
+/* Reusable kbd chip from the shared command-surface foundation. */
+.keyChip {
+  composes: keyChip from '../../styles/commandSurface.module.css';
+}

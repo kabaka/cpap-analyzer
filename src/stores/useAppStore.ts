@@ -36,6 +36,12 @@ interface AppState {
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebarCollapsed: () => void;
 
+  // ⌘K command palette open state. EPHEMERAL — deliberately excluded from
+  // `partialize` so it never persists across reloads (the palette always boots
+  // closed). Toggled by the ⌘K/Ctrl+K global shortcut and the header trigger.
+  commandPaletteOpen: boolean;
+  setCommandPaletteOpen: (open: boolean) => void;
+
   // Import state
   importStatus: 'idle' | 'scanning' | 'importing' | 'complete' | 'error';
   importProgress: { current: number; total: number };
@@ -90,6 +96,11 @@ export const useAppStore = create<AppState>()(
             undefined,
             'toggleSidebarCollapsed',
           ),
+
+        // Command palette — ephemeral, always boots closed.
+        commandPaletteOpen: false,
+        setCommandPaletteOpen: (open) =>
+          set({ commandPaletteOpen: open }, undefined, 'setCommandPaletteOpen'),
 
         // Import state
         importStatus: 'idle',

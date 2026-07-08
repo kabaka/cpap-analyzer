@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { useDataStore } from '@/stores/useDataStore';
 import { OPFSService } from '@/services/storage/OPFSService';
 import { Icon } from '@/components/ui';
 import { formatBytes } from '@/utils/formatBytes';
 import styles from './StatusBar.module.css';
+
+/** 14px muted icons per spec B7 (between the token sizes, so set explicitly). */
+const ICON_STYLE: CSSProperties = { width: '14px', height: '14px' };
 
 /** Month-year range formatting for the corpus coverage label. */
 function formatMonthYear(date: Date): string {
@@ -88,48 +91,50 @@ export function StatusBar() {
   const importAbsolute = lastImportAt ? new Date(lastImportAt).toLocaleString() : undefined;
 
   // ── Storage meter ──
+  // Tone by percent using the CLINICAL status scale (spec B7): the percent is
+  // always stated in text, so tone is reinforcement only (WCAG 1.4.1).
   const percent = storage ? Math.round(storage.percentUsed) : 0;
   const meterTone =
-    percent >= 95 ? styles.meterError : percent >= 80 ? styles.meterWarning : styles.meterNormal;
+    percent >= 95 ? styles.meterSevere : percent >= 80 ? styles.meterMild : styles.meterNormal;
 
   return (
     <footer className={styles.statusBar} aria-label="Application status">
       <div className={styles.cluster} aria-live="polite">
         <span className={styles.item}>
-          <Icon name="sessions" size="sm" className={styles.icon} />
+          <Icon name="sessions" className={styles.icon} style={ICON_STYLE} />
           <span className={styles.text}>{sessionLabel}</span>
         </span>
         {coverageLabel && (
           <span className={styles.item}>
-            <Icon name="calendar" size="sm" className={styles.icon} />
-            <span className={`${styles.text} ${styles.mono}`}>{coverageLabel}</span>
+            <Icon name="calendar" className={styles.icon} style={ICON_STYLE} />
+            <span className={styles.text}>{coverageLabel}</span>
           </span>
         )}
         {importRelative && (
           <span className={styles.item} title={importAbsolute}>
-            <Icon name="clock" size="sm" className={styles.icon} />
+            <Icon name="clock" className={styles.icon} style={ICON_STYLE} />
             <span className={styles.text}>Imported {importRelative}</span>
           </span>
         )}
       </div>
 
-      <div className={styles.cluster} aria-live="polite">
+      <div className={`${styles.cluster} ${styles.clusterRight}`} aria-live="polite">
         {storage === undefined && (
           <span className={styles.item}>
-            <Icon name="storage" size="sm" className={styles.icon} />
+            <Icon name="storage" className={styles.icon} style={ICON_STYLE} />
             <span className={styles.text}>Loading…</span>
           </span>
         )}
         {storage && (
           <span className={styles.item}>
-            <Icon name="storage" size="sm" className={styles.icon} />
+            <Icon name="storage" className={styles.icon} style={ICON_STYLE} />
             <span className={styles.meter} aria-hidden="true">
               <span
                 className={`${styles.meterFill} ${meterTone}`}
                 style={{ width: `${Math.min(100, percent)}%` }}
               />
             </span>
-            <span className={`${styles.text} ${styles.mono}`}>
+            <span className={styles.text}>
               {formatBytes(storage.usage)} of {formatBytes(storage.quota)} used ({percent}%)
             </span>
           </span>

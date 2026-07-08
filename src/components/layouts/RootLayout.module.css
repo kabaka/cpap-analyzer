@@ -46,7 +46,7 @@
   outline-offset: 2px;
 }
 
-/* ── Sidebar ── */
+/* ── Sidebar (B1) ── */
 
 .sidebar {
   position: fixed;
@@ -61,7 +61,8 @@
   z-index: var(--z-sticky);
   /* `transform` drives the mobile slide; `width` drives the desktop rail
      collapse/expand. Both go through --transition-base, which reduced-motion
-     zeroes globally (no hardcoded durations). */
+     zeroes globally (no hardcoded durations). The `width` transitionend is what
+     clears the shared `sidebarAnimating` marker the SignalViewer depends on. */
   transition:
     transform var(--transition-base),
     width var(--transition-base);
@@ -70,20 +71,21 @@
 .brandArea {
   display: flex;
   align-items: center;
-  height: 56px;
-  padding: 0 var(--space-4);
+  height: var(--cs-chrome-h);
+  padding: 0 14px;
   border-bottom: 1px solid var(--color-border-subtle);
-  flex-shrink: 0;
+  overflow: hidden;
+  flex: none;
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
   text-decoration: none;
   border-radius: var(--radius-md);
-  padding: var(--space-1);
-  margin: calc(-1 * var(--space-1));
 }
 
 .brand:focus-visible {
@@ -92,27 +94,30 @@
 }
 
 .brandMark {
-  color: var(--color-primary);
-  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  background: var(--color-primary);
+  color: #fff;
+  flex: none;
 }
 
 .wordmark {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.25em;
-  font-size: var(--font-size-lg);
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-bold);
-  letter-spacing: var(--letter-spacing-tight);
+  font-size: var(--cs-fs-13);
+  letter-spacing: var(--cs-ls-section);
   white-space: nowrap;
-}
-
-.wordmarkPrimary {
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--color-text-primary);
 }
 
-.wordmarkSecondary {
-  color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
+.wordmarkSlash {
+  color: var(--color-primary);
 }
 
 /* ── Navigation ── */
@@ -122,14 +127,15 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: var(--space-3) var(--space-2) var(--space-2);
+  overflow-x: hidden;
+  padding: 14px 8px 10px;
   min-height: 0;
 }
 
 .navGroups {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 16px;
 }
 
 .navGroup {
@@ -138,11 +144,12 @@
 }
 
 .navGroupLabel {
-  margin: 0 0 var(--space-1);
-  padding: 0 var(--space-3);
-  font-size: var(--font-size-xs);
+  margin: 0 0 6px;
+  padding: 0 12px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
   font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--letter-spacing-wide);
+  letter-spacing: var(--cs-ls-eyebrow);
   text-transform: uppercase;
   color: var(--color-text-nav-group);
 }
@@ -160,18 +167,20 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  height: 40px;
-  margin: 0 var(--space-2);
-  padding: 0 var(--space-3);
+  gap: 11px;
+  height: var(--cs-nav-item-h);
+  padding: 0 11px;
   border-radius: var(--radius-md);
   color: var(--color-text-secondary);
   text-decoration: none;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
   font-weight: var(--font-weight-medium);
+  letter-spacing: var(--cs-ls-nav);
   transition:
     background-color var(--transition-fast),
-    color var(--transition-fast);
+    color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .navLink:hover {
@@ -184,23 +193,14 @@
   outline-offset: -2px;
 }
 
+/* Active: primary-tinted wash + a full-height inset accent bar on the inner
+   left edge (non-colour cue → WCAG 1.4.1). Replaces the prior ::before pill;
+   the inset bar hugs the left edge in both expanded and rail modes. */
 .navLinkActive {
   color: var(--color-nav-active-fg);
   background-color: var(--color-nav-active-bg);
   font-weight: var(--font-weight-semibold);
-}
-
-/* Non-colour active cue: a rounded vertical accent bar on the inner-left.
-   Preserves WCAG 1.4.1 (colour is not the sole signal). */
-.navLinkActive::before {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 20%;
-  height: 60%;
-  width: 3px;
-  border-radius: var(--radius-full);
-  background-color: var(--color-primary);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .navIcon {
@@ -217,8 +217,11 @@
 
 .sidebarFooter {
   margin-top: auto;
-  padding-top: var(--space-2);
+  padding-top: 10px;
   border-top: 1px solid var(--color-border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /* ── Content wrapper ── */
@@ -233,15 +236,16 @@
   transition: margin-left var(--transition-base);
 }
 
-/* ── Header bar ── */
+/* ── Command strip header (B2) ── */
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 56px;
-  padding: 0 var(--space-6);
-  background-color: var(--color-surface-primary);
+  gap: 14px;
+  height: var(--cs-chrome-h);
+  padding: 0 18px;
+  background-color: var(--color-surface-secondary);
   border-bottom: 1px solid var(--color-border-default);
   position: sticky;
   top: 0;
@@ -251,30 +255,173 @@
 .headerLeft {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 14px;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
 .headerRight {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  justify-content: flex-end;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
 }
 
 .sectionTitle {
-  font-size: var(--font-size-base);
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-12);
+  letter-spacing: var(--cs-ls-section);
+  text-transform: uppercase;
   color: var(--color-text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* ── Main ── */
+.divider {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border-default);
+  flex: none;
+}
 
+.localPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--cs-fs-10-5);
+  letter-spacing: var(--cs-ls-btn);
+  color: var(--color-status-normal);
+  white-space: nowrap;
+}
+
+.pulseDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-status-normal);
+  flex: none;
+  animation: sd-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulseDot {
+    animation: none;
+  }
+}
+
+.coverage {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Import button (B4) ── */
+
+.importBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: #fff;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-nav);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast);
+}
+
+.importBtn:hover {
+  background: var(--color-primary-hover);
+}
+
+.importBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Running: bordered / tinted variant with the spinner + percent. box-sizing
+   keeps the 30px height stable despite the added 1px border. */
+.importBtnRunning {
+  gap: 7px;
+  border: 1px solid var(--color-primary);
+  background: var(--color-nav-active-bg);
+  color: var(--color-primary);
+}
+
+.importSpinner {
+  display: inline-flex;
+}
+
+.importPct {
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── ⌘K palette trigger (B5) ── */
+
+.paletteTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.paletteTrigger:hover {
+  border-color: var(--color-border-emphasis);
+  color: var(--color-text-primary);
+}
+
+.paletteTrigger:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.paletteTriggerIcon {
+  flex: none;
+}
+
+.keyChip {
+  composes: keyChip from '../../styles/commandSurface.module.css';
+}
+
+/* ── Main deck ── */
+/* Full-bleed: no max-width cap (spec Part C "Shell"). */
 .main {
   flex: 1;
-  padding: var(--space-6);
+  padding: var(--cs-deck-pad);
+  background: var(--color-surface-primary);
   min-width: 0;
 }
 
@@ -291,6 +438,7 @@
   background: transparent;
   color: var(--color-text-primary);
   cursor: pointer;
+  flex: none;
   transition: background-color var(--transition-fast);
 }
 
@@ -308,40 +456,39 @@
 }
 
 /* ── Rail toggle (desktop-only, pinned in the sidebar footer) ──
-   Reuses the .menuToggle visual language but renders as a full-width row in
-   expanded mode (icon + "Collapse" label, like a navLink) and a centered
-   square in rail mode. Hidden below 768px so it never coexists with the
-   mobile hamburger. */
+   Same geometry as a nav item (38px, gap 11, padding 0 11, radius 6). Hidden
+   below 768px so it never coexists with the mobile hamburger. */
 
 .railToggle {
   display: none;
+}
+
+.railToggleGlyph {
+  font-size: 15px;
+  line-height: 1;
+  color: var(--color-text-secondary);
+  flex: none;
+}
+
+.railToggleLabel {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-secondary);
 }
 
 @media (min-width: 768px) {
   .railToggle {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
-    /* Match the nav links' full-width hit area. Nav links fill their <li>
-       (the nav content box) and inset themselves with a symmetric
-       `margin: 0 var(--space-2)`. The toggle is a direct <button> child of the
-       footer, so it must stretch to the same box explicitly: full width minus
-       the same horizontal margin, with border-box so padding+border stay inside
-       the computed width (no overflow). This makes the entire row clickable,
-       not just the icon + label. */
+    gap: 11px;
     box-sizing: border-box;
-    width: calc(100% - 2 * var(--space-2));
-    /* ≥36px desktop floor */
-    height: 40px;
-    margin: 0 var(--space-2);
-    padding: 0 var(--space-3);
+    width: 100%;
+    height: var(--cs-nav-item-h);
+    padding: 0 11px;
     border: none;
     border-radius: var(--radius-md);
     background: transparent;
-    color: var(--color-text-primary);
     cursor: pointer;
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
     text-align: left;
     transition: background-color var(--transition-fast);
   }
@@ -352,11 +499,7 @@
 
   .railToggle:focus-visible {
     outline: 2px solid var(--color-focus-ring);
-    outline-offset: 2px;
-  }
-
-  .railToggleIcon {
-    flex-shrink: 0;
+    outline-offset: -2px;
   }
 }
 
@@ -381,21 +524,18 @@
     padding: 0;
   }
 
+  .sidebarRail .brand {
+    gap: 0;
+    justify-content: center;
+  }
+
   .sidebarRail .wordmark {
     display: none;
   }
 
   /* Nav + footer links become icon-only rows with the icon centered in the
-     narrow rail. We deliberately KEEP the expanded geometry that affects an
-     icon's position — same 40px height, same vertical rhythm — and only change
-     what's needed for icon-only mode:
-       • drop the horizontal margin/padding and let the link fill the nav
-         content box so `justify-content: center` centers the icon within the
-         full rail width (a fixed 48px width inside the ~48px content box left no
-         room for `margin: 0 auto` to act, so the icon read as left-of-centre
-         once the accent bar / box rounding shifted it);
-       • collapse the icon↔label gap to 0 (the label itself is hidden below).
-     Height stays 40px so the icon's vertical centre does not move on toggle. */
+     narrow rail. Height stays 38px so the icon's vertical centre does not move
+     on toggle; only the horizontal box/padding/gap collapse. */
   .sidebarRail .navLink {
     width: 100%;
     margin: 0;
@@ -404,40 +544,22 @@
     justify-content: center;
   }
 
-  /* Hidden from sight AND the a11y tree, but its box is gone (display:none) — the
-     accessible name is provided by the aria-label on the link in rail mode. */
+  /* Hidden from sight AND the a11y tree (display:none); the accessible name is
+     provided by the aria-label on the link in rail mode. */
   .sidebarRail .navLabel {
     display: none;
   }
 
-  /* Active accent bar hugs the rail's left edge for centered icons. */
-  .sidebarRail .navLinkActive::before {
-    left: 0;
-    top: 50%;
-    transform: translateY(-50%);
-    height: 24px;
-    width: 3px;
-  }
-
-  /* Group labels lose their text but KEEP their box (visibility:hidden, not
-     display:none). Reserving the label's height means every icon below it stays
-     at exactly the same vertical position as in the expanded sidebar, so nothing
-     "jumps up" on collapse. The label is already aria-hidden, so reserving the
-     space has no a11y cost. The reserved label box also separates the groups, so
-     no extra divider is needed (a divider would re-introduce vertical offset). */
+  /* Group labels lose their text but KEEP their box (visibility:hidden) so every
+     icon below stays at the same vertical position as when expanded. Already
+     aria-hidden, so reserving the space has no a11y cost. */
   .sidebarRail .navGroupLabel {
     visibility: hidden;
-    /* The label keeps its box to preserve vertical rhythm, but in the narrow
-       rail its text would otherwise wrap to multiple lines and inflate the box
-       height (pushing every icon below it down). Pin it to a single line and
-       clip the overflow so the reserved height stays identical to expanded. */
     white-space: nowrap;
     overflow: hidden;
   }
 
-  /* Rail toggle: icon-only row, full width with the icon centered (matching the
-     nav links), text label hidden. Same 40px height as expanded so it does not
-     shift vertically either. */
+  /* Rail toggle: icon-only, centered, same 38px height. */
   .sidebarRail .railToggle {
     width: 100%;
     margin: 0;
@@ -471,6 +593,35 @@
     /* ≥44px touch target on mobile (WCAG 2.5.5) */
     width: 44px;
     height: 44px;
+  }
+
+  /* Let the section title shrink/ellipsize as a safety net so the header
+     actions stay intact on the narrowest phones. */
+  .headerLeft {
+    flex: 1 1 auto;
+  }
+
+  .headerRight {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .sectionTitle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Mobile (= off-canvas drawer mode) keeps only the essentials in the strip so
+     the hamburger + section title stay reachable: the privacy pill, divider,
+     coverage and ⌘K trigger yield space to Import + theme. The LOCAL/NO-UPLOAD
+     promise is also stated in the status bar and import flow. The window toggle
+     hides itself (WindowToggle.module.css). NOTE(ux): a mobile overflow menu for
+     the dropped controls is deferred to ux. */
+  .divider,
+  .localPill,
+  .coverage,
+  .paletteTrigger {
+    display: none;
   }
 
   .overlay {

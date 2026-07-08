@@ -2,25 +2,42 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   type MouseEvent,
   type ReactNode,
   type TransitionEvent,
 } from 'react';
-import { NavLink, Outlet, useLocation, useMatch } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router-dom';
 import { useThemeEffect } from '@/hooks/useTheme';
 import { useURLStateSync } from '@/hooks/useURLState';
+import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 import { RouteErrorBoundary } from '@/components/errors';
 import { InsightDrawer } from '@/components/insights';
 import { ImportStatusDock, ImportToastProvider } from '@/components/import';
+import { CommandPalette } from '@/components/CommandPalette';
 import { Tooltip, TooltipProvider, Icon, type IconName } from '@/components/ui';
 import { useAppStore } from '@/stores/useAppStore';
 import { StatusBar } from './StatusBar';
 import { ThemeMenu } from './ThemeMenu';
+import { WindowToggle } from './WindowToggle';
 import styles from './RootLayout.module.css';
 
 /** Desktop breakpoint at which the rail (collapse) behaviour is available. */
 const DESKTOP_MEDIA_QUERY = '(min-width: 768px)';
+
+/** ⌘ on Apple platforms, Ctrl elsewhere — labels the ⌘K trigger chip. */
+const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);
+
+/** Short month/day label, e.g. "Jul 5". Mirrors SignalDeck's coverage format. */
+function shortDate(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/** Short month/day/year label, e.g. "Jul 5, 2025" (used when a range spans years). */
+function shortDateY(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 /**
  * Conditionally wraps a sidebar item in a right-anchored tooltip. In rail mode
@@ -125,7 +142,7 @@ function NavItemLink({
         // mode relies on the visible `.navLabel` text instead.
         aria-label={isRail ? item.label : undefined}
       >
-        <Icon name={item.icon} size="lg" className={styles.navIcon} />
+        <Icon name={item.icon} size="md" className={styles.navIcon} />
         <span className={styles.navLabel}>{item.label}</span>
       </NavLink>
     </RailTooltip>
@@ -164,6 +181,7 @@ export default function RootLayout() {
   useThemeEffect();
 
   const location = useLocation();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Desktop rail (collapsed) preference — persisted in the app store. On <768px
@@ -171,6 +189,18 @@ export default function RootLayout() {
   // query); the mobile off-canvas drawer is driven by `sidebarOpen` instead.
   const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed);
   const toggleSidebarCollapsed = useAppStore((state) => state.toggleSidebarCollapsed);
+
+  // Global date range — the coverage label mirrors it. The header window toggle
+  // (WindowToggle) is the single global control that writes it.
+  const dateRange = useAppStore((state) => state.dateRange);
+  const { aggregates } = useNightlyAggregates(dateRange);
+
+  // Import affordance state (header Import button).
+  const importStatus = useAppStore((state) => state.importStatus);
+  const importProgress = useAppStore((state) => state.importProgress);
+
+  // Command palette open state (ephemeral).
+  const setCommandPaletteOpen = useAppStore((state) => state.setCommandPaletteOpen);
 
   const sidebarRef = useRef<HTMLElement>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
@@ -191,6 +221,26 @@ export default function RootLayout() {
   }, []);
 
   const sectionTitle = sectionTitleFor(location.pathname);
+
+  // Coverage label — the window's date span plus the count of imported nights
+  // inside it (reuses SignalDeck's coverage pattern). Hidden when the window
+  // holds no nights, so an empty corpus shows no phantom range.
+  const coverageLabel = useMemo(() => {
+    if (aggregates.length === 0) return null;
+    const spanYears = dateRange.start.getFullYear() !== dateRange.end.getFullYear();
+    const fmt = spanYears ? shortDateY : shortDate;
+    return `${fmt(dateRange.start)} – ${fmt(dateRange.end)} · ${aggregates.length} nights`;
+  }, [dateRange, aggregates.length]);
+
+  const importRunning = importStatus === 'scanning' || importStatus === 'importing';
+  const importPct =
+    importProgress.total > 0
+      ? Math.round((importProgress.current / importProgress.total) * 100)
+      : 0;
+  // NOTE(import): the Import restyle wave may convert this to a header-launched
+  // modal. Keep this single open action easy to rewire — it is the only place
+  // the button decides what to open.
+  const openImport = useCallback(() => navigate('/data/import'), [navigate]);
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((prev) => !prev);
@@ -280,6 +330,37 @@ export default function RootLayout() {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleRailToggle]);
+
+  // Keyboard shortcut: ⌘K / Ctrl+K toggles the command palette. Mirrors the `[`
+  // handler's text-entry guard so it never hijacks typing (incl. the palette's
+  // own combobox — Esc closes that).
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.altKey || !(event.metaKey || event.ctrlKey)) return;
+      if (event.key.toLowerCase() !== 'k') return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        const role = target.getAttribute('role');
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          target.isContentEditable ||
+          role === 'textbox' ||
+          role === 'combobox'
+        ) {
+          return;
+        }
+      }
+
+      event.preventDefault();
+      setCommandPaletteOpen(!useAppStore.getState().commandPaletteOpen);
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [setCommandPaletteOpen]);
 
   // Desktop rail is active only when the preference is set; mobile drawer state
   // is independent. The CSS gates rail styling to ≥768px, so applying the class
@@ -376,10 +457,11 @@ export default function RootLayout() {
                   aria-label="CPAP Analyzer — go to Dashboard"
                   onClick={closeSidebar}
                 >
-                  <Icon name="brand" size="lg" className={styles.brandMark} />
+                  <span className={styles.brandMark} aria-hidden="true">
+                    <Icon name="brand" style={{ width: '18px', height: '18px' }} />
+                  </span>
                   <span className={styles.wordmark} aria-hidden="true">
-                    <span className={styles.wordmarkPrimary}>CPAP</span>
-                    <span className={styles.wordmarkSecondary}>Analyzer</span>
+                    CPAP<span className={styles.wordmarkSlash}>//</span>ANALYZER
                   </span>
                   {/* Contiguous text for screen readers and text-based selectors;
                     the visible wordmark above is split for two-tone styling and
@@ -430,14 +512,12 @@ export default function RootLayout() {
                     aria-pressed={isRail}
                     aria-label={isRail ? 'Expand sidebar' : 'Collapse sidebar'}
                   >
-                    {/* Swap the icon by state (no CSS rotation): chevron points
-                      left when expanded (collapse-ward) and right when in rail
-                      (expand-ward). */}
-                    <Icon
-                      name={isRail ? 'chevron-right' : 'chevron-left'}
-                      size="md"
-                      className={styles.railToggleIcon}
-                    />
+                    {/* Guillemet points inward (collapse-ward «) when expanded and
+                      outward (expand-ward ») in the rail. Decorative — the button's
+                      aria-label carries the accessible name. */}
+                    <span className={styles.railToggleGlyph} aria-hidden="true">
+                      {isRail ? '»' : '«'}
+                    </span>
                     <span className={styles.railToggleLabel}>Collapse</span>
                   </button>
                 </RailTooltip>
@@ -464,9 +544,61 @@ export default function RootLayout() {
                 <span className={styles.sectionTitle} aria-live="polite">
                   {sectionTitle}
                 </span>
+                <span className={styles.divider} aria-hidden="true" />
+                {/* Privacy promise — exact copy. The pulsing dot is decorative
+                  (reduced-motion stops the pulse); the literal text carries it. */}
+                <span className={styles.localPill}>
+                  <span className={styles.pulseDot} aria-hidden="true" />
+                  LOCAL · NO UPLOAD
+                </span>
               </div>
+
               <div className={styles.headerRight}>
-                <ThemeMenu />
+                {coverageLabel && <span className={styles.coverage}>{coverageLabel}</span>}
+                <div className={styles.headerActions}>
+                  <button
+                    type="button"
+                    className={`${styles.importBtn} ${importRunning ? styles.importBtnRunning : ''}`}
+                    onClick={openImport}
+                    aria-label={
+                      importRunning ? 'Import in progress — open details' : 'Import therapy data'
+                    }
+                  >
+                    {importRunning ? (
+                      <>
+                        <span className={`imp-spin ${styles.importSpinner}`} aria-hidden="true">
+                          <Icon name="spinner" style={{ width: '13px', height: '13px' }} />
+                        </span>
+                        <span>Importing</span>
+                        <span className={styles.importPct}>{importPct}%</span>
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="import" style={{ width: '14px', height: '14px' }} />
+                        <span>Import</span>
+                      </>
+                    )}
+                  </button>
+
+                  <WindowToggle />
+
+                  <button
+                    type="button"
+                    className={styles.paletteTrigger}
+                    onClick={() => setCommandPaletteOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-label="Open command palette"
+                  >
+                    <Icon
+                      name="search"
+                      style={{ width: '13px', height: '13px' }}
+                      className={styles.paletteTriggerIcon}
+                    />
+                    <span className={styles.keyChip}>{IS_MAC ? '⌘K' : 'Ctrl K'}</span>
+                  </button>
+
+                  <ThemeMenu />
+                </div>
               </div>
             </header>
             <main id="main-content" className={styles.main} ref={mainRef} tabIndex={-1}>
@@ -485,6 +617,9 @@ export default function RootLayout() {
             navigation. Renders nothing unless an import is active or terminal
             and not yet dismissed. Sibling of StatusBar / InsightDrawer. */}
           <ImportStatusDock />
+
+          {/* ⌘K command palette — modal overlay, renders nothing unless open. */}
+          <CommandPalette />
         </div>
       </ImportToastProvider>
     </TooltipProvider>

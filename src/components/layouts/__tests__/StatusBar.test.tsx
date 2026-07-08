@@ -143,22 +143,23 @@ describe('StatusBar', () => {
       expect(meter.textContent).toMatch(/10%/);
     });
 
-    it('applies the warning tone with a visible percentage at >= 80% usage', async () => {
+    it('applies the mild tone with a visible percentage at >= 80% usage', async () => {
       getQuotaEstimate.mockResolvedValue(quota(8_200_000, 10_000_000)); // 82%
       const { container } = render(<StatusBar />);
       await screen.findByText(/82%/);
-      // The fill element carries a CSS-module tone class; assert a warning-ish
-      // class is present rather than the exact hashed name.
+      // The fill element carries a CSS-module tone class; assert the clinical
+      // status tone (spec B7 retones primary/warning/error → normal/mild/severe)
+      // rather than the exact hashed name.
       const fill = container.querySelector('[class*="meterFill"]');
-      expect(fill?.className).toMatch(/meterWarning/i);
+      expect(fill?.className).toMatch(/meterMild/i);
     });
 
-    it('applies the error tone with a visible percentage at >= 95% usage', async () => {
+    it('applies the severe tone with a visible percentage at >= 95% usage', async () => {
       getQuotaEstimate.mockResolvedValue(quota(9_700_000, 10_000_000)); // 97%
       const { container } = render(<StatusBar />);
       await screen.findByText(/97%/);
       const fill = container.querySelector('[class*="meterFill"]');
-      expect(fill?.className).toMatch(/meterError/i);
+      expect(fill?.className).toMatch(/meterSevere/i);
     });
 
     it('uses the normal tone below 80% usage', async () => {

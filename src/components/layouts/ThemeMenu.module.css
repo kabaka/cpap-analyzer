@@ -1,21 +1,22 @@
+/* Theme trigger — 30×30 bordered command-surface icon button (spec B6). */
 .trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
-  background: transparent;
+  background: var(--color-surface-primary);
   color: var(--color-text-secondary);
   cursor: pointer;
   transition:
-    background-color var(--transition-fast),
+    border-color var(--transition-fast),
     color var(--transition-fast);
 }
 
 .trigger:hover {
-  background-color: var(--color-surface-tertiary);
+  border-color: var(--color-border-emphasis);
   color: var(--color-text-primary);
 }
 
@@ -32,11 +33,12 @@
   }
 }
 
+/* Dropdown panel — command surface. */
 .content {
   min-width: 180px;
   background-color: var(--color-surface-elevated);
   border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: var(--space-1);
   z-index: var(--z-dropdown);
@@ -48,8 +50,8 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  font-family: var(--font-family-sans);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-primary);
   border-radius: var(--radius-sm);
   cursor: pointer;
@@ -60,9 +62,10 @@
   line-height: var(--line-height-normal);
 }
 
+/* Subtle command-surface highlight (keyboard/hover), not a primary fill. */
 .item[data-highlighted] {
-  background-color: var(--color-primary);
-  color: var(--color-text-inverse);
+  background-color: var(--color-surface-tertiary);
+  color: var(--color-text-primary);
 }
 
 .itemIcon {
@@ -80,11 +83,6 @@
   color: var(--color-text-muted);
 }
 
-.item[data-highlighted] .itemHint {
-  color: var(--color-text-inverse);
-  opacity: 0.8;
-}
-
 .indicator {
   display: inline-flex;
   align-items: center;
@@ -93,15 +91,13 @@
   flex-shrink: 0;
 }
 
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-full);
-  background-color: var(--color-primary);
-}
-
-.item[data-highlighted] .dot {
-  background-color: var(--color-text-inverse);
+/* Selected-row cue: a check glyph. Its PRESENCE (not the colour) carries the
+   selected state, so it survives grayscale / high-contrast (WCAG 1.4.1). */
+.check {
+  font-size: 13px;
+  line-height: 1;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
 }
 
 @keyframes themeMenuIn {

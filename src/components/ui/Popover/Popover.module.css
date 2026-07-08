@@ -8,6 +8,13 @@
   animation: fadeIn var(--transition-fast) ease-out;
 }
 
+/* Raise above sticky chrome (header at --z-sticky). Declared AFTER `.content`
+   in the same file so its z-index wins the equal-specificity cascade when both
+   classes are applied (opt-in via the Popover `elevated` prop). */
+.contentElevated {
+  z-index: var(--z-overlay);
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

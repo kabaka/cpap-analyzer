@@ -31,3 +31,22 @@
     transform: scale(0.8);
   }
 }
+
+/* Continuous rotation for the header Import button's running-state spinner and
+   any inline progress spinner. Apply via the `.imp-spin` helper below. Consumers
+   still guard reduced motion at the call site; the helper's own guard is here. */
+@keyframes imp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.imp-spin {
+  animation: imp-spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .imp-spin {
+    animation: none;
+  }
+}

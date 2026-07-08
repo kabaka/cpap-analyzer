@@ -83,10 +83,13 @@ export function SegmentedControl<V extends string>({
   const groupId = useId();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  const selectedIndex = Math.max(
-    0,
-    options.findIndex((o) => o.value === value),
-  );
+  // `selectedIndex` is -1 when `value` matches no option — a deliberate
+  // "no selection" state (e.g. the header window toggle when a Custom range is
+  // active, so no preset segment should read as selected). A radiogroup with no
+  // checked radio is valid ARIA. When nothing is selected the FIRST segment
+  // becomes the keyboard tab-stop so the group stays reachable.
+  const selectedIndex = options.findIndex((o) => o.value === value);
+  const hasSelection = selectedIndex >= 0;
 
   const focusAndSelect = useCallback(
     (index: number) => {
@@ -162,6 +165,9 @@ export function SegmentedControl<V extends string>({
     >
       {options.map((option, index) => {
         const checked = index === selectedIndex;
+        // Roving tabindex: the selected segment is the tab-stop; when nothing is
+        // selected the first segment holds it so the group is still tabbable.
+        const isTabStop = hasSelection ? checked : index === 0;
         return (
           <button
             key={option.value}
@@ -173,7 +179,7 @@ export function SegmentedControl<V extends string>({
             id={`${groupId}-${option.value}`}
             aria-checked={checked}
             aria-label={option.ariaLabel ?? option.label}
-            tabIndex={disabled ? -1 : checked ? 0 : -1}
+            tabIndex={disabled ? -1 : isTabStop ? 0 : -1}
             disabled={disabled}
             className={`${segmentClass} ${checked ? selectedClass : ''}`}
             onClick={() => focusAndSelect(index)}

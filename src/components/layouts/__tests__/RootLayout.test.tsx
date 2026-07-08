@@ -95,15 +95,16 @@ function getRailToggle() {
   return screen.getByRole('button', { name: /(Collapse|Expand) sidebar/ });
 }
 
-/** The polyline `points` of the chevron icon inside the rail toggle button. */
-function toggleIconPoints(): string | null {
-  const polyline = getRailToggle().querySelector('polyline');
-  return polyline?.getAttribute('points') ?? null;
+/** The decorative collapse/expand glyph inside the rail toggle button. */
+function toggleGlyph(): string | null {
+  const glyph = getRailToggle().querySelector('span[aria-hidden="true"]');
+  return glyph?.textContent ?? null;
 }
 
-// Chevron path data from the Icon component (Icon.tsx PATHS map).
-const CHEVRON_LEFT = '15 5 8 12 15 19';
-const CHEVRON_RIGHT = '9 5 16 12 9 19';
+// Guillemet glyphs from the rail toggle (spec B1): « invites collapsing when
+// expanded, » invites expanding when in the rail.
+const GLYPH_EXPANDED = '«';
+const GLYPH_COLLAPSED = '»';
 
 describe('RootLayout', () => {
   beforeEach(() => {
@@ -121,22 +122,22 @@ describe('RootLayout', () => {
   });
 
   describe('rail toggle button', () => {
-    it('renders expanded: aria-pressed=false, "Collapse sidebar", chevron-left', () => {
+    it('renders expanded: aria-pressed=false, "Collapse sidebar", « glyph', () => {
       renderLayout();
       const toggle = getRailToggle();
       expect(toggle).toHaveAttribute('aria-pressed', 'false');
       expect(toggle).toHaveAccessibleName('Collapse sidebar');
       expect(toggle).toHaveAttribute('type', 'button');
-      expect(toggleIconPoints()).toBe(CHEVRON_LEFT);
+      expect(toggleGlyph()).toBe(GLYPH_EXPANDED);
     });
 
-    it('renders collapsed: aria-pressed=true, "Expand sidebar", chevron-right', () => {
+    it('renders collapsed: aria-pressed=true, "Expand sidebar", » glyph', () => {
       useAppStore.setState({ sidebarCollapsed: true });
       renderLayout();
       const toggle = getRailToggle();
       expect(toggle).toHaveAttribute('aria-pressed', 'true');
       expect(toggle).toHaveAccessibleName('Expand sidebar');
-      expect(toggleIconPoints()).toBe(CHEVRON_RIGHT);
+      expect(toggleGlyph()).toBe(GLYPH_COLLAPSED);
     });
 
     it('reflects external store changes in aria-pressed and label', async () => {
@@ -161,7 +162,7 @@ describe('RootLayout', () => {
         expect(getRailToggle()).toHaveAttribute('aria-pressed', 'true');
       });
       expect(getRailToggle()).toHaveAccessibleName('Expand sidebar');
-      expect(toggleIconPoints()).toBe(CHEVRON_RIGHT);
+      expect(toggleGlyph()).toBe(GLYPH_COLLAPSED);
       expect(useAppStore.getState().sidebarCollapsed).toBe(true);
 
       await user.click(getRailToggle());
@@ -169,7 +170,7 @@ describe('RootLayout', () => {
         expect(getRailToggle()).toHaveAttribute('aria-pressed', 'false');
       });
       expect(getRailToggle()).toHaveAccessibleName('Collapse sidebar');
-      expect(toggleIconPoints()).toBe(CHEVRON_LEFT);
+      expect(toggleGlyph()).toBe(GLYPH_EXPANDED);
       expect(useAppStore.getState().sidebarCollapsed).toBe(false);
     });
   });
