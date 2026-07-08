@@ -1,29 +1,15 @@
 /* Shared styling for the three distribution panels (histogram / box / event mix). */
 
 .panel {
-  background: var(--color-surface-secondary);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 15px 16px;
-  min-width: 0;
+  composes: panel from '../../../styles/commandSurface.module.css';
 }
 
 .title {
-  font-family: var(--font-family-mono);
-  font-weight: var(--font-weight-semibold);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: var(--color-text-primary);
-  text-transform: uppercase;
-  margin: 0 0 2px;
+  composes: panelTitle from '../../../styles/commandSurface.module.css';
 }
 
 .subtitle {
-  font-family: var(--font-family-mono);
-  font-weight: var(--font-weight-medium);
-  font-size: 10px;
-  color: var(--color-text-muted);
-  margin: 0 0 10px;
+  composes: panelSub from '../../../styles/commandSurface.module.css';
 }
 
 .chart {

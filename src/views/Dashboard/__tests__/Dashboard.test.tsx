@@ -179,8 +179,16 @@ describe('Dashboard', () => {
 
     render(<Dashboard />);
 
-    // Exactly one real <h1> named "Dashboard".
+    // Exactly one real <h1> named "Dashboard". It is now visually hidden (the
+    // shell's command strip renders the visible "DASHBOARD" section title), but
+    // stays in the a11y tree so getByRole('heading') still resolves it.
     expect(screen.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();
+
+    // The deck no longer renders its old terminal header — the shell owns the
+    // LOCAL·NO UPLOAD badge and the analysis-window toggle now.
+    expect(screen.queryByText(/LOCAL.*NO UPLOAD/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Last 30 days' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Last 90 days' })).not.toBeInTheDocument();
 
     // Key deck panels are present (assert by accessible heading name).
     expect(screen.getByRole('heading', { name: 'Signal small-multiples' })).toBeInTheDocument();
@@ -258,7 +266,7 @@ describe('Dashboard', () => {
 
     render(<Dashboard />);
 
-    // The deck header (with the <h1>) renders; the empty-state CTA does not.
+    // The visually-hidden <h1> renders even while loading; the empty-state CTA does not.
     expect(screen.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /import your data/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'CPAP Analyzer' })).not.toBeInTheDocument();
