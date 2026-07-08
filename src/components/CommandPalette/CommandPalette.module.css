@@ -111,3 +111,134 @@
 .keyChip {
   composes: keyChip from '../../styles/commandSurface.module.css';
 }
+
+/* ── Live region (visually hidden) ── */
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Section header ── */
+
+.sectionHeader {
+  composes: eyebrow from '../../styles/commandSurface.module.css';
+  display: block;
+  padding: 8px 12px 4px;
+}
+
+/* Non-interactive presentation rows (loading / no-result / empty section). */
+.infoRow {
+  padding: 6px 12px 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  color: var(--color-text-muted);
+}
+
+/* ── Result row ── */
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-primary);
+}
+
+/* Active/selected row — deliberately the sidebar active-item language:
+   translucent primary wash + a 2px inset primary accent. Mouse hover sets the
+   active row, so hover and keyboard cursor share one visual. */
+.optionActive {
+  background: var(--color-nav-active-bg);
+  box-shadow: inset 2px 0 0 var(--color-primary);
+  color: var(--color-nav-active-fg);
+}
+
+.optionIconSlot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  color: var(--color-text-secondary);
+}
+.optionActive .optionIconSlot {
+  color: var(--color-nav-active-fg);
+}
+
+.optionMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.optionLabel {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  font-weight: var(--font-weight-medium);
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.optionSub {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Match highlight — colour + weight (not colour alone). On the active row the
+   colour folds to the readable active foreground; the bold weight still carries
+   the match cue so contrast on the wash is preserved (spec Part D/E). */
+.match {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-bold);
+}
+.optionActive .match {
+  color: inherit;
+}
+
+/* Right-hand "Current" tag (e.g. the active theme / window preset). */
+.optionTag {
+  flex: none;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-btn);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* ── Empty state ── */
+
+.empty {
+  padding: 32px 16px;
+  text-align: center;
+}
+.emptyPrimary {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  color: var(--color-text-muted);
+}
+.emptyHint {
+  margin: 6px 0 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  color: var(--color-text-muted);
+}
