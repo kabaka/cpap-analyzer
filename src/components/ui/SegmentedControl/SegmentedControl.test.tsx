@@ -102,3 +102,76 @@ describe('SegmentedControl', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 });
+
+type Win = '7d' | '30d' | '90d';
+
+const WINDOWS: SegmentedControlOption<Win>[] = [
+  { value: '7d', label: '7D', ariaLabel: '7 days' },
+  { value: '30d', label: '30D', ariaLabel: '30 days' },
+  { value: '90d', label: '90D', ariaLabel: '90 days' },
+];
+
+/** Controlled harness for the command-surface `solid` + `sm` variant. */
+function SolidHarness({
+  onChange,
+  tone,
+}: {
+  onChange?: (v: Win) => void;
+  tone?: 'primary' | 'ai';
+}) {
+  const [value, setValue] = useState<Win>('30d');
+  return (
+    <SegmentedControl
+      label="Time window"
+      options={WINDOWS}
+      value={value}
+      variant="solid"
+      size="sm"
+      tone={tone}
+      onChange={(v) => {
+        setValue(v);
+        onChange?.(v);
+      }}
+    />
+  );
+}
+
+describe('SegmentedControl — solid + sm variant', () => {
+  it('renders the filled selected segment and preserves radiogroup semantics', () => {
+    render(<SolidHarness />);
+
+    // Radiogroup semantics are unchanged from the default variant.
+    const group = screen.getByRole('radiogroup', { name: 'Time window' });
+    expect(group.className).toContain('groupSolid');
+
+    const selected = screen.getByRole('radio', { name: '30 days' });
+    const unselected = screen.getByRole('radio', { name: '7 days' });
+
+    // The filled cue: the selected segment (and only it) carries the solid-fill
+    // class on top of the small segment base — a presence cue, not colour alone.
+    expect(selected.className).toContain('segmentSm');
+    expect(selected.className).toContain('selectedSolid');
+    expect(unselected.className).toContain('segmentSm');
+    expect(unselected.className).not.toContain('selectedSolid');
+
+    // aria-checked + roving tabindex intact.
+    expect(selected).toHaveAttribute('aria-checked', 'true');
+    expect(selected).toHaveAttribute('tabindex', '0');
+    expect(unselected).toHaveAttribute('aria-checked', 'false');
+    expect(unselected).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('keeps arrow-key roving selection in the solid variant', () => {
+    const onChange = vi.fn();
+    render(<SolidHarness onChange={onChange} />);
+
+    fireEvent.keyDown(screen.getByRole('radio', { name: '30 days' }), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenLastCalledWith('90d');
+    expect(screen.getByRole('radio', { name: '90 days' }).className).toContain('selectedSolid');
+  });
+
+  it('applies the AI accent hook when tone="ai"', () => {
+    render(<SolidHarness tone="ai" />);
+    expect(screen.getByRole('radiogroup', { name: 'Time window' }).className).toContain('toneAi');
+  });
+});

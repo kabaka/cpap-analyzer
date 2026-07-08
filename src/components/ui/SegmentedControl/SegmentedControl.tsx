@@ -7,11 +7,17 @@
  * - Roving tabindex: only the selected (or first) segment is in the tab order;
  *   Arrow keys move selection between segments (wrapping), Home/End jump to the
  *   ends, Space/Enter re-selects the focused segment.
- * - The selected segment carries a 2px `--color-primary` bottom border as the
- *   NON-COLOUR selected cue (survives grayscale), plus an elevated surface — so
- *   selection is never conveyed by colour alone (WCAG 1.4.1).
  * - Per-segment `aria-label` (the full, spelled-out unit name) so screen-reader
  *   users hear "Celsius", not "C".
+ *
+ * Two visual variants, both keeping a NON-COLOUR selected cue (WCAG 1.4.1):
+ * - `underline` (default): 2px `--color-primary` bottom border + elevated
+ *   surface. The original look; unchanged.
+ * - `solid` (command surface): the selected segment is the ONLY one with a
+ *   filled background — a presence/absence cue, not a hue cue. Pairs with the
+ *   `sm` size for the dense header window/list toggles. The `tone` prop swaps
+ *   the fill accent to `--color-ai` for AI affordances (e.g. the backend
+ *   toggle) via the `--seg-accent` custom property.
  *
  * Generic over the option value type so callers keep their literal-union typing.
  *
@@ -45,6 +51,20 @@ export interface SegmentedControlProps<V extends string> {
   readonly onChange: (value: V) => void;
   /** Disable the whole control. */
   readonly disabled?: boolean;
+  /**
+   * Visual variant. `underline` (default) is the original elevated-surface +
+   * 2px bottom-border look; `solid` fills the selected segment (command
+   * surface). Both keep a non-colour selected cue.
+   */
+  readonly variant?: 'underline' | 'solid';
+  /** Segment sizing. `md` (default) or the dense `sm` used by command-surface chrome. */
+  readonly size?: 'md' | 'sm';
+  /**
+   * Accent for the `solid` selected fill. `primary` (default) uses
+   * `--color-primary`; `ai` uses `--color-ai` for AI affordances. No effect on
+   * the `underline` variant.
+   */
+  readonly tone?: 'primary' | 'ai';
   /** Optional class for the radiogroup wrapper. */
   readonly className?: string;
 }
@@ -55,6 +75,9 @@ export function SegmentedControl<V extends string>({
   value,
   onChange,
   disabled = false,
+  variant = 'underline',
+  size = 'md',
+  tone = 'primary',
   className,
 }: SegmentedControlProps<V>): JSX.Element {
   const groupId = useId();
@@ -117,7 +140,16 @@ export function SegmentedControl<V extends string>({
     [disabled, options, focusAndSelect],
   );
 
-  const wrapperClass = [styles.group, disabled ? styles.disabled : null, className]
+  const solid = variant === 'solid';
+  const segmentClass = size === 'sm' ? styles.segmentSm : styles.segment;
+  const selectedClass = solid ? styles.selectedSolid : styles.selected;
+
+  const wrapperClass = [
+    solid ? styles.groupSolid : styles.group,
+    tone === 'ai' ? styles.toneAi : null,
+    disabled ? styles.disabled : null,
+    className,
+  ]
     .filter(Boolean)
     .join(' ');
 
@@ -143,7 +175,7 @@ export function SegmentedControl<V extends string>({
             aria-label={option.ariaLabel ?? option.label}
             tabIndex={disabled ? -1 : checked ? 0 : -1}
             disabled={disabled}
-            className={`${styles.segment} ${checked ? styles.selected : ''}`}
+            className={`${segmentClass} ${checked ? selectedClass : ''}`}
             onClick={() => focusAndSelect(index)}
             onKeyDown={(e) => handleKeyDown(e, index)}
           >

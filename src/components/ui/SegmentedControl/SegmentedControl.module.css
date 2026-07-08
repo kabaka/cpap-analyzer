@@ -58,3 +58,59 @@
 .segment:disabled {
   cursor: not-allowed;
 }
+
+/* SOLID variant + SM size (command surface) ------------------------------- */
+/* The filled-selected treatment used by the header window / list / AI-backend
+   toggles (spec A8). Selection is conveyed by fill PRESENCE, not hue, so it
+   survives grayscale / high-contrast (WCAG 1.4.1). */
+.groupSolid {
+  display: inline-flex;
+  gap: 0;
+  padding: 2px;
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: 7px;
+  min-height: 0;
+}
+
+/* Accent hook: swaps the selected fill to the AI fuchsia for AI affordances.
+   --seg-accent inherits down to the segments; .selectedSolid reads it. */
+.toneAi {
+  --seg-accent: var(--color-ai);
+}
+
+.segmentSm {
+  min-width: 0;
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 5px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-10-5);
+  letter-spacing: var(--cs-ls-btn);
+  color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.segmentSm.selectedSolid {
+  background: var(--seg-accent, var(--color-primary));
+  color: #fff; /* on-primary white — verified AA for bold labels, spec Part D */
+}
+
+.segmentSm:hover:not(.selectedSolid):not(:disabled) {
+  color: var(--color-text-primary);
+}
+
+.segmentSm:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.segmentSm:disabled {
+  cursor: not-allowed;
+}

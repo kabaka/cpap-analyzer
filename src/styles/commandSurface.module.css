@@ -1,0 +1,302 @@
+/**
+ * COMMAND SURFACE — shared composable primitives.
+ *
+ * The single source of truth for the reusable shapes of the "Command Surface"
+ * visual refresh (spec Part A). Views consume these with the CSS-Modules
+ * `composes:` idiom rather than re-declaring the shapes locally — which is
+ * exactly how #83 (SignalDeck) and #84 (SessionDetail) drifted apart. Example:
+ *
+ *   .myPanel   { composes: panel from '../../styles/commandSurface.module.css'; }
+ *   .myTitle   { composes: panelTitle from '../../styles/commandSurface.module.css'; }
+ *
+ * Rules of the road:
+ *  - Every value is a design token (var(--…)), incl. the --cs-* micro-scale.
+ *    No raw hex lives here; raw lengths (px/em) are only used where the spec
+ *    pins an exact box metric or a display numeral (e.g. .kpiValue 20px).
+ *  - These are VISUAL atoms. Interactive consumers (buttons/links built from
+ *    .filterChip / .aiTrigger) own their :focus-visible ring at the control,
+ *    per spec Part E — kept out of the atoms so they stay presentation-only.
+ *  - Colour is never the sole signal (WCAG 1.4.1): AHI pills carry the numeral,
+ *    the ✨ glyph is decorative and the word "AI" carries the meaning, filter
+ *    chips pair a dot + aria-pressed, etc. Consumers preserve those cues.
+ *
+ * See design-refresh/COMMAND_SURFACE_SPEC.md Part A for the full rationale.
+ */
+
+/* A3 — Panel primitive ---------------------------------------------------- */
+/* The most-reused shape. surface-secondary + 1px border, NO box-shadow: card
+   separation is by surface value + border in both themes (spec Part D). */
+.panel {
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--cs-panel-pad);
+  min-width: 0;
+}
+
+/* Padding modifiers — compose ALONGSIDE .panel (e.g. `composes: panel panelPadHero`).
+   Declared after .panel so the modifier's padding wins the equal-specificity cascade. */
+.panelPadHero {
+  padding: 18px;
+}
+.panelPadCard {
+  padding: 14px 15px;
+}
+.panelPadTrend {
+  padding: 9px 12px 8px;
+}
+.panelPadKpi {
+  padding: 11px 13px;
+}
+
+/* A4 — Panel header / title ----------------------------------------------- */
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: 12px;
+}
+.panelTitle {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-title);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+}
+.panelSub {
+  margin: 2px 0 6px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-medium);
+  font-size: var(--cs-fs-10);
+  color: var(--color-text-muted);
+}
+
+/* A5 — Eyebrow / micro-label ---------------------------------------------- */
+/* Colour is contextual: override `color` at the call site (e.g. --color-detection
+   for "RANGE SUMMARY"); keep every other property. */
+.eyebrow {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.microLabel {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9-5);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* A6 — Stat group --------------------------------------------------------- */
+/* Semantics: <dl> wrapping <div><dt/><dd/></div> rows (keeps SR pairing). */
+.statGroup {
+  min-width: 0;
+}
+.statGroupTitle {
+  composes: microLabel;
+  margin: 0 0 8px;
+}
+.statList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.statRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.statTerm {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-secondary);
+}
+.statValue {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+/* A7 — KPI card (command surface) ----------------------------------------- */
+/* NESTED card → surface-primary (the A3 two-level layering rule). Not to be
+   confused with the larger sans components/domain/KPICard used elsewhere. */
+.kpiCard {
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 11px 13px;
+  min-width: 0;
+}
+.kpiHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.kpiLabel {
+  composes: microLabel;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+.kpiBadge {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-8-5);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+.kpiValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 5px 0 6px;
+}
+.kpiValue {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 20px; /* display numeral — exact px, deliberately not a --cs token */
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary); /* or a severity colour when clinically coded */
+}
+.kpiUnit {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  color: var(--color-text-muted);
+}
+.kpiFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+/* A9 — Filter chip -------------------------------------------------------- */
+/* Toggle semantics via aria-pressed. Colour-coded per event type, but the dot +
+   text + fill/border presence carry the state so colour is only reinforcement.
+   The active state reads --chip-color, supplied inline per event type by the
+   consumer (e.g. from signalDeck/eventColors.ts). */
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-default);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  cursor: pointer;
+}
+.filterChipDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+  background: currentColor;
+}
+.filterChipActive {
+  border-color: var(--chip-color);
+  background: color-mix(in srgb, var(--chip-color) 12%, transparent);
+  color: var(--color-text-primary);
+}
+.filterChipActive .filterChipDot {
+  background: var(--chip-color);
+}
+
+/* A10 — Severity / AHI pill ----------------------------------------------- */
+/* Clinical AHI severity has FOUR bands and stays distinct from the generic
+   Badge. Never colour-only: the pill always carries the numeric AHI value, and
+   the band word is exposed to SR via aria-label at the call site. */
+.ahiPill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.ahiNormal {
+  color: var(--color-status-normal);
+  background: var(--color-status-normal-bg);
+}
+.ahiMild {
+  color: var(--color-status-mild);
+  background: var(--color-status-mild-bg);
+}
+.ahiModerate {
+  color: var(--color-status-moderate);
+  background: var(--color-status-moderate-bg);
+}
+.ahiSevere {
+  color: var(--color-status-severe);
+  background: var(--color-status-severe-bg);
+}
+
+/* A13 — AI affordance atoms ----------------------------------------------- */
+/* The fuchsia --color-ai family, deliberately off every clinical / privacy /
+   detection scale. The ✨ glyph is aria-hidden; the literal word "AI" carries
+   the meaning (WCAG 1.4.1). */
+.aiPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-8-5);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--cs-ls-title);
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--color-ai-bg);
+  color: var(--color-ai);
+}
+.aiTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-ai);
+}
+
+/* B5 — Reusable kbd chip -------------------------------------------------- */
+/* Header ⌘K, palette hints, Esc, Help shortcut keys. */
+.keyChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  line-height: 1;
+}
