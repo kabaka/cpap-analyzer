@@ -1,34 +1,51 @@
+/* StatsSidebar — command-surface summary-stats panel.
+ *
+ * Composes the shared `.panel` shape (surface-secondary + 1px border + 8px
+ * radius) and adds sticky behaviour so it follows the deck scroll on desktop and
+ * a slide-out drawer below 1200px. Only additive properties are set on the
+ * composed `.sidebar` (position/top/max-height/overflow) — no panel-set property
+ * is redeclared, per the cascade-ordering rule. */
+
 .sidebar {
-  border-left: 1px solid var(--color-border-default);
-  background: var(--color-surface-secondary);
+  composes: panel from '../../../styles/commandSurface.module.css';
+  position: sticky;
+  top: calc(var(--cs-chrome-h) + var(--space-3));
+  align-self: start;
+  max-height: calc(100vh - var(--cs-chrome-h) - var(--cs-statusbar-h) - var(--space-6));
   overflow-y: auto;
-  height: 100%;
 }
 
+/* Content wrapper — the panel already provides padding. */
 .sidebarInner {
-  padding: var(--space-4);
+  min-width: 0;
 }
 
 .sidebarHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-2);
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
 .sidebarTitle {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
 }
 
 .closeButton {
   display: none;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   cursor: pointer;
-  font-size: var(--font-size-base);
+  font-size: 14px;
   color: var(--color-text-muted);
   padding: var(--space-1);
   border-radius: var(--radius-sm);
@@ -40,60 +57,68 @@
 }
 
 .dateRange {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-muted);
-  margin: 0 0 var(--space-4) 0;
+  margin: 0 0 var(--space-3);
 }
 
 .empty {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-muted);
   text-align: center;
   padding: var(--space-8) 0;
 }
 
+/* ── Compliance / events sections ── */
+
 .complianceSection,
 .eventsSection {
-  margin-bottom: var(--space-4);
+  margin-top: var(--space-3);
 }
 
 .sectionHeader {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0 0 var(--space-2) 0;
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--color-border-subtle);
+  letter-spacing: var(--cs-ls-section);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0 0 8px;
 }
 
 .complianceList {
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .complianceRow {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: var(--space-1) 0;
+  gap: var(--space-2);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
 }
 
 .complianceLabel {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
   margin: 0;
+  color: var(--color-text-secondary);
 }
 
 .complianceValue {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  font-family: var(--font-family-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-primary);
   margin: 0;
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Responsive: slide-out drawer below 1200px */
+/* ── Responsive: slide-out drawer below 1200px ── */
+
 @media (max-width: 1199px) {
   .sidebar {
     position: fixed;
@@ -101,6 +126,7 @@
     top: 0;
     bottom: 0;
     width: 320px;
+    max-height: none;
     z-index: var(--z-overlay);
     transform: translateX(100%);
     transition: transform var(--transition-base);

@@ -7,42 +7,37 @@
  * never be dimmed, hidden, or styled like the low-reliability caveat.
  */
 
-/* Low-emphasis "modeled inference" caveat — uses the neutral reliability axis,
-   never the red/orange clinical-severity axis. */
-.caveat {
-  margin: 0;
-  padding: 0 var(--space-3) var(--space-2);
-  font-size: var(--font-size-xs);
-  line-height: var(--line-height-normal);
-  color: var(--color-text-muted);
-}
-
 /* Safety-critical "discuss with your clinician" prompt. Deliberately
-   full-opacity, bordered, and informational (not dimmed, not diagnostic). Uses
-   the neutral info axis — it raises a CONVERSATION, it does not assert a
-   clinical severity. */
+   full-opacity, bordered, and always visible (never dimmed or hidden by the
+   low-reliability caveat — consensus D6). It carries the mildest clinical tone
+   (`status-mild`, amber) — a gentle "worth a conversation" caution, NOT the
+   moderate/severe red axis and NOT a diagnosis. The panel's own 9/12/8 padding
+   provides the horizontal inset, so the prompt only needs a bottom margin to
+   separate it from the chart below. */
 .clinicianPrompt {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
-  margin: 0 var(--space-3) var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-xs);
-  line-height: var(--line-height-normal);
+  gap: 9px;
+  margin: 0 0 var(--space-2);
+  padding: 10px 13px;
   color: var(--color-text-primary);
-  background: var(--color-info-bg);
-  border: 1px solid var(--color-info);
-  border-radius: var(--radius-md);
+  background: var(--color-status-mild-bg);
+  border: 1px solid var(--color-status-mild);
+  border-radius: var(--radius-lg);
 }
 
 .clinicianPromptIcon {
   flex: 0 0 auto;
-  font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-tight);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--color-status-mild);
 }
 
 .clinicianPromptText {
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.5;
 }
 
 .clinicianPromptTitle {

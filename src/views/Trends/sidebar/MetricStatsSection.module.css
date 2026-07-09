@@ -1,44 +1,91 @@
-.section {
-  margin-bottom: var(--space-4);
+/* MetricStatsSection — nested command-surface stat card. surface-primary (the
+   A3 two-level layering: a card inside the surface-secondary sidebar panel). */
+
+.card {
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 9px 11px;
+  margin-bottom: var(--space-2);
 }
 
-.header {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0 0 var(--space-2) 0;
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
-.statsList {
-  margin: 0;
-  padding: 0;
-}
-
-.statRow {
+.cardHeader {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  padding: var(--space-1) 0;
+  gap: var(--space-2);
+  margin-bottom: 6px;
 }
 
-.label {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  margin: 0;
-}
-
-.value {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+.cardLabel {
   font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+  min-width: 0;
+}
+
+.trend {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex: none;
+}
+
+.meanRow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 5px;
+}
+
+.meanValue {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 17px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-primary);
-  margin: 0;
-  text-align: right;
 }
 
+.meanUnit {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-8-5);
+  color: var(--color-text-muted);
+}
+
+.detailList {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+}
+
+.detailLabel {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.detailValue {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Directional trend colour — always paired with an arrow glyph + numeric
+   percent, so colour is never the sole signal (WCAG 1.4.1). */
 .up {
   color: var(--color-status-moderate);
 }
