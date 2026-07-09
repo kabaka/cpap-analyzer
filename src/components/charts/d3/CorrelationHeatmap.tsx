@@ -105,7 +105,14 @@ const CorrelationHeatmap = React.memo(function CorrelationHeatmap({
   /** Pick the higher-contrast theme ink (text-primary vs surface-primary) for
    *  the cell's resolved fill colour — luminance-aware, works in both themes. */
   function textColor(value: number): string {
-    const bgLum = relLuminance(colorScale(value));
+    const fill = colorScale(value);
+    // NaN correlation cells (zero-variance / insufficient-overlap metric pairs)
+    // make d3 return `undefined` and leave the cell unfilled (transparent). Fall
+    // back to the primary theme ink so the "NaN" label stays legible — this both
+    // restores the pre-tokenization behaviour and keeps `undefined` out of
+    // `relLuminance` (which would otherwise throw parsing it).
+    if (fill == null) return colors.textPrimary;
+    const bgLum = relLuminance(fill);
     return contrastRatio(bgLum, inkLum.primary) >= contrastRatio(bgLum, inkLum.surface)
       ? colors.textPrimary
       : colors.surfacePrimary;

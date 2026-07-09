@@ -17,11 +17,14 @@ import type { RGBA } from './webgl';
  *
  * Supports `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, and `rgb()/rgba()` with
  * comma- or space-separated channels (0..255 or %), optional `/ alpha`. Falls
- * back to opaque mid-grey on an unrecognised format so a waveform is never
- * invisible.
+ * back to opaque mid-grey on an unrecognised format — or a nullish/non-string
+ * input — so a waveform is never invisible and this never throws.
+ *
+ * @param input Resolved CSS colour string. A nullish (or otherwise non-string)
+ *   value yields the mid-grey fallback rather than throwing.
  */
-export function parseCssColorToRgba(input: string): RGBA {
-  const s = input.trim();
+export function parseCssColorToRgba(input: string | null | undefined): RGBA {
+  const s = typeof input === 'string' ? input.trim() : '';
 
   // #rgb / #rgba / #rrggbb / #rrggbbaa
   const hex = /^#([0-9a-fA-F]{3,8})$/.exec(s);
