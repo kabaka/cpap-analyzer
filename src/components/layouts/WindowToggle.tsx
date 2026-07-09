@@ -1,18 +1,27 @@
 /**
  * Global time-window control for the command strip.
  *
- * The single global range control (spec B3): a `solid`+`sm` SegmentedControl of
- * five presets (7D/30D/90D/6M/12M) plus a Custom button that opens a date
- * popover. Both write the shared `useAppStore.dateRange`, and the active preset
- * is DERIVED from the stored range's day-span (mirroring SignalDeck's
- * `activeWindow`) so the toggle reflects whatever set the range — a preset
- * click, a custom pick, or a URL restore. When the range matches no preset the
- * segmented shows no selection and the Custom button reads active.
+ * The single global range control (spec B3). It is responsive:
+ *
+ * - **Desktop (≥768px)** — a `solid`+`sm` SegmentedControl of five presets
+ *   (7D/30D/90D/6M/12M) plus a Custom button that opens a date popover.
+ * - **Mobile (<768px)** — the header is too cramped for the horizontal segment,
+ *   so the same choices collapse into a compact command-surface menu: a small
+ *   button showing the active window label opens a Popover whose radiogroup lists
+ *   the five presets plus a "Custom range…" entry that reveals the same date
+ *   fields. Touch users can therefore still change the analysis window.
+ *
+ * Both surfaces write the shared `useAppStore.dateRange` through the SAME
+ * handlers (no per-surface range logic), and the active preset is DERIVED from
+ * the stored range's day-span (mirroring SignalDeck's `activeWindow`) so the
+ * control reflects whatever set the range — a preset click, a custom pick, or a
+ * URL restore. When the range matches no preset the segmented shows no selection
+ * and the Custom affordance reads active.
  *
  * @module components/layouts/WindowToggle
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon, Popover, SegmentedControl, type SegmentedControlOption } from '@/components/ui';
 import { useAppStore } from '@/stores/useAppStore';
 import { getDB } from '@/services/storage/getDB';
@@ -69,7 +78,7 @@ function derivePreset(range: { start: Date; end: Date }): WindowValue {
 
 /**
  * Lazily resolve the earliest imported night (for the custom-range `min` clamp
- * and the "All data" quick range). Fetches ONCE, only after the popover is first
+ * and the "All data" quick range). Fetches ONCE, only after a picker is first
  * opened — a deliberate user action — so the always-mounted header never runs a
  * corpus-wide query on load. Session records are metadata (no signal samples),
  * so this is bounded by night count. Extent is a nicety; failures are ignored.
@@ -102,15 +111,122 @@ function useCorpusStart(enabled: boolean): string | null {
   return start;
 }
 
+interface CustomRangeFieldsProps {
+  readonly defaultStart: string;
+  readonly defaultEnd: string;
+  readonly min: string | undefined;
+  readonly max: string;
+  readonly colorScheme: 'light' | 'dark';
+  readonly quickRanges: readonly QuickRange[];
+  /** Called with a validated, non-inverted range (start ≤ end). */
+  readonly onApply: (start: Date, end: Date) => void;
+  readonly onQuick: (days: number | 'all') => void;
+  readonly onCancel: () => void;
+  /** Label for the dismiss button (desktop: "Cancel"; mobile back: "Back"). */
+  readonly cancelLabel?: string;
+}
+
+/**
+ * The custom-range panel body (Start/End inputs, quick ranges, Cancel/Apply).
+ * Extracted so the desktop Custom popover and the mobile menu render the SAME
+ * markup + validation from a single source of truth. It owns its own input refs
+ * (each mounted instance is independent) and defers the commit to `onApply` —
+ * the parent decides which popover to close. Apply is a no-op for an empty or
+ * inverted range, so the picker stays open for correction (the caller's popover
+ * only closes when `onApply` actually fires).
+ */
+function CustomRangeFields({
+  defaultStart,
+  defaultEnd,
+  min,
+  max,
+  colorScheme,
+  quickRanges,
+  onApply,
+  onQuick,
+  onCancel,
+  cancelLabel = 'Cancel',
+}: CustomRangeFieldsProps) {
+  const startRef = useRef<HTMLInputElement>(null);
+  const endRef = useRef<HTMLInputElement>(null);
+
+  const handleApply = useCallback(() => {
+    const startValue = startRef.current?.value;
+    const endValue = endRef.current?.value;
+    if (!startValue || !endValue) return;
+    const start = parseLocalDate(startValue);
+    const end = parseLocalDate(endValue);
+    // Apply requires a valid, non-inverted range (start <= end).
+    if (!start || !end || start.getTime() > end.getTime()) return;
+    onApply(start, end);
+  }, [onApply]);
+
+  return (
+    <div className={styles.popover}>
+      <p className={styles.popTitle}>Custom range</p>
+      <div className={styles.fields}>
+        <label className={styles.field}>
+          Start
+          <input
+            ref={startRef}
+            type="date"
+            defaultValue={defaultStart}
+            min={min}
+            max={max}
+            className={styles.dateInput}
+            style={{ colorScheme }}
+          />
+        </label>
+        <label className={styles.field}>
+          End
+          <input
+            ref={endRef}
+            type="date"
+            defaultValue={defaultEnd}
+            min={min}
+            max={max}
+            className={styles.dateInput}
+            style={{ colorScheme }}
+          />
+        </label>
+      </div>
+      <p className={styles.popTitle}>Quick ranges</p>
+      <div className={styles.quickRow}>
+        {quickRanges.map((q) => (
+          <button
+            key={q.key}
+            type="button"
+            className={styles.quickBtn}
+            onClick={() => onQuick(q.days)}
+          >
+            {q.label}
+          </button>
+        ))}
+      </div>
+      <div className={styles.actions}>
+        <button type="button" className={styles.cancelBtn} onClick={onCancel}>
+          {cancelLabel}
+        </button>
+        <button type="button" className={styles.applyBtn} onClick={handleApply}>
+          Apply
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function WindowToggle() {
   const dateRange = useAppStore((s) => s.dateRange);
   const setDateRange = useAppStore((s) => s.setDateRange);
   const resolvedTheme = useAppStore((s) => s.resolvedTheme);
 
+  // Desktop custom-range popover + mobile menu popover open states. Independent
+  // so closing one never disturbs the other (only one is visible per breakpoint).
   const [open, setOpen] = useState(false);
-  const corpusStart = useCorpusStart(open);
-  const startRef = useRef<HTMLInputElement>(null);
-  const endRef = useRef<HTMLInputElement>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  // Within the mobile menu: false = preset list, true = the custom-range fields.
+  const [mobileShowCustom, setMobileShowCustom] = useState(false);
+  const corpusStart = useCorpusStart(open || mobileOpen);
 
   const activePreset = useMemo(() => derivePreset(dateRange), [dateRange]);
   const isCustom = activePreset === 'custom';
@@ -124,6 +240,8 @@ export function WindowToggle() {
     [setDateRange],
   );
 
+  // Range mutations only; each caller closes its own popover afterwards so the
+  // shared handlers stay surface-agnostic.
   const applyQuick = useCallback(
     (days: number | 'all') => {
       if (days === 'all') {
@@ -132,22 +250,104 @@ export function WindowToggle() {
       } else {
         setDateRange({ start: daysAgo(days), end: new Date() });
       }
-      setOpen(false);
     },
     [corpusStart, setDateRange],
   );
 
-  const applyCustom = useCallback(() => {
-    const startValue = startRef.current?.value;
-    const endValue = endRef.current?.value;
-    if (!startValue || !endValue) return;
-    const start = parseLocalDate(startValue);
-    const end = parseLocalDate(endValue);
-    // Apply requires a valid, non-inverted range (start <= end).
-    if (!start || !end || start.getTime() > end.getTime()) return;
-    setDateRange({ start, end });
-    setOpen(false);
-  }, [setDateRange]);
+  // ── Desktop custom popover handlers ──
+  const handleDesktopApply = useCallback(
+    (start: Date, end: Date) => {
+      setDateRange({ start, end });
+      setOpen(false);
+    },
+    [setDateRange],
+  );
+  const handleDesktopQuick = useCallback(
+    (days: number | 'all') => {
+      applyQuick(days);
+      setOpen(false);
+    },
+    [applyQuick],
+  );
+
+  // ── Mobile menu handlers ──
+  const handleMobileOpenChange = useCallback((next: boolean) => {
+    setMobileOpen(next);
+    // Reset to the preset list whenever the menu closes so it always reopens
+    // showing the presets, not the custom fields.
+    if (!next) setMobileShowCustom(false);
+  }, []);
+  const selectMobilePreset = useCallback(
+    (index: number) => {
+      const opt = PRESET_OPTIONS[index];
+      if (!opt) return;
+      applyPreset(opt.value);
+      setMobileOpen(false);
+    },
+    [applyPreset],
+  );
+  const handleMobileApply = useCallback(
+    (start: Date, end: Date) => {
+      setDateRange({ start, end });
+      setMobileOpen(false);
+    },
+    [setDateRange],
+  );
+  const handleMobileQuick = useCallback(
+    (days: number | 'all') => {
+      applyQuick(days);
+      setMobileOpen(false);
+    },
+    [applyQuick],
+  );
+
+  // Roving-tabindex + arrow navigation for the mobile preset radiogroup (mirrors
+  // SegmentedControl's keyboard model). Arrow keys move focus only; Enter/Space
+  // (and click) select the preset and close the menu, so navigating never fires
+  // an incidental range recompute.
+  const mobileRadioRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const focusMobileRadio = useCallback((index: number) => {
+    mobileRadioRefs.current[index]?.focus();
+  }, []);
+  const handleMobileRadioKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+      const last = PRESET_OPTIONS.length - 1;
+      switch (event.key) {
+        case 'ArrowDown':
+        case 'ArrowRight':
+          event.preventDefault();
+          focusMobileRadio(index === last ? 0 : index + 1);
+          break;
+        case 'ArrowUp':
+        case 'ArrowLeft':
+          event.preventDefault();
+          focusMobileRadio(index === 0 ? last : index - 1);
+          break;
+        case 'Home':
+          event.preventDefault();
+          focusMobileRadio(0);
+          break;
+        case 'End':
+          event.preventDefault();
+          focusMobileRadio(last);
+          break;
+        case ' ':
+        case 'Enter':
+          event.preventDefault();
+          selectMobilePreset(index);
+          break;
+        default:
+          break;
+      }
+    },
+    [focusMobileRadio, selectMobilePreset],
+  );
+
+  const mobileSelectedIndex = PRESET_OPTIONS.findIndex((o) => o.value === activePreset);
+  const mobileHasSelection = mobileSelectedIndex >= 0;
+  const activeMobileLabel = isCustom
+    ? 'Custom'
+    : (PRESET_OPTIONS.find((o) => o.value === activePreset)?.label ?? 'Window');
 
   const customTrigger = (
     <button
@@ -171,79 +371,135 @@ export function WindowToggle() {
     </button>
   );
 
+  const mobileTrigger = (
+    <button
+      type="button"
+      aria-label="Time window"
+      className={[styles.mobileTrigger, isCustom ? styles.mobileTriggerActive : null]
+        .filter(Boolean)
+        .join(' ')}
+    >
+      <Icon name="calendar" style={{ width: '13px', height: '13px' }} />
+      <span className={styles.mobileTriggerLabel}>{activeMobileLabel}</span>
+      <span className={styles.caret} aria-hidden="true">
+        {mobileOpen ? '▲' : '▼'}
+      </span>
+    </button>
+  );
+
   return (
-    <div className={styles.wrap}>
-      <div className={styles.presets}>
-        <SegmentedControl<WindowValue>
-          label="Time window"
-          options={PRESET_OPTIONS}
-          value={activePreset}
-          onChange={applyPreset}
-          variant="solid"
-          size="sm"
-        />
-      </div>
-      <Popover
-        open={open}
-        onOpenChange={setOpen}
-        side="bottom"
-        align="end"
-        sideOffset={8}
-        elevated
-        contentClassName={styles.popoverPanel}
-        trigger={customTrigger}
-      >
-        <div className={styles.popover}>
-          <p className={styles.popTitle}>Custom range</p>
-          <div className={styles.fields}>
-            <label className={styles.field}>
-              Start
-              <input
-                ref={startRef}
-                type="date"
-                defaultValue={formatDate(dateRange.start)}
-                min={corpusStart ?? undefined}
-                max={today}
-                className={styles.dateInput}
-                style={{ colorScheme: resolvedTheme }}
-              />
-            </label>
-            <label className={styles.field}>
-              End
-              <input
-                ref={endRef}
-                type="date"
-                defaultValue={formatDate(dateRange.end)}
-                min={corpusStart ?? undefined}
-                max={today}
-                className={styles.dateInput}
-                style={{ colorScheme: resolvedTheme }}
-              />
-            </label>
-          </div>
-          <p className={styles.popTitle}>Quick ranges</p>
-          <div className={styles.quickRow}>
-            {QUICK_RANGES.map((q) => (
-              <button
-                key={q.key}
-                type="button"
-                className={styles.quickBtn}
-                onClick={() => applyQuick(q.days)}
-              >
-                {q.label}
-              </button>
-            ))}
-          </div>
-          <div className={styles.actions}>
-            <button type="button" className={styles.cancelBtn} onClick={() => setOpen(false)}>
-              Cancel
-            </button>
-            <button type="button" className={styles.applyBtn} onClick={applyCustom}>
-              Apply
-            </button>
-          </div>
+    <>
+      {/* Desktop (≥768px): horizontal segment + Custom popover. */}
+      <div className={styles.wrap}>
+        <div className={styles.presets}>
+          <SegmentedControl<WindowValue>
+            label="Time window"
+            options={PRESET_OPTIONS}
+            value={activePreset}
+            onChange={applyPreset}
+            variant="solid"
+            size="sm"
+          />
         </div>
-      </Popover>
-    </div>
+        <Popover
+          open={open}
+          onOpenChange={setOpen}
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          elevated
+          contentClassName={styles.popoverPanel}
+          trigger={customTrigger}
+        >
+          <CustomRangeFields
+            defaultStart={formatDate(dateRange.start)}
+            defaultEnd={formatDate(dateRange.end)}
+            min={corpusStart ?? undefined}
+            max={today}
+            colorScheme={resolvedTheme}
+            quickRanges={QUICK_RANGES}
+            onApply={handleDesktopApply}
+            onQuick={handleDesktopQuick}
+            onCancel={() => setOpen(false)}
+          />
+        </Popover>
+      </div>
+
+      {/* Mobile (<768px): compact menu exposing the same presets + custom range. */}
+      <div className={styles.mobile}>
+        <Popover
+          open={mobileOpen}
+          onOpenChange={handleMobileOpenChange}
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          elevated
+          contentClassName={styles.popoverPanel}
+          trigger={mobileTrigger}
+        >
+          {mobileShowCustom ? (
+            <CustomRangeFields
+              defaultStart={formatDate(dateRange.start)}
+              defaultEnd={formatDate(dateRange.end)}
+              min={corpusStart ?? undefined}
+              max={today}
+              colorScheme={resolvedTheme}
+              quickRanges={QUICK_RANGES}
+              onApply={handleMobileApply}
+              onQuick={handleMobileQuick}
+              onCancel={() => setMobileShowCustom(false)}
+              cancelLabel="Back"
+            />
+          ) : (
+            <div className={styles.mobileMenu}>
+              <div role="radiogroup" aria-label="Time window" className={styles.mobileGroup}>
+                {PRESET_OPTIONS.map((opt, index) => {
+                  const checked = opt.value === activePreset;
+                  const isTabStop = mobileHasSelection ? checked : index === 0;
+                  const name = opt.ariaLabel ?? opt.label;
+                  return (
+                    <button
+                      key={opt.value}
+                      ref={(el) => {
+                        mobileRadioRefs.current[index] = el;
+                      }}
+                      type="button"
+                      role="radio"
+                      aria-checked={checked}
+                      aria-label={name}
+                      tabIndex={isTabStop ? 0 : -1}
+                      className={[styles.mobileItem, checked ? styles.mobileItemActive : null]
+                        .filter(Boolean)
+                        .join(' ')}
+                      onClick={() => selectMobilePreset(index)}
+                      onKeyDown={(e) => handleMobileRadioKeyDown(e, index)}
+                    >
+                      <span className={styles.mobileItemLabel} aria-hidden="true">
+                        {opt.label}
+                      </span>
+                      <span className={styles.mobileItemName} aria-hidden="true">
+                        {name}
+                      </span>
+                      {checked && (
+                        <span className={styles.mobileCheck} aria-hidden="true">
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                className={styles.mobileCustomItem}
+                onClick={() => setMobileShowCustom(true)}
+              >
+                Custom range…
+              </button>
+            </div>
+          )}
+        </Popover>
+      </div>
+    </>
   );
 }

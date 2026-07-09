@@ -44,13 +44,17 @@
   margin: 0;
 }
 
-/* Severity tones — accent the left border, glyph, and tag text only. */
+/* Severity tones — accent the left border, glyph, and tag text only. The 3px
+   left border keeps the vivid base status colour (graphical, ≥3:1); the 9px tag
+   + glyph TEXT use the on-surface -text variant so they clear WCAG AA (4.5:1) on
+   the surface-secondary card in LIGHT (the base hue reads only ~2.7–3.0:1 there).
+   `.neutral` (slate --color-caveat) already clears AA, so it is unchanged. */
 .warning {
   border-left-color: var(--color-status-mild);
 }
 .warning .glyph,
 .warning .tag {
-  color: var(--color-status-mild);
+  color: var(--color-status-mild-text);
 }
 
 .neutral {
@@ -66,7 +70,7 @@
 }
 .positive .glyph,
 .positive .tag {
-  color: var(--color-status-normal);
+  color: var(--color-status-normal-text);
 }
 
 @media (max-width: 720px) {

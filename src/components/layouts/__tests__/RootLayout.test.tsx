@@ -115,7 +115,11 @@ describe('RootLayout', () => {
 
   afterEach(() => {
     cleanup();
-    useAppStore.setState({ sidebarCollapsed: false });
+    useAppStore.setState({
+      sidebarCollapsed: false,
+      commandPaletteOpen: false,
+      importWizardOpen: false,
+    });
     // Restore the shared setup.ts stub shape (matches: false everywhere).
     setViewport(false);
     vi.clearAllMocks();
@@ -417,6 +421,51 @@ describe('RootLayout', () => {
     it('still resolves a legitimate own-key segment to its title', () => {
       const { container } = renderLayoutAt('/sessions');
       expect(container.querySelector(`.${SECTION_TITLE}`)).toHaveTextContent('Sessions');
+    });
+  });
+
+  describe('background inert while a modal overlay is open', () => {
+    // The ⌘K palette and the import wizard are aria-modal with a focus trap, but
+    // the chrome behind them must ALSO leave the a11y tree + tab order. RootLayout
+    // toggles the `inert` attribute on <main> and the sidebar for the duration.
+    // The <header> is intentionally left interactive (it hosts the modal invokers,
+    // so focus can be captured on open and restored on close).
+
+    it('marks <main> and the sidebar inert while the command palette is open', async () => {
+      const { container } = renderLayout();
+      const main = container.querySelector('main');
+      const sidebar = container.querySelector('aside');
+      expect(main).not.toBeNull();
+      expect(sidebar).not.toBeNull();
+
+      // Closed by default: no inert.
+      expect(main).not.toHaveAttribute('inert');
+      expect(sidebar).not.toHaveAttribute('inert');
+
+      // Opening the palette (the ⌘K store path) inerts the background chrome.
+      useAppStore.getState().setCommandPaletteOpen(true);
+      await waitFor(() => expect(main).toHaveAttribute('inert'));
+      expect(sidebar).toHaveAttribute('inert');
+
+      // Closing clears it again so the chrome is operable.
+      useAppStore.getState().setCommandPaletteOpen(false);
+      await waitFor(() => expect(main).not.toHaveAttribute('inert'));
+      expect(sidebar).not.toHaveAttribute('inert');
+    });
+
+    it('marks the chrome inert while the import wizard modal is open', async () => {
+      const { container } = renderLayout();
+      const main = container.querySelector('main');
+      const sidebar = container.querySelector('aside');
+      expect(main).not.toHaveAttribute('inert');
+
+      useAppStore.getState().setImportWizardOpen(true);
+      await waitFor(() => expect(main).toHaveAttribute('inert'));
+      expect(sidebar).toHaveAttribute('inert');
+
+      useAppStore.getState().setImportWizardOpen(false);
+      await waitFor(() => expect(main).not.toHaveAttribute('inert'));
+      expect(sidebar).not.toHaveAttribute('inert');
     });
   });
 });

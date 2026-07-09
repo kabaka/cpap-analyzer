@@ -209,10 +209,19 @@ export default function RootLayout() {
   const importProgress = useAppStore((state) => state.importProgress);
 
   // Command palette open state (ephemeral).
+  const commandPaletteOpen = useAppStore((state) => state.commandPaletteOpen);
   const setCommandPaletteOpen = useAppStore((state) => state.setCommandPaletteOpen);
 
   // Import wizard modal open state (ephemeral). The header Import button opens it.
+  const importWizardOpen = useAppStore((state) => state.importWizardOpen);
   const setImportWizardOpen = useAppStore((state) => state.setImportWizardOpen);
+
+  // While a true modal overlay (⌘K palette or the import wizard) is open, the app
+  // chrome behind it must leave the a11y tree + tab order so an SR virtual cursor
+  // / Tab cannot wander into it. The palette/wizard own aria-modal + a focus trap;
+  // this adds the missing `inert` on the background siblings. The AI drawer is a
+  // NON-modal `complementary` panel and is deliberately NOT gated here.
+  const backgroundInert = commandPaletteOpen || importWizardOpen;
 
   const sidebarRef = useRef<HTMLElement>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
@@ -430,6 +439,24 @@ export default function RootLayout() {
     }
     wasOpenRef.current = sidebarOpen;
   }, [sidebarOpen]);
+
+  // Mark the main content + sidebar `inert` while a modal overlay is open, so the
+  // chrome behind the dialog leaves the a11y tree + tab order. We toggle the DOM
+  // ATTRIBUTE imperatively rather than via a JSX prop: React 18's types don't
+  // model `inert`, and it activates on attribute PRESENCE (an `inert="false"`
+  // string would still be inert). The <header> is left interactive so the modal's
+  // invoker keeps focus and gets it back on close; the palette/wizard own the
+  // focus trap + restore. The AI drawer/dock are separate siblings, untouched.
+  useEffect(() => {
+    const main = mainRef.current;
+    const sidebar = sidebarRef.current;
+    main?.toggleAttribute('inert', backgroundInert);
+    sidebar?.toggleAttribute('inert', backgroundInert);
+    return () => {
+      main?.removeAttribute('inert');
+      sidebar?.removeAttribute('inert');
+    };
+  }, [backgroundInert]);
 
   return (
     <TooltipProvider>

@@ -236,20 +236,23 @@
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
+/* Numeral uses the on-surface TEXT variant so the 11.5px value clears WCAG AA
+   (4.5:1) over its own -bg tint — the base status colour is a fill/dot hue and
+   reads only ~2.7–4.1:1 as text on the matching tint. The -bg tint is unchanged. */
 .ahiNormal {
-  color: var(--color-status-normal);
+  color: var(--color-status-normal-text);
   background: var(--color-status-normal-bg);
 }
 .ahiMild {
-  color: var(--color-status-mild);
+  color: var(--color-status-mild-text);
   background: var(--color-status-mild-bg);
 }
 .ahiModerate {
-  color: var(--color-status-moderate);
+  color: var(--color-status-moderate-text);
   background: var(--color-status-moderate-bg);
 }
 .ahiSevere {
-  color: var(--color-status-severe);
+  color: var(--color-status-severe-text);
   background: var(--color-status-severe-bg);
 }
 

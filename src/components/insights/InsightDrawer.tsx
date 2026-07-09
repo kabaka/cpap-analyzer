@@ -1,9 +1,10 @@
 /**
  * `InsightDrawer` — the non-modal AI Insights side drawer (UX §4, §5; visual
  * spec §3). It is the single app-level surface that presents a generated
- * insight: a right-side rail on desktop and a bottom sheet on mobile that the
- * user can read while still seeing (and tabbing back to) their data — hence
- * NON-modal, no focus trap (UX §4.1, §8.1; HAX G11 "see why").
+ * insight: a fixed right-side rail at every viewport size (392px wide, capped at
+ * 92vw on narrow screens) that the user can read while still seeing (and tabbing
+ * back to) their data — hence NON-modal, no focus trap (UX §4.1, §8.1; HAX G11
+ * "see why").
  *
  * It consumes {@link useAiInsight} and renders the six UX §5 states:
  *

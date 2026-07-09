@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { WindowToggle } from '@/components/layouts/WindowToggle';
 import { useAppStore } from '@/stores/useAppStore';
 import { formatDate } from '@/utils/formatDate';
@@ -142,6 +142,59 @@ describe('WindowToggle', () => {
       fireEvent.click(screen.getByRole('button', { name: 'All data' }));
 
       expect(formatDate(useAppStore.getState().dateRange.start)).toBe('2024-02-15');
+    });
+  });
+
+  // Below 768px the horizontal segment is CSS-hidden and a compact command-surface
+  // menu takes over (spec B3). jsdom applies no media query, so both controls are
+  // in the DOM; the menu's trigger is the only role=button named "Time window",
+  // and its contents (scoped via the unique "Custom range…" entry) are distinct
+  // from the always-rendered desktop segment.
+  describe('mobile menu (compact <768px control)', () => {
+    /** The mobile menu, scoped so its radios don't collide with the desktop segment. */
+    function openMobileMenu(): HTMLElement {
+      fireEvent.click(screen.getByRole('button', { name: 'Time window' }));
+      const menu = screen.getByText('Custom range…').closest('div');
+      if (!menu) throw new Error('mobile menu container not found');
+      return menu;
+    }
+
+    it('reflects the active preset and switches to another from the menu', () => {
+      setRange(spanDays(30));
+      render(<WindowToggle />);
+      const menu = within(openMobileMenu());
+
+      // The stored 30-day span is reflected as the checked radio.
+      expect(menu.getByRole('radio', { name: 'Last 30 days' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+
+      // Picking a different preset writes the matching span to the store.
+      fireEvent.click(menu.getByRole('radio', { name: 'Last 7 days' }));
+      const { dateRange } = useAppStore.getState();
+      const spanned = Math.round(
+        (dateRange.end.getTime() - dateRange.start.getTime()) / MS_PER_DAY,
+      );
+      expect(spanned).toBe(7);
+    });
+
+    it('opens the custom-range fields from the menu and applies a range', async () => {
+      setRange(spanDays(30));
+      render(<WindowToggle />);
+      openMobileMenu();
+
+      // "Custom range…" reveals the shared date fields inside the same menu.
+      fireEvent.click(screen.getByText('Custom range…'));
+      const start = await screen.findByLabelText('Start');
+      const end = screen.getByLabelText('End');
+      fireEvent.change(start, { target: { value: '2026-03-01' } });
+      fireEvent.change(end, { target: { value: '2026-03-20' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+      const { dateRange } = useAppStore.getState();
+      expect(formatDate(dateRange.start)).toBe('2026-03-01');
+      expect(formatDate(dateRange.end)).toBe('2026-03-20');
     });
   });
 });
