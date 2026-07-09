@@ -44,7 +44,12 @@ const ChartPanel = React.memo(function ChartPanel({
       <div className={styles.header}>
         <h3 className={styles.title}>{title}</h3>
       </div>
-      <div className={styles.chartArea} style={{ height: chartHeight }}>
+      {/* `minHeight` (not a hard height) so a panel whose children include an
+          out-of-plot element — e.g. the Event Breakdown clinician prompt — grows
+          to contain them instead of letting the chart's absolutely-positioned
+          legend overflow the panel. The canvas itself sizes to its own inner
+          wrapper's fixed height, so this does not change any chart's rendering. */}
+      <div className={styles.chartArea} style={{ minHeight: chartHeight }}>
         {children}
       </div>
       {footnote && <p className={styles.footnote}>{footnote}</p>}

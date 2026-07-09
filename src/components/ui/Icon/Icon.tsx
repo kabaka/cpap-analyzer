@@ -34,6 +34,8 @@ export type IconName =
   | 'circle-dashed'
   | 'circle-dot'
   | 'spinner'
+  | 'search'
+  | 'import'
   | 'brand';
 
 export type IconSize = 'sm' | 'md' | 'lg';
@@ -202,6 +204,22 @@ const PATHS: Record<IconName, JSX.Element> = {
   // The consumer rotates this with CSS to spin it (and disables that under
   // prefers-reduced-motion, falling back to a static status glyph).
   spinner: <path d="M12 3 a9 9 0 1 1 -6.36 2.64" />,
+  // Magnifying glass (⌘K trigger + command-palette input). Matches the
+  // prototype's circle+handle at the 24×24 / 1.75-stroke house style.
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <line x1="16.5" y1="16.5" x2="21" y2="21" />
+    </>
+  ),
+  // Tray-import: a down-arrow dropping into an open tray (header Import button).
+  import: (
+    <>
+      <path d="M12 3v10" />
+      <polyline points="8 9 12 13 16 9" />
+      <path d="M4 14v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </>
+  ),
   brand: (
     <>
       <path

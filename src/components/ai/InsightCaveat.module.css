@@ -3,16 +3,16 @@
    AI's own disclaimer, not a failure). Color is reinforcement; the ✨/AI marker
    + the literal text carry the signal (WCAG 1.4.1). */
 
+/* Command-surface caveat (spec B8 `caveatEl`): the fuchsia --color-ai-bg fill,
+   NO left border, mono 10px fuchsia text. Consumed only by the AI drawer. */
 .caveat {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
   background: var(--color-ai-bg);
-  border-left: 3px solid var(--color-ai);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  color: var(--color-ai);
 }
 
 .marker {
@@ -21,7 +21,10 @@
 }
 
 .text {
-  line-height: var(--line-height-normal);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  line-height: 1.45;
+  color: var(--color-ai);
 }
 
 /* The fuller medical disclaimer (UX §7.8) — quiet, muted, informational. */

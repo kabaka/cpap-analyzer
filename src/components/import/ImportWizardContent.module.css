@@ -1,0 +1,498 @@
+/*
+ * Import wizard content — command-surface restyle (spec Part C "Import wizard /
+ * dock / stages" + prototype impSelectStepEl / impImportingStepEl). Mono-forward,
+ * token-driven, both themes. Hosted by the full-page route and the modal; only
+ * the root/body scroll behaviour differs between the two variants. The shared
+ * Button/Badge/Dialog primitives are used as-is (their mono pass is a separate
+ * foundation task) — this file styles the bespoke wizard chrome.
+ */
+
+/* ── Root (per host) ── */
+
+.rootModal {
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* lets .bodyModal own the scroll inside the 90vh panel */
+  min-width: 0;
+}
+
+.rootPage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ── Header (title + step indicator + optional close) ── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--color-border-default);
+  flex: none;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 1.125rem; /* 18px */
+  color: var(--color-text-primary);
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:hover {
+  border-color: var(--color-border-emphasis);
+  color: var(--color-text-primary);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Step indicator ── */
+
+.stepIndicator {
+  flex-shrink: 0;
+}
+
+.stepList {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2); /* 8px */
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12); /* 12px */
+  color: var(--color-text-muted);
+}
+
+.stepActive {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.stepDone {
+  color: var(--color-status-normal);
+}
+
+.stepNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  border: 1px solid currentColor;
+  font-size: var(--cs-fs-11); /* 11px */
+  font-weight: var(--font-weight-semibold);
+}
+
+.stepLabel {
+  white-space: nowrap;
+}
+
+.stepSeparator {
+  margin-left: var(--space-2);
+  color: var(--color-border-default);
+}
+
+/* ── Body (per host) ── */
+
+.bodyModal {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.bodyPage {
+  min-width: 0;
+  padding: 20px 0 0;
+}
+
+/* Shared step section title (importing / preview). */
+.stepTitle {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 1.0625rem; /* 17px */
+  color: var(--color-text-primary);
+}
+
+/* ── Select step ── */
+
+.selectStep {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.busyNotice {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-info-bg);
+  border-radius: var(--radius-md);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-secondary);
+}
+
+.sourceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.sourceCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 26px 20px;
+  border: 2px solid var(--color-border-default);
+  border-radius: 14px;
+  background: var(--color-surface-primary);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.sourceCard:hover,
+.sourceCardDrop {
+  border-color: var(--color-primary);
+  background: var(--color-info-bg);
+}
+
+.sourceCard:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.sourceCard[data-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sourceCard[data-disabled='true']:hover {
+  border-color: var(--color-border-default);
+  background: var(--color-surface-primary);
+}
+
+.sourceIcon {
+  color: var(--color-primary);
+}
+
+.sourceTitle {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 0.9375rem; /* 15px */
+  color: var(--color-text-primary);
+}
+
+.sourceDesc {
+  margin: 0;
+  max-width: 240px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.sourceFormat {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  color: var(--color-text-muted);
+}
+
+.dropZone {
+  padding: 14px;
+  border: 1.5px dashed var(--color-border-emphasis);
+  border-radius: var(--radius-xl); /* 12px ≈ prototype 10px, token-aligned */
+  text-align: center;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-muted);
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.dropZoneActive {
+  border-color: var(--color-primary);
+  background: var(--color-info-bg);
+  color: var(--color-text-secondary);
+}
+
+.supportedFormats {
+  padding: 14px;
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-lg);
+}
+
+.formatTitle {
+  margin: 0 0 8px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-12);
+  color: var(--color-text-primary);
+}
+
+.formatList {
+  margin: 0;
+  padding-left: 18px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  line-height: 1.7;
+  color: var(--color-text-secondary);
+}
+
+.hiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Google Health preview step ── */
+
+.previewStep {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.previewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.previewSummaryBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-secondary);
+}
+
+.previewSummaryStat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.previewSummaryStatValue {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.previewTierGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.previewTierHeader {
+  margin: 0;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--color-border-subtle);
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+}
+
+.previewDataTypeList {
+  display: flex;
+  flex-direction: column;
+}
+
+.previewDataTypeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.previewDataTypeRow:hover {
+  background: var(--color-surface-secondary);
+}
+
+.previewCheckbox {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.previewCheckbox:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.previewDataTypeLabel {
+  flex: 1;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  color: var(--color-text-primary);
+}
+
+.previewDataTypeMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.previewActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+/* ── Preview overlays (scanning / error / empty) ── */
+
+.previewOverlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-12) var(--space-6);
+  text-align: center;
+}
+
+.overlayIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-stage-active);
+}
+
+.overlayTitle {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-13);
+  color: var(--color-text-primary);
+}
+
+.overlayDesc {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  color: var(--color-text-secondary);
+}
+
+.overlayError {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  color: var(--color-status-severe);
+}
+
+/* ── Importing step ── */
+
+.importingStep {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.importingActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* ── Complete step ── */
+
+.completeActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+/* ── Confirmed-cancel dialog actions ── */
+
+.confirmActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+@media (max-width: 520px) {
+  .sourceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .stepLabel {
+    display: none;
+  }
+
+  .previewDataTypeMeta {
+    display: none;
+  }
+}

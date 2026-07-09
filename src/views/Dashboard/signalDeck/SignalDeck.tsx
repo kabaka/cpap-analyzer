@@ -7,10 +7,11 @@
  * and the session log.
  *
  * ## Windowing
- * The 30D/90D toggle drives the global `dateRange` (30d / 90d presets), which the
- * deck body follows. The calendar heatmap and monthly strip always cover a
- * trailing 12 months regardless of the toggle — they are the longitudinal spine —
- * so they read from a SECOND, widened `useNightlyAggregates` call.
+ * The deck body follows the global `dateRange`, driven by the shell's window
+ * toggle (all presets, 7D–12M). The calendar heatmap and monthly strip always
+ * cover a trailing 12 months regardless of the global window — they are the
+ * longitudinal spine — so they read from a SECOND, widened
+ * `useNightlyAggregates` call.
  *
  * ## Real data, honest gaps
  * Every value comes from the real analysis hooks and the tested pure selectors in
@@ -24,7 +25,6 @@
 import { useCallback, useMemo } from 'react';
 
 import { classifyAhiSeverity } from '@/analysis/clinical';
-import { SegmentedControl } from '@/components/ui';
 import { Card } from '@/components/ui';
 import {
   buildDateRangeInput,
@@ -57,13 +57,6 @@ import WeatherPanel from './WeatherPanel';
 import { goodNightRate, seriesMean } from './metrics';
 import styles from './SignalDeck.module.css';
 
-type WindowKey = '30d' | '90d';
-
-const WINDOW_OPTIONS = [
-  { value: '30d' as const, label: '30D', ariaLabel: 'Last 30 days' },
-  { value: '90d' as const, label: '90D', ariaLabel: 'Last 90 days' },
-];
-
 /** Midnight-anchored date `days` before now (mirrors DateRangeSelector). */
 function daysAgo(days: number): Date {
   const date = new Date();
@@ -92,13 +85,6 @@ function alignSeries(
     const summary = byDate.get(date);
     return summary ? pick(summary.data) : null;
   });
-}
-
-/** Short month/day label, e.g. "Jul 5". */
-function shortDate(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 /**
@@ -130,7 +116,6 @@ function buildNarrative(
 
 export function SignalDeck(): JSX.Element {
   const dateRange = useAppStore((s) => s.dateRange);
-  const setDateRange = useAppStore((s) => s.setDateRange);
 
   const { sessions, loading: sessionsLoading, error: sessionsError } = useSessionData(dateRange);
   const { stats, loading: statsLoading, error: statsError } = useSummaryStats(dateRange);
@@ -219,25 +204,6 @@ export function SignalDeck(): JSX.Element {
     };
   }, [aggregates, ahiThresholds, displayPrefs, sessions, dateRange]);
 
-  const activeWindow: WindowKey = useMemo(() => {
-    const diffDays = Math.round((dateRange.end.getTime() - dateRange.start.getTime()) / 86_400_000);
-    return diffDays <= 45 ? '30d' : '90d';
-  }, [dateRange]);
-
-  const handleWindowChange = useCallback(
-    (value: WindowKey) => {
-      setDateRange({ start: daysAgo(value === '30d' ? 30 : 90), end: new Date() });
-    },
-    [setDateRange],
-  );
-
-  const coverage = useMemo(() => {
-    if (sortedAggregates.length === 0) return `${sessions.length} nights`;
-    const first = sortedAggregates[0]?.date;
-    const last = sortedAggregates[sortedAggregates.length - 1]?.date;
-    return `${shortDate(first ?? '')} – ${shortDate(last ?? '')} · ${sortedAggregates.length} nights`;
-  }, [sortedAggregates, sessions.length]);
-
   // Empty state: no sessions, not loading, no error.
   const hasData = sessions.length > 0 || loading;
   if (!hasData && !error) {
@@ -246,31 +212,11 @@ export function SignalDeck(): JSX.Element {
 
   return (
     <div className={styles.deck}>
-      {/* Terminal header (contains the real <h1>). */}
-      <header className={styles.terminal}>
-        <div className={styles.terminalLeft}>
-          <span className={styles.brand} aria-hidden="true">
-            CPAP<span className={styles.brandSlash}>//</span>ANALYZER
-          </span>
-          <span className={styles.brandDivider} aria-hidden="true" />
-          {/* Real page heading (accessible name "Dashboard"), styled small to
-              integrate with the terminal header. Single <h1> on the page. */}
-          <h1 className={styles.section}>Dashboard</h1>
-          <span className={styles.localBadge}>
-            <span className={styles.pulseDot} aria-hidden="true" />
-            LOCAL · NO UPLOAD
-          </span>
-        </div>
-        <div className={styles.terminalRight}>
-          <span className={styles.coverage}>{coverage}</span>
-          <SegmentedControl
-            label="Analysis window"
-            options={WINDOW_OPTIONS}
-            value={activeWindow}
-            onChange={handleWindowChange}
-          />
-        </div>
-      </header>
+      {/* The shell's command strip owns the visible section title, LOCAL·NO UPLOAD
+          badge, coverage string, and window toggle. The deck keeps a single
+          visually-hidden <h1> so the page still exposes one programmatic heading
+          named "Dashboard" (a11y + e2e). */}
+      <h1 className={styles.srOnly}>Dashboard</h1>
 
       {error && (
         <Card className={styles.errorBanner}>

@@ -1,7 +1,14 @@
+/**
+ * Event Explorer lens controls + summary strips — command-surface restyle.
+ * Charts themselves keep their ChartContainer chrome (KEEP-TECH); this file only
+ * styles the per-lens control rows, the mono summary strips, and empty/caption
+ * copy. Preset buttons use a filled-selected (solid) cue, never colour-only.
+ */
+
 .results {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--cs-deck-gap);
 }
 
 .viewControls {
@@ -16,37 +23,52 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-secondary);
 }
 
 .numInput {
   width: 5rem;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--font-size-sm);
+  padding: 5px 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-sm);
   background-color: var(--color-surface-primary);
   color: var(--color-text-primary);
 }
 
+.numInput:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+/* Solid segmented preset group (window/box-violin/cluster sensitivity). */
 .presetRow {
   display: inline-flex;
-  gap: var(--space-1);
+  gap: 2px;
+  padding: 2px;
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: 7px;
 }
 
 .presetBtn {
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--font-size-sm);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-sm);
-  background-color: var(--color-surface-primary);
+  padding: 4px 10px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-btn);
+  border: none;
+  border-radius: 5px;
+  background-color: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
 }
 
-.presetBtn:hover {
-  border-color: var(--color-primary);
+.presetBtn:hover:not(.presetActive) {
+  color: var(--color-text-primary);
 }
 
 .presetBtn:focus-visible {
@@ -56,38 +78,39 @@
 
 .presetActive {
   background-color: var(--color-primary);
-  border-color: var(--color-primary);
   color: var(--color-text-inverse);
 }
 
 .summaryStrip {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-5);
   margin: 0;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--cs-panel-pad);
   background-color: var(--color-surface-secondary);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
 }
 
 .summaryItem {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .summaryItem dt {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
 }
 
 .summaryItem dd {
   margin: 0;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+  font-family: var(--font-family-mono);
+  font-size: 17px;
+  font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -95,15 +118,19 @@
 .viewEmpty {
   padding: var(--space-6);
   text-align: center;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.5;
   color: var(--color-text-muted);
   background-color: var(--color-surface-secondary);
   border: 1px dashed var(--color-border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
 }
 
 .viewCaption {
   margin: var(--space-2) 0 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+  line-height: 1.5;
   color: var(--color-text-muted);
-  font-style: italic;
 }

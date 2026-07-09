@@ -10,13 +10,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  /* Reserve a stable height so async storage / live values do not shift layout. */
-  min-height: 28px;
-  padding: var(--space-1) var(--space-6);
+  gap: 16px;
+  height: var(--cs-statusbar-h);
+  padding: 0 18px;
   background-color: var(--color-surface-secondary);
   border-top: 1px solid var(--color-border-default);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-secondary);
 }
 
@@ -34,14 +34,20 @@
 .cluster {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: 18px;
   min-width: 0;
+}
+
+/* Right cluster (storage) sits tighter than the left trio. */
+.clusterRight {
+  gap: 8px;
+  flex: none;
 }
 
 .item {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   white-space: nowrap;
 }
 
@@ -55,16 +61,12 @@
   text-overflow: ellipsis;
 }
 
-.mono {
-  font-family: var(--font-family-mono);
-}
-
-/* ── Storage meter ── */
+/* ── Storage meter (80×6, tone by percent) ── */
 
 .meter {
   position: relative;
   display: inline-block;
-  width: 64px;
+  width: 80px;
   height: 6px;
   border-radius: var(--radius-full);
   background-color: var(--color-surface-tertiary);
@@ -81,13 +83,13 @@
 }
 
 .meterNormal {
-  background-color: var(--color-primary);
+  background-color: var(--color-status-normal);
 }
 
-.meterWarning {
-  background-color: var(--color-warning);
+.meterMild {
+  background-color: var(--color-status-mild);
 }
 
-.meterError {
-  background-color: var(--color-error);
+.meterSevere {
+  background-color: var(--color-status-severe);
 }

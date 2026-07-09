@@ -9,17 +9,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Card,
-  Select,
-  Skeleton,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui';
+import { Select, Skeleton } from '@/components/ui';
 import { useAppStore } from '@/stores/useAppStore';
 import { useSessionData } from '@/hooks/useSessionData';
 import { useSessionDetail } from '@/hooks/useSignalData';
@@ -113,35 +103,6 @@ function BarFill({ percent, variant }: { percent: number; variant: 'A' | 'B' }) 
   return <div ref={ref} className={className} />;
 }
 
-/** Bar value label positioned via callback ref (avoids inline styles). */
-function BarValueLabel({
-  percent,
-  value,
-  inside,
-}: {
-  percent: number;
-  value: string;
-  inside: boolean;
-}) {
-  const ref = useCallback(
-    (el: HTMLSpanElement | null) => {
-      if (!el) return;
-      if (inside) {
-        el.style.right = 'auto';
-        el.style.left = `${Math.min(percent - 1, 95)}%`;
-        el.style.transform = 'translate(-100%, -50%)';
-      }
-    },
-    [percent, inside],
-  );
-  const className = `${styles.barValue} ${inside ? styles.barValueInside : ''}`;
-  return (
-    <span ref={ref} className={className}>
-      {value}
-    </span>
-  );
-}
-
 // ── Component ────────────────────────────────────────────────────
 
 export default function SessionComparison() {
@@ -208,22 +169,20 @@ export default function SessionComparison() {
     <div className={styles.container}>
       {/* ── Header ──────────────────────────────────────────── */}
       <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <nav className={styles.breadcrumb}>
-            <Link to="/sessions" className={styles.breadcrumbLink}>
-              Sessions
-            </Link>
-            <span className={styles.breadcrumbSep} aria-hidden="true">
-              /
-            </span>
-            <span>Compare</span>
-          </nav>
-          <h1 className={styles.title}>Session Comparison</h1>
-        </div>
+        <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+          <Link to="/sessions" className={styles.breadcrumbLink}>
+            Sessions
+          </Link>
+          <span className={styles.breadcrumbSep} aria-hidden="true">
+            /
+          </span>
+          <span>Compare</span>
+        </nav>
+        <h1 className={styles.title}>Session Comparison</h1>
       </div>
 
       {/* ── Session Pickers ─────────────────────────────────── */}
-      <Card>
+      <div className={styles.panel}>
         {sessionsLoading ? (
           <div className={styles.skeletonTable}>
             <Skeleton width="100%" height={40} variant="rect" />
@@ -268,11 +227,11 @@ export default function SessionComparison() {
             </div>
           </div>
         )}
-      </Card>
+      </div>
 
       {/* ── Prompt to select ────────────────────────────────── */}
       {!bothSelected && !sessionsLoading && !sessionsError && sessions.length >= 2 && (
-        <Card>
+        <div className={styles.panel}>
           <div className={styles.prompt}>
             <span className={styles.promptIcon} aria-hidden="true">
               👆
@@ -282,12 +241,12 @@ export default function SessionComparison() {
               Choose a session in each dropdown above to see a side-by-side comparison.
             </p>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* ── Loading State ───────────────────────────────────── */}
       {bothSelected && detailLoading && (
-        <Card>
+        <div className={styles.panel}>
           <div className={styles.skeletonTable}>
             {Array.from({ length: 6 }, (_, i) => (
               <div key={i} className={styles.skeletonRow}>
@@ -299,39 +258,53 @@ export default function SessionComparison() {
               </div>
             ))}
           </div>
-        </Card>
+        </div>
       )}
 
       {/* ── Error State ─────────────────────────────────────── */}
       {bothSelected && !detailLoading && detailError && (
-        <Card>
+        <div className={styles.panel}>
           <div className={styles.error}>
             <p className={styles.errorTitle}>Failed to load session details</p>
             <p className={styles.errorMessage}>{detailError}</p>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* ── Comparison Table ────────────────────────────────── */}
       {aggregatesReady && (
-        <Card>
-          <h2 className={styles.sectionTitle}>Metric Comparison</h2>
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>Metric Comparison</h2>
+          </div>
           <div className={styles.tableWrapper}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Metric</TableHead>
-                  <TableHead className={`${styles.numericCell} ${styles.sessionHeader}`}>
+            <table className={styles.compareTable}>
+              <thead>
+                <tr>
+                  <th scope="col" className={styles.th}>
+                    Metric
+                  </th>
+                  <th
+                    scope="col"
+                    className={`${styles.th} ${styles.thNum} ${styles.sessionHeader}`}
+                  >
                     {labelA}
-                  </TableHead>
-                  <TableHead className={`${styles.numericCell} ${styles.sessionHeader}`}>
+                  </th>
+                  <th
+                    scope="col"
+                    className={`${styles.th} ${styles.thNum} ${styles.sessionHeader}`}
+                  >
                     {labelB}
-                  </TableHead>
-                  <TableHead className={styles.numericCell}>Delta</TableHead>
-                  <TableHead className={styles.numericCell}>Change</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+                  </th>
+                  <th scope="col" className={`${styles.th} ${styles.thNum}`}>
+                    Delta
+                  </th>
+                  <th scope="col" className={`${styles.th} ${styles.thNum}`}>
+                    Change
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
                 {COMPARISON_METRICS.map((metric) => {
                   const aggA = detailA.aggregate;
                   const aggB = detailB.aggregate;
@@ -348,99 +321,89 @@ export default function SessionComparison() {
                   const colorClass = delta != null ? deltaClass(delta, metric.direction) : '';
 
                   return (
-                    <TableRow key={metric.key}>
-                      <TableCell className={styles.metricNameCell}>
+                    <tr key={metric.key}>
+                      <td className={styles.metricNameCell}>
                         {metric.label}
                         {metric.unit ? (
                           <span className={styles.metricUnit}> ({metric.unit})</span>
                         ) : null}
-                      </TableCell>
-                      <TableCell className={styles.numericCell}>
-                        {fmt(valA, metric.decimals)}
-                      </TableCell>
-                      <TableCell className={styles.numericCell}>
-                        {fmt(valB, metric.decimals)}
-                      </TableCell>
-                      <TableCell
+                      </td>
+                      <td className={styles.numericCell}>{fmt(valA, metric.decimals)}</td>
+                      <td className={styles.numericCell}>{fmt(valB, metric.decimals)}</td>
+                      <td
                         className={`${styles.numericCell} ${colorClass}`}
                         title={delta == null ? 'Insufficient recording time' : undefined}
                       >
                         {delta == null
                           ? '—'
                           : `${delta > 0 ? '+' : ''}${fmt(delta, metric.decimals)}`}
-                      </TableCell>
-                      <TableCell
+                      </td>
+                      <td
                         className={`${styles.numericCell} ${colorClass}`}
                         title={delta == null ? 'Insufficient recording time' : undefined}
                       >
                         {Number.isNaN(pct) ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`}
-                      </TableCell>
-                    </TableRow>
+                      </td>
+                    </tr>
                   );
                 })}
-              </TableBody>
-            </Table>
+              </tbody>
+            </table>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* ── Bar Chart ───────────────────────────────────────── */}
       {aggregatesReady && chartMetrics.length > 0 && (
-        <Card>
-          <div className={styles.chartSection}>
-            <h2 className={styles.sectionTitle}>Visual Comparison</h2>
-
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>Visual Comparison</h2>
             <div className={styles.chartLegend}>
               <span className={styles.legendItem}>
-                <span className={`${styles.legendSwatch} ${styles.legendSwatchA}`} />
+                <span
+                  className={`${styles.legendSwatch} ${styles.legendSwatchA}`}
+                  aria-hidden="true"
+                />
                 {labelA}
               </span>
               <span className={styles.legendItem}>
-                <span className={`${styles.legendSwatch} ${styles.legendSwatchB}`} />
+                <span
+                  className={`${styles.legendSwatch} ${styles.legendSwatchB}`}
+                  aria-hidden="true"
+                />
                 {labelB}
               </span>
             </div>
-
-            <div className={styles.chartGrid} role="img" aria-label="Session comparison bar chart">
-              {chartMetrics.map((m) => {
-                const max = Math.max(m.valueA, m.valueB, 0.01); // avoid division by zero
-                const pctA = (m.valueA / max) * 100;
-                const pctB = (m.valueB / max) * 100;
-                const showInsideA = pctA > 40;
-                const showInsideB = pctB > 40;
-
-                return (
-                  <div key={m.label} className={styles.chartRow}>
-                    <span className={styles.chartLabel}>
-                      {m.label} ({m.unit})
-                    </span>
-                    <div className={styles.barGroup}>
-                      <div className={styles.barTrack}>
-                        <BarFill percent={pctA} variant="A" />
-                        <BarValueLabel
-                          percent={pctA}
-                          value={fmt(m.valueA, 2)}
-                          inside={showInsideA}
-                        />
-                      </div>
-                      <span className={styles.barLabel}>{labelA}</span>
-
-                      <div className={styles.barTrack}>
-                        <BarFill percent={pctB} variant="B" />
-                        <BarValueLabel
-                          percent={pctB}
-                          value={fmt(m.valueB, 2)}
-                          inside={showInsideB}
-                        />
-                      </div>
-                      <span className={styles.barLabel}>{labelB}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
-        </Card>
+
+          <div className={styles.chartGrid} role="img" aria-label="Session comparison bar chart">
+            {chartMetrics.map((m) => {
+              const max = Math.max(m.valueA, m.valueB, 0.01); // avoid division by zero
+              const pctA = (m.valueA / max) * 100;
+              const pctB = (m.valueB / max) * 100;
+
+              return (
+                <div key={m.label} className={styles.barMetric}>
+                  <span className={styles.barMetricLabel}>
+                    {m.label} ({m.unit})
+                  </span>
+                  <div className={styles.barRow}>
+                    <div className={styles.barTrack}>
+                      <BarFill percent={pctA} variant="A" />
+                    </div>
+                    <span className={styles.barValueOut}>{fmt(m.valueA, 2)}</span>
+                  </div>
+                  <div className={styles.barRow}>
+                    <div className={styles.barTrack}>
+                      <BarFill percent={pctB} variant="B" />
+                    </div>
+                    <span className={styles.barValueOut}>{fmt(m.valueB, 2)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );

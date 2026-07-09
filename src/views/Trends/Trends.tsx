@@ -12,7 +12,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
-import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
 import {
   InsightTrigger,
   buildDateRangeInput,
@@ -96,7 +95,8 @@ export default function Trends() {
   if (loading) {
     return (
       <div className={styles.trendsLayout}>
-        <div className={styles.loadingContainer} aria-busy="true">
+        <h1 className={styles.srOnly}>Trends</h1>
+        <div className={styles.stateContainer} aria-busy="true">
           Loading trend data…
         </div>
       </div>
@@ -107,8 +107,9 @@ export default function Trends() {
   if (error) {
     return (
       <div className={styles.trendsLayout}>
+        <h1 className={styles.srOnly}>Trends</h1>
         <div className={styles.errorContainer} role="alert">
-          <span>⚠</span>
+          <span aria-hidden="true">⚠</span>
           <p>{error}</p>
         </div>
       </div>
@@ -119,16 +120,11 @@ export default function Trends() {
   if (sortedAggregates.length === 0) {
     return (
       <div className={styles.trendsLayout}>
-        <header className={styles.header}>
-          <div className={styles.headerLeft}>
-            <h1 className={styles.title}>Trends</h1>
-          </div>
-          <div className={styles.headerRight}>
-            <DateRangeSelector />
-          </div>
-        </header>
+        <h1 className={styles.srOnly}>Trends</h1>
         <div className={styles.emptyContainer}>
-          <span className={styles.emptyIcon}>📈</span>
+          <span className={styles.emptyIcon} aria-hidden="true">
+            📈
+          </span>
           <p>No therapy data available for the selected date range.</p>
           <p>Import CPAP data to see long-term trends.</p>
         </div>
@@ -138,70 +134,80 @@ export default function Trends() {
 
   return (
     <div className={styles.trendsLayout}>
-      {/* Sticky header */}
-      <header className={styles.header}>
-        <div className={styles.headerLeft}>
-          <h1 className={styles.title}>Trends</h1>
+      {/* Toolbar. The shell's command strip already shows the "TRENDS" section
+          title, the date-window toggle, and the coverage string, so the page
+          <h1> is visually hidden (kept in the a11y tree for one programmatic
+          heading) and the local date selector is dropped — the global window is
+          the sole writer of dateRange. */}
+      <header className={styles.toolbar}>
+        <div className={styles.toolbarLeft}>
+          <h1 className={styles.srOnly}>Trends</h1>
+          <span className={styles.coverageCaption}>
+            {sortedAggregates.length} nights · synced crosshair
+          </span>
         </div>
-        <div className={styles.headerRight}>
+        <div className={styles.toolbarActions}>
           <InsightTrigger
             label="Summarize range"
             ariaLabel="Summarize the selected date range with AI"
+            appearance="subtle"
             buildRequest={buildRangeRequest}
           />
-          <DateRangeSelector />
           <button
-            className={styles.sidebarToggle}
+            className={styles.statsToggle}
             onClick={toggleSidebar}
             aria-expanded={sidebarOpen}
             aria-label={sidebarOpen ? 'Hide summary statistics' : 'Show summary statistics'}
             type="button"
           >
-            {sidebarOpen ? 'Hide Stats' : 'Stats'}
+            {sidebarOpen ? 'Hide stats' : 'Stats'}
           </button>
         </div>
       </header>
 
-      {/* Charts column */}
-      <div className={styles.chartsColumn}>
-        <SyncedChartProvider>
-          <AHITrendChart
-            data={sortedAggregates}
-            height={CHART_HEIGHT}
-            settingsChanges={settingsChanges}
-            onDataPointClick={handleDataPointClick}
-          />
-          <UsageChart
-            data={sortedAggregates}
-            height={CHART_HEIGHT}
-            settingsChanges={settingsChanges}
-            onDataPointClick={handleDataPointClick}
-          />
-          <LeakRateChart
-            data={sortedAggregates}
-            height={CHART_HEIGHT}
-            settingsChanges={settingsChanges}
-            onDataPointClick={handleDataPointClick}
-          />
-          <PressureChart
-            data={sortedAggregates}
-            height={CHART_HEIGHT}
-            settingsChanges={settingsChanges}
-            onDataPointClick={handleDataPointClick}
-          />
-          <EventBreakdownChart
-            data={sortedAggregates}
-            height={CHART_HEIGHT}
-            settingsChanges={settingsChanges}
-            onDataPointClick={handleDataPointClick}
-          />
-          <SettingsChart data={sortedAggregates} height={SETTINGS_CHART_HEIGHT} />
-          <SharedXAxis data={sortedAggregates} />
-        </SyncedChartProvider>
-      </div>
+      <div className={styles.body}>
+        {/* Charts column — vertically stacked, 12px gaps, shared x-axis + synced
+            crosshair/active-date via SyncedChartProvider. */}
+        <div className={styles.chartsColumn}>
+          <SyncedChartProvider>
+            <AHITrendChart
+              data={sortedAggregates}
+              height={CHART_HEIGHT}
+              settingsChanges={settingsChanges}
+              onDataPointClick={handleDataPointClick}
+            />
+            <UsageChart
+              data={sortedAggregates}
+              height={CHART_HEIGHT}
+              settingsChanges={settingsChanges}
+              onDataPointClick={handleDataPointClick}
+            />
+            <LeakRateChart
+              data={sortedAggregates}
+              height={CHART_HEIGHT}
+              settingsChanges={settingsChanges}
+              onDataPointClick={handleDataPointClick}
+            />
+            <PressureChart
+              data={sortedAggregates}
+              height={CHART_HEIGHT}
+              settingsChanges={settingsChanges}
+              onDataPointClick={handleDataPointClick}
+            />
+            <EventBreakdownChart
+              data={sortedAggregates}
+              height={CHART_HEIGHT}
+              settingsChanges={settingsChanges}
+              onDataPointClick={handleDataPointClick}
+            />
+            <SettingsChart data={sortedAggregates} height={SETTINGS_CHART_HEIGHT} />
+            <SharedXAxis data={sortedAggregates} />
+          </SyncedChartProvider>
+        </div>
 
-      {/* Summary sidebar */}
-      <StatsSidebar aggregates={sortedAggregates} open={sidebarOpen} onClose={closeSidebar} />
+        {/* Summary sidebar — sticky on desktop, slide-out drawer on mobile. */}
+        <StatsSidebar aggregates={sortedAggregates} open={sidebarOpen} onClose={closeSidebar} />
+      </div>
     </div>
   );
 }

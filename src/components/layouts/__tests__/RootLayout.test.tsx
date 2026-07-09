@@ -95,15 +95,16 @@ function getRailToggle() {
   return screen.getByRole('button', { name: /(Collapse|Expand) sidebar/ });
 }
 
-/** The polyline `points` of the chevron icon inside the rail toggle button. */
-function toggleIconPoints(): string | null {
-  const polyline = getRailToggle().querySelector('polyline');
-  return polyline?.getAttribute('points') ?? null;
+/** The decorative collapse/expand glyph inside the rail toggle button. */
+function toggleGlyph(): string | null {
+  const glyph = getRailToggle().querySelector('span[aria-hidden="true"]');
+  return glyph?.textContent ?? null;
 }
 
-// Chevron path data from the Icon component (Icon.tsx PATHS map).
-const CHEVRON_LEFT = '15 5 8 12 15 19';
-const CHEVRON_RIGHT = '9 5 16 12 9 19';
+// Guillemet glyphs from the rail toggle (spec B1): « invites collapsing when
+// expanded, » invites expanding when in the rail.
+const GLYPH_EXPANDED = '«';
+const GLYPH_COLLAPSED = '»';
 
 describe('RootLayout', () => {
   beforeEach(() => {
@@ -114,29 +115,33 @@ describe('RootLayout', () => {
 
   afterEach(() => {
     cleanup();
-    useAppStore.setState({ sidebarCollapsed: false });
+    useAppStore.setState({
+      sidebarCollapsed: false,
+      commandPaletteOpen: false,
+      importWizardOpen: false,
+    });
     // Restore the shared setup.ts stub shape (matches: false everywhere).
     setViewport(false);
     vi.clearAllMocks();
   });
 
   describe('rail toggle button', () => {
-    it('renders expanded: aria-pressed=false, "Collapse sidebar", chevron-left', () => {
+    it('renders expanded: aria-pressed=false, "Collapse sidebar", « glyph', () => {
       renderLayout();
       const toggle = getRailToggle();
       expect(toggle).toHaveAttribute('aria-pressed', 'false');
       expect(toggle).toHaveAccessibleName('Collapse sidebar');
       expect(toggle).toHaveAttribute('type', 'button');
-      expect(toggleIconPoints()).toBe(CHEVRON_LEFT);
+      expect(toggleGlyph()).toBe(GLYPH_EXPANDED);
     });
 
-    it('renders collapsed: aria-pressed=true, "Expand sidebar", chevron-right', () => {
+    it('renders collapsed: aria-pressed=true, "Expand sidebar", » glyph', () => {
       useAppStore.setState({ sidebarCollapsed: true });
       renderLayout();
       const toggle = getRailToggle();
       expect(toggle).toHaveAttribute('aria-pressed', 'true');
       expect(toggle).toHaveAccessibleName('Expand sidebar');
-      expect(toggleIconPoints()).toBe(CHEVRON_RIGHT);
+      expect(toggleGlyph()).toBe(GLYPH_COLLAPSED);
     });
 
     it('reflects external store changes in aria-pressed and label', async () => {
@@ -161,7 +166,7 @@ describe('RootLayout', () => {
         expect(getRailToggle()).toHaveAttribute('aria-pressed', 'true');
       });
       expect(getRailToggle()).toHaveAccessibleName('Expand sidebar');
-      expect(toggleIconPoints()).toBe(CHEVRON_RIGHT);
+      expect(toggleGlyph()).toBe(GLYPH_COLLAPSED);
       expect(useAppStore.getState().sidebarCollapsed).toBe(true);
 
       await user.click(getRailToggle());
@@ -169,7 +174,7 @@ describe('RootLayout', () => {
         expect(getRailToggle()).toHaveAttribute('aria-pressed', 'false');
       });
       expect(getRailToggle()).toHaveAccessibleName('Collapse sidebar');
-      expect(toggleIconPoints()).toBe(CHEVRON_LEFT);
+      expect(toggleGlyph()).toBe(GLYPH_EXPANDED);
       expect(useAppStore.getState().sidebarCollapsed).toBe(false);
     });
   });
@@ -373,6 +378,94 @@ describe('RootLayout', () => {
     it('renders the routed outlet content', () => {
       renderLayout();
       expect(screen.getByText('dashboard-content')).toBeInTheDocument();
+    });
+  });
+
+  describe('section title — prototype-chain safety', () => {
+    // sectionTitleFor() looks the first path segment up in a plain-object title
+    // map. A bare index would resolve INHERITED members for keys like
+    // `__proto__`, `toString`, `constructor`, or `hasOwnProperty` (the prototype
+    // object / a function). Those are non-nullish, so the `?? 'CPAP Analyzer'`
+    // fallback would NOT catch them — and this header renders OUTSIDE the route
+    // error boundary, so rendering a function/object as a React child would
+    // throw and white-screen the whole app. An own-property guard must return
+    // the "CPAP Analyzer" fallback for any such path.
+    const SECTION_TITLE = requireClass(styles.sectionTitle, 'sectionTitle');
+
+    // A splat child so the layout mounts for ANY path (the trivial renderLayout
+    // route tree only knows `/` and `sessions`).
+    function renderLayoutAt(initialPath: string) {
+      return render(
+        <MemoryRouter initialEntries={[initialPath]}>
+          <Routes>
+            <Route path="/" element={<RootLayout />}>
+              <Route index element={<div>dashboard-content</div>} />
+              <Route path="*" element={<div>fallback-content</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+      );
+    }
+
+    it.each(['/__proto__', '/toString', '/constructor', '/hasOwnProperty'])(
+      'renders the fallback title (not an inherited member) for %s',
+      (path) => {
+        // Reaching the assertion at all proves rendering no longer throws.
+        const { container } = renderLayoutAt(path);
+        const title = container.querySelector(`.${SECTION_TITLE}`);
+        expect(title).not.toBeNull();
+        expect(title).toHaveTextContent('CPAP Analyzer');
+      },
+    );
+
+    it('still resolves a legitimate own-key segment to its title', () => {
+      const { container } = renderLayoutAt('/sessions');
+      expect(container.querySelector(`.${SECTION_TITLE}`)).toHaveTextContent('Sessions');
+    });
+  });
+
+  describe('background inert while a modal overlay is open', () => {
+    // The ⌘K palette and the import wizard are aria-modal with a focus trap, but
+    // the chrome behind them must ALSO leave the a11y tree + tab order. RootLayout
+    // toggles the `inert` attribute on <main> and the sidebar for the duration.
+    // The <header> is intentionally left interactive (it hosts the modal invokers,
+    // so focus can be captured on open and restored on close).
+
+    it('marks <main> and the sidebar inert while the command palette is open', async () => {
+      const { container } = renderLayout();
+      const main = container.querySelector('main');
+      const sidebar = container.querySelector('aside');
+      expect(main).not.toBeNull();
+      expect(sidebar).not.toBeNull();
+
+      // Closed by default: no inert.
+      expect(main).not.toHaveAttribute('inert');
+      expect(sidebar).not.toHaveAttribute('inert');
+
+      // Opening the palette (the ⌘K store path) inerts the background chrome.
+      useAppStore.getState().setCommandPaletteOpen(true);
+      await waitFor(() => expect(main).toHaveAttribute('inert'));
+      expect(sidebar).toHaveAttribute('inert');
+
+      // Closing clears it again so the chrome is operable.
+      useAppStore.getState().setCommandPaletteOpen(false);
+      await waitFor(() => expect(main).not.toHaveAttribute('inert'));
+      expect(sidebar).not.toHaveAttribute('inert');
+    });
+
+    it('marks the chrome inert while the import wizard modal is open', async () => {
+      const { container } = renderLayout();
+      const main = container.querySelector('main');
+      const sidebar = container.querySelector('aside');
+      expect(main).not.toHaveAttribute('inert');
+
+      useAppStore.getState().setImportWizardOpen(true);
+      await waitFor(() => expect(main).toHaveAttribute('inert'));
+      expect(sidebar).toHaveAttribute('inert');
+
+      useAppStore.getState().setImportWizardOpen(false);
+      await waitFor(() => expect(main).not.toHaveAttribute('inert'));
+      expect(sidebar).not.toHaveAttribute('inert');
     });
   });
 });

@@ -1,0 +1,64 @@
+/**
+ * GLOBAL KEYFRAMES — command surface.
+ *
+ * This file is intentionally NOT a CSS Module. Vite scopes (hashes) @keyframes
+ * names declared inside `*.module.css`, which breaks any animation referenced
+ * BY NAME from an inline `style={{ animation: 'sd-pulse …' }}` (JS) or from a
+ * different CSS Module. Keyframes that must be addressable by their literal name
+ * across those boundaries live here and are @imported from `src/index.css`.
+ *
+ * REDUCED MOTION (WCAG 2.3.3 / spec Part E): a @keyframes block is only a
+ * definition — it cannot disable itself. Every ELEMENT that applies one of these
+ * animations MUST guard it at the call site, e.g.
+ *
+ *   @media (prefers-reduced-motion: reduce) { .myDot { animation: none; } }
+ *
+ * The three --transition-* tokens already zero globally under reduced motion;
+ * keyframe animations do not, so consumers add the guard explicitly.
+ */
+
+/* Pulsing "live / local" status dot (header LOCAL · NO UPLOAD pill, etc.).
+   Mirrors the SignalDeck local `sd-pulse` exactly so the shared and legacy
+   copies are identical during the migration. 1.6s ease-in-out infinite. */
+@keyframes sd-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+
+/* Continuous rotation for the header Import button's running-state spinner and
+   any inline progress spinner. Apply via the `.imp-spin` helper below. Consumers
+   still guard reduced motion at the call site; the helper's own guard is here. */
+@keyframes imp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.imp-spin {
+  animation: imp-spin 0.9s linear infinite;
+}
+
+/* AI Insight drawer slide-in from the right edge (spec B8). Referenced by name
+   from InsightDrawer.module.css, which guards reduced motion at its call site
+   (a @keyframes definition cannot disable itself). */
+@keyframes ai-slide {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .imp-spin {
+    animation: none;
+  }
+}

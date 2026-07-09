@@ -1,8 +1,5 @@
 .card {
-  background: var(--color-surface-secondary);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 18px;
+  composes: panel panelPadHero from '../../../styles/commandSurface.module.css';
   display: flex;
   flex-direction: column;
 }
@@ -38,12 +35,7 @@
 }
 
 .scoreOutOf {
-  font-family: var(--font-family-mono);
-  font-weight: var(--font-weight-semibold);
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
+  composes: eyebrow from '../../../styles/commandSurface.module.css';
   margin-top: 2px;
 }
 
@@ -53,12 +45,7 @@
 }
 
 .eyebrow {
-  font-family: var(--font-family-mono);
-  font-weight: var(--font-weight-semibold);
-  font-size: 9px;
-  letter-spacing: 0.16em;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
+  composes: eyebrow from '../../../styles/commandSurface.module.css';
 }
 
 .label {
@@ -142,13 +129,17 @@
   margin-bottom: 6px;
 }
 
+/* Eyebrow shape (matches the foundation .eyebrow tokens) but recoloured to the
+   detection accent. Kept self-contained rather than composed: a cross-file
+   `composes` colour override loses the cascade in lazy view chunks (the composed
+   foundation rule is emitted after the local one), so the accent must be local. */
 .narrativeEyebrow {
   font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  color: var(--color-detection);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-eyebrow);
   text-transform: uppercase;
+  color: var(--color-detection);
 }
 
 .narrativeText {

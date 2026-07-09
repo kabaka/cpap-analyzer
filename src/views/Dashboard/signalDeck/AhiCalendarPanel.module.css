@@ -1,27 +1,14 @@
 .panel {
-  background: var(--color-surface-secondary);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 15px 16px;
+  composes: panel from '../../../styles/commandSurface.module.css';
   flex: 1;
-  min-width: 0;
 }
 
 .header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  composes: panelHeader from '../../../styles/commandSurface.module.css';
 }
 
 .title {
-  font-family: var(--font-family-mono);
-  font-weight: var(--font-weight-semibold);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--color-text-primary);
-  text-transform: uppercase;
-  margin: 0;
+  composes: panelTitle from '../../../styles/commandSurface.module.css';
 }
 
 .monthly {

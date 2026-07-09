@@ -49,6 +49,13 @@
   background-color: var(--color-error);
 }
 
+/* AI accent fill (fuchsia) for the AI Insights on-device model-download bar
+   (spec B8). Reserved to the AI-Insights family; colour is reinforcement only —
+   the caller carries the meaning in text + ARIA. */
+.tone-ai {
+  background-color: var(--color-ai);
+}
+
 /* Indeterminate (no known total) — a sweeping shimmer. */
 .indeterminate {
   width: 40%;

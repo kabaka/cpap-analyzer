@@ -2,6 +2,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   type MouseEvent,
   type ReactNode,
@@ -10,17 +11,33 @@ import {
 import { NavLink, Outlet, useLocation, useMatch } from 'react-router-dom';
 import { useThemeEffect } from '@/hooks/useTheme';
 import { useURLStateSync } from '@/hooks/useURLState';
+import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 import { RouteErrorBoundary } from '@/components/errors';
 import { InsightDrawer } from '@/components/insights';
-import { ImportStatusDock, ImportToastProvider } from '@/components/import';
+import { ImportStatusDock, ImportToastProvider, ImportWizardModal } from '@/components/import';
+import { CommandPalette } from '@/components/CommandPalette';
 import { Tooltip, TooltipProvider, Icon, type IconName } from '@/components/ui';
 import { useAppStore } from '@/stores/useAppStore';
 import { StatusBar } from './StatusBar';
 import { ThemeMenu } from './ThemeMenu';
+import { WindowToggle } from './WindowToggle';
 import styles from './RootLayout.module.css';
 
 /** Desktop breakpoint at which the rail (collapse) behaviour is available. */
 const DESKTOP_MEDIA_QUERY = '(min-width: 768px)';
+
+/** ⌘ on Apple platforms, Ctrl elsewhere — labels the ⌘K trigger chip. */
+const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.userAgent);
+
+/** Short month/day label, e.g. "Jul 5". Mirrors SignalDeck's coverage format. */
+function shortDate(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/** Short month/day/year label, e.g. "Jul 5, 2025" (used when a range spans years). */
+function shortDateY(date: Date): string {
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 /**
  * Conditionally wraps a sidebar item in a right-anchored tooltip. In rail mode
@@ -88,7 +105,17 @@ const SECTION_TITLES: Record<string, string> = {
 
 function sectionTitleFor(pathname: string): string {
   const firstSegment = pathname.replace(/^\/+/, '').split('/')[0] ?? '';
-  return SECTION_TITLES[firstSegment] ?? 'CPAP Analyzer';
+  // Own-property guard (same pattern as parsers/validation/physiologicalRanges).
+  // A bare `SECTION_TITLES[firstSegment]` resolves INHERITED members for keys
+  // like `toString`, `constructor`, or `__proto__` (a function / the prototype
+  // object). Those are non-nullish, so `?? 'CPAP Analyzer'` would NOT catch them
+  // and a non-string would be rendered as a React child. This header sits
+  // OUTSIDE the route error boundary, so that throw white-screens the whole app.
+  // Restricting the lookup to own keys returns the fallback for any such path.
+  if (Object.prototype.hasOwnProperty.call(SECTION_TITLES, firstSegment)) {
+    return SECTION_TITLES[firstSegment] ?? 'CPAP Analyzer';
+  }
+  return 'CPAP Analyzer';
 }
 
 function NavItemLink({
@@ -125,7 +152,7 @@ function NavItemLink({
         // mode relies on the visible `.navLabel` text instead.
         aria-label={isRail ? item.label : undefined}
       >
-        <Icon name={item.icon} size="lg" className={styles.navIcon} />
+        <Icon name={item.icon} size="md" className={styles.navIcon} />
         <span className={styles.navLabel}>{item.label}</span>
       </NavLink>
     </RailTooltip>
@@ -172,6 +199,30 @@ export default function RootLayout() {
   const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed);
   const toggleSidebarCollapsed = useAppStore((state) => state.toggleSidebarCollapsed);
 
+  // Global date range — the coverage label mirrors it. The header window toggle
+  // (WindowToggle) is the single global control that writes it.
+  const dateRange = useAppStore((state) => state.dateRange);
+  const { aggregates } = useNightlyAggregates(dateRange);
+
+  // Import affordance state (header Import button).
+  const importStatus = useAppStore((state) => state.importStatus);
+  const importProgress = useAppStore((state) => state.importProgress);
+
+  // Command palette open state (ephemeral).
+  const commandPaletteOpen = useAppStore((state) => state.commandPaletteOpen);
+  const setCommandPaletteOpen = useAppStore((state) => state.setCommandPaletteOpen);
+
+  // Import wizard modal open state (ephemeral). The header Import button opens it.
+  const importWizardOpen = useAppStore((state) => state.importWizardOpen);
+  const setImportWizardOpen = useAppStore((state) => state.setImportWizardOpen);
+
+  // While a true modal overlay (⌘K palette or the import wizard) is open, the app
+  // chrome behind it must leave the a11y tree + tab order so an SR virtual cursor
+  // / Tab cannot wander into it. The palette/wizard own aria-modal + a focus trap;
+  // this adds the missing `inert` on the background siblings. The AI drawer is a
+  // NON-modal `complementary` panel and is deliberately NOT gated here.
+  const backgroundInert = commandPaletteOpen || importWizardOpen;
+
   const sidebarRef = useRef<HTMLElement>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const mainRef = useRef<HTMLElement>(null);
@@ -191,6 +242,26 @@ export default function RootLayout() {
   }, []);
 
   const sectionTitle = sectionTitleFor(location.pathname);
+
+  // Coverage label — the window's date span plus the count of imported nights
+  // inside it (reuses SignalDeck's coverage pattern). Hidden when the window
+  // holds no nights, so an empty corpus shows no phantom range.
+  const coverageLabel = useMemo(() => {
+    if (aggregates.length === 0) return null;
+    const spanYears = dateRange.start.getFullYear() !== dateRange.end.getFullYear();
+    const fmt = spanYears ? shortDateY : shortDate;
+    return `${fmt(dateRange.start)} – ${fmt(dateRange.end)} · ${aggregates.length} nights`;
+  }, [dateRange, aggregates.length]);
+
+  const importRunning = importStatus === 'scanning' || importStatus === 'importing';
+  const importPct =
+    importProgress.total > 0
+      ? Math.round((importProgress.current / importProgress.total) * 100)
+      : 0;
+  // The header Import button opens the wizard MODAL (a sibling of the dock,
+  // mounted below) rather than navigating. The `/data/import` route is retained
+  // for deep-links, the empty-state CTA, and e2e — see ImportWizardModal.
+  const openImport = useCallback(() => setImportWizardOpen(true), [setImportWizardOpen]);
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((prev) => !prev);
@@ -281,6 +352,37 @@ export default function RootLayout() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleRailToggle]);
 
+  // Keyboard shortcut: ⌘K / Ctrl+K toggles the command palette. Mirrors the `[`
+  // handler's text-entry guard so it never hijacks typing (incl. the palette's
+  // own combobox — Esc closes that).
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.altKey || !(event.metaKey || event.ctrlKey)) return;
+      if (event.key.toLowerCase() !== 'k') return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        const role = target.getAttribute('role');
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          target.isContentEditable ||
+          role === 'textbox' ||
+          role === 'combobox'
+        ) {
+          return;
+        }
+      }
+
+      event.preventDefault();
+      setCommandPaletteOpen(!useAppStore.getState().commandPaletteOpen);
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [setCommandPaletteOpen]);
+
   // Desktop rail is active only when the preference is set; mobile drawer state
   // is independent. The CSS gates rail styling to ≥768px, so applying the class
   // unconditionally is safe (it is inert on mobile).
@@ -338,6 +440,24 @@ export default function RootLayout() {
     wasOpenRef.current = sidebarOpen;
   }, [sidebarOpen]);
 
+  // Mark the main content + sidebar `inert` while a modal overlay is open, so the
+  // chrome behind the dialog leaves the a11y tree + tab order. We toggle the DOM
+  // ATTRIBUTE imperatively rather than via a JSX prop: React 18's types don't
+  // model `inert`, and it activates on attribute PRESENCE (an `inert="false"`
+  // string would still be inert). The <header> is left interactive so the modal's
+  // invoker keeps focus and gets it back on close; the palette/wizard own the
+  // focus trap + restore. The AI drawer/dock are separate siblings, untouched.
+  useEffect(() => {
+    const main = mainRef.current;
+    const sidebar = sidebarRef.current;
+    main?.toggleAttribute('inert', backgroundInert);
+    sidebar?.toggleAttribute('inert', backgroundInert);
+    return () => {
+      main?.removeAttribute('inert');
+      sidebar?.removeAttribute('inert');
+    };
+  }, [backgroundInert]);
+
   return (
     <TooltipProvider>
       <ImportToastProvider>
@@ -376,10 +496,11 @@ export default function RootLayout() {
                   aria-label="CPAP Analyzer — go to Dashboard"
                   onClick={closeSidebar}
                 >
-                  <Icon name="brand" size="lg" className={styles.brandMark} />
+                  <span className={styles.brandMark} aria-hidden="true">
+                    <Icon name="brand" style={{ width: '18px', height: '18px' }} />
+                  </span>
                   <span className={styles.wordmark} aria-hidden="true">
-                    <span className={styles.wordmarkPrimary}>CPAP</span>
-                    <span className={styles.wordmarkSecondary}>Analyzer</span>
+                    CPAP<span className={styles.wordmarkSlash}>//</span>ANALYZER
                   </span>
                   {/* Contiguous text for screen readers and text-based selectors;
                     the visible wordmark above is split for two-tone styling and
@@ -430,14 +551,12 @@ export default function RootLayout() {
                     aria-pressed={isRail}
                     aria-label={isRail ? 'Expand sidebar' : 'Collapse sidebar'}
                   >
-                    {/* Swap the icon by state (no CSS rotation): chevron points
-                      left when expanded (collapse-ward) and right when in rail
-                      (expand-ward). */}
-                    <Icon
-                      name={isRail ? 'chevron-right' : 'chevron-left'}
-                      size="md"
-                      className={styles.railToggleIcon}
-                    />
+                    {/* Guillemet points inward (collapse-ward «) when expanded and
+                      outward (expand-ward ») in the rail. Decorative — the button's
+                      aria-label carries the accessible name. */}
+                    <span className={styles.railToggleGlyph} aria-hidden="true">
+                      {isRail ? '»' : '«'}
+                    </span>
                     <span className={styles.railToggleLabel}>Collapse</span>
                   </button>
                 </RailTooltip>
@@ -464,9 +583,61 @@ export default function RootLayout() {
                 <span className={styles.sectionTitle} aria-live="polite">
                   {sectionTitle}
                 </span>
+                <span className={styles.divider} aria-hidden="true" />
+                {/* Privacy promise — exact copy. The pulsing dot is decorative
+                  (reduced-motion stops the pulse); the literal text carries it. */}
+                <span className={styles.localPill}>
+                  <span className={styles.pulseDot} aria-hidden="true" />
+                  LOCAL · NO UPLOAD
+                </span>
               </div>
+
               <div className={styles.headerRight}>
-                <ThemeMenu />
+                {coverageLabel && <span className={styles.coverage}>{coverageLabel}</span>}
+                <div className={styles.headerActions}>
+                  <button
+                    type="button"
+                    className={`${styles.importBtn} ${importRunning ? styles.importBtnRunning : ''}`}
+                    onClick={openImport}
+                    aria-label={
+                      importRunning ? 'Import in progress — open details' : 'Import therapy data'
+                    }
+                  >
+                    {importRunning ? (
+                      <>
+                        <span className={`imp-spin ${styles.importSpinner}`} aria-hidden="true">
+                          <Icon name="spinner" style={{ width: '13px', height: '13px' }} />
+                        </span>
+                        <span>Importing</span>
+                        <span className={styles.importPct}>{importPct}%</span>
+                      </>
+                    ) : (
+                      <>
+                        <Icon name="import" style={{ width: '14px', height: '14px' }} />
+                        <span>Import</span>
+                      </>
+                    )}
+                  </button>
+
+                  <WindowToggle />
+
+                  <button
+                    type="button"
+                    className={styles.paletteTrigger}
+                    onClick={() => setCommandPaletteOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-label="Open command palette"
+                  >
+                    <Icon
+                      name="search"
+                      style={{ width: '13px', height: '13px' }}
+                      className={styles.paletteTriggerIcon}
+                    />
+                    <span className={styles.keyChip}>{IS_MAC ? '⌘K' : 'Ctrl K'}</span>
+                  </button>
+
+                  <ThemeMenu />
+                </div>
               </div>
             </header>
             <main id="main-content" className={styles.main} ref={mainRef} tabIndex={-1}>
@@ -485,6 +656,13 @@ export default function RootLayout() {
             navigation. Renders nothing unless an import is active or terminal
             and not yet dismissed. Sibling of StatusBar / InsightDrawer. */}
           <ImportStatusDock />
+
+          {/* ⌘K command palette — modal overlay, renders nothing unless open. */}
+          <CommandPalette />
+
+          {/* Header-launched import wizard — modal overlay, renders nothing
+            unless open. Sibling of the dock; both survive navigation. */}
+          <ImportWizardModal />
         </div>
       </ImportToastProvider>
     </TooltipProvider>

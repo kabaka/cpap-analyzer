@@ -1,12 +1,12 @@
 /**
- * Component-specific styles for the Granger Causality section.
+ * Granger Causality section — command-surface restyle.
  *
  * Reuses shared layout/typography classes from StatisticalAnalysis.module.css
- * (page, section, sectionTitle, hypothesisPanel rows, interpretation, etc.).
- * Only the bespoke pieces — control cluster, honesty flags, confidence chip,
- * verdict block, and chart legend — live here.
- *
- * Uses only theme tokens verified present in src/styles/tokens.css.
+ * (page, section, sectionTitle, hypothesisPanel rows, interpretation, statsTable,
+ * spinner, errorBox, retryButton, select/controlGroup/controlLabel). Only the
+ * bespoke pieces — control cluster, inference-mode fieldset, verdict + confidence
+ * chip, honesty flags, and chart legend — live here, all mono + --cs-* sizes.
+ * Uses only theme tokens; no hex.
  */
 
 /* ── Control cluster ──────────────────────────────────────────── */
@@ -16,11 +16,11 @@
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--cs-panel-pad);
   margin-bottom: var(--space-4);
-  background: var(--color-surface-primary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 /* ── Inference-mode fieldset ──────────────────────────────────── */
@@ -37,11 +37,12 @@
 
 .modeLegend {
   padding: 0 var(--space-1);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
 }
 
 .modeOptions {
@@ -54,7 +55,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-primary);
   cursor: pointer;
 }
@@ -69,9 +71,11 @@
 }
 
 .modeHelp {
-  font-size: var(--font-size-xs);
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  line-height: 1.5;
   color: var(--color-text-muted);
-  line-height: var(--line-height-relaxed);
   max-width: 60ch;
 }
 
@@ -86,7 +90,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  font-size: var(--font-size-2xl);
+  font-family: var(--font-family-mono);
+  font-size: 17px;
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   line-height: var(--line-height-tight);
@@ -94,7 +99,9 @@
 
 .scopeNote {
   margin: var(--space-2) 0 0 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  line-height: 1.5;
   color: var(--color-text-secondary);
 }
 
@@ -104,9 +111,10 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
+  padding: 2px 8px;
   border-radius: var(--radius-full);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   font-weight: var(--font-weight-medium);
 }
 
@@ -139,16 +147,15 @@
   gap: var(--space-2) var(--space-3);
 }
 
-/* The interpret-guide disclosure reuses the same visual language as the
-   other .disclosure blocks but carries a slightly stronger framing because
-   it is the primary "how to read this tab" entry point. */
+/* Primary "how to read this tab" entry point. */
 .interpretGuide {
   margin: var(--space-3) 0 0 0;
   padding: var(--space-3) var(--space-4);
   background: var(--color-surface-secondary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-secondary);
 }
 
@@ -170,20 +177,23 @@
 
 .interpretGuideBody dt {
   margin-top: var(--space-2);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--cs-fs-10-5);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
 .interpretGuideBody dd {
   margin: var(--space-1) 0 0 0;
-  line-height: var(--line-height-relaxed);
+  font-size: var(--cs-fs-10);
+  line-height: 1.55;
   max-width: 72ch;
 }
 
 .interpretGuideLink {
   display: inline-block;
   margin-top: var(--space-3);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-link);
 }
@@ -202,7 +212,8 @@
 
 .disclosure {
   margin: var(--space-2) 0 0 0;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
   color: var(--color-text-secondary);
 }
 
@@ -219,7 +230,7 @@
 
 .disclosureBody {
   margin: var(--space-2) 0 0 0;
-  line-height: var(--line-height-relaxed);
+  line-height: 1.55;
   max-width: 70ch;
 }
 
@@ -244,16 +255,20 @@
 
 .calloutHeading {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
   color: var(--color-text-primary);
 }
 
 .calloutBody {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-secondary);
-  line-height: var(--line-height-relaxed);
+  line-height: 1.55;
 }
 
 /* ── Directional detail header ────────────────────────────────── */
@@ -269,7 +284,7 @@
 .pQualifier {
   margin-left: var(--space-1);
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--cs-fs-9);
   font-style: italic;
   color: var(--color-text-muted);
 }
@@ -281,7 +296,8 @@
   flex-wrap: wrap;
   gap: var(--space-4);
   margin-top: var(--space-2);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
   color: var(--color-text-secondary);
 }
 

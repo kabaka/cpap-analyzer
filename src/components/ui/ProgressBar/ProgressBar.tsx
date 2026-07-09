@@ -61,10 +61,11 @@ export interface ProgressBarProps {
   /**
    * Fill colour, mapping to the matching `--color-{tone}` token. `primary`
    * (default) for in-progress work; `success` / `warning` / `error` for
-   * terminal states. Colour is reinforcement only — pair with text/ARIA, never
-   * rely on it alone (WCAG 1.4.1).
+   * terminal states; `ai` for the AI-Insights on-device model-download bar.
+   * Colour is reinforcement only — pair with text/ARIA, never rely on it alone
+   * (WCAG 1.4.1).
    */
-  readonly tone?: 'primary' | 'success' | 'warning' | 'error';
+  readonly tone?: 'primary' | 'success' | 'warning' | 'error' | 'ai';
   /** Optional extra class on the outer wrapper. */
   readonly className?: string;
 }

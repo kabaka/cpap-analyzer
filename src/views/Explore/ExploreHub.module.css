@@ -1,47 +1,63 @@
+/**
+ * Explore hub — command-surface restyle.
+ *
+ * Full-bleed inside the shell <main> (which owns --cs-deck-pad + the primary
+ * canvas). Card grid mirrors the prototype `exploreEl` hub: surface-secondary
+ * cards, 34×34 tinted icon squares (color-mix of the card accent), mono type.
+ * All sub-12px text is mono + a --cs-* size; no box-shadow; tokens only.
+ *
+ * @module views/Explore/ExploreHub.module.css
+ */
+
+/* Full-bleed column; the shell supplies page padding + background. */
 .hub {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
 }
 
 .heading {
-  font-size: var(--font-size-2xl);
+  margin: 0 0 6px;
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-bold);
+  font-size: 19px;
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-2) 0;
 }
 
 .subtitle {
-  font-size: var(--font-size-base);
+  margin: 0 0 14px;
+  max-width: 92ch;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.5;
   color: var(--color-text-secondary);
-  margin: 0 0 var(--space-6) 0;
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--cs-deck-gap);
 }
 
+/* Self-contained (not composing .panel) so the exact radius 10 / pad 16 17 win
+   the cascade in built lazy chunks (composes-ordering rule). */
 .card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  background: var(--color-surface-primary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-lg);
+  gap: 9px;
+  padding: 16px 17px;
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
   cursor: pointer;
   text-decoration: none;
   color: inherit;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+  transition: border-color var(--transition-fast);
 }
 
 .card:hover {
   border-color: var(--color-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .card:focus-visible {
@@ -52,68 +68,66 @@
 .cardHeader {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 10px;
 }
 
 .icon {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-lg);
   flex-shrink: 0;
-  font-size: 20px;
+  font-size: 17px;
+  line-height: 1;
+}
+
+/* Per-card accent: a 16% color-mix tint of the accent behind the emoji glyph. */
+.iconEvents {
+  composes: icon;
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--color-warning);
 }
 
 .iconStatistical {
   composes: icon;
-  background: var(--color-info-bg);
+  background: color-mix(in srgb, var(--color-info) 16%, transparent);
   color: var(--color-info);
-}
-
-.iconEvents {
-  composes: icon;
-  background: var(--color-warning-bg);
-  color: var(--color-warning);
 }
 
 .iconPressure {
   composes: icon;
-  background: var(--color-success-bg);
-  color: var(--color-success);
-}
-
-.iconIntegration {
-  composes: icon;
-  background: var(--color-surface-tertiary);
-  color: var(--color-text-muted);
+  background: color-mix(in srgb, var(--color-status-normal) 16%, transparent);
+  color: var(--color-status-normal);
 }
 
 .iconBreathing {
   composes: icon;
-  background: var(--color-detection-bg);
+  background: color-mix(in srgb, var(--color-detection) 16%, transparent);
   color: var(--color-detection);
 }
 
 .iconConfigs {
   composes: icon;
-  background: var(--color-surface-tertiary);
+  background: color-mix(in srgb, var(--color-text-primary) 16%, transparent);
   color: var(--color-text-primary);
 }
 
 .cardTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 13.5px;
+  color: var(--color-text-primary);
 }
 
 .cardDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  line-height: 1.5;
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.55;
+  color: var(--color-text-secondary);
 }
 
 .cardFooter {
@@ -121,18 +135,18 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-primary);
 }
 
 .arrow {
-  font-size: var(--font-size-base);
-  transition: transform 0.15s ease;
+  transition: transform var(--transition-fast);
 }
 
 .card:hover .arrow {
-  transform: translateX(4px);
+  transform: translateX(3px);
 }
 
 .disabledCard {
@@ -143,10 +157,12 @@
 }
 
 .badge {
-  font-size: var(--font-size-xs);
-  padding: 2px 8px;
+  align-self: flex-start;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  font-weight: var(--font-weight-medium);
+  padding: 2px 7px;
   border-radius: var(--radius-full);
   background: var(--color-surface-tertiary);
   color: var(--color-text-muted);
-  font-weight: var(--font-weight-medium);
 }

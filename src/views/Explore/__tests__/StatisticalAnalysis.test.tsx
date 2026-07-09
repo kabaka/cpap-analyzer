@@ -32,6 +32,9 @@ vi.mock('@/components/charts', () => ({
   ThemedBarChart: () => <div data-testid="bar-chart" />,
   CorrelationHeatmap: () => <div data-testid="heatmap" />,
   QQPlot: () => <div data-testid="qq-plot" />,
+  // TrendsSection resolves the CI-line colour from the theme-aware token via this
+  // hook; the mock only needs the key the component reads (`uncertaintyBand`).
+  useChartColors: () => ({ uncertaintyBand: '#64748b' }),
 }));
 
 // Mock CSS module

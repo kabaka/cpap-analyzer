@@ -1,25 +1,41 @@
+/**
+ * Statistical Analysis — command-surface restyle.
+ *
+ * Full-bleed inside the Correlations tab panel. Underline mono sub-tabs
+ * (descriptive/trends/…), surface-secondary control + result panels, and mono
+ * stat tables (9px heads / 11px cells). MANY of these classes are consumed by
+ * GrangerCausalitySection via `import shared from './StatisticalAnalysis.module.css'`
+ * (section, sectionTitle, controlGroup/Label, select, statsTable, hypothesis*,
+ * interpretation, spinner, errorBox, retryButton) — keep the class names stable.
+ * Charts keep their ChartContainer chrome (KEEP-TECH). Tokens only; no hex.
+ */
+
 .page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
 }
 
 .heading {
-  font-size: var(--font-size-2xl);
+  margin: 0 0 var(--space-3) 0;
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-bold);
+  font-size: 15px;
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-4) 0;
 }
 
+/* Controls bar — command-surface panel. */
 .controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--cs-panel-pad);
   background: var(--color-surface-secondary);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .controlGroup {
@@ -29,16 +45,18 @@
 }
 
 .controlLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
 }
 
 .select {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
+  padding: 6px 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
   background: var(--color-surface-primary);
@@ -54,8 +72,9 @@
 
 .windowInput {
   width: 80px;
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
+  padding: 6px 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
   background: var(--color-surface-primary);
@@ -67,22 +86,26 @@
   outline-offset: 2px;
 }
 
+/* Underline mono sub-tabs (prototype exCorrView tabbar). */
 .tabs {
   display: flex;
-  gap: 0;
+  gap: 2px;
   border-bottom: 1px solid var(--color-border-default);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-5);
   overflow-x: auto;
 }
 
 .tab {
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--font-size-sm);
+  padding: 8px 14px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   font-weight: var(--font-weight-medium);
+  letter-spacing: var(--cs-ls-btn);
   color: var(--color-text-secondary);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -100,49 +123,58 @@
 }
 
 .tabActive {
-  color: var(--color-primary);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
   border-bottom-color: var(--color-primary);
 }
 
 .section {
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-6);
 }
 
 .sectionTitle {
-  font-size: var(--font-size-lg);
+  margin: 0 0 var(--space-3) 0;
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-4) 0;
 }
 
+/* Mono stat table — 9px uppercase heads, 11px tabular cells. */
 .statsTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  font-variant-numeric: tabular-nums;
 }
 
 .statsTable th,
 .statsTable td {
-  padding: var(--space-2) var(--space-3);
+  padding: 6px 10px;
   text-align: left;
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .statsTable th {
+  font-size: var(--cs-fs-9);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
-  background: var(--color-surface-secondary);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .statsTable td {
   color: var(--color-text-primary);
-  font-family: var(--font-family-mono);
 }
 
 .chartRow {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
+  gap: var(--cs-deck-gap);
 }
 
 @media (max-width: 768px) {
@@ -152,24 +184,28 @@
 }
 
 .hypothesisPanel {
-  padding: var(--space-4);
+  padding: var(--cs-panel-pad);
   background: var(--color-surface-secondary);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .hypothesisSubtitle {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
   margin: 0 0 var(--space-3) 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
 .hypothesisRow {
   display: flex;
   justify-content: space-between;
-  padding: var(--space-2) 0;
+  gap: var(--space-2);
+  padding: 6px 0;
   border-bottom: 1px solid var(--color-border-subtle);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
 }
 
 .hypothesisRow:last-child {
@@ -178,20 +214,22 @@
 
 .hypothesisLabel {
   color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
 }
 
 .hypothesisValue {
   color: var(--color-text-primary);
-  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
 .interpretation {
   margin-top: var(--space-3);
   padding: var(--space-3);
   background: var(--color-info-bg);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
+  border-left: 3px solid var(--color-info);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-primary);
   line-height: 1.6;
 }
@@ -203,7 +241,8 @@
   padding: var(--space-2) var(--space-3);
   background: var(--color-surface-secondary);
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   color: var(--color-text-muted);
   margin-bottom: var(--space-4);
 }
@@ -211,16 +250,20 @@
 .emptyState {
   text-align: center;
   padding: var(--space-12) var(--space-6);
+  font-family: var(--font-family-mono);
   color: var(--color-text-secondary);
 }
 
 .emptyState h2 {
-  font-size: var(--font-size-lg);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-base);
   margin: 0 0 var(--space-2) 0;
+  color: var(--color-text-primary);
 }
 
 .emptyState p {
-  font-size: var(--font-size-sm);
+  font-size: var(--cs-fs-11);
+  line-height: 1.5;
   margin: 0;
 }
 
@@ -229,27 +272,30 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-12);
+  font-family: var(--font-family-mono);
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--cs-fs-11);
 }
 
 .errorBox {
   padding: var(--space-4);
   background: var(--color-error-bg);
   border: 1px solid var(--color-error);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-family-mono);
   color: var(--color-error);
-  font-size: var(--font-size-sm);
+  font-size: var(--cs-fs-11);
 }
 
 .retryButton {
   margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  padding: 6px 12px;
   background: var(--color-error);
   color: var(--color-text-inverse);
   border: none;
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   cursor: pointer;
 }
 
@@ -263,13 +309,14 @@
   padding: var(--space-3);
   background: var(--color-warning-bg);
   border-radius: var(--radius-md);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-secondary);
 }
 
 .assumptions summary {
   cursor: pointer;
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
@@ -280,4 +327,5 @@
 
 .assumptions li {
   margin-bottom: var(--space-1);
+  line-height: 1.5;
 }

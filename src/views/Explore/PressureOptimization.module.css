@@ -1,50 +1,97 @@
+/**
+ * Pressure Optimization — command-surface restyle.
+ *
+ * Full-bleed inside the shell <main> (which owns --cs-deck-pad + the primary
+ * canvas). Breadcrumb `Explore / Pressure Optimization` + mono page title, then
+ * four sections (pressure-response, variability, titration, BiPAP). Charts stay
+ * in their ChartContainer chrome (untouched, spec A12). All sub-12px text is
+ * mono + a --cs-* size; no box-shadow; tokens only, both themes.
+ *
+ * @module views/Explore/PressureOptimization.module.css
+ */
+
+/* Full-bleed column; the shell supplies page padding + background. */
 .page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--cs-deck-gap);
+  width: 100%;
+  min-width: 0;
+}
+
+/* ── Breadcrumb + heading ─────────────────────────────────────────────── */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+}
+
+.breadcrumbLink {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.breadcrumbLink:hover {
+  text-decoration: underline;
+}
+
+.breadcrumbLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.breadcrumbSep,
+.breadcrumbCurrent {
+  color: var(--color-text-muted);
 }
 
 .heading {
-  font-size: var(--font-size-2xl);
+  margin: 0;
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-bold);
+  font-size: 19px;
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-4) 0;
 }
+
+/* ── Controls toolbar ─────────────────────────────────────────────────── */
 
 .controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  padding: var(--space-4);
-  background: var(--color-surface-secondary);
-  border-radius: var(--radius-md);
 }
 
 .controlGroup {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 4px;
 }
 
 .controlLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
 }
 
 .select {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
+  min-width: 132px;
+  padding: 5px 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-primary);
+  background: var(--color-surface-primary);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
-  background: var(--color-surface-primary);
-  color: var(--color-text-primary);
   cursor: pointer;
-  min-width: 120px;
 }
 
 .select:focus-visible {
@@ -52,129 +99,159 @@
   outline-offset: 2px;
 }
 
+/* ── Section ──────────────────────────────────────────────────────────── */
+
 .section {
-  margin-bottom: var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  min-width: 0;
 }
 
 .sectionTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--cs-fs-12);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-4) 0;
 }
 
-.chartRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
-}
-
-@media (max-width: 768px) {
-  .chartRow {
-    grid-template-columns: 1fr;
-  }
-}
+/* ── Summary / stat cards (command-surface stat pattern) ──────────────── */
 
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--cs-deck-gap);
 }
 
 .summaryCard {
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface-primary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 11px 13px;
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  min-width: 0;
 }
 
 .summaryCardLabel {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin: 0 0 var(--space-1) 0;
+  color: var(--color-text-secondary);
 }
 
 .summaryCardValue {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
-  font-family: var(--font-family-mono);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 18px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
 }
 
+/* ── Recommendation panel (stat-row register) ─────────────────────────── */
+
 .recommendationPanel {
-  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: var(--cs-panel-pad);
   background: var(--color-surface-secondary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-4);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  min-width: 0;
 }
 
 .recommendationRow {
   display: flex;
   justify-content: space-between;
-  padding: var(--space-2) 0;
+  gap: var(--space-2);
+  padding-bottom: 4px;
   border-bottom: 1px solid var(--color-border-subtle);
-  font-size: var(--font-size-sm);
 }
 
 .recommendationRow:last-child {
+  padding-bottom: 0;
   border-bottom: none;
 }
 
 .recommendationLabel {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
 }
 
 .recommendationValue {
-  color: var(--color-text-primary);
   font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+/* ── Callouts (regression readout + recommendation prose) ─────────────── */
+
+.recommendationText,
+.interpretation {
+  margin: 0;
+  padding: 10px 13px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.6;
+  color: var(--color-text-primary);
 }
 
 .recommendationText {
-  margin-top: var(--space-3);
-  padding: var(--space-3);
   background: var(--color-success-bg);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
-  line-height: 1.6;
-}
-
-.bipapSection {
-  margin-top: var(--space-4);
-  padding: var(--space-4);
-  background: var(--color-info-bg);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-default);
-}
-
-.bipapTitle {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0 0 var(--space-3) 0;
 }
 
 .interpretation {
-  margin-top: var(--space-3);
-  padding: var(--space-3);
   background: var(--color-info-bg);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
-  line-height: 1.6;
 }
 
+/* ── BiPAP sub-panel ──────────────────────────────────────────────────── */
+
+.bipapSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: var(--cs-panel-pad);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  min-width: 0;
+}
+
+.bipapTitle {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-title);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+}
+
+/* ── Stability pill ───────────────────────────────────────────────────── */
+
 .stabilityBadge {
-  display: inline-block;
-  padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 2px 8px;
   border-radius: var(--radius-full);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   font-weight: var(--font-weight-semibold);
   text-transform: capitalize;
 }
@@ -200,64 +277,76 @@
   color: var(--color-status-severe);
 }
 
+/* ── Empty / loading / error states ───────────────────────────────────── */
+
 .emptyState {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-10) var(--space-6);
   text-align: center;
-  padding: var(--space-12) var(--space-6);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
   color: var(--color-text-secondary);
 }
 
 .emptyState h2 {
-  font-size: var(--font-size-lg);
-  margin: 0 0 var(--space-2) 0;
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-13);
+  color: var(--color-text-primary);
 }
 
 .emptyState p {
-  font-size: var(--font-size-sm);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.55;
 }
 
 .spinner {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-12);
+  padding: var(--space-10);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
 }
 
 .errorBox {
-  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: var(--cs-panel-pad);
   background: var(--color-error-bg);
   border: 1px solid var(--color-error);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-error);
-  font-size: var(--font-size-sm);
+}
+
+.errorBox p {
+  margin: 0;
 }
 
 .retryButton {
-  margin-top: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  background: var(--color-error);
+  padding: 6px 12px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-inverse);
+  background: var(--color-error);
   border: none;
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
 .retryButton:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
-}
-
-.metadataBanner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-surface-secondary);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-4);
 }

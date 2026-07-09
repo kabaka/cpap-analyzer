@@ -1,14 +1,16 @@
-/**
- * Terminal import summary (success / partial / error). Promotes the summary grid
- * and error-list styling out of ImportWizard so the dock and wizard share one
- * accessible presentation. Status is icon + heading text, never colour alone.
+/*
+ * Terminal import summary (success / partial / error) — command-surface restyle
+ * (spec Part C "Summary" + prototype impSummaryEl). Centred 30px status icon, a
+ * mono heading, an optional issue line, a value/label stat grid, and a
+ * collapsible per-file error list. Status is icon + heading text, never colour
+ * alone. Shared by the wizard (route + modal) and the dock. Mono-forward.
  */
 
 .summary {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-5);
+  gap: 18px;
   text-align: center;
 }
 
@@ -19,22 +21,25 @@
 }
 
 .title {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: 1.25rem; /* 20px */
+  color: var(--color-text-primary);
 }
 
 .subtitle {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-13);
+  color: var(--color-text-secondary);
 }
 
 .errorMessage {
-  font-size: var(--font-size-sm);
-  color: var(--color-error);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  color: var(--color-status-severe);
 }
 
 .grid {
@@ -49,18 +54,20 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
+  gap: 4px;
 }
 
 .value {
-  font-size: var(--font-size-2xl);
+  font-family: var(--font-family-mono);
+  font-size: 1.5rem; /* 24px */
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
 }
 
 .label {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-muted);
 }
 
@@ -80,11 +87,11 @@
   border: none;
   padding: var(--space-2) 0;
   min-height: 44px;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-13);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-secondary);
   cursor: pointer;
-  font-family: var(--font-family-sans);
 }
 
 .errorsToggle:hover {
@@ -111,7 +118,8 @@
   gap: var(--space-2);
   padding: var(--space-2);
   border-bottom: 1px solid var(--color-border-subtle);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   flex-wrap: wrap;
 }
 
@@ -122,5 +130,5 @@
 }
 
 .errorText {
-  color: var(--color-error);
+  color: var(--color-status-severe);
 }

@@ -1,0 +1,60 @@
+/*
+ * Import wizard modal frame (spec Part C + prototype importWizardEl). A centred
+ * 720px elevated panel over a dimmed overlay. The enter animation is disabled
+ * under reduced motion (spec Part E). Mirrors the command-palette overlay/panel
+ * treatment so the two app-level modals read as one system.
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  background: var(--color-surface-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.panel {
+  width: 720px;
+  max-width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 14px;
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  animation: importWizardIn var(--transition-fast) ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    animation: none;
+  }
+}
+
+@keyframes importWizardIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Suspense fallback while the lazily-loaded wizard engine chunk is fetched. */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  padding: 40px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  color: var(--color-text-muted);
+}

@@ -18,8 +18,7 @@
 import { Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 
-import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
-import { Badge, Button, Card, Select, Switch } from '@/components/ui';
+import { Badge, Button, Select, Switch } from '@/components/ui';
 import { BoxPlot, type BoxPlotGroup } from '@/components/charts/d3';
 import { paletteColor, useChartColors } from '@/components/charts/useChartColors';
 import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
@@ -179,6 +178,30 @@ export function Configurations(): JSX.Element {
     [periods, selectedIds],
   );
 
+  // Lowest-AHI configuration — drives the winning card's `Lowest AHI` tag +
+  // primary border and the OPTIMIZE narrative. Only `config` periods with a
+  // defined AHI mean are eligible; a period whose every night was sub-floor
+  // (null AHI) cannot win.
+  const bestAhiPeriod = useMemo<ConfigPeriod | null>(() => {
+    let best: ConfigPeriod | null = null;
+    let bestMean = Number.POSITIVE_INFINITY;
+    for (const p of realPeriods) {
+      const summary = p.outcomes.ahi;
+      if (summary === null) continue;
+      if (summary.mean < bestMean) {
+        bestMean = summary.mean;
+        best = p;
+      }
+    }
+    return best;
+  }, [realPeriods]);
+
+  // The outcome bar length is relative — the highest mean AHI fills the track.
+  const maxCardAhi = useMemo(
+    () => Math.max(1, ...realPeriods.map((p) => p.outcomes.ahi?.mean ?? 0)),
+    [realPeriods],
+  );
+
   const toggleSelected = (id: string): void => {
     setSelectedIds((prev) => {
       if (prev.includes(id)) return prev.filter((x) => x !== id);
@@ -191,18 +214,24 @@ export function Configurations(): JSX.Element {
 
   return (
     <div className={styles.page} role="main" aria-labelledby="configs-heading">
+      <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+        <Link to="/explore" className={styles.breadcrumbLink}>
+          Explore
+        </Link>
+        <span className={styles.breadcrumbSep} aria-hidden="true">
+          /
+        </span>
+        <span className={styles.breadcrumbCurrent}>Machine Configurations</span>
+      </nav>
       <header className={styles.pageHeader}>
-        <div>
-          <h1 id="configs-heading" className={styles.pageTitle}>
-            Machine configurations
-          </h1>
-          <p className={styles.pageSubtitle}>
-            Compare therapy outcomes across periods where your machine settings stayed the same.
-            Select two or more configurations to see how your AHI, central index, leak, and usage
-            differed — useful for understanding how a pressure or EPR change affected your therapy.
-          </p>
-        </div>
-        <DateRangeSelector />
+        <h1 id="configs-heading" className={styles.pageTitle}>
+          Machine configurations
+        </h1>
+        <p className={styles.pageSubtitle}>
+          Outcomes grouped by the machine settings in effect. Each period holds settings constant so
+          distributions are comparable. Select two or more configurations to see how your AHI,
+          central index, leak, and usage differed.
+        </p>
       </header>
 
       {loading && <p className={styles.muted}>Loading nightly data…</p>}
@@ -220,6 +249,17 @@ export function Configurations(): JSX.Element {
         <SingleConfigNote period={realPeriods[0]} />
       )}
 
+      {!loading && !error && realPeriods.length >= 2 && (
+        <>
+          <PeriodCardsOverview
+            periods={realPeriods}
+            bestId={bestAhiPeriod?.id ?? null}
+            maxAhi={maxCardAhi}
+          />
+          <OptimizeNarrative best={bestAhiPeriod} />
+        </>
+      )}
+
       {!loading && !error && realPeriods.length >= 1 && (
         <>
           <PeriodTable
@@ -231,7 +271,7 @@ export function Configurations(): JSX.Element {
             totalShort={periods.filter((p) => p.nights < SHORT_PERIOD_THRESHOLD).length}
           />
 
-          <Card className={styles.compareCard}>
+          <section className={styles.compareCard}>
             <header className={styles.sectionHeader}>
               <div>
                 <h2 className={styles.sectionTitle}>Outcome comparison</h2>
@@ -259,12 +299,122 @@ export function Configurations(): JSX.Element {
                 onAxisChange={setOptimizeAxis}
               />
             )}
-          </Card>
+          </section>
 
           <ConfoundingCaveat />
         </>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Period cards overview (matches the `03-ex-others` reference)
+// ---------------------------------------------------------------------------
+
+/**
+ * The observational caveat shown in the OPTIMIZE narrative panel. Kept verbatim
+ * so the "association, not a titration instruction" framing is never softened.
+ */
+const OPTIMIZE_CAVEAT =
+  'This is an association from your own history, confounded by time and season — not a titration instruction. Discuss changes with your clinician.';
+
+/** Short, timezone-stable `Mon D` label for a `YYYY-MM-DD` period boundary. */
+function shortDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+interface PeriodCardsOverviewProps {
+  readonly periods: readonly ConfigPeriod[];
+  readonly bestId: string | null;
+  readonly maxAhi: number;
+}
+
+function PeriodCardsOverview({ periods, bestId, maxAhi }: PeriodCardsOverviewProps): JSX.Element {
+  return (
+    <section className={styles.cardsSection} aria-label="Outcome summary by configuration">
+      <div className={styles.cardsGrid}>
+        {periods.map((p) => (
+          <PeriodCard key={p.id} period={p} isBest={p.id === bestId} maxAhi={maxAhi} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PeriodCard({
+  period,
+  isBest,
+  maxAhi,
+}: {
+  readonly period: ConfigPeriod;
+  readonly isBest: boolean;
+  readonly maxAhi: number;
+}): JSX.Element {
+  const ahi = period.outcomes.ahi;
+  const usage = period.outcomes.usageHours;
+  const severity: AhiSeverity | 'none' = ahi !== null ? classifyAhiSeverity(ahi.mean) : 'none';
+  // Bar length is relative to the highest mean AHI in view; keep a small floor
+  // so a non-zero value is always visible.
+  const barPct = ahi !== null ? Math.max(4, Math.min(100, (ahi.mean / maxAhi) * 100)) : 0;
+  const cardClass = isBest ? `${styles.periodCard} ${styles.periodCardBest}` : styles.periodCard;
+
+  return (
+    <article className={cardClass}>
+      <div className={styles.periodCardHead}>
+        <span className={styles.periodCardTitle}>{formatConfigKey(period.settings)}</span>
+        {isBest && (
+          <Badge variant="success" size="sm">
+            Lowest AHI
+          </Badge>
+        )}
+      </div>
+      <div className={styles.periodStats}>
+        <div className={styles.periodStat}>
+          <span className={styles.periodStatLabel}>Mean AHI</span>
+          <span className={styles.periodStatValue}>{ahi !== null ? ahi.mean.toFixed(1) : '—'}</span>
+        </div>
+        <div className={styles.periodStat}>
+          <span className={styles.periodStatLabel}>Mean usage</span>
+          <span className={styles.periodStatValue}>
+            {usage !== null ? `${usage.mean.toFixed(1)}h` : '—'}
+          </span>
+        </div>
+        <div className={styles.periodStat}>
+          <span className={styles.periodStatLabel}>Nights</span>
+          <span className={styles.periodStatValue}>{period.nights}</span>
+        </div>
+      </div>
+      <div className={styles.periodBar} data-severity={severity} aria-hidden="true">
+        <span className={styles.periodBarFill} style={{ width: `${barPct}%` }} />
+      </div>
+      <span className={styles.periodDates}>
+        {shortDate(period.startDate)} – {shortDate(period.endDate)}
+      </span>
+    </article>
+  );
+}
+
+function OptimizeNarrative({ best }: { readonly best: ConfigPeriod | null }): JSX.Element {
+  const bestAhi = best?.outcomes.ahi ?? null;
+  return (
+    <section className={styles.optimizeCard} aria-labelledby="optimize-heading">
+      <h2 id="optimize-heading" className={styles.optimizeTitle}>
+        Optimize · Which setting gave the lowest AHI?
+      </h2>
+      <p className={styles.optimizeSub}>
+        observational comparison across your own configuration periods
+      </p>
+      <p className={styles.optimizeBody}>
+        {best !== null && bestAhi !== null
+          ? `Over this range, the ${formatConfigKey(best.settings)} configuration had the lowest mean AHI (${bestAhi.mean.toFixed(
+              1,
+            )}/h across ${best.nights} nights). ${OPTIMIZE_CAVEAT}`
+          : 'Not enough configuration variety with a defined AHI in this range to identify a lowest-AHI setting. Widen the window to include a settings change.'}
+      </p>
+    </section>
   );
 }
 
@@ -301,7 +451,7 @@ function PeriodTable({
   };
 
   return (
-    <Card className={styles.tableCard}>
+    <section className={styles.tableCard} aria-label="Configuration periods">
       <header className={styles.sectionHeader}>
         <div>
           <h2 className={styles.sectionTitle}>Configuration periods</h2>
@@ -360,7 +510,7 @@ function PeriodTable({
           </tbody>
         </table>
       </div>
-    </Card>
+    </section>
   );
 }
 
@@ -954,7 +1104,7 @@ function ModeTabs({
 
 function EmptyNoData(): JSX.Element {
   return (
-    <Card className={styles.emptyCard}>
+    <section className={styles.emptyCard} aria-label="No therapy data">
       <h2 className={styles.sectionTitle}>No therapy data in this range</h2>
       <p className={styles.sectionSubtitle}>
         There are no nightly aggregates for the selected date range. Adjust the date range above or
@@ -963,13 +1113,13 @@ function EmptyNoData(): JSX.Element {
       <Link to="/data/import" className={styles.emptyLink}>
         Open the import wizard →
       </Link>
-    </Card>
+    </section>
   );
 }
 
 function EmptyNoSettings(): JSX.Element {
   return (
-    <Card className={styles.emptyCard}>
+    <section className={styles.emptyCard} aria-label="Machine settings unavailable">
       <h2 className={styles.sectionTitle}>Machine settings unavailable</h2>
       <p className={styles.sectionSubtitle}>
         Machine settings (min/max pressure, EPR) aren&apos;t recorded for any night in this range.
@@ -979,13 +1129,13 @@ function EmptyNoSettings(): JSX.Element {
       <Link to="/data/import" className={styles.emptyLink}>
         Re-import data →
       </Link>
-    </Card>
+    </section>
   );
 }
 
 function SingleConfigNote({ period }: { readonly period: ConfigPeriod | undefined }): JSX.Element {
   return (
-    <Card className={styles.singleCard}>
+    <section className={styles.singleCard} aria-label="Single configuration">
       <h2 className={styles.sectionTitle}>All nights share one configuration</h2>
       <p className={styles.sectionSubtitle}>
         {period
@@ -994,7 +1144,7 @@ function SingleConfigNote({ period }: { readonly period: ConfigPeriod | undefine
         Configuration comparison activates once your settings change — for example, after a min or
         max pressure adjustment.
       </p>
-    </Card>
+    </section>
   );
 }
 

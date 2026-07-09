@@ -1,0 +1,345 @@
+/* Window toggle — segmented presets + Custom date popover (spec B3). */
+
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Custom button (Popover trigger) ── */
+
+.customBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  letter-spacing: var(--cs-ls-btn);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.customBtn:hover {
+  border-color: var(--color-border-emphasis);
+  color: var(--color-text-primary);
+}
+
+.customBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Custom-active: a real custom range is selected. */
+.customBtnActive {
+  border-color: var(--color-primary);
+  background: var(--color-nav-active-bg);
+  color: var(--color-primary);
+}
+
+/* Popover-open: emphasise the border while the picker is showing. */
+.customBtnOpen {
+  border-color: var(--color-primary);
+}
+
+.caret {
+  font-size: 8px;
+  opacity: 0.7;
+}
+
+/* ── Popover panel ── */
+/* .popoverPanel is merged onto the shared Popover `.content` (which supplies the
+   elevated surface, border, radius, shadow and padding). We only pin the width
+   and the monospace family here. */
+.popoverPanel {
+  width: 288px;
+  max-width: calc(100vw - 32px);
+  font-family: var(--font-family-mono);
+}
+
+.popover {
+  display: flex;
+  flex-direction: column;
+}
+
+.popTitle {
+  margin: 0 0 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-section);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.fields {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 11px;
+}
+
+.field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: var(--cs-fs-9);
+  color: var(--color-text-secondary);
+}
+
+.dateInput {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  padding: 5px 6px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 5px;
+  background: var(--color-surface-primary);
+  color: var(--color-text-primary);
+}
+
+.dateInput:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.quickRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.quickBtn {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 5px;
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.quickBtn:hover {
+  border-color: var(--color-border-emphasis);
+  color: var(--color-text-primary);
+}
+
+.quickBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.cancelBtn,
+.applyBtn {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.cancelBtn {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border-default);
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.cancelBtn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-emphasis);
+}
+
+.applyBtn {
+  padding: 6px 14px;
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-weight: var(--font-weight-semibold);
+}
+
+.applyBtn:hover {
+  background: var(--color-primary-hover);
+}
+
+.cancelBtn:focus-visible,
+.applyBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── Mobile menu (< 768px) ── */
+/* The horizontal segment doesn't fit the cramped phone header, so on <768px the
+   same choices collapse into a compact command-surface menu: a small trigger
+   button (active window label) opens a Popover whose radiogroup lists the five
+   presets + a "Custom range…" entry that reveals the shared date fields. Hidden
+   on desktop, where `.wrap` is shown instead. */
+.mobile {
+  display: none;
+}
+
+.mobileTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  letter-spacing: var(--cs-ls-btn);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.mobileTrigger:hover {
+  border-color: var(--color-border-emphasis);
+  color: var(--color-text-primary);
+}
+
+.mobileTrigger:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Custom-active: a real custom range is selected. */
+.mobileTriggerActive {
+  border-color: var(--color-primary);
+  background: var(--color-nav-active-bg);
+  color: var(--color-primary);
+}
+
+.mobileTriggerLabel {
+  font-variant-numeric: tabular-nums;
+}
+
+.mobileMenu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobileGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Each preset row: ≥40px tall for comfortable touch (WCAG 2.5.5). */
+.mobileItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.mobileItem:hover {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-primary);
+}
+
+.mobileItem:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+/* Selected preset: primary wash + inset accent bar + ✓ + weight — four
+   non-colour cues, echoing the sidebar active item (WCAG 1.4.1). */
+.mobileItemActive {
+  background: var(--color-nav-active-bg);
+  color: var(--color-nav-active-fg);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
+.mobileItemLabel {
+  min-width: 32px;
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.mobileItemName {
+  flex: 1;
+  font-size: var(--cs-fs-10);
+}
+
+.mobileCheck {
+  margin-left: auto;
+}
+
+.mobileCustomItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 2px;
+  padding: 0 10px;
+  border: none;
+  border-top: 1px solid var(--color-border-subtle);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  font-weight: var(--font-weight-semibold);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.mobileCustomItem:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.mobileCustomItem:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
+}
+
+/* Breakpoint swap: the horizontal segment on desktop, the compact menu on phones.
+   Only one is ever visible, so the header never shows both controls. */
+@media (max-width: 767px) {
+  .wrap {
+    display: none;
+  }
+
+  .mobile {
+    display: inline-flex;
+  }
+}

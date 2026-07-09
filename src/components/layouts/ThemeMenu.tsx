@@ -57,7 +57,7 @@ export function ThemeMenu() {
           className={styles.trigger}
           aria-label={`Theme: ${THEME_LABEL[theme]}`}
         >
-          <Icon name={triggerIcon} size="md" />
+          <Icon name={triggerIcon} size="sm" />
         </button>
       </DropdownMenuPrimitive.Trigger>
       <DropdownMenuPrimitive.Portal>
@@ -83,7 +83,7 @@ export function ThemeMenu() {
                   )}
                 </span>
                 <DropdownMenuPrimitive.ItemIndicator className={styles.indicator} aria-hidden>
-                  <span className={styles.dot} />
+                  <span className={styles.check}>✓</span>
                 </DropdownMenuPrimitive.ItemIndicator>
               </DropdownMenuPrimitive.RadioItem>
             ))}

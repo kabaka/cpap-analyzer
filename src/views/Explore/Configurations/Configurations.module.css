@@ -1,99 +1,295 @@
 /**
- * Machine Configurations view styles.
+ * Machine Configurations — command-surface restyle.
  *
- * Mirrors the spacing / surface register used by other Explore views
- * (`Breathing.module.css`, `EventExplorer.module.css`): page-level flex column
- * inside a max-width container, Card surfaces for each section, and a tabular
- * config-period readout with selection affordances.
+ * Full-bleed inside the shell <main> (which owns --cs-deck-pad + the primary
+ * canvas). Breadcrumb `Explore / Machine Configurations` + mono page title +
+ * intro, then a 2-up grid of period cards (MEAN AHI / MEAN USAGE / NIGHTS, a
+ * severity-toned outcome bar, and a `Lowest AHI` tag on the winning card), an
+ * OPTIMIZE narrative panel, the full period table, the Compare/Optimize card,
+ * and the confounding caveat. All panels are surface-secondary + 1px border, no
+ * shadow. Severity dots + bars read on the clinical status palette in both
+ * themes. All sub-12px text is mono + a --cs-* size; tokens only.
  *
- * Theme tokens only — no hardcoded colors. Severity dots map to the existing
- * status palette so they read identically in light + dark themes.
+ * @module views/Explore/Configurations/Configurations.module.css
  */
 
-/* ── Page shell ──────────────────────────────────────────────────────────── */
+/* ── Page shell (full-bleed) ─────────────────────────────────────────────── */
 
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
-  padding: var(--space-lg);
-  max-width: 1200px;
-  margin: 0 auto;
+  gap: var(--cs-deck-gap);
   width: 100%;
+  min-width: 0;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+}
+
+.breadcrumbLink {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.breadcrumbLink:hover {
+  text-decoration: underline;
+}
+
+.breadcrumbLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.breadcrumbSep,
+.breadcrumbCurrent {
+  color: var(--color-text-muted);
 }
 
 .pageHeader {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .pageTitle {
-  font-size: var(--font-size-2xl);
+  margin: 0;
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-bold);
+  font-size: 19px;
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-1) 0;
 }
 
 .pageSubtitle {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  max-width: 760px;
-  margin: 0;
+  margin: 4px 0 0;
+  max-width: 96ch;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   line-height: 1.5;
-}
-
-/* ── Section header (used inside Cards) ──────────────────────────────────── */
-
-.sectionHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-3);
-  flex-wrap: wrap;
-}
-
-.sectionTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0 0 var(--space-1) 0;
-}
-
-.sectionSubtitle {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  margin: 0;
+  color: var(--color-text-muted);
 }
 
 .muted {
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   margin: 0;
 }
 
 .errorText {
   color: var(--color-error);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   margin: 0;
 }
 
-/* ── Period table card ──────────────────────────────────────────────────── */
+/* ── Section headers (inside panels) ─────────────────────────────────────── */
 
-.tableCard {
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-title);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+}
+
+.sectionSubtitle {
+  margin: 3px 0 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+/* ── Period cards overview (2-up) ────────────────────────────────────────── */
+
+.cardsSection {
+  min-width: 0;
+}
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--cs-deck-gap);
+}
+
+.periodCard {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 9px;
+  padding: 14px 15px;
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  min-width: 0;
 }
+
+/* Winning (lowest-AHI) card — primary-tinted border + the `Lowest AHI` tag. */
+.periodCardBest {
+  border-color: var(--color-primary);
+}
+
+.periodCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.periodCardTitle {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--cs-fs-11-5);
+  color: var(--color-text-primary);
+}
+
+.periodStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.periodStat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.periodStatLabel {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.periodStatValue {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 19px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.periodBar {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-tertiary);
+  overflow: hidden;
+}
+
+.periodBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-status-normal);
+}
+
+.periodBar[data-severity='mild'] .periodBarFill {
+  background: var(--color-status-mild);
+}
+
+.periodBar[data-severity='moderate'] .periodBarFill {
+  background: var(--color-status-moderate);
+}
+
+.periodBar[data-severity='severe'] .periodBarFill {
+  background: var(--color-status-severe);
+}
+
+.periodBar[data-severity='none'] .periodBarFill {
+  background: var(--color-text-muted);
+}
+
+.periodDates {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── OPTIMIZE narrative panel ─────────────────────────────────────────────── */
+
+.optimizeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--cs-panel-pad);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  min-width: 0;
+}
+
+.optimizeTitle {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-title);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+}
+
+.optimizeSub {
+  margin: 0 0 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  color: var(--color-text-muted);
+}
+
+.optimizeBody {
+  margin: 0;
+  max-width: 96ch;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+/* ── Panels ──────────────────────────────────────────────────────────────── */
+
+.tableCard,
+.compareCard,
+.emptyCard,
+.singleCard {
+  composes: panel from '../../../styles/commandSurface.module.css';
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.emptyCard,
+.singleCard {
+  align-items: flex-start;
+}
+
+/* ── Period table ────────────────────────────────────────────────────────── */
 
 .shortToggle {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  gap: 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-primary);
   cursor: pointer;
   user-select: none;
@@ -108,25 +304,26 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
 }
 
 .table thead th {
   position: sticky;
   top: 0;
   background: var(--color-surface-secondary);
-  padding: var(--space-2) var(--space-3);
+  padding: 7px 10px;
   text-align: left;
-  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text-muted);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
   border-bottom: 1px solid var(--color-border-default);
 }
 
 .table tbody td {
-  padding: var(--space-2) var(--space-3);
+  padding: 7px 10px;
   border-bottom: 1px solid var(--color-border-subtle);
   color: var(--color-text-primary);
   vertical-align: middle;
@@ -134,11 +331,11 @@
 
 .row {
   cursor: pointer;
-  transition: background-color 0.12s ease;
+  transition: background-color var(--transition-fast);
 }
 
 .row:hover {
-  background: var(--color-surface-secondary);
+  background: var(--color-surface-tertiary);
 }
 
 .row:focus-visible {
@@ -146,12 +343,9 @@
   outline-offset: -2px;
 }
 
-.rowSelected {
-  background: var(--color-info-bg);
-}
-
+.rowSelected,
 .rowSelected:hover {
-  background: var(--color-info-bg);
+  background: var(--color-nav-active-bg);
 }
 
 .rowDimmed {
@@ -171,7 +365,7 @@
 .checkboxWrap {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 4px;
 }
 
 .swatch {
@@ -183,7 +377,6 @@
 
 .kindMarker {
   color: var(--color-text-muted);
-  font-size: var(--font-size-base);
 }
 
 .numCol {
@@ -193,26 +386,26 @@
 }
 
 .nights {
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
 }
 
 .smallBadge {
-  margin-left: var(--space-2);
+  margin-left: 8px;
 }
 
 .dateRange {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 8px;
 }
 
 .datePill {
   display: inline-block;
-  padding: 2px var(--space-2);
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
-  background: var(--color-surface-secondary);
+  background: var(--color-surface-tertiary);
   color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--cs-fs-10-5);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -220,16 +413,16 @@
 .chips {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: 4px;
 }
 
 .chip {
   display: inline-block;
-  padding: 2px var(--space-2);
+  padding: 2px 7px;
   border-radius: var(--radius-sm);
   background: var(--color-surface-tertiary);
   color: var(--color-text-primary);
-  font-size: var(--font-size-xs);
+  font-size: var(--cs-fs-10);
   font-variant-numeric: tabular-nums;
   border: 1px solid var(--color-border-subtle);
 }
@@ -237,16 +430,16 @@
 .metricCell {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   justify-content: flex-end;
 }
 
 .metricUnit {
   color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  font-size: var(--cs-fs-10);
 }
 
-/* ── Severity dots (mirror the global status palette) ───────────────────── */
+/* ── Severity dots (mirror the global status palette) ────────────────────── */
 
 .dot {
   display: inline-block;
@@ -258,33 +451,27 @@
 }
 
 .dot-normal {
-  background: var(--color-success);
+  background: var(--color-status-normal);
 }
 
 .dot-mild {
-  background: var(--color-info);
+  background: var(--color-status-mild);
 }
 
 .dot-moderate {
-  background: var(--color-warning);
+  background: var(--color-status-moderate);
 }
 
 .dot-severe {
-  background: var(--color-error);
+  background: var(--color-status-severe);
 }
 
-/* ── Compare card ───────────────────────────────────────────────────────── */
-
-.compareCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
+/* ── Compare card body ───────────────────────────────────────────────────── */
 
 .compareBody {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 12px;
 }
 
 .modeToggle {
@@ -294,79 +481,83 @@
 
 .tabs {
   display: inline-flex;
-  gap: var(--space-2);
+  gap: 8px;
 }
 
 .metricRow {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: 16px;
   align-items: flex-end;
 }
 
 .metricLabel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
+  gap: 5px;
   min-width: 180px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9-5);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
 }
 
 .axisCaption {
   margin: 0;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-muted);
   text-align: center;
 }
 
-/* ── Single-period strip ────────────────────────────────────────────────── */
+/* ── Single-period strip ─────────────────────────────────────────────────── */
 
 .strip {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 8px;
   margin: 0;
-  padding: var(--space-3);
-  background: var(--color-surface-secondary);
-  border-radius: var(--radius-md);
+  padding: 12px 13px;
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .stripCaption {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-secondary);
 }
 
-/* ── Diff readout (n=2) ─────────────────────────────────────────────────── */
+/* ── Diff readout (n=2) ──────────────────────────────────────────────────── */
 
 .diff {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface-secondary);
+  gap: 8px;
+  padding: 12px 13px;
+  background: var(--color-surface-primary);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
 }
 
 .diffHeadlineFavourable,
 .diffHeadlineUnfavourable {
   display: inline-flex;
   align-items: baseline;
-  gap: var(--space-2);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+  gap: 8px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--cs-fs-13);
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * The arrow + sign carry the directional signal; colour is a *muted* secondary
- * cue so favourability is not the sole channel (WCAG SC 1.4.1 — colour is
- * never used alone).
- */
+/* The arrow + sign carry the directional signal; colour is a secondary cue so
+   favourability is never the sole channel (WCAG SC 1.4.1). */
 .diffHeadlineFavourable {
-  color: var(--color-success);
+  color: var(--color-status-normal);
 }
 
 .diffHeadlineUnfavourable {
@@ -374,19 +565,20 @@
 }
 
 .diffGlyph {
-  font-size: var(--font-size-base);
+  font-size: var(--cs-fs-12);
   font-weight: var(--font-weight-bold);
 }
 
 .diffPct {
-  font-size: var(--font-size-sm);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-muted);
   font-weight: var(--font-weight-medium);
 }
 
 .diffSubtitle {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-secondary);
 }
 
@@ -394,7 +586,7 @@
   align-self: flex-start;
 }
 
-/* ── Optimize svg ───────────────────────────────────────────────────────── */
+/* ── Optimize svg (bubble scatter — geometry untouched) ──────────────────── */
 
 .optimizeSvg {
   width: 100%;
@@ -402,22 +594,14 @@
   max-width: 100%;
 }
 
-/* ── Empty / single states ──────────────────────────────────────────────── */
-
-.emptyCard,
-.singleCard {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-6);
-}
+/* ── Empty / single states ───────────────────────────────────────────────── */
 
 .emptyLink {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-primary);
   text-decoration: none;
-  font-weight: var(--font-weight-medium);
 }
 
 .emptyLink:hover,

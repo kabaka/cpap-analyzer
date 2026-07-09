@@ -8,7 +8,12 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font-family: var(--font-family-sans);
+  /* Command-surface mono (spec Part A13, POLISH_BACKLOG "AiMarker mono"): the
+     prototype's aiMarker/aiTrigger are monospace, so the Dashboard verdict,
+     Trends header, and Session-detail "Summarize" triggers read fully mono.
+     Font only — the ✨ glyph stays aria-hidden and the "AI"/verb text carries
+     the meaning (WCAG 1.4.1). */
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
   font-size: var(--font-size-xs);
   line-height: var(--line-height-tight);

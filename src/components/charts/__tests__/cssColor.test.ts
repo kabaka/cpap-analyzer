@@ -59,4 +59,22 @@ describe('parseCssColorToRgba', () => {
     expect(parseCssColorToRgba('not-a-color')).toEqual({ r: 0.5, g: 0.5, b: 0.5, a: 1 });
     expect(parseCssColorToRgba('')).toEqual({ r: 0.5, g: 0.5, b: 0.5, a: 1 });
   });
+
+  it('falls back to mid-grey (never throws) on nullish input', () => {
+    // The util is a shared "never-crash" contract: a `d3` scale can hand it
+    // `undefined` for a non-finite input (e.g. a NaN correlation cell), so a
+    // nullish value must return the grey fallback instead of throwing on `.trim()`.
+    expect(parseCssColorToRgba(undefined as unknown as string)).toEqual({
+      r: 0.5,
+      g: 0.5,
+      b: 0.5,
+      a: 1,
+    });
+    expect(parseCssColorToRgba(null as unknown as string)).toEqual({
+      r: 0.5,
+      g: 0.5,
+      b: 0.5,
+      a: 1,
+    });
+  });
 });

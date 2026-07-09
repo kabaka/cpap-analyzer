@@ -36,6 +36,22 @@ interface AppState {
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebarCollapsed: () => void;
 
+  // ⌘K command palette open state. EPHEMERAL — deliberately excluded from
+  // `partialize` so it never persists across reloads (the palette always boots
+  // closed). Toggled by the ⌘K/Ctrl+K global shortcut and the header trigger.
+  commandPaletteOpen: boolean;
+  setCommandPaletteOpen: (open: boolean) => void;
+
+  // Import wizard modal open state. EPHEMERAL — like `commandPaletteOpen`, kept
+  // out of `partialize` so it never persists across reloads (the wizard always
+  // boots closed). This is a pure UI/shell flag written by React affordances
+  // (the header Import button + the Data-page buttons) — deliberately NOT in
+  // `useImportStore`, whose invariant is "the ImportController is the only
+  // writer". The wizard reads job progress from `useImportStore`; this flag only
+  // governs whether the modal is mounted.
+  importWizardOpen: boolean;
+  setImportWizardOpen: (open: boolean) => void;
+
   // Import state
   importStatus: 'idle' | 'scanning' | 'importing' | 'complete' | 'error';
   importProgress: { current: number; total: number };
@@ -77,8 +93,22 @@ export const useAppStore = create<AppState>()(
         // Theme
         theme: initialTheme,
         resolvedTheme: resolveTheme(initialTheme),
-        setTheme: (theme) =>
-          set({ theme, resolvedTheme: resolveTheme(theme) }, undefined, 'setTheme'),
+        setTheme: (theme) => {
+          const resolvedTheme = resolveTheme(theme);
+          // Apply `data-theme` to <html> SYNCHRONOUSLY here — before `set()` triggers the
+          // subscriber re-render. Chart colours are read from `getComputedStyle` during
+          // render (`useChartColors`); `useThemeEffect` applies the attribute in a passive
+          // effect that runs AFTER that read, so on a theme TOGGLE the colour read would
+          // otherwise resolve the OUTGOING theme's tokens and — since `resolvedTheme` does
+          // not change again — stay stale (the Trends canvas charts repainted with the
+          // previous theme's colours). Setting it here guarantees the toggle re-render
+          // reads the incoming theme. `useThemeEffect` remains the source of truth for the
+          // OS-preference listener and re-applies the same value harmlessly. No-op in SSR.
+          if (typeof document !== 'undefined') {
+            document.documentElement.setAttribute('data-theme', resolvedTheme);
+          }
+          set({ theme, resolvedTheme }, undefined, 'setTheme');
+        },
 
         // Sidebar collapsed/rail preference — default expanded
         sidebarCollapsed: false,
@@ -90,6 +120,16 @@ export const useAppStore = create<AppState>()(
             undefined,
             'toggleSidebarCollapsed',
           ),
+
+        // Command palette — ephemeral, always boots closed.
+        commandPaletteOpen: false,
+        setCommandPaletteOpen: (open) =>
+          set({ commandPaletteOpen: open }, undefined, 'setCommandPaletteOpen'),
+
+        // Import wizard modal — ephemeral, always boots closed.
+        importWizardOpen: false,
+        setImportWizardOpen: (open) =>
+          set({ importWizardOpen: open }, undefined, 'setImportWizardOpen'),
 
         // Import state
         importStatus: 'idle',
@@ -126,3 +166,18 @@ export const useAppStore = create<AppState>()(
     { name: 'AppStore', enabled: import.meta.env.DEV },
   ),
 );
+
+// Apply the resolved theme to <html> synchronously at module load — BEFORE React's
+// first render. `useThemeEffect` (RootLayout) keeps `data-theme` in sync afterward,
+// but it runs in a passive effect that lands AFTER the first paint. Chart colours are
+// read via `getComputedStyle` during render (see `useChartColors`); on a cold boot
+// straight into a non-default theme those reads would otherwise resolve the light
+// `:root` tokens and — because `resolvedTheme` never changes on that path — stay stale
+// (e.g. the Trends canvas charts painted with light colours until a resize). The store
+// has already rehydrated synchronously here, so `getState().resolvedTheme` is the
+// fully-resolved (persist-merged) theme; setting the attribute now guarantees the very
+// first token read matches it. No-op without a document (SSR/tests); this also removes
+// a first-paint theme flash.
+if (typeof document !== 'undefined') {
+  document.documentElement.setAttribute('data-theme', useAppStore.getState().resolvedTheme);
+}

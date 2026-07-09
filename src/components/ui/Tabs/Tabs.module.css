@@ -1,19 +1,32 @@
+/*
+ * Command-surface tab bar (spec Part A / prototype `dataEl`/`settingsEl` tab bars).
+ *
+ * Underline tabs with mono labels: inactive = text-secondary / weight 500,
+ * active = text-primary / weight 600 + a primary underline that overlaps the
+ * list's bottom border. Radix drives all a11y (roles, roving focus, keyboard) —
+ * this module only restyles the chrome. Shared by DataManagement, Correlations,
+ * IntegrationAnalysis, EventExplorer, and Settings.
+ */
+
 .list {
   display: flex;
+  gap: 2px;
   border-bottom: 1px solid var(--color-border-default);
-  gap: var(--space-1);
 }
 
 .trigger {
-  padding: var(--space-2) var(--space-4);
-  font-family: var(--font-family-sans);
-  font-size: var(--font-size-sm);
+  padding: var(--space-2) 14px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-secondary);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
+  /* Pull the trigger down 1px so its underline sits on the list's border. */
+  margin-bottom: -1px;
   cursor: pointer;
+  white-space: nowrap;
   transition:
     color var(--transition-fast),
     border-color var(--transition-fast);
@@ -31,7 +44,8 @@
 }
 
 .trigger[data-state='active'] {
-  color: var(--color-primary);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
   border-bottom-color: var(--color-primary);
 }
 

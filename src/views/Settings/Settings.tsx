@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
-import { Accordion, Button, Card, Dialog, Input, Select, Switch, Tabs } from '@/components/ui';
+import { Accordion, Button, Dialog, Input, Select, Switch, Tabs } from '@/components/ui';
 import { clearAllUserData } from '@/services/storage/clearAllUserData';
 import {
   isPersistenceApiAvailable,
@@ -75,7 +75,7 @@ function GeneralSection() {
 
   return (
     <div className={styles.section}>
-      <Card>
+      <div className={styles.card}>
         <h3 className={styles.fieldGroupTitle}>Appearance</h3>
         <p className={styles.sectionDescription}>
           Choose how the application looks. System mode follows your operating system preference.
@@ -88,9 +88,9 @@ function GeneralSection() {
             onValueChange={(v) => setTheme(v as 'light' | 'dark' | 'system')}
           />
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div className={styles.card}>
         <h3 className={styles.fieldGroupTitle}>Date &amp; Time</h3>
         <p className={styles.sectionDescription}>
           Configure how dates and times are displayed throughout the application.
@@ -113,9 +113,9 @@ function GeneralSection() {
             onValueChange={(v) => updateDisplay({ timeFormat: v as '12h' | '24h' })}
           />
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div className={styles.card}>
         <h3 className={styles.fieldGroupTitle}>Charts</h3>
         <div className={styles.switchRow}>
           <div className={styles.switchInfo}>
@@ -130,7 +130,7 @@ function GeneralSection() {
             onCheckedChange={(checked) => updateDisplay({ chartAnimations: checked })}
           />
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
@@ -143,7 +143,7 @@ function AnalysisSection() {
 
   return (
     <div className={styles.section}>
-      <Card>
+      <div className={styles.card}>
         <h3 className={styles.fieldGroupTitle}>AHI Thresholds</h3>
         <p className={styles.sectionDescription}>
           Apnea-Hypopnea Index severity thresholds (events/hour). Clinical defaults are mild ≥ 5,
@@ -190,9 +190,9 @@ function AnalysisSection() {
             hint="events/hr"
           />
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div className={styles.card}>
         <h3 className={styles.fieldGroupTitle}>Clustering</h3>
         <p className={styles.sectionDescription}>
           Configure the clustering algorithm used for grouping similar therapy sessions.
@@ -222,9 +222,9 @@ function AnalysisSection() {
             hint="sessions"
           />
         </div>
-      </Card>
+      </div>
 
-      <Card>
+      <div className={styles.card}>
         <h3 className={styles.fieldGroupTitle}>Time Series</h3>
         <p className={styles.sectionDescription}>
           Parameters for trend analysis and rolling statistics over time.
@@ -258,7 +258,7 @@ function AnalysisSection() {
             hint="0–1 (e.g. 0.95 = 95%)"
           />
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
@@ -302,7 +302,7 @@ function IntegrationsSection({ aiInsightsTarget }: { readonly aiInsightsTarget: 
   const accordionItems = [
     {
       value: 'fitbit',
-      trigger: fitbitTriggerLabel,
+      trigger: <span className={styles.integrationTrigger}>{fitbitTriggerLabel}</span>,
       content: (
         <div className={styles.integrationPanel}>
           <div className={styles.switchRow}>
@@ -492,7 +492,7 @@ function DataPersistenceCard() {
   if (!supported || state === 'unsupported') {
     return (
       <div className={styles.persistenceInfo}>
-        <h4 className={styles.fieldGroupTitle}>Data persistence</h4>
+        <h4 className={styles.subheading}>Data persistence</h4>
         <p className={styles.sectionDescription}>
           Eviction protection is not supported in this browser. Export your data periodically from
           Data Management to keep a backup.
@@ -505,7 +505,7 @@ function DataPersistenceCard() {
 
   return (
     <div className={styles.persistenceInfo}>
-      <h4 className={styles.fieldGroupTitle}>Data persistence</h4>
+      <h4 className={styles.subheading}>Data persistence</h4>
 
       {/* Polite live region: announces the resolved status (including the result
           of a request) without interrupting the user. Color is never the sole
@@ -618,7 +618,7 @@ function PrivacyStorageSection() {
 
   return (
     <div className={styles.section}>
-      <Card>
+      <div className={styles.card}>
         <h3 className={styles.fieldGroupTitle}>Storage Usage</h3>
         <p className={styles.sectionDescription}>
           Estimated browser storage used by imported CPAP data and analysis results.
@@ -655,9 +655,9 @@ function PrivacyStorageSection() {
         )}
 
         <DataPersistenceCard />
-      </Card>
+      </div>
 
-      <Card>
+      <div className={styles.card}>
         <div className={styles.privacyNotice}>
           <h4 className={styles.privacyNoticeTitle}>Your data stays on your device</h4>
           <p className={styles.privacyNoticeText}>
@@ -671,30 +671,28 @@ function PrivacyStorageSection() {
             sessions and analysis results.
           </p>
         </div>
-      </Card>
+      </div>
 
-      <Card>
-        <div className={styles.dangerZone}>
-          <h4 className={styles.dangerZoneTitle}>Danger Zone</h4>
-          <p className={styles.dangerZoneDescription}>
-            Permanently delete all imported CPAP data, analysis results, and reset all settings to
-            defaults. This action cannot be undone.
-          </p>
-          <div>
-            <Button
-              variant="danger"
-              onClick={() => {
-                setClearError(null);
-                setShowClearDialog(true);
-              }}
-              disabled={clearing}
-              loading={clearing}
-            >
-              Clear All Data
-            </Button>
-          </div>
+      <div className={styles.dangerZone}>
+        <h4 className={styles.dangerZoneTitle}>Danger Zone</h4>
+        <p className={styles.dangerZoneDescription}>
+          Permanently delete all imported CPAP data, analysis results, and reset all settings to
+          defaults. This action cannot be undone.
+        </p>
+        <div>
+          <Button
+            variant="danger"
+            onClick={() => {
+              setClearError(null);
+              setShowClearDialog(true);
+            }}
+            disabled={clearing}
+            loading={clearing}
+          >
+            Clear All Data
+          </Button>
         </div>
-      </Card>
+      </div>
 
       <Dialog
         open={showClearDialog}
@@ -728,7 +726,7 @@ function PrivacyStorageSection() {
 function AboutSection() {
   return (
     <div className={styles.section}>
-      <Card>
+      <div className={styles.card}>
         <div className={styles.aboutInfo}>
           <div className={styles.aboutRow}>
             <span className={styles.aboutLabel}>Application</span>
@@ -747,7 +745,7 @@ function AboutSection() {
             <span className={styles.aboutValue}>Zero telemetry / zero analytics</span>
           </div>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }
@@ -788,9 +786,9 @@ export default function Settings() {
 
   return (
     <div className={styles.settings}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>Settings</h1>
-      </div>
+      {/* The shell command strip shows the visible "SETTINGS" section title; the
+          page keeps one programmatic <h1> in the a11y tree (visually hidden). */}
+      <h1 className={styles.srOnly}>Settings</h1>
 
       <Tabs tabs={tabs} value={activeTab} onValueChange={setActiveTab} />
 

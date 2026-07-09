@@ -1,18 +1,60 @@
+/**
+ * Correlations wrapper — command-surface restyle.
+ *
+ * Full-bleed inside the shell <main> (which owns --cs-deck-pad + the primary
+ * canvas): breadcrumb `Explore / Correlations` + mono page title, then the
+ * Statistical / Cross-source tabs (shared Tabs). Tokens only.
+ */
+
 .page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+}
+
+.breadcrumbLink {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.breadcrumbLink:hover {
+  text-decoration: underline;
+}
+
+.breadcrumbLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.breadcrumbSep,
+.breadcrumbCurrent {
+  color: var(--color-text-muted);
 }
 
 .heading {
-  font-size: var(--font-size-2xl);
+  margin: 0 0 6px;
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-bold);
+  font-size: 19px;
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-2) 0;
 }
 
 .subtitle {
-  font-size: var(--font-size-base);
+  margin: 0 0 var(--space-2);
+  max-width: 92ch;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.5;
   color: var(--color-text-secondary);
-  margin: 0 0 var(--space-5) 0;
 }

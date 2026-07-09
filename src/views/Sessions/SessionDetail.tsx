@@ -2,9 +2,10 @@
  * Session Detail view — comprehensive single-night analysis (redesigned).
  *
  * Layout (top → bottom):
- *  - Header bar: breadcrumb, date title, mono time range, machine meta, and the
- *    Prev/Next-night + Export-report actions.
- *  - Hero: a 300px "Night assessment" verdict card (two-gate, NON-composite —
+ *  - Header bar: mono breadcrumb, mono date title, a single mono meta line
+ *    (start–end · duration · model · mask), and the Prev/Next-night +
+ *    Export-report actions.
+ *  - Hero: a 360px "Night assessment" verdict card (two-gate, NON-composite —
  *    see ADR 0031) hosting the two opt-in AI insight triggers in its narrative
  *    header, beside a 3-column KPI grid with trailing-baseline deltas + sparklines.
  *  - Signals: the embedded {@link CompactSignalViewer}.
@@ -218,7 +219,10 @@ function ComponentStrip({ statuses }: { statuses: readonly ComponentStatus[] }):
             aria-hidden="true"
           />
           <span className={styles.componentLabel}>{c.label}</span>
-          <span className={styles.componentSeverity}>
+          <span
+            className={styles.componentSeverity}
+            style={c.severity ? { color: severityVar(c.severity) } : undefined}
+          >
             {c.severity ? severityLabel(c.severity) : '—'}
           </span>
         </div>
@@ -259,16 +263,6 @@ function NightAssessmentCard({
           <span className={styles.verdictWord} style={{ color: verdictVar }}>
             {verdict.verdictWord}
           </span>
-          <div className={styles.gatePips} aria-hidden="true">
-            <span className={styles.gatePip} data-state={effectiveState}>
-              <span className={styles.gatePipGlyph}>{gateGlyph(effectiveState)}</span>
-              <span className={styles.gatePipLabel}>Effective</span>
-            </span>
-            <span className={styles.gatePip} data-state={adherentState}>
-              <span className={styles.gatePipGlyph}>{gateGlyph(adherentState)}</span>
-              <span className={styles.gatePipLabel}>Adherent</span>
-            </span>
-          </div>
           <span className={styles.verdictGates}>{gatesPassed} of 2 gates</span>
         </div>
         <div className={styles.verdictText}>
@@ -1244,6 +1238,18 @@ export default function SessionDetail(): JSX.Element {
   const endClock = formatClockTime(wallClockEpochMs, sessionEndMs - sessionStartMs).slice(0, 5);
   const maskType = session.machineSettings?.maskType ?? null;
 
+  // Single mono meta line: start–end · duration · model · mask (· firmware).
+  // Firmware is appended so the reconcile drops no information the old header
+  // carried; every other segment matches the prototype's meta line.
+  const metaParts = [
+    `${startClock}–${endClock}`,
+    formatDuration(session.durationMinutes),
+    session.machineModel,
+  ];
+  if (maskType) metaParts.push(maskType);
+  if (session.firmwareVersion) metaParts.push(`Firmware ${session.firmwareVersion}`);
+  const metaLine = metaParts.join(' · ');
+
   return (
     <div className={styles.container}>
       {/* ── Header ──────────────────────────────────────────────── */}
@@ -1258,44 +1264,33 @@ export default function SessionDetail(): JSX.Element {
             </span>
             <span>{session.date}</span>
           </nav>
-          <div className={styles.titleRow}>
-            <h1 className={styles.title}>{formatDateLong(session.date)}</h1>
-            <span className={styles.timeRange}>
-              {startClock} → {endClock}
-            </span>
-          </div>
-          <div className={styles.headerMeta}>
-            <span>{session.machineModel}</span>
-            {maskType ? (
-              <>
-                <span className={styles.metaDivider} aria-hidden="true" />
-                <span>Mask: {maskType}</span>
-              </>
-            ) : null}
-            <span className={styles.metaDivider} aria-hidden="true" />
-            <span>Firmware {session.firmwareVersion}</span>
-          </div>
+          <h1 className={styles.title}>{formatDateLong(session.date)}</h1>
+          <div className={styles.headerMeta}>{metaLine}</div>
         </div>
         <div className={styles.headerActions}>
-          <Button
-            variant="secondary"
-            size="sm"
+          <button
+            type="button"
+            className={styles.navButton}
             disabled={!prevSession}
             onClick={() => prevSession && navigate(`/sessions/${prevSession.id}`)}
           >
-            <span aria-hidden="true">◀</span> Prev night
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
+            <span aria-hidden="true">‹</span> Prev<span className={styles.srOnly}> night</span>
+          </button>
+          <button
+            type="button"
+            className={styles.navButton}
             disabled={!nextSession}
             onClick={() => nextSession && navigate(`/sessions/${nextSession.id}`)}
           >
-            Next night <span aria-hidden="true">▶</span>
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => navigate('/reports')}>
+            Next<span className={styles.srOnly}> night</span> <span aria-hidden="true">›</span>
+          </button>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={() => navigate('/reports')}
+          >
             Export report
-          </Button>
+          </button>
         </div>
       </header>
 

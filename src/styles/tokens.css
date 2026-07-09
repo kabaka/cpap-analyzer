@@ -30,6 +30,20 @@
   --color-status-moderate-bg: rgba(234, 88, 12, 0.1);
   --color-status-severe-bg: rgba(220, 38, 38, 0.1);
 
+  /* CLINICAL STATUS — ON-SURFACE TEXT variants (WCAG AA at dense label sizes).
+     The base --color-status-* above are tuned as FILLS / dots / bg tints (≥3:1
+     graphical). Used as small TEXT they fall below 4.5:1 in LIGHT — e.g. normal
+     #16a34a reads only ~3.0:1 on --color-surface-secondary and ~2.9:1 on its own
+     --color-status-normal-bg tint. These darker LIGHT variants clear 4.5:1 as
+     text BOTH on --color-surface-secondary AND on the matching -bg tint. Apply
+     ONLY to status-colour TEXT (LOCAL pill, alert tags, AHI-pill numerals);
+     fills / dots / bg tints keep the base tokens so charts/calendars/badges are
+     unaffected. Measured light-theme contrast noted per line. */
+  --color-status-normal-text: #166534; /* green-800 · 5.9:1 on normal-bg tint, 6.5:1 on #f5f5f5 */
+  --color-status-mild-text: #854d0e; /* yellow-800 · 5.7:1 on mild-bg tint, 6.3:1 on #f5f5f5 */
+  --color-status-moderate-text: #9a3412; /* orange-800 · 6.0:1 on moderate-bg tint, 6.7:1 on #f5f5f5 */
+  --color-status-severe-text: #b91c1c; /* red-700 · 5.1:1 on severe-bg tint, 5.9:1 on #f5f5f5 */
+
   /* SEMANTIC COLORS */
   --color-success: #16a34a;
   --color-success-bg: rgba(22, 163, 74, 0.1);
@@ -221,9 +235,10 @@
 
   /* APP CHROME (sidebar / header / icons) */
   /* Sidebar geometry — theme-invariant. Expanded is the default desktop width;
-     rail is the collapsed icon-only width (desktop ≥768px only). */
-  --sidebar-width-expanded: 240px;
-  --sidebar-width-rail: 64px;
+     rail is the collapsed icon-only width (desktop ≥768px only). Retuned to the
+     Command Surface widths (were 240px / 64px). */
+  --sidebar-width-expanded: 236px;
+  --sidebar-width-rail: 58px;
   --color-surface-sidebar: #fbfbfb;
   --color-nav-active-bg: rgba(37, 99, 235, 0.08);
   --color-nav-active-fg: #1d4ed8;
@@ -233,6 +248,16 @@
   --icon-size-md: 20px;
   --icon-size-lg: 24px;
   --icon-stroke: 1.75;
+
+  /* COMMAND SURFACE — chrome geometry (theme-invariant). The command surface is
+     intentionally denser than the prior chrome; these pin the exact box metrics
+     so the shell, main deck, and panels stay identical across every view. */
+  --cs-chrome-h: 52px; /* command-strip header AND sidebar brand row height */
+  --cs-statusbar-h: 32px; /* status-bar footer height */
+  --cs-nav-item-h: 38px; /* sidebar nav link + rail-toggle height */
+  --cs-deck-pad: 18px 22px 26px; /* main deck padding: top / x / bottom */
+  --cs-deck-gap: var(--space-3); /* 12px — canonical gap between deck panels & grid tracks */
+  --cs-panel-pad: 15px 16px; /* canonical panel padding */
 
   /* FOCUS */
   --color-focus-ring: #3b82f6;
@@ -300,6 +325,31 @@
   --letter-spacing-normal: 0;
   --letter-spacing-wide: 0.025em;
 
+  /* COMMAND SURFACE — sub-12px monospace micro-scale.
+     Dense data-label sizes used across the command-surface chrome and panels.
+     rem-based so they still scale with the user's root font size (WCAG 1.4.4).
+     --cs-fs-12 aliases --font-size-xs so the family stays internally consistent.
+     Pair ALWAYS with var(--font-family-mono) and, for labels, a --cs-ls-* tier. */
+  --cs-fs-8: 0.5rem; /* 8px — chart/axis ticks, calendar month labels, tiniest captions */
+  --cs-fs-8-5: 0.53125rem; /* 8.5px — small-multiple unit, legend dots, KPI corner badge */
+  --cs-fs-9: 0.5625rem; /* 9px — micro eyebrows, sortable table heads, delta chips, tags */
+  --cs-fs-9-5: 0.59375rem; /* 9.5px — nav-group label, stat-group title, gauge sublabel */
+  --cs-fs-10: 0.625rem; /* 10px — secondary captions, sub-labels, chart sublines */
+  --cs-fs-10-5: 0.65625rem; /* 10.5px — LOCAL pill, coverage, segmented buttons, meta, chips */
+  --cs-fs-11: 0.6875rem; /* 11px — PANEL TITLES, stat rows, status bar, exCard title */
+  --cs-fs-11-5: 0.71875rem; /* 11.5px — data-table cells, gate name, alert message */
+  --cs-fs-12: var(--font-size-xs); /* 12px — nav labels, shell section title, narrative mono */
+  --cs-fs-13: 0.8125rem; /* 13px — sidebar wordmark, import stage-row label, dock label */
+
+  /* COMMAND SURFACE — letter-spacing tiers (6). Each folds in the near-identical
+     raw prototype values shown (delta imperceptible at these sizes). Always em-based. */
+  --cs-ls-nav: 0.02em; /* nav item labels */
+  --cs-ls-btn: 0.04em; /* buttons, pills, segmented controls, coverage (folds .04) */
+  --cs-ls-label: 0.06em; /* stat-group titles, table heads, small-mult labels (folds .05, .06) */
+  --cs-ls-title: 0.07em; /* PANEL TITLES / ptitle (folds .07, .08) */
+  --cs-ls-section: 0.1em; /* shell section title, monthly label, wordmark (folds .10, .11, .12) */
+  --cs-ls-eyebrow: 0.14em; /* nav-group label, micro uppercase eyebrows (folds .14, .16) */
+
   /* SHADOWS */
   --shadow-none: none;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -365,6 +415,14 @@
   --color-status-mild-bg: rgba(234, 179, 8, 0.15);
   --color-status-moderate-bg: rgba(249, 115, 22, 0.15);
   --color-status-severe-bg: rgba(239, 68, 68, 0.15);
+  /* CLINICAL STATUS — ON-SURFACE TEXT variants (dark). normal/mild/moderate reuse
+     the bright base hue (already ≥5.2:1 as text on the dark surface AND on the
+     matching -bg tint over it); severe BRIGHTENS to red-400 so it also clears
+     4.5:1 on the severe-bg tint over the dark surface (base #ef4444 was ~4.1:1). */
+  --color-status-normal-text: #22c55e; /* = base · 6.1:1 on tint, 7.9:1 on #171717 */
+  --color-status-mild-text: #eab308; /* = base · 7.0:1 on tint, 9.3:1 on #171717 */
+  --color-status-moderate-text: #f97316; /* = base · 5.2:1 on tint, 6.4:1 on #171717 */
+  --color-status-severe-text: #f87171; /* red-400 · 5.6:1 on tint, 6.5:1 on #171717 */
   --color-success: #22c55e;
   --color-success-bg: rgba(34, 197, 94, 0.15);
   --color-warning: #eab308;

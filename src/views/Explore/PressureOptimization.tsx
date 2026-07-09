@@ -8,6 +8,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ChartContainer, ThemedScatterPlot, BoxPlot } from '@/components/charts';
 import type { BoxPlotGroup, ScatterDataPoint } from '@/components/charts';
 import { useAppStore } from '@/stores/useAppStore';
@@ -257,7 +258,11 @@ const VariabilitySection = React.memo(function VariabilitySection({
         <div className={styles.summaryCard}>
           <p className={styles.summaryCardLabel}>Stability</p>
           <p className={styles.summaryCardValue}>
-            <span className={stabilityBadgeClass(variabilityResult.interpretation)}>
+            <span
+              className={`${styles.stabilityBadge} ${
+                stabilityBadgeClass(variabilityResult.interpretation) ?? ''
+              }`}
+            >
               {variabilityResult.interpretation}
             </span>
           </p>
@@ -442,6 +447,21 @@ const BiPAPSection = React.memo(function BiPAPSection({
 // Shared helpers
 // ---------------------------------------------------------------------------
 
+/** `Explore / Pressure Optimization` breadcrumb (mono, command surface). */
+function Breadcrumb() {
+  return (
+    <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+      <Link to="/explore" className={styles.breadcrumbLink}>
+        Explore
+      </Link>
+      <span className={styles.breadcrumbSep} aria-hidden="true">
+        /
+      </span>
+      <span className={styles.breadcrumbCurrent}>Pressure Optimization</span>
+    </nav>
+  );
+}
+
 function EmptyState() {
   return (
     <div className={styles.emptyState} role="status">
@@ -466,6 +486,7 @@ export function PressureOptimization() {
   if (loading) {
     return (
       <div className={styles.page}>
+        <Breadcrumb />
         <h1 className={styles.heading}>Pressure Optimization</h1>
         <div className={styles.spinner} role="status" aria-label="Loading pressure data">
           Loading pressure data…
@@ -477,6 +498,7 @@ export function PressureOptimization() {
   if (error) {
     return (
       <div className={styles.page}>
+        <Breadcrumb />
         <h1 className={styles.heading}>Pressure Optimization</h1>
         <div className={styles.errorBox}>
           <p>{error}</p>
@@ -491,6 +513,7 @@ export function PressureOptimization() {
   if (aggregates.length === 0) {
     return (
       <div className={styles.page}>
+        <Breadcrumb />
         <h1 className={styles.heading}>Pressure Optimization</h1>
         <EmptyState />
       </div>
@@ -499,6 +522,7 @@ export function PressureOptimization() {
 
   return (
     <div className={styles.page} role="main" aria-labelledby="pressure-heading">
+      <Breadcrumb />
       <h1 id="pressure-heading" className={styles.heading}>
         Pressure Optimization
       </h1>

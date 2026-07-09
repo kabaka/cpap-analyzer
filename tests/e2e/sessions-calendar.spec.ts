@@ -208,17 +208,38 @@ const calendarGridForYear = (page: Page, year: number) =>
   page.getByRole('grid', { name: new RegExp(`^${year} nightly .* calendar`, 'i') });
 
 /**
- * Set the global date range via the "Date range" preset selector (a Radix
- * combobox, mirroring dashboard.spec.ts). The calendar renders the FULL selected
- * window (one panel per calendar year it spans), so multi-year coverage needs a
- * window wider than the default 30 days.
+ * Set the global date range via the shell's "Time window" control (WindowToggle).
+ * The per-view "Date range" combobox was removed in the command-surface refresh.
+ * The calendar renders the FULL selected window (one panel per calendar year it
+ * spans), so multi-year coverage needs a window wider than the default 30 days.
+ *
+ * Presets map to the "Time window" radiogroup. "All time" needs a multi-year
+ * span that no preset covers, so it drives the WindowToggle's Custom-range
+ * popover with an explicit wide Start/End + Apply. (Filling the dates explicitly
+ * is deterministic; the popover's "All data" quick button lazily fetches the
+ * corpus-start after the popover opens and would race.)
  */
 async function selectDateRange(
   page: Page,
   label: 'All time' | 'Last year' | 'Last 30 days',
 ): Promise<void> {
-  await page.getByRole('combobox', { name: 'Date range' }).click();
-  await page.getByRole('option', { name: label }).click();
+  const windowToggle = page.getByRole('radiogroup', { name: 'Time window' });
+
+  if (label === 'Last 30 days') {
+    await windowToggle.getByRole('radio', { name: 'Last 30 days' }).click();
+    return;
+  }
+  if (label === 'Last year') {
+    await windowToggle.getByRole('radio', { name: 'Last 12 months' }).click();
+    return;
+  }
+
+  // 'All time' — explicit wide custom range spanning the 2024–2026 fixtures.
+  await page.getByRole('button', { name: 'Custom date range' }).click();
+  await expect(page.getByText('Custom range')).toBeVisible();
+  await page.getByLabel('Start', { exact: true }).fill('2024-01-01');
+  await page.getByLabel('End', { exact: true }).fill(daysAgoStr(0));
+  await page.getByRole('button', { name: 'Apply' }).click();
 }
 
 // ── Shared data builders ──

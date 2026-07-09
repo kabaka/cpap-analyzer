@@ -97,7 +97,7 @@ export function ImportSummary({
   return (
     <div className={styles.summary}>
       <span className={styles.statusIcon} style={{ color: meta.colorVar }}>
-        <Icon name={meta.icon} size="lg" title={meta.title} />
+        <Icon name={meta.icon} style={{ width: '30px', height: '30px' }} title={meta.title} />
       </span>
       <h2 className={styles.title}>{cancelled ? 'Import cancelled' : meta.title}</h2>
 

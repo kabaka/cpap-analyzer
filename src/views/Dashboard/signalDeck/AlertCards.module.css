@@ -1,25 +1,27 @@
 .row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-3);
+  gap: var(--cs-deck-gap);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* Surface-secondary card (the deck's layering rule — no per-severity background
+   tint); severity reads from the 3px left border + glyph + tag word. */
 .card {
-  padding: 11px 12px;
+  padding: 11px 13px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-subtle);
   border-left-width: 3px;
-  background: var(--color-surface-tertiary);
+  background: var(--color-surface-secondary);
 }
 
 .cardHeader {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 3px;
+  margin-bottom: 6px;
 }
 
 .glyph {
@@ -29,44 +31,46 @@
 
 .tag {
   font-family: var(--font-family-mono);
-  font-weight: var(--font-weight-bold);
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-section);
   text-transform: uppercase;
 }
 
 .detail {
-  font-size: 10.5px;
-  line-height: 1.35;
+  font-size: 11.5px;
+  line-height: 1.45;
   color: var(--color-text-secondary);
   margin: 0;
 }
 
-/* Severity tones — accent the left border, glyph, and tag text. */
+/* Severity tones — accent the left border, glyph, and tag text only. The 3px
+   left border keeps the vivid base status colour (graphical, ≥3:1); the 9px tag
+   + glyph TEXT use the on-surface -text variant so they clear WCAG AA (4.5:1) on
+   the surface-secondary card in LIGHT (the base hue reads only ~2.7–3.0:1 there).
+   `.neutral` (slate --color-caveat) already clears AA, so it is unchanged. */
 .warning {
   border-left-color: var(--color-status-mild);
-  background: var(--color-status-mild-bg);
 }
 .warning .glyph,
 .warning .tag {
-  color: var(--color-status-mild);
+  color: var(--color-status-mild-text);
 }
 
 .neutral {
-  border-left-color: var(--color-border-emphasis);
+  border-left-color: var(--color-caveat);
 }
 .neutral .glyph,
 .neutral .tag {
-  color: var(--color-text-secondary);
+  color: var(--color-caveat);
 }
 
 .positive {
   border-left-color: var(--color-status-normal);
-  background: var(--color-status-normal-bg);
 }
 .positive .glyph,
 .positive .tag {
-  color: var(--color-status-normal);
+  color: var(--color-status-normal-text);
 }
 
 @media (max-width: 720px) {
