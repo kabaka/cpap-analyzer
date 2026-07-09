@@ -7,6 +7,10 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [2026.07.4] — 2026-07-09
+
 ### Added
 
 - **A ⌘K / Ctrl+K command palette for keyboard-first navigation and actions.** Press ⌘K (macOS) or Ctrl+K (Windows / Linux) — or click the ⌘K button in the header — from anywhere to open a single search box that fuzzy-matches three kinds of result: **Sections** (jump to Dashboard, Sessions, Trends, Explore, Reports, Data, Settings, or Help), **Sessions** (type a date such as `2026-07-04` to list and open the nights recorded on it), and **Actions** (start a data import, switch the theme to light / dark / system, or set the global time window to a preset). It is fully keyboard-operable (↑/↓ wrap through results, Home/End jump to the ends, Enter runs the highlighted row, Esc or a click outside closes it) and accessible (focus-trapped modal dialog, focus restored to the invoker on close, a politely-announced result count, and reduced-motion honored). The date lookup reads only lightweight per-night metadata — never the underlying 25–50 Hz signal samples — and, like everything in the app, runs entirely in your browser.
