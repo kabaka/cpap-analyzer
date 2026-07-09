@@ -8,13 +8,13 @@ import {
   type ReactNode,
   type TransitionEvent,
 } from 'react';
-import { NavLink, Outlet, useLocation, useMatch, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useMatch } from 'react-router-dom';
 import { useThemeEffect } from '@/hooks/useTheme';
 import { useURLStateSync } from '@/hooks/useURLState';
 import { useNightlyAggregates } from '@/hooks/useNightlyAggregates';
 import { RouteErrorBoundary } from '@/components/errors';
 import { InsightDrawer } from '@/components/insights';
-import { ImportStatusDock, ImportToastProvider } from '@/components/import';
+import { ImportStatusDock, ImportToastProvider, ImportWizardModal } from '@/components/import';
 import { CommandPalette } from '@/components/CommandPalette';
 import { Tooltip, TooltipProvider, Icon, type IconName } from '@/components/ui';
 import { useAppStore } from '@/stores/useAppStore';
@@ -191,7 +191,6 @@ export default function RootLayout() {
   useThemeEffect();
 
   const location = useLocation();
-  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Desktop rail (collapsed) preference — persisted in the app store. On <768px
@@ -211,6 +210,9 @@ export default function RootLayout() {
 
   // Command palette open state (ephemeral).
   const setCommandPaletteOpen = useAppStore((state) => state.setCommandPaletteOpen);
+
+  // Import wizard modal open state (ephemeral). The header Import button opens it.
+  const setImportWizardOpen = useAppStore((state) => state.setImportWizardOpen);
 
   const sidebarRef = useRef<HTMLElement>(null);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
@@ -247,10 +249,10 @@ export default function RootLayout() {
     importProgress.total > 0
       ? Math.round((importProgress.current / importProgress.total) * 100)
       : 0;
-  // NOTE(import): the Import restyle wave may convert this to a header-launched
-  // modal. Keep this single open action easy to rewire — it is the only place
-  // the button decides what to open.
-  const openImport = useCallback(() => navigate('/data/import'), [navigate]);
+  // The header Import button opens the wizard MODAL (a sibling of the dock,
+  // mounted below) rather than navigating. The `/data/import` route is retained
+  // for deep-links, the empty-state CTA, and e2e — see ImportWizardModal.
+  const openImport = useCallback(() => setImportWizardOpen(true), [setImportWizardOpen]);
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((prev) => !prev);
@@ -630,6 +632,10 @@ export default function RootLayout() {
 
           {/* ⌘K command palette — modal overlay, renders nothing unless open. */}
           <CommandPalette />
+
+          {/* Header-launched import wizard — modal overlay, renders nothing
+            unless open. Sibling of the dock; both survive navigation. */}
+          <ImportWizardModal />
         </div>
       </ImportToastProvider>
     </TooltipProvider>

@@ -8,7 +8,6 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useStore } from 'zustand';
 import {
   Button,
@@ -146,7 +145,7 @@ function OverviewTab() {
   const [storageInfo, setStorageInfo] = useState<StorageInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const setImportWizardOpen = useAppStore((s) => s.setImportWizardOpen);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,7 +189,7 @@ function OverviewTab() {
     <div className={styles.storageSection}>
       <div className={styles.storageHeader}>
         <h2 className={styles.sectionTitle}>Storage Overview</h2>
-        <Button variant="primary" size="sm" onClick={() => navigate('/data/import')}>
+        <Button variant="primary" size="sm" onClick={() => setImportWizardOpen(true)}>
           Import Data
         </Button>
       </div>
@@ -1022,7 +1021,7 @@ function ActiveImportPanel() {
 // ── Main View ────────────────────────────────────────────────────
 
 export default function DataManagement() {
-  const navigate = useNavigate();
+  const setImportWizardOpen = useAppStore((s) => s.setImportWizardOpen);
 
   const tabs = [
     { value: 'overview', label: 'Overview', content: <OverviewTab /> },
@@ -1040,7 +1039,7 @@ export default function DataManagement() {
             Import, manage, back up, and export your therapy data — all on this device.
           </p>
         </div>
-        <Button variant="primary" onClick={() => navigate('/data/import')}>
+        <Button variant="primary" onClick={() => setImportWizardOpen(true)}>
           Import Wizard
         </Button>
       </div>

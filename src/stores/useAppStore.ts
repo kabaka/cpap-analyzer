@@ -42,6 +42,16 @@ interface AppState {
   commandPaletteOpen: boolean;
   setCommandPaletteOpen: (open: boolean) => void;
 
+  // Import wizard modal open state. EPHEMERAL — like `commandPaletteOpen`, kept
+  // out of `partialize` so it never persists across reloads (the wizard always
+  // boots closed). This is a pure UI/shell flag written by React affordances
+  // (the header Import button + the Data-page buttons) — deliberately NOT in
+  // `useImportStore`, whose invariant is "the ImportController is the only
+  // writer". The wizard reads job progress from `useImportStore`; this flag only
+  // governs whether the modal is mounted.
+  importWizardOpen: boolean;
+  setImportWizardOpen: (open: boolean) => void;
+
   // Import state
   importStatus: 'idle' | 'scanning' | 'importing' | 'complete' | 'error';
   importProgress: { current: number; total: number };
@@ -101,6 +111,11 @@ export const useAppStore = create<AppState>()(
         commandPaletteOpen: false,
         setCommandPaletteOpen: (open) =>
           set({ commandPaletteOpen: open }, undefined, 'setCommandPaletteOpen'),
+
+        // Import wizard modal — ephemeral, always boots closed.
+        importWizardOpen: false,
+        setImportWizardOpen: (open) =>
+          set({ importWizardOpen: open }, undefined, 'setImportWizardOpen'),
 
         // Import state
         importStatus: 'idle',

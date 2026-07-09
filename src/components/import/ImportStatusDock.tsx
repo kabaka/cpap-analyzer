@@ -32,6 +32,7 @@ import { useStore } from 'zustand';
 import { Button, Dialog, Icon, ProgressBar } from '@/components/ui';
 import { importController } from '@/services/import/ImportController';
 import type { ImportJobProgress } from '@/services/import/types';
+import { useAppStore } from '@/stores/useAppStore';
 import {
   selectActiveJob,
   selectLatestJobOfKind,
@@ -47,6 +48,7 @@ import { useReducedMotion } from './useReducedMotion';
 import styles from './ImportStatusDock.module.css';
 
 const IMPORT_ROUTE = '/data/import';
+const DATA_ROUTE = '/data';
 
 /** Whether a job status is terminal. */
 function isTerminal(status: ImportJobProgress['status']): boolean {
@@ -104,6 +106,10 @@ export function ImportStatusDock(): JSX.Element | null {
   const latestCpap = useStore(useImportStore, (s) => selectLatestJobOfKind(s, 'cpap'));
   const latestFitbit = useStore(useImportStore, (s) => selectLatestJobOfKind(s, 'fitbit'));
 
+  // The header-launched wizard modal shows the same job; suppress the dock pill
+  // while it is open so only one live surface is visible at a time.
+  const importWizardOpen = useAppStore((s) => s.importWizardOpen);
+
   const job = selectDockJob(active, latestCpap, latestFitbit);
 
   const [expanded, setExpanded] = useState(false);
@@ -116,6 +122,10 @@ export function ImportStatusDock(): JSX.Element | null {
 
   const progress = job?.progress ?? null;
   const onImportRoute = location.pathname === IMPORT_ROUTE;
+  const onDataRoute = location.pathname === DATA_ROUTE;
+  // The wizard surface (the `/data/import` route OR the header-launched modal)
+  // already shows a terminal summary, so a completion toast there is redundant.
+  const importUiVisible = onImportRoute || importWizardOpen;
 
   // ── Terminal toast (once per job, across concurrent kinds) ──
   //
@@ -154,10 +164,11 @@ export function ImportStatusDock(): JSX.Element | null {
       }
 
       // Visual toast: once per job. Suppressed (but still marked) while the user
-      // is already on the import page, so it never re-fires later on navigation.
+      // is already looking at the import UI (the route OR the modal), so it never
+      // re-fires later on navigation.
       if (toastedJobsRef.current.has(candidate.jobId)) continue;
       toastedJobsRef.current.add(candidate.jobId);
-      if (onImportRoute) continue;
+      if (importUiVisible) continue;
 
       if (candidate.status === 'complete') {
         const hasIssues = candidate.warningCount + candidate.errorCount > 0;
@@ -178,7 +189,7 @@ export function ImportStatusDock(): JSX.Element | null {
         raiseToast({ title: `${label} cancelled`, variant: 'info' });
       }
     }
-  }, [active, latestCpap, latestFitbit, onImportRoute, raiseToast]);
+  }, [active, latestCpap, latestFitbit, importUiVisible, raiseToast]);
 
   // ── Quantized polite announcer: stage transitions + ~25% milestones ──
   // Terminal assertive announcements are handled in the multi-job effect above;
@@ -254,6 +265,11 @@ export function ImportStatusDock(): JSX.Element | null {
   const pct = overallPercent(progress);
   const terminal = isTerminal(progress.status);
   const running = !terminal;
+  // Suppress the pill/panel (but keep the live regions) while another surface
+  // owns the import: the wizard modal is open, or the Data page is showing its
+  // inline active-import panel. A terminal job on /data still surfaces the dock
+  // (the inline panel only renders in-flight) so it can be viewed/dismissed.
+  const suppressPill = importWizardOpen || (onDataRoute && running);
   const label = kindLabel(progress.kind);
   const elapsed = progress.startedAtMs > 0 ? formatElapsed(progress.startedAtMs, Date.now()) : null;
   const throughput = formatThroughput(progress.throughputPerSec, 'items');
@@ -272,149 +288,153 @@ export function ImportStatusDock(): JSX.Element | null {
         {assertiveMessage}
       </div>
 
-      <div className={styles.dock}>
-        {!expanded ? (
-          <div className={styles.pill}>
-            <button
-              ref={pillRef}
-              type="button"
-              className={styles.pillBody}
-              aria-expanded={expanded}
-              aria-label={`${label}: ${String(pct)}% — open details`}
-              onClick={() => setExpanded(true)}
-            >
-              <span className={styles.pillTopLine}>
-                <span
-                  className={pillIconClass}
-                  style={{ color: visual.colorVar }}
-                  data-testid="import-dock-pill-icon"
-                  data-animated={animate ? 'true' : 'false'}
+      {suppressPill ? null : (
+        <>
+          <div className={styles.dock}>
+            {!expanded ? (
+              <div className={styles.pill}>
+                <button
+                  ref={pillRef}
+                  type="button"
+                  className={styles.pillBody}
+                  aria-expanded={expanded}
+                  aria-label={`${label}: ${String(pct)}% — open details`}
+                  onClick={() => setExpanded(true)}
                 >
-                  <Icon name={iconName} size="sm" />
+                  <span className={styles.pillTopLine}>
+                    <span
+                      className={pillIconClass}
+                      style={{ color: visual.colorVar }}
+                      data-testid="import-dock-pill-icon"
+                      data-animated={animate ? 'true' : 'false'}
+                    >
+                      <Icon name={iconName} size="sm" />
+                    </span>
+                    <span className={styles.pillLabel}>{progress.currentLabel || label}</span>
+                    <span className={styles.pillPercent}>{pct}%</span>
+                  </span>
+                  <ProgressBar
+                    className={styles.pillMeter}
+                    size="sm"
+                    indeterminate={running && progress.itemsTotal === null}
+                    value={pct}
+                    max={100}
+                    tone={
+                      progress.status === 'error'
+                        ? 'error'
+                        : progress.status === 'complete' &&
+                            progress.warningCount + progress.errorCount === 0
+                          ? 'success'
+                          : progress.status === 'complete' || progress.status === 'cancelled'
+                            ? 'warning'
+                            : 'primary'
+                    }
+                    paused={progress.status === 'cancelled'}
+                    label={`${label} progress`}
+                    valueText={`${label}: ${String(pct)} percent`}
+                  />
+                </button>
+
+                {running ? (
+                  <button
+                    type="button"
+                    className={styles.pillCancel}
+                    aria-label={`Cancel ${label}`}
+                    onClick={handleRequestCancel}
+                  >
+                    <Icon name="x-circle" size="sm" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.pillCancel}
+                    aria-label={`Dismiss ${label}`}
+                    onClick={handleDismiss}
+                  >
+                    <Icon name="close" size="sm" />
+                  </button>
+                )}
+
+                <span className={styles.pillChevron} aria-hidden="true">
+                  <Icon name="chevron-up" size="sm" />
                 </span>
-                <span className={styles.pillLabel}>{progress.currentLabel || label}</span>
-                <span className={styles.pillPercent}>{pct}%</span>
-              </span>
-              <ProgressBar
-                className={styles.pillMeter}
-                size="sm"
-                indeterminate={running && progress.itemsTotal === null}
-                value={pct}
-                max={100}
-                tone={
-                  progress.status === 'error'
-                    ? 'error'
-                    : progress.status === 'complete' &&
-                        progress.warningCount + progress.errorCount === 0
-                      ? 'success'
-                      : progress.status === 'complete' || progress.status === 'cancelled'
-                        ? 'warning'
-                        : 'primary'
-                }
-                paused={progress.status === 'cancelled'}
-                label={`${label} progress`}
-                valueText={`${label}: ${String(pct)} percent`}
-              />
-            </button>
-
-            {running ? (
-              <button
-                type="button"
-                className={styles.pillCancel}
-                aria-label={`Cancel ${label}`}
-                onClick={handleRequestCancel}
-              >
-                <Icon name="x-circle" size="sm" />
-              </button>
+              </div>
             ) : (
-              <button
-                type="button"
-                className={styles.pillCancel}
-                aria-label={`Dismiss ${label}`}
-                onClick={handleDismiss}
+              <div
+                ref={panelRef}
+                className={styles.panel}
+                role="region"
+                aria-label={`${label} details`}
               >
-                <Icon name="close" size="sm" />
-              </button>
+                <div className={styles.panelHeader}>
+                  <h2 className={styles.panelTitle}>{label}</h2>
+                  <button
+                    type="button"
+                    className={styles.panelClose}
+                    aria-label="Collapse import details"
+                    onClick={() => {
+                      setExpanded(false);
+                      pillRef.current?.focus();
+                    }}
+                  >
+                    <Icon name="chevron-down" size="sm" />
+                  </button>
+                </div>
+
+                <div className={styles.panelMeta}>
+                  <span>{pct}% complete</span>
+                  {elapsed && <span>Elapsed {elapsed}</span>}
+                  {running && throughput && <span>{throughput}</span>}
+                  {running && eta && <span>{eta}</span>}
+                </div>
+
+                <div className={styles.scroller}>
+                  <ImportStageList progress={progress} compact />
+                </div>
+
+                <div className={styles.panelActions}>
+                  {running && (
+                    <Button variant="danger" size="sm" onClick={handleRequestCancel}>
+                      Cancel import
+                    </Button>
+                  )}
+                  {terminal && hasResult && (
+                    <Button variant="primary" size="sm" onClick={handleOpenImportPage}>
+                      View results
+                    </Button>
+                  )}
+                  {!onImportRoute && (
+                    <Button variant="secondary" size="sm" onClick={handleOpenImportPage}>
+                      Open import page
+                    </Button>
+                  )}
+                  {terminal && (
+                    <Button variant="ghost" size="sm" onClick={handleDismiss}>
+                      Dismiss
+                    </Button>
+                  )}
+                </div>
+              </div>
             )}
-
-            <span className={styles.pillChevron} aria-hidden="true">
-              <Icon name="chevron-up" size="sm" />
-            </span>
           </div>
-        ) : (
-          <div
-            ref={panelRef}
-            className={styles.panel}
-            role="region"
-            aria-label={`${label} details`}
+
+          <Dialog
+            open={confirmCancel}
+            onOpenChange={setConfirmCancel}
+            title="Cancel import?"
+            description="The import will stop. Data already saved is kept; the rest is discarded."
           >
-            <div className={styles.panelHeader}>
-              <h2 className={styles.panelTitle}>{label}</h2>
-              <button
-                type="button"
-                className={styles.panelClose}
-                aria-label="Collapse import details"
-                onClick={() => {
-                  setExpanded(false);
-                  pillRef.current?.focus();
-                }}
-              >
-                <Icon name="chevron-down" size="sm" />
-              </button>
-            </div>
-
-            <div className={styles.panelMeta}>
-              <span>{pct}% complete</span>
-              {elapsed && <span>Elapsed {elapsed}</span>}
-              {running && throughput && <span>{throughput}</span>}
-              {running && eta && <span>{eta}</span>}
-            </div>
-
-            <div className={styles.scroller}>
-              <ImportStageList progress={progress} compact />
-            </div>
-
             <div className={styles.panelActions}>
-              {running && (
-                <Button variant="danger" size="sm" onClick={handleRequestCancel}>
-                  Cancel import
-                </Button>
-              )}
-              {terminal && hasResult && (
-                <Button variant="primary" size="sm" onClick={handleOpenImportPage}>
-                  View results
-                </Button>
-              )}
-              {!onImportRoute && (
-                <Button variant="secondary" size="sm" onClick={handleOpenImportPage}>
-                  Open import page
-                </Button>
-              )}
-              {terminal && (
-                <Button variant="ghost" size="sm" onClick={handleDismiss}>
-                  Dismiss
-                </Button>
-              )}
+              <Button variant="danger" size="sm" onClick={handleConfirmCancel}>
+                Cancel import
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setConfirmCancel(false)}>
+                Keep importing
+              </Button>
             </div>
-          </div>
-        )}
-      </div>
-
-      <Dialog
-        open={confirmCancel}
-        onOpenChange={setConfirmCancel}
-        title="Cancel import?"
-        description="The import will stop. Data already saved is kept; the rest is discarded."
-      >
-        <div className={styles.panelActions}>
-          <Button variant="danger" size="sm" onClick={handleConfirmCancel}>
-            Cancel import
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => setConfirmCancel(false)}>
-            Keep importing
-          </Button>
-        </div>
-      </Dialog>
+          </Dialog>
+        </>
+      )}
     </>
   );
 }

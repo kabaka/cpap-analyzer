@@ -112,11 +112,18 @@ test.describe('Data Management View', () => {
     await expect(page.getByRole('button', { name: /restore backup/i })).toBeVisible();
   });
 
-  test('should have an Import Wizard button that navigates to /data/import', async ({ page }) => {
+  test('should have an Import Wizard button that opens the import modal', async ({ page }) => {
+    // Since the command-surface refresh the wizard is a header-launched modal:
+    // the Data-page buttons OPEN it (set the ephemeral flag) rather than
+    // navigating. The full-page `/data/import` route is retained separately for
+    // deep-links + the import-flow specs.
     const importWizardButton = page.getByRole('button', { name: /import wizard/i });
     await expect(importWizardButton).toBeVisible();
 
     await importWizardButton.click();
-    await expect(page).toHaveURL(/\/data\/import/);
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading', { name: /import data/i })).toBeVisible();
+    // Opening the modal does NOT navigate — the user stays on /data.
+    await expect(page).toHaveURL(/\/data$/);
   });
 });
