@@ -34,7 +34,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { AiMarker, InsightCaveat, MedicalDisclaimer } from '@/components/ai';
+import { InsightCaveat, MedicalDisclaimer } from '@/components/ai';
+import { SegmentedControl } from '@/components/ui';
+import type { SegmentedControlOption } from '@/components/ui';
 import { FALLBACK_NOTICE } from '@/services/llm/grounding';
 import { useAiInsight } from '@/hooks/useAiInsight';
 import type { ErrorPrimaryAction, UseAiInsight } from '@/hooks/useAiInsight';
@@ -60,6 +62,22 @@ const BACKEND_LABELS: Record<LLMBackendId, string> = {
   webllm: 'the on-device model',
   'chrome-ai': "Chrome's built-in AI",
 };
+
+/**
+ * The two canonical backends the drawer's idle "Model" segment offers (spec B8):
+ * Claude (cloud) vs an On-device model. The segment reflects the persisted
+ * `integrations.llm.backend` BY FAMILY (advanced cloud `openai-compatible` maps
+ * to Claude; advanced on-device `chrome-ai` maps to On-device) and, on an
+ * explicit cross-family pick, writes the canonical member via `updateIntegration`
+ * — reusing the same settings mutation the Settings AI panel uses. It never
+ * changes the backend logic itself (KEEP-TECH); the existing run/consent/download
+ * flows gate the next Generate exactly as before.
+ */
+type DrawerBackend = 'anthropic' | 'webllm';
+const DRAWER_BACKEND_OPTIONS: ReadonlyArray<SegmentedControlOption<DrawerBackend>> = [
+  { value: 'anthropic', label: 'Claude' },
+  { value: 'webllm', label: 'On-device', ariaLabel: 'On-device model' },
+];
 
 /**
  * Settings deep-link target for AI-Insights recovery actions (m1). The Settings
@@ -147,6 +165,7 @@ function InsightDrawerBody({
   const backend = useSettingsStore((s) => s.integrations.llm.backend);
   const anthropicModel = useSettingsStore((s) => s.integrations.llm.anthropic.model);
   const webllmModelId = useSettingsStore((s) => s.integrations.llm.webllm.modelId);
+  const updateIntegration = useSettingsStore((s) => s.updateIntegration);
 
   const insight = insightHook();
   const {
@@ -210,6 +229,16 @@ function InsightDrawerBody({
   const isCloud = backend === 'anthropic' || backend === 'openai-compatible';
   const isOnDevice = backend === 'webllm' || backend === 'chrome-ai';
   const backendLabel = (backend && BACKEND_LABELS[backend]) ?? 'AI Insights';
+
+  // The idle "Model" segment reflects the backend family and writes the canonical
+  // member on change (see DRAWER_BACKEND_OPTIONS). SegmentedControl no-ops when the
+  // picked value equals the current one, so re-selecting the active family never
+  // rewrites an advanced backend (openai-compatible / chrome-ai) — only an explicit
+  // cross-family pick does.
+  const backendSegValue: DrawerBackend = isOnDevice ? 'webllm' : 'anthropic';
+  const handleBackendChange = (next: DrawerBackend): void => {
+    updateIntegration('llm', { backend: next });
+  };
 
   // Surface B (model-download-ux spec §4.1): within `generating`, render the
   // distinct "Preparing the on-device model" block — NOT the empty prose+caret —
@@ -277,28 +306,34 @@ function InsightDrawerBody({
       aria-label="AI insight"
       aria-busy={isGenerating}
     >
-      <div className={styles.scroll}>
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div className={styles.header}>
-          <div className={styles.headerText}>
-            <div className={styles.headerTitleRow}>
-              <h2 className={styles.title} tabIndex={-1} ref={headingRef}>
-                AI summary
-              </h2>
-              <AiMarker variant="pill" />
-            </div>
-            <span className={styles.scope}>Summary of {request.scopeLabel}</span>
+      {/* ── Header (pinned) ──────────────────────────────────────────────── */}
+      <div className={styles.header}>
+        <div className={styles.headerText}>
+          <div className={styles.headerTitleRow}>
+            <h2 className={styles.title} tabIndex={-1} ref={headingRef}>
+              AI summary
+            </h2>
+            {/* The command-surface "✨ AI" pill (spec A13/B8). The ✨ is
+                decorative; the "AI" text carries the meaning (WCAG 1.4.1). */}
+            <span className={styles.aiPill}>
+              <span aria-hidden="true">✨</span>
+              AI
+            </span>
           </div>
-          <button
-            type="button"
-            className={styles.closeButton}
-            onClick={onClose}
-            aria-label="Close AI insight"
-          >
-            <span aria-hidden="true">×</span>
-          </button>
+          <span className={styles.scope}>Summary of {request.scopeLabel}</span>
         </div>
+        <button
+          type="button"
+          className={styles.closeButton}
+          onClick={onClose}
+          aria-label="Close AI insight"
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
 
+      {/* ── Body (scrolls) ───────────────────────────────────────────────── */}
+      <div className={styles.body}>
         {/* ── Per-output egress reminder (cloud backends only) ───────────── */}
         {isCloud && (
           <p className={styles.egressReminder}>
@@ -309,6 +344,18 @@ function InsightDrawerBody({
         {/* ── Idle ───────────────────────────────────────────────────────── */}
         {state === 'idle' && (
           <>
+            <div className={styles.modelRow}>
+              <span className={styles.modelLabel}>Model</span>
+              <SegmentedControl
+                label="AI model"
+                variant="solid"
+                size="sm"
+                tone="ai"
+                options={DRAWER_BACKEND_OPTIONS}
+                value={backendSegValue}
+                onChange={handleBackendChange}
+              />
+            </div>
             <button
               ref={generateButtonRef}
               type="button"
@@ -392,7 +439,7 @@ function InsightDrawerBody({
               </button>
               <button
                 type="button"
-                className={`${styles.actionButton} ${feedback === 'up' ? styles.actionButtonActive : ''}`}
+                className={`${styles.feedbackButton} ${feedback === 'up' ? styles.feedbackButtonActive : ''}`}
                 aria-pressed={feedback === 'up'}
                 aria-label="Mark this summary helpful (saved on your device only)"
                 title="Saved on your device only"
@@ -402,7 +449,7 @@ function InsightDrawerBody({
               </button>
               <button
                 type="button"
-                className={`${styles.actionButton} ${feedback === 'down' ? styles.actionButtonActive : ''}`}
+                className={`${styles.feedbackButton} ${feedback === 'down' ? styles.feedbackButtonActive : ''}`}
                 aria-pressed={feedback === 'down'}
                 aria-label="Mark this summary not helpful (saved on your device only)"
                 title="Saved on your device only"

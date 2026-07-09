@@ -45,6 +45,18 @@
   animation: imp-spin 0.9s linear infinite;
 }
 
+/* AI Insight drawer slide-in from the right edge (spec B8). Referenced by name
+   from InsightDrawer.module.css, which guards reduced motion at its call site
+   (a @keyframes definition cannot disable itself). */
+@keyframes ai-slide {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .imp-spin {
     animation: none;

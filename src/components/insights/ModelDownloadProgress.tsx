@@ -212,6 +212,9 @@ export function ModelDownloadProgress({
         indeterminate={indeterminate}
         valueText={valueText(phase, fraction)}
         label={modelLabel ? `${modelLabel} download progress` : 'On-device model download progress'}
+        // In the AI drawer the bar wears the fuchsia AI accent (spec B8); the
+        // Settings surface keeps the neutral primary fill.
+        tone={isDrawer ? 'ai' : 'primary'}
         className={styles.bar}
       />
 

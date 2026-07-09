@@ -16,7 +16,10 @@
   color: var(--color-text-primary);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  font-family: var(--font-family-sans);
+  /* Command-surface mono to match the shared AiMarker (spec Part A13). The inner
+     AiMarker owns the glyph+label font; the trigger sets mono too so any padding
+     metrics and the accessible verb read consistently monospace. */
+  font-family: var(--font-family-mono);
   cursor: pointer;
   transition:
     border-color var(--transition-fast),
