@@ -1,73 +1,136 @@
+/**
+ * Session List view — command-surface restyle.
+ *
+ * Full-bleed inside the shell <main> (which owns --cs-deck-pad + the primary
+ * canvas). The whole view is a single command-surface `.panel` holding the
+ * toolbar + table/calendar content (mirrors the prototype `sessionsListEl`).
+ * All sub-12px text is mono + a --cs-* size; no box-shadow; tokens only.
+ *
+ * @module views/Sessions/SessionList.module.css
+ */
+
+/* Full-bleed column; the shell supplies page padding + background. */
 .container {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  padding: var(--space-6);
-  max-width: 1280px;
-  margin: 0 auto;
+  gap: var(--cs-deck-gap);
   width: 100%;
+  min-width: 0;
 }
 
-/* Header */
-.header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+/* Visually-hidden page title. Kept in the a11y tree (the shell's command-strip
+   section title "SESSIONS" is a non-heading span) so heading-role selectors
+   still resolve a single "Sessions" heading. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.headerRow {
+/* The single command-surface panel wrapping the toolbar + content. */
+.panel {
+  composes: panel from '../../styles/commandSurface.module.css';
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────── */
+.toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   flex-wrap: wrap;
-  gap: var(--space-4);
-}
-
-.title {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
-  line-height: var(--line-height-tight);
-  margin: 0;
+  margin-bottom: 12px;
 }
 
 .sessionCount {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-secondary);
+  white-space: nowrap;
 }
 
-/* Toolbar */
-.toolbar {
+/* Free-text date filter (table view only). Raw input styled to the command
+   surface — mono, dense, surface-primary field. */
+.filterInput {
+  flex: 1 1 180px;
+  max-width: 260px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+}
+
+.filterInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+.filterInput:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-color: var(--color-primary);
+}
+
+/* Calendar metric selector slot (calendar view only). */
+.metricWrapper {
   display: flex;
-  align-items: flex-end;
-  gap: var(--space-4);
+  align-items: center;
+  gap: 6px;
+}
+
+.metricLabel {
+  composes: microLabel from '../../styles/commandSurface.module.css';
+}
+
+/* Compare entry + view switch, pinned to the right. */
+.toolbarRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
-.searchWrapper {
-  flex: 1;
-  min-width: 200px;
-  max-width: 320px;
+.compareButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  letter-spacing: var(--cs-ls-btn);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
-.dateRangeWrapper {
-  min-width: 160px;
+.compareButton:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-border-emphasis);
 }
 
-/* Calendar metric selector occupies the slot the search box vacates. */
-.metricWrapper {
-  display: flex;
-  align-items: flex-end;
+.compareButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
-/* View toggle (Table | Calendar), pinned to the right of the toolbar. */
-.viewToggleWrapper {
-  margin-left: auto;
-  display: flex;
-  align-items: flex-end;
-}
-
-/* Programmatic focus target for the content region (focused on view switch). */
+/* ── Content region (focus target on view switch) ──────────────── */
 .contentPanel {
   outline: none;
 }
@@ -75,45 +138,48 @@
 .contentPanel:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 4px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
 }
 
-/* Calendar view */
+/* Calendar view — surrounding chrome only (the D3 heatmap owns its own render). */
 .calendarWrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
   overflow-x: auto;
 }
 
-/* Calendar loading placeholder — a grid-sized block + a legend bar. */
 .calendarSkeleton {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
-/* Rows-per-page selector, sitting above the pagination controls. */
-.pageSizeRow {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding-bottom: var(--space-3);
-}
-
-/* Table wrapper */
+/* ── Data table ────────────────────────────────────────────────── */
 .tableWrapper {
   overflow-x: auto;
-  border-radius: var(--radius-lg);
 }
 
-/* Sortable column headers */
+.dataTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* Sortable column heads — mono 9px uppercase; active head reads text-primary. */
 .sortableHead {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--color-border-default);
+  text-align: left;
   cursor: pointer;
+  white-space: nowrap;
   -webkit-user-select: none;
   user-select: none;
-  white-space: nowrap;
   transition: color var(--transition-fast);
 }
 
@@ -127,6 +193,14 @@
   border-radius: var(--radius-sm);
 }
 
+.sortableHeadActive {
+  color: var(--color-text-primary);
+}
+
+.numericHead {
+  text-align: right;
+}
+
 .headContent {
   display: inline-flex;
   align-items: center;
@@ -134,143 +208,147 @@
 }
 
 .sortArrow {
-  font-size: var(--font-size-xs);
   opacity: 0.7;
 }
 
-/* Clickable rows */
-.clickableRow {
+/* Rows — click → detail; hover → surface-tertiary. */
+.dataRow {
   cursor: pointer;
   transition: background-color var(--transition-fast);
 }
 
-.clickableRow:hover {
-  background-color: var(--color-surface-secondary);
+.dataRow:hover {
+  background-color: var(--color-surface-tertiary);
 }
 
-.clickableRow:focus-visible {
+.dataRow:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: -2px;
 }
 
-/* Mono cells */
-.mono {
+/* Cells — mono 11.5px. Base (left, primary), numeric (right, primary),
+   numeric-muted (right, secondary) per the prototype column colouring. */
+.cell {
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--cs-fs-11-5);
+  color: var(--color-text-primary);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
-/* Right-aligned numeric cells */
-.numericCell {
-  text-align: right;
+.cellNum {
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--cs-fs-11-5);
+  color: var(--color-text-primary);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.numericHead {
+.cellNumMuted {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
+  color: var(--color-text-secondary);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-/* AHI severity badges */
-.ahiBadge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-full);
-  line-height: 1;
+/* ── AHI pill (aligned to the foundation `.ahiPill`) ───────────── */
+/* Four clinical bands; the numeral is always present, the band word is exposed
+   to SR via aria-label at the call site. */
+.ahiPill {
+  composes: ahiPill from '../../styles/commandSurface.module.css';
 }
 
 .ahiNormal {
-  color: var(--color-status-normal);
-  background-color: var(--color-status-normal-bg);
+  composes: ahiNormal from '../../styles/commandSurface.module.css';
 }
 
 .ahiMild {
-  color: var(--color-status-mild);
-  background-color: var(--color-status-mild-bg);
+  composes: ahiMild from '../../styles/commandSurface.module.css';
 }
 
 .ahiModerate {
-  color: var(--color-status-moderate);
-  background-color: var(--color-status-moderate-bg);
+  composes: ahiModerate from '../../styles/commandSurface.module.css';
 }
 
 .ahiSevere {
-  color: var(--color-status-severe);
-  background-color: var(--color-status-severe-bg);
+  composes: ahiSevere from '../../styles/commandSurface.module.css';
 }
 
-/* Compliance badge */
-.complianceBadge {
-  display: inline-flex;
+/* Insufficient-recording state: same pill shape, muted numeral, no fill. */
+.ahiEmpty {
+  composes: ahiPill from '../../styles/commandSurface.module.css';
+  color: var(--color-text-muted);
+}
+
+/* ── Pagination + page-size ────────────────────────────────────── */
+.pageSizeRow {
+  display: flex;
   align-items: center;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-full);
-  line-height: 1.4;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 12px 0 4px;
 }
 
-.compliant {
-  color: var(--color-status-normal);
-  background-color: var(--color-status-normal-bg);
+.pageSizeLabel {
+  composes: microLabel from '../../styles/commandSurface.module.css';
 }
 
-.nonCompliant {
-  color: var(--color-status-severe);
-  background-color: var(--color-status-severe-bg);
-}
-
-.partial {
-  color: var(--color-status-mild);
-  background-color: var(--color-status-mild-bg);
-}
-
-/* Pagination */
 .pagination {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--space-4);
-  padding-top: var(--space-2);
+  gap: 12px;
+  padding: 12px 4px 2px;
 }
 
 .pageInfo {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-secondary);
+}
+
+.pageEllipsis {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  color: var(--color-text-muted);
 }
 
 .pageControls {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 5px;
+  flex-wrap: wrap;
 }
 
 .pageButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
-  height: 36px;
-  padding: 0 var(--space-3);
+  min-width: 30px;
+  height: 30px;
+  padding: 0 9px;
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
-  background-color: var(--color-surface-primary);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   cursor: pointer;
-  transition: all var(--transition-fast);
   white-space: nowrap;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .pageButton:hover:not(:disabled) {
-  background-color: var(--color-surface-secondary);
+  color: var(--color-text-primary);
   border-color: var(--color-border-emphasis);
 }
 
@@ -280,52 +358,56 @@
 }
 
 .pageButton:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .pageButtonActive {
-  background-color: var(--color-primary);
   border-color: var(--color-primary);
+  background: var(--color-primary);
   color: var(--color-text-inverse);
 }
 
 .pageButtonActive:hover:not(:disabled) {
-  background-color: var(--color-primary-hover);
+  background: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
+  color: var(--color-text-inverse);
 }
 
-/* Loading skeleton */
+/* ── Loading skeleton ──────────────────────────────────────────── */
 .skeletonRow {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-2);
 }
 
 .skeletonRow + .skeletonRow {
   border-top: 1px solid var(--color-border-subtle);
 }
 
-/* Empty state */
+/* ── Empty state ───────────────────────────────────────────────── */
 .emptyState {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-16) var(--space-8);
+  padding: var(--space-12) var(--space-6);
   text-align: center;
   gap: var(--space-3);
 }
 
 .emptyIcon {
-  font-size: 3rem;
+  font-size: 2.5rem;
   opacity: 0.3;
 }
 
 .emptyTitle {
-  font-size: var(--font-size-lg);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
   font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-btn);
+  text-transform: uppercase;
   color: var(--color-text-primary);
   margin: 0;
 }
@@ -337,24 +419,20 @@
   max-width: 360px;
 }
 
-/* Error state */
+/* ── Error state ───────────────────────────────────────────────── */
 .errorState {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-12) var(--space-8);
+  padding: var(--space-10) var(--space-6);
   text-align: center;
   gap: var(--space-3);
 }
 
 .errorMessage {
-  font-size: var(--font-size-sm);
-  color: var(--color-error);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
+  color: var(--color-status-severe);
   margin: 0;
-}
-
-/* Pagination wrapper inside Card */
-.paginationWrapper {
-  padding: var(--space-4);
 }

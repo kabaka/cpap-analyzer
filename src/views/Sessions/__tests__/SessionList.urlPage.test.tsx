@@ -17,15 +17,12 @@ import { useDataStore } from '@/stores/useDataStore';
  *   - a `?page=N` present on initial mount is honored, not reset by the mount
  *     effect.
  *
- * The DateRangeSelector pulls in heavy Select/store machinery irrelevant here,
- * so it is stubbed. `loadSessions` is stubbed to a no-op (see beforeEach) so the
- * directly-seeded session Map is not clobbered by an IndexedDB round-trip.
+ * `loadSessions` is stubbed to a no-op (see beforeEach) so the directly-seeded
+ * session Map is not clobbered by an IndexedDB round-trip.
+ *
+ * (The Sessions index no longer renders a per-view DateRangeSelector, so the
+ * previous stub for it was removed.)
  */
-vi.mock('@/components/domain/DateRangeSelector', () => ({
-  DateRangeSelector: () => <div data-testid="date-range-selector" />,
-}));
-
-// Import AFTER mocks are registered.
 import SessionList from '@/views/Sessions/SessionList';
 
 type SessionMetadata =

@@ -17,21 +17,19 @@ import { useAppStore } from '@/stores/useAppStore';
  *   - switching the view preserves the other params,
  *   - a page-size change resets pagination to page 1.
  *
- * The DateRangeSelector pulls in heavy Select/store machinery irrelevant here,
- * so it is stubbed (matching the sibling test). `loadSessions` is stubbed to a
- * no-op so the directly-seeded session Map is not clobbered by an IndexedDB
- * round-trip, AND so the date-range-change effect cannot reload empty data.
+ * `loadSessions` is stubbed to a no-op so the directly-seeded session Map is not
+ * clobbered by an IndexedDB round-trip, AND so the date-range-change effect
+ * cannot reload empty data.
  *
  * The calendar window comes from the global `dateRange` (NOT from data), so we
  * pin `dateRange` to a fixed span around the seeded session dates. This keeps
  * the rendered window deterministic and independent of the real "today"
  * (CalendarHeatmap's only `Date.now()` use is the non-asserted "today" outline).
+ *
+ * (The Sessions index no longer renders a per-view DateRangeSelector — the
+ * global window toggle is the sole writer of `dateRange` — so the previous stub
+ * for it was removed.)
  */
-vi.mock('@/components/domain/DateRangeSelector', () => ({
-  DateRangeSelector: () => <div data-testid="date-range-selector" />,
-}));
-
-// Import AFTER mocks are registered.
 import SessionList from '@/views/Sessions/SessionList';
 
 type SessionMetadata =

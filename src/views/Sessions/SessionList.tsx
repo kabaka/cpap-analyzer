@@ -9,20 +9,8 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Card,
-  Input,
-  SegmentedControl,
-  Skeleton,
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui';
+import { SegmentedControl, Skeleton } from '@/components/ui';
 import type { SegmentedControlOption } from '@/components/ui';
-import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
 import CalendarHeatmap, { type CalendarDatum } from '@/components/charts/d3/CalendarHeatmap';
 import { useAppStore } from '@/stores/useAppStore';
 import { useDataStore } from '@/stores/useDataStore';
@@ -185,10 +173,11 @@ function compareRows(a: SessionRow, b: SessionRow, field: SortField): number {
 function AHIBadge({ ahi }: { ahi: number | null }) {
   if (ahi == null) {
     // null = recording too short for a per-hour rate; render the
-    // "insufficient recording time" indicator, never 0.
+    // "insufficient recording time" indicator, never 0. Same pill shape, muted
+    // numeral, no fill.
     return (
       <span
-        className={styles.ahiBadge}
+        className={styles.ahiEmpty}
         title="Insufficient recording time"
         aria-label="Not available"
       >
@@ -198,10 +187,14 @@ function AHIBadge({ ahi }: { ahi: number | null }) {
   }
 
   const severity = classifyAhiSeverity(ahi);
+  // Command-surface `.ahiPill`: the numeral is always the visible content;
+  // the clinical band word rides along in the aria-label so the colour is
+  // never the sole signal (WCAG 1.4.1).
   return (
     <span
-      className={`${styles.ahiBadge} ${AHI_SEVERITY_STYLES[severity]}`}
+      className={`${styles.ahiPill} ${AHI_SEVERITY_STYLES[severity]}`}
       title={`${AHI_SEVERITY_LABELS[severity]} (${ahi.toFixed(1)})`}
+      aria-label={`AHI ${ahi.toFixed(1)}, ${AHI_SEVERITY_LABELS[severity].toLowerCase()}`}
     >
       {ahi.toFixed(1)}
     </span>
@@ -210,7 +203,7 @@ function AHIBadge({ ahi }: { ahi: number | null }) {
 
 function LoadingSkeleton() {
   return (
-    <Card>
+    <div>
       {Array.from({ length: 10 }, (_, i) => (
         <div key={i} className={styles.skeletonRow}>
           <Skeleton width="120px" height="16px" />
@@ -221,7 +214,7 @@ function LoadingSkeleton() {
           <Skeleton width="50px" height="16px" />
         </div>
       ))}
-    </Card>
+    </div>
   );
 }
 
@@ -232,12 +225,10 @@ function LoadingSkeleton() {
  */
 function CalendarLoadingSkeleton() {
   return (
-    <Card>
-      <div className={styles.calendarSkeleton} aria-hidden="true">
-        <Skeleton width="100%" height="132px" />
-        <Skeleton width="60%" height="20px" />
-      </div>
-    </Card>
+    <div className={styles.calendarSkeleton} aria-hidden="true">
+      <Skeleton width="100%" height="132px" />
+      <Skeleton width="60%" height="20px" />
+    </div>
   );
 }
 
@@ -322,11 +313,11 @@ function PaginationControls({
           aria-label="Previous page"
           type="button"
         >
-          ‹ Prev
+          ‹
         </button>
         {pageNumbers.map((p, i) =>
           p === 'ellipsis' ? (
-            <span key={`ellipsis-${i}`} className={styles.pageInfo} aria-hidden="true">
+            <span key={`ellipsis-${i}`} className={styles.pageEllipsis} aria-hidden="true">
               …
             </span>
           ) : (
@@ -349,7 +340,7 @@ function PaginationControls({
           aria-label="Next page"
           type="button"
         >
-          Next ›
+          ›
         </button>
       </div>
     </nav>
@@ -627,6 +618,12 @@ export default function SessionList() {
     [navigate],
   );
 
+  // Compare entry point (added — no UI linked to the existing /sessions/compare
+  // route before this restyle). Pinned to the toolbar's right cluster.
+  const handleCompareClick = useCallback(() => {
+    void navigate('/sessions/compare');
+  }, [navigate]);
+
   const handleRowKeyDown = useCallback(
     (e: React.KeyboardEvent, sessionId: string) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -672,193 +669,195 @@ export default function SessionList() {
 
   return (
     <div className={styles.container}>
-      {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.headerRow}>
-          <h1 className={styles.title}>Sessions</h1>
+      {/*
+       * The command-surface design shows no visible page title (the shell's
+       * command strip renders "SESSIONS"). Keep the <h1> in the a11y tree but
+       * visually hidden so heading-role selectors still resolve "Sessions".
+       */}
+      <h1 className={styles.srOnly}>Sessions</h1>
+
+      {/* Everything lives in one command-surface panel (prototype sessionsListEl). */}
+      <div className={styles.panel}>
+        {/*
+         * Toolbar. Leading slot is view-dependent: Table view holds the
+         * free-text date filter; Calendar view holds the Metric selector.
+         * Compare + the view switch are pinned to the right cluster.
+         */}
+        <div className={styles.toolbar}>
           <span className={styles.sessionCount}>
             {sessionsLoading
               ? 'Loading…'
               : `${filteredRows.length} session${filteredRows.length !== 1 ? 's' : ''}`}
           </span>
-        </div>
 
-        {/*
-         * Toolbar. The leading slot is view-dependent: in Table view it holds
-         * the free-text date search; in Calendar view (which has no row-text
-         * filter) it holds the Metric selector. The DateRangeSelector and the
-         * View toggle stay mounted in BOTH views; the View toggle is pinned to
-         * the right (margin-left:auto) as a peer of the search/metric + range.
-         */}
-        <div className={styles.toolbar}>
           {view === 'table' ? (
-            <div className={styles.searchWrapper}>
-              <Input
-                placeholder="Filter by date…"
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                aria-label="Filter sessions by date"
-                type="search"
-              />
-            </div>
+            <input
+              className={styles.filterInput}
+              placeholder="Filter by date…"
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              aria-label="Filter sessions by date"
+              type="search"
+            />
           ) : (
             <div className={styles.metricWrapper}>
+              <span className={styles.metricLabel}>Metric</span>
               <SegmentedControl<CalendarMetric>
                 label="Metric"
                 options={METRIC_OPTIONS}
                 value={metric}
                 onChange={setMetric}
+                variant="solid"
+                size="sm"
               />
             </div>
           )}
-          <div className={styles.dateRangeWrapper}>
-            <DateRangeSelector />
-          </div>
-          <div className={styles.viewToggleWrapper}>
+
+          <div className={styles.toolbarRight}>
+            <button
+              type="button"
+              className={styles.compareButton}
+              onClick={handleCompareClick}
+              aria-label="Compare sessions"
+            >
+              Compare <span aria-hidden="true">→</span>
+            </button>
             <SegmentedControl<SessionView>
               label="View"
               options={VIEW_OPTIONS}
               value={view}
               onChange={setView}
+              variant="solid"
+              size="sm"
             />
           </div>
         </div>
-      </div>
 
-      {/* Error state (shared by both views) */}
-      {sessionsError && <ErrorState message={sessionsError} onRetry={handleRetry} />}
-
-      {/* Loading state — view-shaped skeleton */}
-      {sessionsLoading &&
-        !sessionsError &&
-        (view === 'calendar' ? <CalendarLoadingSkeleton /> : <LoadingSkeleton />)}
-
-      {/*
-       * Content. State precedence stays error → loading → empty → content. The
-       * panel is a programmatic focus target (tabIndex={-1}) so a view switch
-       * can move focus here; it is labelled by the live session-count text in
-       * the header.
-       */}
-      {!sessionsLoading && !sessionsError && (
+        {/*
+         * Content region. State precedence: error → loading → empty → content.
+         * It is a programmatic focus target (tabIndex={-1}) so a view switch can
+         * move focus here for keyboard users.
+         */}
         <div ref={contentPanelRef} tabIndex={-1} className={styles.contentPanel}>
-          {view === 'calendar' ? (
-            sortedRows.length === 0 ? (
-              // All-gaps-in-range (the window spans dates but holds no sessions)
-              // shows the empty state rather than a grid of only gap cells.
-              <Card>
-                <EmptyState hasFilter={searchFilter.trim().length > 0} />
-              </Card>
+          {sessionsError ? (
+            <ErrorState message={sessionsError} onRetry={handleRetry} />
+          ) : sessionsLoading ? (
+            view === 'calendar' ? (
+              <CalendarLoadingSkeleton />
             ) : (
-              <Card>
-                <div className={styles.calendarWrapper}>
-                  <CalendarHeatmap
-                    data={calendarData}
-                    bands={[...metricConfig.bands]}
-                    rangeStart={rangeStartISO}
-                    rangeEnd={rangeEndISO}
-                    selectedDate={selectedDate}
-                    metricLabel={metricConfig.metricLabel}
-                    metricFormatter={metricConfig.metricFormatter}
-                    partialLabel={metricConfig.partialLabel}
-                    onSelectDate={handleSelectDate}
-                  />
-                </div>
-              </Card>
+              <LoadingSkeleton />
             )
           ) : sortedRows.length === 0 ? (
-            <Card>
-              <EmptyState hasFilter={searchFilter.trim().length > 0} />
-            </Card>
+            // All-gaps-in-range (the window spans dates but holds no sessions)
+            // shows the empty state rather than a grid of only gap cells.
+            <EmptyState hasFilter={searchFilter.trim().length > 0} />
+          ) : view === 'calendar' ? (
+            <div className={styles.calendarWrapper}>
+              <CalendarHeatmap
+                data={calendarData}
+                bands={[...metricConfig.bands]}
+                rangeStart={rangeStartISO}
+                rangeEnd={rangeEndISO}
+                selectedDate={selectedDate}
+                metricLabel={metricConfig.metricLabel}
+                metricFormatter={metricConfig.metricFormatter}
+                partialLabel={metricConfig.partialLabel}
+                onSelectDate={handleSelectDate}
+              />
+            </div>
           ) : (
-            <Card padding={false}>
+            <>
               <div className={styles.tableWrapper}>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {COLUMNS.map((col) => (
-                        <TableHead
-                          key={col.key}
-                          className={`${styles.sortableHead} ${col.numeric ? styles.numericHead : ''}`}
-                          onClick={() => handleSort(col.key)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              handleSort(col.key);
+                <table className={styles.dataTable}>
+                  <thead>
+                    <tr>
+                      {COLUMNS.map((col) => {
+                        const active = sortField === col.key;
+                        return (
+                          <th
+                            key={col.key}
+                            scope="col"
+                            className={`${styles.sortableHead} ${col.numeric ? styles.numericHead : ''} ${active ? styles.sortableHeadActive : ''}`}
+                            onClick={() => handleSort(col.key)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSort(col.key);
+                              }
+                            }}
+                            tabIndex={0}
+                            role="columnheader"
+                            aria-sort={
+                              active
+                                ? sortDirection === 'asc'
+                                  ? 'ascending'
+                                  : 'descending'
+                                : 'none'
                             }
-                          }}
-                          tabIndex={0}
-                          role="columnheader"
-                          aria-sort={
-                            sortField === col.key
-                              ? sortDirection === 'asc'
-                                ? 'ascending'
-                                : 'descending'
-                              : 'none'
-                          }
-                        >
-                          <span className={styles.headContent}>
-                            {col.label}
-                            {sortField === col.key && (
-                              <span className={styles.sortArrow} aria-hidden="true">
-                                {sortDirection === 'asc' ? '▲' : '▼'}
-                              </span>
-                            )}
-                          </span>
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+                          >
+                            <span className={styles.headContent}>
+                              {col.label}
+                              {active && (
+                                <span className={styles.sortArrow} aria-hidden="true">
+                                  {sortDirection === 'asc' ? '▲' : '▼'}
+                                </span>
+                              )}
+                            </span>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
                     {pageRows.map((row) => (
-                      <TableRow
+                      <tr
                         key={row.id}
-                        className={styles.clickableRow}
+                        className={styles.dataRow}
                         onClick={() => handleRowClick(row.id)}
                         onKeyDown={(e) => handleRowKeyDown(e, row.id)}
                         tabIndex={0}
                         role="link"
                         aria-label={`Session from ${formatSessionDate(row.date)}`}
                       >
-                        <TableCell>{formatSessionDate(row.date)}</TableCell>
-                        <TableCell className={styles.numericCell}>
+                        <td className={styles.cell}>{formatSessionDate(row.date)}</td>
+                        <td className={styles.cellNumMuted}>
                           {formatMinutes(row.durationMinutes)}
-                        </TableCell>
-                        <TableCell className={styles.numericCell}>
-                          {formatHours(row.usageMinutes)}
-                        </TableCell>
-                        <TableCell className={styles.numericCell}>
+                        </td>
+                        <td className={styles.cellNum}>{formatHours(row.usageMinutes)}</td>
+                        <td className={styles.cellNum}>
                           <AHIBadge ahi={row.ahi} />
-                        </TableCell>
-                        <TableCell className={styles.numericCell}>
-                          {row.leakMedian.toFixed(1)}
-                        </TableCell>
-                        <TableCell className={styles.numericCell}>{row.eventCount}</TableCell>
-                      </TableRow>
+                        </td>
+                        <td className={styles.cellNumMuted}>{row.leakMedian.toFixed(1)}</td>
+                        <td className={styles.cellNumMuted}>{row.eventCount}</td>
+                      </tr>
                     ))}
-                  </TableBody>
-                </Table>
+                  </tbody>
+                </table>
               </div>
-              <div className={styles.paginationWrapper}>
-                <div className={styles.pageSizeRow}>
-                  <SegmentedControl<`${PageSize}`>
-                    label="Rows per page"
-                    options={PAGE_SIZE_OPTIONS}
-                    value={`${pageSize}`}
-                    onChange={(next) => setPageSize(Number(next) as PageSize)}
-                  />
-                </div>
-                <PaginationControls
-                  currentPage={safePage}
-                  totalPages={totalPages}
-                  totalItems={sortedRows.length}
-                  pageSize={pageSize}
-                  onPageChange={setPage}
+
+              <div className={styles.pageSizeRow}>
+                <span className={styles.pageSizeLabel}>Rows per page</span>
+                <SegmentedControl<`${PageSize}`>
+                  label="Rows per page"
+                  options={PAGE_SIZE_OPTIONS}
+                  value={`${pageSize}`}
+                  onChange={(next) => setPageSize(Number(next) as PageSize)}
+                  variant="solid"
+                  size="sm"
                 />
               </div>
-            </Card>
+
+              <PaginationControls
+                currentPage={safePage}
+                totalPages={totalPages}
+                totalItems={sortedRows.length}
+                pageSize={pageSize}
+                onPageChange={setPage}
+              />
+            </>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

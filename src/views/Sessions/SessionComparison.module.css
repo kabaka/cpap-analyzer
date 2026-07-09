@@ -1,7 +1,13 @@
 /**
- * Styles for the Session Comparison view.
+ * Session Comparison view — command-surface restyle.
  *
- * Uses project design tokens for consistent theming.
+ * Full-bleed inside the shell <main> (which owns --cs-deck-pad + the primary
+ * canvas). Panels compose the shared `.panel` primitive; all dense labels/cells
+ * are mono + a --cs-* size; no box-shadow; tokens only. Mirrors the prototype
+ * `sessionCompareEl`.
+ *
+ * NOTE: the `delta*` colour classes below are consumed by `comparison-utils.ts`
+ * (`deltaClass`) — keep their names in sync with that module.
  *
  * @module views/Sessions/SessionComparison.module.css
  */
@@ -9,57 +15,68 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  padding: var(--space-6);
-  max-width: 1200px;
-  margin: 0 auto;
+  gap: var(--cs-deck-gap);
   width: 100%;
+  min-width: 0;
 }
 
 /* ── Header ───────────────────────────────────────────────────── */
 
 .header {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-}
-
-.headerLeft {
-  display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .breadcrumb {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-muted);
 }
 
 .breadcrumbLink {
-  color: var(--color-text-link);
+  color: var(--color-primary);
   text-decoration: none;
-  transition: color var(--transition-fast);
+  border-radius: var(--radius-sm);
 }
 
 .breadcrumbLink:hover {
-  color: var(--color-text-link-hover);
+  text-decoration: underline;
+}
+
+.breadcrumbLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .breadcrumbSep {
-  color: var(--color-text-disabled);
+  color: var(--color-text-muted);
 }
 
 .title {
-  font-size: var(--font-size-2xl);
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 20px; /* display heading — exact px, matches the prototype */
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   line-height: var(--line-height-tight);
-  margin: 0;
+}
+
+/* ── Panel + header primitives ────────────────────────────────── */
+
+.panel {
+  composes: panel from '../../styles/commandSurface.module.css';
+}
+
+.panelHeader {
+  composes: panelHeader from '../../styles/commandSurface.module.css';
+}
+
+.panelTitle {
+  composes: panelTitle from '../../styles/commandSurface.module.css';
 }
 
 /* ── Pickers ──────────────────────────────────────────────────── */
@@ -79,15 +96,12 @@
 .pickerGroup {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .pickerLabel {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-wide);
+  composes: microLabel from '../../styles/commandSurface.module.css';
 }
 
 /* ── Empty / Prompt State ─────────────────────────────────────── */
@@ -103,12 +117,13 @@
 }
 
 .promptIcon {
-  font-size: var(--font-size-3xl);
+  font-size: 2rem;
   color: var(--color-text-disabled);
 }
 
 .promptTitle {
-  font-size: var(--font-size-lg);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
   margin: 0;
@@ -133,7 +148,8 @@
 }
 
 .errorTitle {
-  font-size: var(--font-size-lg);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
   font-weight: var(--font-weight-semibold);
   color: var(--color-status-severe);
   margin: 0;
@@ -151,7 +167,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-4);
 }
 
 .skeletonRow {
@@ -165,22 +180,40 @@
   overflow-x: auto;
 }
 
-.sectionTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0 0 var(--space-4) 0;
+.compareTable {
+  width: 100%;
+  border-collapse: collapse;
 }
 
-.numericCell {
-  text-align: right;
+.th {
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--color-border-default);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.thNum {
+  text-align: right;
+}
+
+.sessionHeader {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .metricNameCell {
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
   color: var(--color-text-primary);
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .metricUnit {
@@ -188,6 +221,19 @@
   font-weight: normal;
 }
 
+.numericCell {
+  text-align: right;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+/* Delta / change colour classes (consumed by comparison-utils `deltaClass`).
+   Declared AFTER `.numericCell` so their `color` wins the equal-specificity
+   cascade when both classes are applied to the same <td>. */
 .deltaPositive {
   color: var(--color-status-severe);
 }
@@ -208,35 +254,30 @@
   color: var(--color-text-muted);
 }
 
-.sessionHeader {
-  white-space: nowrap;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* ── Bar Chart ────────────────────────────────────────────────── */
-
-.chartSection {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
 
 .chartLegend {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+  color: var(--color-text-muted);
 }
 
 .legendSwatch {
   display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
 }
 
 .legendSwatchA {
@@ -247,49 +288,43 @@
   background-color: var(--color-chart-2);
 }
 
-.legendItem {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
 .chartGrid {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: 12px;
 }
 
-.chartRow {
+.barMetric {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 4px;
 }
 
-.chartLabel {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+.barMetricLabel {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-secondary);
 }
 
-.barGroup {
+.barRow {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: center;
+  gap: 8px;
 }
 
 .barTrack {
-  height: 20px;
-  background-color: var(--color-bg-subtle);
+  flex: 1;
+  height: 16px;
+  background-color: var(--color-surface-tertiary);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  position: relative;
 }
 
 .barFill {
   height: 100%;
   border-radius: var(--radius-sm);
-  transition: width 0.3s ease;
   min-width: 2px;
+  transition: width var(--transition-base);
 }
 
 .barFillA {
@@ -300,23 +335,12 @@
   background-color: var(--color-chart-2);
 }
 
-.barValue {
-  position: absolute;
-  right: var(--space-2);
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: var(--font-size-xs);
+.barValueOut {
+  width: 54px;
+  flex: none;
+  text-align: right;
   font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-primary);
-  pointer-events: none;
-}
-
-.barValueInside {
-  color: #fff;
-}
-
-.barLabel {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  padding-left: var(--space-1);
 }
