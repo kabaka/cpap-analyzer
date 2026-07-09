@@ -1,28 +1,142 @@
-/* DataManagement view styles */
+/*
+ * Data Management view — command-surface restyle (spec Part C "Data" / prototype
+ * `dataEl`). Full-bleed (deck padding/bg come from the shell <main>); panels
+ * compose the shared `.panel`; all sub-12px text is mono + `--cs-*`. The 4 tabs
+ * render through the restyled shared `Tabs`. Storage/import/crypto/delete
+ * services and the Button/Input/Table/Dialog/Badge primitives are untouched —
+ * chrome only.
+ */
 
 .container {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  padding: var(--space-6);
-  max-width: 1200px;
-  margin: 0 auto;
+  gap: var(--cs-deck-gap);
   width: 100%;
+  min-width: 0;
 }
+
+/* ── Header ── */
 
 .header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-4);
 }
 
+.headerText {
+  min-width: 0;
+}
+
 .title {
-  font-size: var(--font-size-2xl);
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 0.9375rem; /* 15px — compact page title; shell strip carries "DATA" */
+  color: var(--color-text-primary);
+}
+
+.subtitle {
+  margin: 2px 0 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  color: var(--color-text-muted);
+}
+
+/* ── Active import panel ── */
+
+/* Self-contained (not composing `.panel`) so the primary border colour is set by
+   the `border` shorthand without the composes cascade resetting it. */
+.activeImportPanel {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-lg);
+  padding: var(--cs-panel-pad);
+  min-width: 0;
+}
+
+.activeImportHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.activeImportSpinner {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-primary);
+  animation: dataImportSpin 0.8s linear infinite;
+}
+
+.activeImportHeadText {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.activeImportTitle {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.activeImportStage {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activeImportPct {
+  flex: none;
+  font-family: var(--font-family-mono);
+  font-size: 16px;
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.activeImportBar {
+  margin-bottom: 12px;
+}
+
+@keyframes dataImportSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activeImportSpinner {
+    animation: none;
+  }
+}
+
+/* ── Panels ── */
+
+.panel {
+  composes: panel from '../../styles/commandSurface.module.css';
+}
+
+/* Uppercase mono section head ("Storage Overview", "Import History"). Kept
+   self-contained (not composing `.panelTitle`) so a bottom margin survives the
+   lazy-chunk `composes` cascade (WAVE2 composes-ordering rule). */
+.sectionTitle {
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-title);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
 }
 
 /* ── Overview Tab ── */
@@ -30,62 +144,68 @@
 .storageSection {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--cs-deck-gap);
 }
 
 .storageHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--space-2);
-}
-
-.sectionTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 
 .storageCards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--cs-deck-gap);
 }
 
 .storageCard {
+  composes: panel from '../../styles/commandSurface.module.css';
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 3px;
 }
 
 .storageLabel {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
-}
-
-.storageValue {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
-}
-
-.storageSubtext {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
   color: var(--color-text-muted);
 }
 
-.progressBarContainer {
-  margin-top: var(--space-4);
+.storageValue {
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 20px; /* display numeral */
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.storageSubtext {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+  color: var(--color-text-muted);
+}
+
+.progressPanel {
+  composes: panel from '../../styles/commandSurface.module.css';
 }
 
 .progressBarLabel {
   display: flex;
   justify-content: space-between;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-secondary);
-  margin-bottom: var(--space-1);
+  margin-bottom: 6px;
+}
+
+.progressBarValue {
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .progressBarTrack {
@@ -105,22 +225,23 @@
 }
 
 .progressBarTrack::-webkit-progress-value {
-  background-color: var(--color-primary);
+  background-color: var(--color-status-normal);
   border-radius: var(--radius-full);
   transition: width var(--transition-base);
 }
 
 .progressBarTrack::-moz-progress-bar {
-  background-color: var(--color-primary);
+  background-color: var(--color-status-normal);
   border-radius: var(--radius-full);
 }
 
 /* ── Import History Tab ── */
 
 .importHistorySection {
+  composes: panel from '../../styles/commandSurface.module.css';
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .tableContainer {
@@ -132,87 +253,97 @@
 .cleanupSection {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--cs-deck-gap);
 }
 
-.cleanupGroup {
+.deletePanel {
+  composes: panel from '../../styles/commandSurface.module.css';
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .cleanupGroupTitle {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11-5);
+  color: var(--color-text-primary);
 }
 
 .cleanupGroupDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  margin: 0;
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.5;
+  color: var(--color-text-muted);
 }
 
 .dateRangeForm {
   display: flex;
   align-items: flex-end;
-  gap: var(--space-4);
+  gap: var(--cs-deck-gap);
   flex-wrap: wrap;
 }
 
 .dateField {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 4px;
 }
 
 .dateLabel {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+  color: var(--color-text-muted);
 }
 
 .dateInput {
-  padding: var(--space-2) var(--space-3);
+  height: 32px;
+  padding: 0 8px;
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
   background-color: var(--color-surface-primary);
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
   transition: border-color var(--transition-fast);
 }
 
-.dateInput:focus {
-  outline: none;
+.dateInput:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -1px;
   border-color: var(--color-primary);
-  box-shadow: var(--shadow-focus);
 }
 
-.deleteAllSection {
-  border-top: 1px solid var(--color-border-default);
-  padding-top: var(--space-6);
-}
-
+/* Danger-zone panel: surface-secondary card with a severe border (prototype).
+   Self-contained (not composing `.panel`) so the `border` shorthand cleanly
+   sets the severe colour without the composes-cascade resetting it. */
 .dangerZone {
-  border: 1px solid var(--color-error);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-status-severe);
   border-radius: var(--radius-lg);
-  padding: var(--space-4);
-  background-color: var(--color-error-bg);
+  padding: var(--cs-panel-pad);
+  min-width: 0;
 }
 
 .dangerTitle {
-  font-size: var(--font-size-base);
+  margin: 0;
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-error);
-  margin: 0 0 var(--space-2);
+  font-size: var(--cs-fs-11-5);
+  color: var(--color-status-severe);
 }
 
 .dangerDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  margin: 0 0 var(--space-4);
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.5;
+  color: var(--color-text-muted);
 }
 
 /* ── Backup & Restore Tab ── */
@@ -220,7 +351,7 @@
 .backupSection {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--cs-deck-gap);
 }
 
 .backupGroup {
@@ -230,16 +361,19 @@
 }
 
 .backupGroupTitle {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11-5);
+  color: var(--color-text-primary);
 }
 
 .backupGroupDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.5;
+  color: var(--color-text-muted);
 }
 
 .passwordField {
@@ -254,18 +388,19 @@
 }
 
 .fileInput {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  color: var(--color-text-secondary);
 }
 
 .fileInput::file-selector-button {
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
-  background-color: var(--color-surface-secondary);
+  background-color: var(--color-surface-primary);
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   cursor: pointer;
   margin-right: var(--space-2);
   transition: background-color var(--transition-fast);
@@ -289,9 +424,10 @@
 }
 
 .dialogWarning {
-  font-size: var(--font-size-sm);
-  color: var(--color-error);
   margin: var(--space-2) 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-status-severe);
   font-weight: var(--font-weight-medium);
 }
 
@@ -314,28 +450,29 @@
 }
 
 .emptyTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-13);
+  color: var(--color-text-primary);
 }
 
 .emptyDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
   margin: 0;
   max-width: 400px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.5;
+  color: var(--color-text-muted);
 }
 
 /* ── Status messages ── */
 
 .statusMessage {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  padding: 8px 11px;
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
 }
 
 .statusSuccess {
@@ -348,11 +485,6 @@
   color: var(--color-error);
 }
 
-.statusInfo {
-  background-color: var(--color-info-bg);
-  color: var(--color-info);
-}
-
 /* ── Loading ── */
 
 .loading {
@@ -360,8 +492,9 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-8);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
 }
 
 /* ── Session export ── */
@@ -369,33 +502,33 @@
 .sessionList {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
 }
 
 .sessionRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-md);
-  background-color: var(--color-surface-primary);
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .sessionInfo {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 1px;
+  min-width: 0;
 }
 
 .sessionDate {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-primary);
 }
 
 .sessionMeta {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
   color: var(--color-text-muted);
 }
 
@@ -406,17 +539,9 @@
 /* ── Responsive ── */
 
 @media (max-width: 768px) {
-  .container {
-    padding: var(--space-4);
-  }
-
   .header {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .storageCards {
-    grid-template-columns: 1fr;
   }
 
   .dateRangeForm {

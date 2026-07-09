@@ -9,8 +9,7 @@
 
 import { useCallback, useId, useMemo, useState } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
-import { Button, Card } from '@/components/ui';
-import { Input } from '@/components/ui';
+import { Button, Input } from '@/components/ui';
 import {
   generatePDF,
   generateCSV,
@@ -64,12 +63,14 @@ interface StatusState {
 
 export default function Reports() {
   const globalDateRange = useAppStore((s) => s.dateRange);
+  // Bind native date-picker chrome to the active theme (spec Part D).
+  const resolvedTheme = useAppStore((s) => s.resolvedTheme);
   const idPrefix = useId();
 
   // Template selection
   const [template, setTemplate] = useState<ReportTemplate>('physician-summary');
 
-  // Date range
+  // Date range — Reports keeps its own export range, seeded from the global window.
   const [startDate, setStartDate] = useState(() => formatDate(globalDateRange.start));
   const [endDate, setEndDate] = useState(() => formatDate(globalDateRange.end));
 
@@ -164,25 +165,24 @@ export default function Reports() {
 
   return (
     <div className={styles.reports}>
-      {/* Header */}
-      <div className={styles.header}>
-        <h1 className={styles.title}>Reports</h1>
-        <p className={styles.subtitle}>
-          Generate and download reports from your CPAP therapy data. All processing happens in your
-          browser — no data leaves your device.
-        </p>
-      </div>
+      {/* The shell command strip shows the "REPORTS" section title, so the page
+          keeps a single visually-hidden <h1> for the a11y tree + e2e selectors. */}
+      <h1 className={styles.srOnly}>Reports</h1>
+      <p className={styles.subtitle}>
+        Generate and download reports from your CPAP therapy data. All processing happens in your
+        browser — no data leaves your device.
+      </p>
 
       {/* Template Picker */}
-      <section aria-labelledby={`${idPrefix}-templates`}>
-        <h2 id={`${idPrefix}-templates`} className={styles.sectionHeading}>
+      <section className={styles.panel} aria-labelledby={`${idPrefix}-templates`}>
+        <h2 id={`${idPrefix}-templates`} className={styles.panelHeading}>
           Choose a Template
         </h2>
         <div className={styles.templateGrid} role="radiogroup" aria-label="Report templates">
           {REPORT_TEMPLATES.map((t) => {
             const isSelected = template === t.id;
             return (
-              <Card
+              <div
                 key={t.id}
                 className={`${styles.templateCard} ${isSelected ? styles.templateCardSelected : ''}`}
                 role="radio"
@@ -199,15 +199,15 @@ export default function Reports() {
                 {isSelected && <span className={styles.selectedBadge}>Selected</span>}
                 <h3 className={styles.templateName}>{t.name}</h3>
                 <p className={styles.templateDescription}>{t.description}</p>
-              </Card>
+              </div>
             );
           })}
         </div>
       </section>
 
       {/* Date Range */}
-      <section aria-labelledby={`${idPrefix}-daterange`}>
-        <h2 id={`${idPrefix}-daterange`} className={styles.sectionHeading}>
+      <section className={styles.panel} aria-labelledby={`${idPrefix}-daterange`}>
+        <h2 id={`${idPrefix}-daterange`} className={styles.panelHeading}>
           Date Range
         </h2>
         <div className={styles.dateRangeRow}>
@@ -221,6 +221,7 @@ export default function Reports() {
               className={styles.dateInput}
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
+              style={{ colorScheme: resolvedTheme }}
             />
           </div>
           <div className={styles.dateField}>
@@ -233,6 +234,7 @@ export default function Reports() {
               className={styles.dateInput}
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
+              style={{ colorScheme: resolvedTheme }}
             />
           </div>
         </div>
@@ -240,8 +242,8 @@ export default function Reports() {
 
       {/* Section Configuration (only for custom template) */}
       {template === 'custom' && (
-        <section aria-labelledby={`${idPrefix}-sections`}>
-          <h2 id={`${idPrefix}-sections`} className={styles.sectionHeading}>
+        <section className={styles.panel} aria-labelledby={`${idPrefix}-sections`}>
+          <h2 id={`${idPrefix}-sections`} className={styles.panelHeading}>
             Report Sections
           </h2>
           <div className={styles.sectionsGrid}>
@@ -263,11 +265,9 @@ export default function Reports() {
         </section>
       )}
 
-      <hr className={styles.divider} />
-
       {/* Download actions */}
-      <section aria-labelledby={`${idPrefix}-actions`}>
-        <h2 id={`${idPrefix}-actions`} className={styles.sectionHeading}>
+      <section className={styles.panel} aria-labelledby={`${idPrefix}-actions`}>
+        <h2 id={`${idPrefix}-actions`} className={styles.panelHeading}>
           Download
         </h2>
         <div className={styles.actionsRow}>
@@ -285,14 +285,12 @@ export default function Reports() {
         </div>
       </section>
 
-      <hr className={styles.divider} />
-
       {/* Encrypted Export */}
-      <section aria-labelledby={`${idPrefix}-encrypt`} className={styles.encryptionSection}>
-        <h2 id={`${idPrefix}-encrypt`} className={styles.sectionHeading}>
+      <section className={styles.panel} aria-labelledby={`${idPrefix}-encrypt`}>
+        <h2 id={`${idPrefix}-encrypt`} className={styles.panelHeading}>
           Encrypted Export
         </h2>
-        <p className={styles.subtitle}>
+        <p className={styles.panelDescription}>
           Export your data as an AES-256-GCM encrypted archive. You will need the password to
           decrypt it later.
         </p>

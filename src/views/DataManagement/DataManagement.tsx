@@ -9,13 +9,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useStore } from 'zustand';
 import {
   Button,
-  Card,
   Badge,
   Tabs,
   Dialog,
   Input,
+  Icon,
+  ProgressBar,
   Table,
   TableHeader,
   TableBody,
@@ -29,6 +31,10 @@ import { OPFSService } from '@/services/storage/OPFSService';
 import { clearAllUserData } from '@/services/storage/clearAllUserData';
 import { downloadBlob, encryptBuffer } from '@/services/reports';
 import { useDataStore } from '@/stores/useDataStore';
+import { useAppStore } from '@/stores/useAppStore';
+import { selectActiveJob, useImportStore } from '@/stores/useImportStore';
+import { ImportStageList } from '@/components/import/ImportStageList';
+import { overallPercent } from '@/components/import/overallProgress';
 import { resetWearableOffsets } from '@/hooks/useWearableOffsets';
 import type { ImportRecord, Session } from '@/types';
 import { formatBytes } from '@/utils/formatBytes';
@@ -190,32 +196,32 @@ function OverviewTab() {
       </div>
 
       <div className={styles.storageCards}>
-        <Card className={styles.storageCard}>
+        <div className={styles.storageCard}>
           <span className={styles.storageLabel}>Total Used</span>
           <span className={styles.storageValue}>{formatBytes(storageInfo.usage)}</span>
           <span className={styles.storageSubtext}>of {formatBytes(storageInfo.quota)} quota</span>
-        </Card>
-        <Card className={styles.storageCard}>
+        </div>
+        <div className={styles.storageCard}>
           <span className={styles.storageLabel}>Available</span>
           <span className={styles.storageValue}>{formatBytes(remaining)}</span>
           <span className={styles.storageSubtext}>{usagePercent.toFixed(1)}% used</span>
-        </Card>
-        <Card className={styles.storageCard}>
+        </div>
+        <div className={styles.storageCard}>
           <span className={styles.storageLabel}>Sessions</span>
           <span className={styles.storageValue}>{storageInfo.sessionCount}</span>
           <span className={styles.storageSubtext}>stored sessions</span>
-        </Card>
-        <Card className={styles.storageCard}>
+        </div>
+        <div className={styles.storageCard}>
           <span className={styles.storageLabel}>Imports</span>
           <span className={styles.storageValue}>{storageInfo.importCount}</span>
           <span className={styles.storageSubtext}>completed imports</span>
-        </Card>
+        </div>
       </div>
 
-      <div className={styles.progressBarContainer}>
+      <div className={styles.progressPanel}>
         <div className={styles.progressBarLabel}>
           <span>Storage Usage</span>
-          <span>{usagePercent.toFixed(1)}%</span>
+          <span className={styles.progressBarValue}>{usagePercent.toFixed(1)}%</span>
         </div>
         <progress
           className={styles.progressBarTrack}
@@ -374,6 +380,8 @@ function CleanupTab() {
   const [deleting, setDeleting] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const clearCache = useDataStore((s) => s.clearCache);
+  // Bind native date-picker chrome to the active theme (spec Part D).
+  const resolvedTheme = useAppStore((s) => s.resolvedTheme);
 
   const handleDeleteByRange = useCallback(async () => {
     if (!startDate || !endDate) return;
@@ -459,67 +467,65 @@ function CleanupTab() {
       )}
 
       {/* Delete by date range */}
-      <Card>
-        <div className={styles.cleanupGroup}>
-          <h3 className={styles.cleanupGroupTitle}>Delete by Date Range</h3>
-          <p className={styles.cleanupGroupDescription}>
-            Remove sessions, aggregates, events, and signal data within a specific date range.
-          </p>
-          <div className={styles.dateRangeForm}>
-            <div className={styles.dateField}>
-              <label htmlFor="cleanup-start-date" className={styles.dateLabel}>
-                Start Date
-              </label>
-              <input
-                id="cleanup-start-date"
-                type="date"
-                className={styles.dateInput}
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                max={endDate || todayISO()}
-                aria-label="Start date for deletion"
-              />
-            </div>
-            <div className={styles.dateField}>
-              <label htmlFor="cleanup-end-date" className={styles.dateLabel}>
-                End Date
-              </label>
-              <input
-                id="cleanup-end-date"
-                type="date"
-                className={styles.dateInput}
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                min={startDate}
-                max={todayISO()}
-                aria-label="End date for deletion"
-              />
-            </div>
-            <Button
-              variant="danger"
-              size="sm"
-              disabled={!startDate || !endDate}
-              onClick={() => setDeleteRangeOpen(true)}
-            >
-              Delete Range
-            </Button>
+      <div className={styles.deletePanel}>
+        <h3 className={styles.cleanupGroupTitle}>Delete by Date Range</h3>
+        <p className={styles.cleanupGroupDescription}>
+          Remove sessions, aggregates, events, and signal data within a specific date range.
+        </p>
+        <div className={styles.dateRangeForm}>
+          <div className={styles.dateField}>
+            <label htmlFor="cleanup-start-date" className={styles.dateLabel}>
+              Start Date
+            </label>
+            <input
+              id="cleanup-start-date"
+              type="date"
+              className={styles.dateInput}
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              max={endDate || todayISO()}
+              aria-label="Start date for deletion"
+              style={{ colorScheme: resolvedTheme }}
+            />
           </div>
-        </div>
-      </Card>
-
-      {/* Delete all data */}
-      <Card className={styles.deleteAllSection}>
-        <div className={`${styles.cleanupGroup} ${styles.dangerZone}`}>
-          <h3 className={styles.dangerTitle}>Danger Zone</h3>
-          <p className={styles.dangerDescription}>
-            Permanently delete all imported data, including sessions, aggregates, events, signal
-            data, import history, and settings. This action cannot be undone.
-          </p>
-          <Button variant="danger" onClick={() => setDeleteAllOpen(true)}>
-            Delete All Data
+          <div className={styles.dateField}>
+            <label htmlFor="cleanup-end-date" className={styles.dateLabel}>
+              End Date
+            </label>
+            <input
+              id="cleanup-end-date"
+              type="date"
+              className={styles.dateInput}
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              min={startDate}
+              max={todayISO()}
+              aria-label="End date for deletion"
+              style={{ colorScheme: resolvedTheme }}
+            />
+          </div>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={!startDate || !endDate}
+            onClick={() => setDeleteRangeOpen(true)}
+          >
+            Delete Range
           </Button>
         </div>
-      </Card>
+      </div>
+
+      {/* Delete all data */}
+      <div className={styles.dangerZone}>
+        <h3 className={styles.dangerTitle}>Danger Zone</h3>
+        <p className={styles.dangerDescription}>
+          Permanently delete all imported data, including sessions, aggregates, events, signal data,
+          import history, and settings. This action cannot be undone.
+        </p>
+        <Button variant="danger" onClick={() => setDeleteAllOpen(true)}>
+          Delete All Data
+        </Button>
+      </div>
 
       {/* Confirm delete range dialog */}
       <Dialog
@@ -886,7 +892,7 @@ function BackupRestoreTab() {
       )}
 
       {/* Full Backup */}
-      <Card>
+      <div className={styles.panel}>
         <div className={styles.backupGroup}>
           <h3 className={styles.backupGroupTitle}>Create Encrypted Backup</h3>
           <p className={styles.backupGroupDescription}>
@@ -914,10 +920,10 @@ function BackupRestoreTab() {
             </Button>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Restore */}
-      <Card>
+      <div className={styles.panel}>
         <div className={styles.backupGroup}>
           <h3 className={styles.backupGroupTitle}>Restore from Backup</h3>
           <p className={styles.backupGroupDescription}>
@@ -953,13 +959,63 @@ function BackupRestoreTab() {
             </div>
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Session Export */}
-      <Card>
+      <div className={styles.panel}>
         <SessionExportSection />
-      </Card>
+      </div>
     </div>
+  );
+}
+
+// ── Active Import Panel ──────────────────────────────────────────
+
+/**
+ * In-page progress panel for an import that is currently running. Subscribes to
+ * the shared import store and reuses the dock's stage list, so it stays in sync
+ * with the rest of the import UI. Returns null whenever no job is in-flight, so
+ * it never competes with the static content. Presentational only — the import
+ * lifecycle stays in the import services (read-only here).
+ */
+function ActiveImportPanel() {
+  const job = useStore(useImportStore, selectActiveJob);
+  const progress = job?.progress ?? null;
+
+  // Only surface an in-flight job; terminal states are owned by the dock/toast.
+  if (
+    !progress ||
+    progress.status === 'complete' ||
+    progress.status === 'error' ||
+    progress.status === 'cancelled'
+  ) {
+    return null;
+  }
+
+  const pct = overallPercent(progress);
+
+  return (
+    <section className={styles.activeImportPanel} aria-label="Import in progress">
+      <div className={styles.activeImportHeader}>
+        <span className={styles.activeImportSpinner} aria-hidden="true">
+          <Icon name="spinner" size="sm" />
+        </span>
+        <div className={styles.activeImportHeadText}>
+          <span className={styles.activeImportTitle}>Import in progress</span>
+          <span className={styles.activeImportStage}>{progress.currentLabel}</span>
+        </div>
+        <span className={styles.activeImportPct}>{pct}%</span>
+      </div>
+      <div className={styles.activeImportBar}>
+        <ProgressBar
+          value={pct}
+          max={100}
+          label="Overall import progress"
+          valueText={`Import ${pct}% complete`}
+        />
+      </div>
+      <ImportStageList progress={progress} compact />
+    </section>
   );
 }
 
@@ -978,11 +1034,17 @@ export default function DataManagement() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Data Management</h1>
+        <div className={styles.headerText}>
+          <h1 className={styles.title}>Data Management</h1>
+          <p className={styles.subtitle}>
+            Import, manage, back up, and export your therapy data — all on this device.
+          </p>
+        </div>
         <Button variant="primary" onClick={() => navigate('/data/import')}>
           Import Wizard
         </Button>
       </div>
+      <ActiveImportPanel />
       <Tabs tabs={tabs} defaultValue="overview" />
     </div>
   );

@@ -1,46 +1,83 @@
+/*
+ * Reports view — command-surface restyle (spec Part C "Reports" / prototype
+ * `reportsEl`). Full-bleed (deck padding/bg come from the shell <main>); panels
+ * compose the shared `.panel`; all sub-12px text is mono + `--cs-*`. The PDF/CSV/
+ * crypto services and the Button/Input primitives are untouched — chrome only.
+ */
+
 .reports {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  padding: var(--space-6);
-  max-width: 1000px;
-  margin: 0 auto;
+  gap: var(--cs-deck-gap);
   width: 100%;
+  min-width: 0;
 }
 
-.header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.title {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
-  margin: 0;
+/* Visually-hidden but kept in the a11y tree: the shell command strip shows the
+   "REPORTS" section title, so the page needs one programmatic <h1> only. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .subtitle {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
-/* Template picker */
+/* ── Panels ── */
+
+.panel {
+  composes: panel from '../../styles/commandSurface.module.css';
+}
+
+/* Self-contained mono panel heading. NOT composing `.panelTitle` (which sets
+   margin:0) because we need a bottom margin — the lazy-chunk `composes` cascade
+   would otherwise reset it (see WAVE2 composes-ordering rule). */
+.panelHeading {
+  margin: 0 0 10px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-title);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+}
+
+.panelDescription {
+  margin: 0 0 10px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+/* ── Template picker ── */
+
 .templateGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--cs-deck-gap);
 }
 
 .templateCard {
-  cursor: pointer;
-  transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
-  border: 2px solid transparent;
   position: relative;
+  cursor: pointer;
+  background: var(--color-surface-secondary);
+  border: 2px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 14px 15px;
+  transition: border-color var(--transition-fast);
 }
 
 .templateCard:hover {
@@ -54,85 +91,86 @@
 
 .templateCardSelected {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 1px var(--color-primary);
-}
-
-.templateName {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0 0 var(--space-2) 0;
-}
-
-.templateDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  margin: 0;
-  line-height: var(--line-height-relaxed);
 }
 
 .selectedBadge {
   position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
+  top: 10px;
+  right: 10px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-8-5);
+  font-weight: var(--font-weight-semibold);
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
   background: var(--color-primary);
   color: var(--color-text-inverse);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-full);
 }
 
-/* Section heading */
-.sectionHeading {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+.templateName {
+  margin: 0 0 6px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--cs-fs-13);
   color: var(--color-text-primary);
-  margin: 0;
 }
 
-/* Date range */
+/* Keep the name clear of the "Selected" badge. */
+.templateCardSelected .templateName {
+  padding-right: 72px;
+}
+
+.templateDescription {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+/* ── Date range ── */
+
 .dateRangeRow {
   display: flex;
-  align-items: flex-end;
-  gap: var(--space-4);
+  gap: 14px;
   flex-wrap: wrap;
 }
 
 .dateField {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 4px;
 }
 
 .dateLabel {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+  color: var(--color-text-muted);
 }
 
 .dateInput {
-  padding: var(--space-2) var(--space-3);
+  height: 32px;
+  padding: 0 8px;
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
   background: var(--color-surface-primary);
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
   min-width: 160px;
 }
 
-.dateInput:focus {
+.dateInput:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: -1px;
   border-color: var(--color-primary);
 }
 
-/* Sections checkboxes */
+/* ── Section toggles (custom template) ── */
+
 .sectionsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
 }
 
 .checkboxItem {
@@ -142,40 +180,36 @@
 }
 
 .checkbox {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   accent-color: var(--color-primary);
   cursor: pointer;
-  border-radius: var(--radius-sm);
 }
 
 .checkboxLabel {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-primary);
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
 }
 
-/* Actions */
+/* ── Actions ── */
+
 .actionsRow {
   display: flex;
-  gap: var(--space-3);
+  gap: var(--cs-deck-gap);
   flex-wrap: wrap;
   align-items: flex-start;
 }
 
-/* Encryption section */
-.encryptionSection {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
+/* ── Encryption ── */
 
 .encryptionRow {
   display: flex;
   align-items: flex-end;
-  gap: var(--space-3);
+  gap: var(--cs-deck-gap);
   flex-wrap: wrap;
 }
 
@@ -183,12 +217,14 @@
   min-width: 240px;
 }
 
-/* Status messages */
+/* ── Status messages ── */
+
 .statusMessage {
-  font-size: var(--font-size-sm);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  padding: 8px 11px;
+  border-radius: var(--radius-md);
 }
 
 .statusSuccess {
@@ -206,49 +242,9 @@
   background: var(--color-info-bg);
 }
 
-/* Empty state */
-.emptyState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: var(--space-16) var(--space-6);
-  gap: var(--space-4);
-}
+/* ── Responsive ── */
 
-.emptyIcon {
-  font-size: var(--font-size-4xl);
-  opacity: 0.4;
-}
-
-.emptyTitle {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0;
-}
-
-.emptyDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  margin: 0;
-  max-width: 400px;
-}
-
-/* Divider */
-.divider {
-  border: none;
-  border-top: 1px solid var(--color-border-subtle);
-  margin: var(--space-2) 0;
-}
-
-/* Responsive */
 @media (max-width: 768px) {
-  .reports {
-    padding: var(--space-4);
-  }
-
   .templateGrid {
     grid-template-columns: 1fr;
   }
@@ -268,6 +264,7 @@
 
   .actionsRow {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .encryptionRow {
