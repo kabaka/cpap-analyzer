@@ -1,7 +1,7 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-family: var(--font-family-sans);
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-sm);
   color: var(--color-text-primary);
 }
