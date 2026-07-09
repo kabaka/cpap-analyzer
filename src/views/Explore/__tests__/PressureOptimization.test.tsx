@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import type { ReactElement, ReactNode } from 'react';
+import { render as rtlRender, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { useAppStore } from '@/stores/useAppStore';
+
+// The view renders a router-aware `Explore /` breadcrumb (react-router <Link>),
+// so every render needs a Router context in scope.
+function render(ui: ReactElement) {
+  return rtlRender(ui, {
+    wrapper: ({ children }: { children: ReactNode }) => <MemoryRouter>{children}</MemoryRouter>,
+  });
+}
 
 // Mock getDB
 const mockGetDB = vi.fn();
@@ -118,7 +128,9 @@ describe('PressureOptimization', () => {
 
     render(<PressureOptimization />);
 
-    expect(screen.getByText('Pressure Optimization')).toBeInTheDocument();
+    // The title text also appears as the current breadcrumb crumb, so target the
+    // heading specifically.
+    expect(screen.getByRole('heading', { name: 'Pressure Optimization' })).toBeInTheDocument();
   });
 
   it('should show loading state initially', () => {

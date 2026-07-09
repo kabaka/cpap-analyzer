@@ -30,8 +30,7 @@ import { Link } from 'react-router-dom';
 import type { TecsaClass, TecsaClassification, TecsaNightFlag } from '@/analysis/breathing';
 import { tecsaPresentation, TECSA_PRESENTATION_ORDER } from '@/analysis/breathing';
 import { ConfidenceBar, DetectionDisclaimer, TecsaClassBadge } from '@/components/domain/Breathing';
-import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
-import { Button, Card, Popover, ProgressBar, Select, Skeleton, Slider } from '@/components/ui';
+import { Button, Popover, ProgressBar, Select, Skeleton, Slider } from '@/components/ui';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import {
   useBreathingEpisodeCatalog,
@@ -63,7 +62,7 @@ function TecsaSection({
   nightFlags,
 }: TecsaSectionProps): JSX.Element {
   return (
-    <Card className={styles.tecsaCard} aria-labelledby="tecsa-heading">
+    <section className={styles.tecsaCard} aria-labelledby="tecsa-heading">
       <header className={styles.sectionHeader}>
         <h2 id="tecsa-heading" className={styles.sectionTitle}>
           TECSA trajectory
@@ -93,7 +92,7 @@ function TecsaSection({
       {!loading && !error && classification && classification.available && classification.class && (
         <TecsaResult classification={classification} nightFlags={nightFlags} />
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -480,7 +479,7 @@ function EpisodeCatalog({
   const valueText = buildProgressValueText(phase, nightsTotal, nightsCached, nightsDone);
 
   return (
-    <Card className={styles.catalogCard} aria-labelledby="catalog-heading">
+    <section className={styles.catalogCard} aria-labelledby="catalog-heading">
       <header className={styles.sectionHeader}>
         <h2 id="catalog-heading" className={styles.sectionTitle}>
           Episode catalog
@@ -678,7 +677,7 @@ function EpisodeCatalog({
           </table>
         </div>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -836,7 +835,7 @@ function FailureDisclosure({
 
 function EpisodeDetail({ row }: { row: CatalogEpisode | null }): JSX.Element {
   return (
-    <Card className={styles.detailCard} aria-labelledby="detail-heading">
+    <section className={styles.detailCard} aria-labelledby="detail-heading">
       <header className={styles.sectionHeader}>
         <h2 id="detail-heading" className={styles.sectionTitle}>
           Selected episode
@@ -854,7 +853,7 @@ function EpisodeDetail({ row }: { row: CatalogEpisode | null }): JSX.Element {
       )}
 
       <DetectionDisclaimer />
-    </Card>
+    </section>
   );
 }
 
@@ -977,17 +976,24 @@ export function Breathing(): JSX.Element {
 
   return (
     <div className={styles.page} role="main" aria-labelledby="breathing-heading">
+      <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+        <Link to="/explore" className={styles.breadcrumbLink}>
+          Explore
+        </Link>
+        <span className={styles.breadcrumbSep} aria-hidden="true">
+          /
+        </span>
+        <span className={styles.breadcrumbCurrent}>Breathing Patterns</span>
+      </nav>
       <header className={styles.pageHeader}>
-        <div>
-          <h1 id="breathing-heading" className={styles.pageTitle}>
-            Breathing patterns
-          </h1>
-          <p className={styles.pageSubtitle}>
-            App-computed candidate detections of periodic breathing, Cheyne-Stokes respiration, and
-            the treatment-emergent (TECSA) trajectory across your therapy history.
-          </p>
-        </div>
-        <DateRangeSelector />
+        <h1 id="breathing-heading" className={styles.pageTitle}>
+          Breathing patterns
+        </h1>
+        <p className={styles.pageSubtitle}>
+          App-computed candidate detections of periodic breathing, Cheyne-Stokes respiration, and
+          the treatment-emergent (TECSA) trajectory across your therapy history. Candidate flags,
+          not diagnoses.
+        </p>
       </header>
 
       <DetectionDisclaimer />
@@ -1016,7 +1022,7 @@ export function Breathing(): JSX.Element {
 
       <EpisodeDetail row={selectedRow} />
 
-      <Card className={styles.legendCard}>
+      <section className={styles.legendCard} aria-label="About these patterns">
         <h3 className={styles.legendTitle}>About these patterns</h3>
         <ul className={styles.legendList}>
           {TECSA_PRESENTATION_ORDER.map((cls) => {
@@ -1039,7 +1045,7 @@ export function Breathing(): JSX.Element {
           </Link>{' '}
           for the algorithm details and clinical context.
         </p>
-      </Card>
+      </section>
     </div>
   );
 }

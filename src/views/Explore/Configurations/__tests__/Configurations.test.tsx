@@ -21,9 +21,9 @@ vi.mock('@/hooks/useNightlyAggregates', () => ({
   useNightlyAggregates: vi.fn(),
 }));
 
-vi.mock('@/components/domain/DateRangeSelector', () => ({
-  DateRangeSelector: () => <div data-testid="date-range-selector" />,
-}));
+// The Machine Configurations view reads the global date range from the store
+// (the per-view DateRangeSelector was dropped in the command-surface refresh),
+// so no DateRangeSelector mock is needed.
 
 // The BoxPlot child renders D3 axes that aren't meaningful in jsdom — replace
 // with a marker so we can assert on whether it rendered without depending on

@@ -1,172 +1,240 @@
+/**
+ * Breathing Patterns — command-surface restyle.
+ *
+ * Full-bleed inside the shell <main> (which owns --cs-deck-pad + the primary
+ * canvas). Breadcrumb `Explore / Breathing Patterns` + mono page title, then the
+ * TECSA trajectory, episode catalog, selected-episode detail, and legend — each
+ * a `.panel` (surface-secondary, 1px border, NO shadow). The candidate/detection
+ * language reads on the calm --color-detection / --color-tecsa-* ramp (ADR 0017),
+ * never status-severe. The inline CaiSparkline keeps its geometry; only its
+ * container/labels are re-tokenised. All sub-12px text is mono + a --cs-* size.
+ *
+ * @module views/Explore/Breathing/Breathing.module.css
+ */
+
+/* Full-bleed column; the shell supplies page padding + background. */
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-lg);
-  padding: var(--space-lg);
-  max-width: 1200px;
-  margin: 0 auto;
+  gap: var(--cs-deck-gap);
   width: 100%;
+  min-width: 0;
+}
+
+/* ── Breadcrumb + page header ─────────────────────────────────────────── */
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+}
+
+.breadcrumbLink {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.breadcrumbLink:hover {
+  text-decoration: underline;
+}
+
+.breadcrumbLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.breadcrumbSep,
+.breadcrumbCurrent {
+  color: var(--color-text-muted);
 }
 
 .pageHeader {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .pageTitle {
-  font-size: var(--font-size-2xl);
+  margin: 0;
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-bold);
+  font-size: 19px;
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-1) 0;
 }
 
 .pageSubtitle {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  max-width: 720px;
-  margin: 0;
+  margin: 4px 0 0;
+  max-width: 92ch;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
-/* Section headers */
+/* ── Panels + section headers ─────────────────────────────────────────── */
+
+.tecsaCard,
+.catalogCard,
+.detailCard,
+.legendCard {
+  composes: panel from '../../../styles/commandSurface.module.css';
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .sectionHeader {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-3);
+  gap: 3px;
 }
 
 .sectionTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-title);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
 }
 
 .sectionSubtitle {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  line-height: 1.45;
+  color: var(--color-text-muted);
 }
 
 .muted {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-muted);
 }
 
 .errorText {
-  color: var(--color-error);
-  font-size: var(--font-size-sm);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-error);
 }
 
 .errorIcon {
   color: var(--color-error);
 }
 
-/* TECSA card */
-.tecsaCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
+/* ── TECSA trajectory body ────────────────────────────────────────────── */
 
 .tecsaBody {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 12px;
 }
 
 .tecsaBadgeRow {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .tecsaExplainer {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
-  line-height: 1.5;
   margin: 0;
-  max-width: 720px;
+  max-width: 92ch;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.55;
+  color: var(--color-text-primary);
 }
 
 .tecsaMetrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 10px;
   margin: 0;
-  padding: var(--space-3);
-  background: var(--color-surface-secondary);
-  border-radius: var(--radius-md);
+  padding: 12px 13px;
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .tecsaMetrics > div {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .tecsaMetrics dt {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
 .tecsaMetrics dd {
-  font-size: var(--font-size-base);
+  margin: 0;
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-13);
   color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
-  margin: 0;
 }
 
 .tecsaConfidence {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 12px;
   flex-wrap: wrap;
 }
 
 .tecsaConfidenceLabel {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-10);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
   color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
 }
 
 .insufficient {
-  padding: var(--space-3);
-  background: var(--color-surface-secondary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 8px;
+  padding: 12px 13px;
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .insufficient p {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.5;
   color: var(--color-text-primary);
 }
 
-/* Sparkline */
+/* ── CAI sparkline (geometry preserved; chrome re-tokenised) ──────────── */
+
 .sparklineFig {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
   margin: 0;
 }
 
 .sparklineCaption {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+  line-height: 1.45;
   color: var(--color-text-muted);
 }
 
@@ -199,51 +267,45 @@
 
 .sparklineThresholdLabel {
   fill: var(--color-text-muted);
-  font-size: 10px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-8);
   font-variant-numeric: tabular-nums;
 }
 
-/* Catalog card */
-.catalogCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
+/* ── Catalog controls + progress ──────────────────────────────────────── */
 
 .catalogControls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--space-3);
-  padding: var(--space-3);
-  background: var(--color-surface-secondary);
-  border-radius: var(--radius-md);
+  gap: 12px;
+  padding: 12px 13px;
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .controlLabel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
-}
-
-.catalogStatus {
-  font-size: var(--font-size-sm);
+  gap: 5px;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9-5);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
   color: var(--color-text-secondary);
 }
 
-/* Progress + status row: a determinate bar with an inline Cancel/Resume control. */
 .catalogProgress {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 8px;
 }
 
 .catalogProgressRow {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 12px;
 }
 
 .catalogProgressBar {
@@ -256,7 +318,9 @@
 }
 
 .catalogStatusLine {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.5;
   color: var(--color-text-secondary);
 }
 
@@ -270,26 +334,22 @@
   font-variant-numeric: tabular-nums;
 }
 
-.catalogEta {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
 .cancelledTag {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 4px;
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
-/* Per-night failure disclosure (UX §8.3) — icon + text, never colour alone. */
+/* ── Failure disclosure (icon + text, never colour alone) ─────────────── */
+
 .failureNotice {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  gap: 8px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-secondary);
 }
 
@@ -299,13 +359,13 @@
 }
 
 .failureDetailsButton {
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  cursor: pointer;
-  font: inherit;
   padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-primary);
   text-decoration: underline;
+  cursor: pointer;
 }
 
 .failureDetailsButton:focus-visible {
@@ -315,28 +375,29 @@
 }
 
 .failureList {
-  list-style: none;
-  margin: 0;
-  padding: var(--space-2) 0 0 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  max-height: 240px;
-  overflow-y: auto;
-  font-size: var(--font-size-sm);
+  gap: 4px;
   min-width: 240px;
+  max-height: 240px;
+  margin: 0;
+  padding: 8px 0 0;
+  overflow-y: auto;
+  list-style: none;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
 }
 
 .failureListItem {
   display: flex;
-  gap: var(--space-2);
+  gap: 8px;
   color: var(--color-text-primary);
 }
 
 .failureListDate {
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--font-weight-medium);
   flex: 0 0 auto;
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
 }
 
 .failureListReason {
@@ -346,8 +407,8 @@
 .skeletonRows {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-2) 0;
+  gap: 8px;
+  padding: 8px 0;
 }
 
 /* Screen-reader-only live region (visually hidden, still announced). */
@@ -363,29 +424,38 @@
   border: 0;
 }
 
+/* ── Catalog table ────────────────────────────────────────────────────── */
+
 .tableScroll {
   overflow-x: auto;
+}
+
+.tableScroll:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .catalogTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
 }
 
 .catalogTable th,
 .catalogTable td {
-  padding: var(--space-2) var(--space-3);
+  padding: 7px 10px;
   text-align: left;
-  border-bottom: 1px solid var(--color-border-default);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .catalogTable th {
-  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text-muted);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
 }
 
 .catalogTable td {
@@ -402,32 +472,36 @@
   background: var(--color-detection-bg);
 }
 
+/* Candidate detection tag (PB / CSR) — calm detection register, never severe. */
 .patternTag {
   display: inline-block;
-  padding: 2px 8px;
+  margin-right: 4px;
+  padding: 2px 6px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
   background: var(--color-detection-bg);
   color: var(--color-detection);
   border: 1px solid var(--color-detection-border);
-  margin-right: var(--space-1);
 }
 
 .subThresholdTag {
-  font-size: 11px;
-  color: var(--color-text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   font-style: italic;
+  color: var(--color-text-muted);
 }
 
 .linkLikeButton {
-  background: none;
-  border: none;
-  color: var(--color-primary);
-  cursor: pointer;
-  font: inherit;
   padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--color-primary);
   text-decoration: underline;
+  cursor: pointer;
 }
 
 .linkLikeButton:focus-visible {
@@ -437,10 +511,11 @@
 }
 
 .openLink {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-primary);
   text-decoration: none;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
 }
 
 .openLink:hover,
@@ -448,81 +523,84 @@
   text-decoration: underline;
 }
 
-/* Detail card */
-.detailCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
+/* ── Selected-episode detail ──────────────────────────────────────────── */
 
 .detailBody {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 12px;
 }
 
 .detailRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: 12px;
 }
 
 .detailHeadline {
-  font-size: var(--font-size-base);
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-12);
   color: var(--color-text-primary);
 }
 
 .detailDate {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
 .detailMetrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
   margin: 0;
-  padding: var(--space-3);
-  background: var(--color-surface-secondary);
-  border-radius: var(--radius-md);
+  padding: 12px 13px;
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .detailMetrics > div {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .detailMetrics dt {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
 .detailMetrics dd {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
 }
 
 .detailNote {
   margin: 0;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-secondary);
 }
 
 .detailOpenLink {
-  font-size: var(--font-size-sm);
+  align-self: flex-start;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-primary);
   text-decoration: none;
-  font-weight: var(--font-weight-medium);
-  align-self: flex-start;
 }
 
 .detailOpenLink:hover,
@@ -530,47 +608,47 @@
   text-decoration: underline;
 }
 
-/* Legend card */
-.legendCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
+/* ── Legend ───────────────────────────────────────────────────────────── */
 
 .legendTitle {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-title);
+  text-transform: uppercase;
   color: var(--color-text-primary);
 }
 
 .legendList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .legendItem {
   display: flex;
   align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
+  gap: 12px;
+  padding: 6px 0;
 }
 
 .legendCopy {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
 .legendFootnote {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   line-height: 1.5;
+  color: var(--color-text-muted);
 }
 
 .helpLink {
