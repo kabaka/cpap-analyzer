@@ -7,7 +7,25 @@
 import React, { useMemo, useRef } from 'react';
 import * as d3 from 'd3';
 import { useChartColors } from '../useChartColors';
+import { parseCssColorToRgba } from '../cssColor';
 import styles from './CorrelationHeatmap.module.css';
+
+// ── Contrast helpers (luminance-aware ink selection) ─────────────
+
+/** WCAG relative luminance of an already-resolved CSS colour string (sRGB). */
+function relLuminance(color: string): number {
+  const { r, g, b } = parseCssColorToRgba(color);
+  const lin = (u: number): number =>
+    u <= 0.03928 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/** WCAG contrast ratio between two relative luminances. */
+function contrastRatio(l1: number, l2: number): number {
+  const hi = Math.max(l1, l2);
+  const lo = Math.min(l1, l2);
+  return (hi + 0.05) / (lo + 0.05);
+}
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -47,14 +65,33 @@ const CorrelationHeatmap = React.memo(function CorrelationHeatmap({
   const innerH = height - MARGIN.top - MARGIN.bottom;
 
   const colorScale = useMemo(() => {
-    const negCol = negativeColor ?? '#2563eb';
-    const posCol = positiveColor ?? '#dc2626';
+    // Diverging scale: negative → blue (`--color-chart-1`), positive → red
+    // (`--color-chart-2`), through the theme surface at r = 0. Both endpoints are
+    // theme tokens (were hardcoded #2563eb / #dc2626 — identical in light, now
+    // correctly brightened in dark). Hue polarity is preserved exactly.
+    const negCol = negativeColor ?? colors.chart1;
+    const posCol = positiveColor ?? colors.chart2;
     return d3
       .scaleLinear<string>()
       .domain([-1, 0, 1])
       .range([negCol, colors.surfacePrimary, posCol])
       .clamp(true);
-  }, [positiveColor, negativeColor, colors.surfacePrimary]);
+  }, [positiveColor, negativeColor, colors.chart1, colors.chart2, colors.surfacePrimary]);
+
+  // Pre-compute the luminance of the two candidate inks once per theme. The cell
+  // fill is OPAQUE (d3 interpolation), so in dark mode a high-|r| cell is a LIGHT
+  // chart colour needing DARK ink, while a low-|r| cell is near the dark surface
+  // needing LIGHT ink — a single ink can't serve both. `--color-text-primary` and
+  // `--color-surface-primary` are always a dark/light pair in each theme, so
+  // picking the higher-contrast of the two per cell guarantees legible text
+  // everywhere (replaces the hardcoded white flip that failed in dark).
+  const inkLum = useMemo(
+    () => ({
+      primary: relLuminance(colors.textPrimary),
+      surface: relLuminance(colors.surfacePrimary),
+    }),
+    [colors.textPrimary, colors.surfacePrimary],
+  );
 
   const cellSize = useMemo(
     () => ({ w: innerW / Math.max(n, 1), h: innerH / Math.max(n, 1) }),
@@ -65,9 +102,13 @@ const CorrelationHeatmap = React.memo(function CorrelationHeatmap({
     return <div className={styles.empty}>No data</div>;
   }
 
-  /** Choose black or white text for contrast against the cell colour. */
+  /** Pick the higher-contrast theme ink (text-primary vs surface-primary) for
+   *  the cell's resolved fill colour — luminance-aware, works in both themes. */
   function textColor(value: number): string {
-    return Math.abs(value) > 0.6 ? '#ffffff' : colors.textPrimary;
+    const bgLum = relLuminance(colorScale(value));
+    return contrastRatio(bgLum, inkLum.primary) >= contrastRatio(bgLum, inkLum.surface)
+      ? colors.textPrimary
+      : colors.surfacePrimary;
   }
 
   return (

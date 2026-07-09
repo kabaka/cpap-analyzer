@@ -15,6 +15,7 @@ import {
   ThemedLineChart,
   ThemedBarChart,
   CorrelationHeatmap,
+  useChartColors,
 } from '@/components/charts';
 import type { ReferenceLineConfig } from '@/components/charts';
 import { useAppStore } from '@/stores/useAppStore';
@@ -174,6 +175,11 @@ const TrendsSection = React.memo(function TrendsSection({
     parameters: { metric: metric.id },
   });
 
+  // Resolved (theme-aware) chart colours. The confidence-interval bounds use the
+  // neutral-slate "uncertainty band" token so they flip per theme and stay
+  // subordinate to the primary rolling-mean line — matching the Trends AHI band.
+  const colors = useChartColors();
+
   const rollingData = useMemo(() => {
     if (!rolling.data) return [];
     return rolling.data.dates.map((date, i) => ({
@@ -225,8 +231,18 @@ const TrendsSection = React.memo(function TrendsSection({
           height={300}
           lines={[
             { dataKey: 'value', name: `${metric.label} (${window}-day avg)` },
-            { dataKey: 'upper', name: 'Upper CI', strokeDasharray: '3 3', color: '#94a3b8' },
-            { dataKey: 'lower', name: 'Lower CI', strokeDasharray: '3 3', color: '#94a3b8' },
+            {
+              dataKey: 'upper',
+              name: 'Upper CI',
+              strokeDasharray: '3 3',
+              color: colors.uncertaintyBand,
+            },
+            {
+              dataKey: 'lower',
+              name: 'Lower CI',
+              strokeDasharray: '3 3',
+              color: colors.uncertaintyBand,
+            },
           ]}
           referenceLines={referenceLines}
         />

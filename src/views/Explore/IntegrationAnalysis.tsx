@@ -126,24 +126,35 @@ function interpretCorrelation(
 
 /**
  * Compute a background colour for a correlation matrix cell.
- * Positive r maps to blue, negative to red, intensity by |r|.
+ *
+ * Positive r maps to blue (`--color-chart-1`), negative to red
+ * (`--color-chart-2`), intensity by |r|. Both hues are theme tokens, so the
+ * diverging scale reads correctly in light AND dark; the fill is a translucent
+ * `color-mix` wash over the cell's theme surface, preserving the original
+ * intensity mapping exactly (|r| → 0–60%, unchanged from the prior `opacity =
+ * |r| * 0.6`) and staying transparent at r = 0.
  */
 function matrixCellColor(r: number): string {
   if (!Number.isFinite(r)) return 'transparent';
   const absR = Math.min(Math.abs(r), 1);
-  const opacity = absR * 0.6;
-  if (r > 0) return `rgba(37, 99, 235, ${opacity})`;
-  if (r < 0) return `rgba(220, 38, 38, ${opacity})`;
+  const pct = (absR * 60).toFixed(2); // identical intensity: |r| * 0.6 opacity → % mix
+  if (r > 0) return `color-mix(in srgb, var(--color-chart-1) ${pct}%, transparent)`;
+  if (r < 0) return `color-mix(in srgb, var(--color-chart-2) ${pct}%, transparent)`;
   return 'transparent';
 }
 
 /**
- * Determine text colour for contrast against the matrix cell background.
+ * Determine text colour for a matrix cell.
+ *
+ * The fill is a translucent wash over the theme surface, so it never crosses to
+ * the far luminance side: in light mode cells only darken toward the hue, in dark
+ * mode they only lighten. `--color-text-primary` (theme-aware ink) therefore holds
+ * ≥ 5.5:1 on every cell in both themes — the earlier hardcoded white flip at
+ * |r| > 0.6 failed on light-theme cells (white on a pale blue/red wash).
  */
 function matrixCellTextColor(r: number): string {
   if (!Number.isFinite(r)) return 'var(--color-text-muted)';
-  const absR = Math.abs(r);
-  return absR > 0.6 ? '#ffffff' : 'var(--color-text-primary)';
+  return 'var(--color-text-primary)';
 }
 
 // ---------------------------------------------------------------------------
