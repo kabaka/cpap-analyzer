@@ -1,24 +1,72 @@
+/**
+ * Event Explorer shell — command-surface restyle.
+ *
+ * Full-bleed inside the shell <main> (which owns --cs-deck-pad + the primary
+ * canvas): breadcrumb `Explore / Event Explorer` + mono page title, a
+ * command-surface query rail (.panel), and the results column. All sub-12px
+ * text is mono + a --cs-* size; no box-shadow; tokens only. Charts keep their
+ * ChartContainer chrome (KEEP-TECH).
+ *
+ * @module views/Explore/EventExplorer/EventExplorer.module.css
+ */
+
+/* Full-bleed column; the shell supplies page padding + background. */
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-6);
-  max-width: 1400px;
-  margin: 0 auto;
+  gap: var(--cs-deck-gap);
+  width: 100%;
+  min-width: 0;
 }
 
 .topBar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
   flex-wrap: wrap;
 }
 
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+}
+
+.breadcrumbLink {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.breadcrumbLink:hover {
+  text-decoration: underline;
+}
+
+.breadcrumbLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.breadcrumbSep,
+.breadcrumbCurrent {
+  color: var(--color-text-muted);
+}
+
 .heading {
   margin: 0;
-  font-size: var(--font-size-xl);
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-bold);
+  font-size: 19px;
   color: var(--color-text-primary);
 }
 
@@ -29,18 +77,27 @@
 
 .exportBtn,
 .retryBtn {
-  padding: var(--space-2) var(--space-4);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
-  background-color: var(--color-surface-secondary);
+  padding: 6px 12px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  letter-spacing: var(--cs-ls-btn);
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface-primary);
   border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 
 .exportBtn:hover:not(:disabled),
 .retryBtn:hover {
   border-color: var(--color-primary);
+  color: var(--color-text-primary);
+}
+
+.exportBtn:focus-visible,
+.retryBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .exportBtn:disabled {
@@ -51,17 +108,15 @@
 .layout {
   display: grid;
   grid-template-columns: 320px 1fr;
-  gap: var(--space-6);
+  gap: var(--cs-deck-gap);
   align-items: start;
 }
 
+/* Query rail is a command-surface panel (surface-secondary + subtle border). */
 .rail {
+  composes: panel from '../../../styles/commandSurface.module.css';
   position: sticky;
   top: var(--space-4);
-  padding: var(--space-4);
-  background-color: var(--color-surface-primary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
   max-height: calc(100vh - 2 * var(--space-4));
   overflow-y: auto;
 }
@@ -69,13 +124,15 @@
 .main {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--cs-deck-gap);
   min-width: 0;
 }
 
 .spinner {
   padding: var(--space-8);
   text-align: center;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-muted);
 }
 
@@ -87,7 +144,9 @@
   padding: var(--space-4);
   background-color: var(--color-error-bg);
   border: 1px solid var(--color-error);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-primary);
 }
 
@@ -101,29 +160,30 @@
   text-align: center;
   background-color: var(--color-surface-secondary);
   border: 1px dashed var(--color-border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-family-mono);
   color: var(--color-text-secondary);
 }
 
 .emptyState h2,
 .zeroMatch h2 {
   margin: 0;
-  font-size: var(--font-size-lg);
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-base);
   color: var(--color-text-primary);
 }
 
 .emptyState p,
 .zeroMatch p {
   margin: 0;
-  max-width: 42ch;
+  max-width: 46ch;
+  font-size: var(--cs-fs-11);
+  line-height: 1.5;
 }
 
 /* Left rail collapses to a top sheet on narrow viewports. */
 @media (max-width: 768px) {
-  .page {
-    padding: var(--space-4);
-  }
-
   .layout {
     grid-template-columns: 1fr;
   }

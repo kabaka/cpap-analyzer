@@ -1,8 +1,16 @@
+/**
+ * Virtualized event table — command-surface restyle.
+ *
+ * A command-surface panel (surface-secondary + subtle border): sortable heads
+ * are mono 9px uppercase; cells mono 11.5px tabular. Row virtualization + the
+ * roving-tabindex grid semantics are unchanged (KEEP-TECH). Tokens only.
+ */
+
 .wrapper {
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  background-color: var(--color-surface-primary);
+  background-color: var(--color-surface-secondary);
 }
 
 .grid {
@@ -12,8 +20,8 @@
 .tableHeader {
   display: grid;
   grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 0.8fr;
-  border-bottom: 1px solid var(--color-border-default);
-  background-color: var(--color-surface-secondary);
+  border-bottom: 1px solid var(--color-border-subtle);
+  background-color: var(--color-surface-tertiary);
 }
 
 .headerCell {
@@ -21,9 +29,12 @@
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
   text-align: left;
   background: none;
   border: none;
@@ -31,6 +42,11 @@
 }
 
 .headerCell:hover {
+  color: var(--color-text-primary);
+}
+
+.headerCell[aria-sort='ascending'],
+.headerCell[aria-sort='descending'] {
   color: var(--color-text-primary);
 }
 
@@ -73,11 +89,13 @@
   cursor: pointer;
   text-align: left;
   color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
+  font-variant-numeric: tabular-nums;
 }
 
 .row:hover {
-  background-color: var(--color-surface-secondary);
+  background-color: var(--color-surface-tertiary);
 }
 
 .row:focus-visible {
@@ -102,7 +120,8 @@
 
 .caption {
   padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
   color: var(--color-text-muted);
   border-top: 1px solid var(--color-border-subtle);
   margin: 0;

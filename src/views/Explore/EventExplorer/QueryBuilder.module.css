@@ -1,3 +1,12 @@
+/**
+ * Event Explorer query rail — command-surface restyle.
+ *
+ * Dense mono filter controls inside the rail .panel. Event-type filters use the
+ * foundation .filterChip (per-type --chip-color set inline by the consumer);
+ * section labels are mono micro-labels; inputs/buttons are mono. Colour is never
+ * the sole signal — chips pair a swatch/dot + aria-pressed. Tokens only.
+ */
+
 .builder {
   display: flex;
   flex-direction: column;
@@ -12,19 +21,24 @@
 
 .title {
   margin: 0;
-  font-size: var(--font-size-lg);
+  font-family: var(--font-family-mono);
   font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-11);
+  letter-spacing: var(--cs-ls-title);
+  text-transform: uppercase;
   color: var(--color-text-primary);
 }
 
 .resetBtn,
 .clearBtn {
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--font-size-sm);
+  padding: 4px 10px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  letter-spacing: var(--cs-ls-btn);
   color: var(--color-text-secondary);
-  background: none;
+  background: transparent;
   border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 
@@ -32,6 +46,12 @@
 .clearBtn:hover {
   border-color: var(--color-primary);
   color: var(--color-text-primary);
+}
+
+.resetBtn:focus-visible,
+.clearBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .section {
@@ -42,14 +62,18 @@
 
 .sectionTitle {
   margin: 0;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--cs-fs-10);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
   color: var(--color-text-secondary);
 }
 
 .muted {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-muted);
 }
 
@@ -59,41 +83,50 @@
   gap: var(--space-2);
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  background-color: var(--color-surface-primary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-full);
-  cursor: pointer;
+/* Event-type filter chips: foundation .filterChip, tinted per type by the
+   inline --chip-color the consumer supplies (eventColor(type)). The swatch +
+   label + aria-pressed carry the state so colour is only reinforcement. */
+.typeChip {
+  composes: filterChip from '../../../styles/commandSurface.module.css';
 }
 
-.chip:hover {
-  border-color: var(--color-primary);
-}
-
-.chip:focus-visible {
+.typeChip:focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 1px;
 }
 
+.typeChipActive {
+  composes: filterChipActive from '../../../styles/commandSurface.module.css';
+}
+
+/* Session-scope chips: a removable, primary-tinted mono pill (not a toggle). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 26px;
+  padding: 4px 10px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-full);
+}
+
 .chipSelected {
   color: var(--color-text-primary);
-  background-color: var(--color-surface-secondary);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
   border-color: var(--color-primary);
-  font-weight: var(--font-weight-medium);
 }
 
 .detectionTag,
 .exampleTag {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-8-5);
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--cs-ls-label);
 }
 
 .tonRow {
@@ -110,8 +143,9 @@
 .timeInput,
 .saveInput {
   width: 100%;
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--font-size-sm);
+  padding: 5px 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-sm);
   background-color: var(--color-surface-primary);
@@ -126,7 +160,9 @@
 
 .hint {
   margin: 0;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  line-height: 1.45;
   color: var(--color-text-muted);
 }
 
@@ -151,13 +187,14 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
+  padding: 6px 10px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   text-align: left;
   color: var(--color-text-primary);
-  background-color: var(--color-surface-secondary);
+  background-color: var(--color-surface-primary);
   border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 
@@ -177,6 +214,7 @@
 
 .deleteBtn {
   padding: 0 var(--space-2);
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-lg);
   line-height: 1;
   color: var(--color-text-muted);
@@ -229,17 +267,25 @@
 }
 
 .saveBtn {
-  padding: var(--space-1) var(--space-3);
-  font-size: var(--font-size-sm);
+  padding: 5px 12px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-btn);
   color: var(--color-text-inverse);
   background-color: var(--color-primary);
   border: 1px solid var(--color-primary);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 
 .saveBtn:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
+}
+
+.saveBtn:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .saveBtn:disabled {

@@ -18,7 +18,7 @@
  */
 
 import { useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Tabs } from '@/components/ui';
 import { StatisticalAnalysis } from './StatisticalAnalysis';
 import IntegrationAnalysis from './IntegrationAnalysis';
@@ -81,6 +81,15 @@ export function Correlations() {
 
   return (
     <div className={styles.page} role="main" aria-labelledby="correlations-heading">
+      <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+        <Link to="/explore" className={styles.breadcrumbLink}>
+          Explore
+        </Link>
+        <span className={styles.breadcrumbSep} aria-hidden="true">
+          /
+        </span>
+        <span className={styles.breadcrumbCurrent}>Correlations</span>
+      </nav>
       <h1 id="correlations-heading" className={styles.heading}>
         Correlations
       </h1>

@@ -1,11 +1,19 @@
 /* ---------------------------------------------------------------------------
- * IntegrationAnalysis — Cross-Source Analysis view
+ * IntegrationAnalysis — Cross-Source Analysis · command-surface restyle
+ *
+ * Full-bleed inside the Correlations "Cross-source" tab panel. Mono data-availability
+ * strip, solid segmented method/mode toggles, surface-secondary result panels, and
+ * mono result grids / matrix. The correlation-matrix cell fill + text colours are a
+ * data-driven visualization encoding computed in the component (matrixCellColor /
+ * matrixCellTextColor) — flagged for the Phase 3 data-viz pass, untouched here.
+ * Tokens only; no hex in this file.
  * --------------------------------------------------------------------------- */
 
 .page {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
 }
 
 /* --- Header ---------------------------------------------------------------- */
@@ -16,14 +24,15 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
 }
 
 .heading {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
   margin: 0;
+  font-family: var(--font-family-mono);
+  font-weight: var(--font-weight-bold);
+  font-size: 15px;
+  color: var(--color-text-primary);
 }
 
 /* --- Data availability banner --------------------------------------------- */
@@ -33,12 +42,13 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--cs-panel-pad);
   background: var(--color-surface-secondary);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--space-6);
-  font-size: var(--font-size-sm);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-4);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-secondary);
 }
 
@@ -49,8 +59,9 @@
 }
 
 .bannerValue {
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .bannerSeparator {
@@ -75,6 +86,7 @@
   text-align: center;
   padding: var(--space-16) var(--space-6);
   gap: var(--space-4);
+  font-family: var(--font-family-mono);
 }
 
 .emptyIcon {
@@ -84,24 +96,27 @@
 }
 
 .emptyTitle {
-  font-size: var(--font-size-xl);
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
-  margin: 0;
 }
 
 .emptyDescription {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  max-width: 480px;
-  line-height: var(--line-height-relaxed);
   margin: 0;
+  max-width: 480px;
+  font-size: var(--cs-fs-11);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
 }
 
 .emptyLink {
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-link);
   text-decoration: none;
-  font-weight: var(--font-weight-medium);
 }
 
 .emptyLink:hover {
@@ -130,9 +145,10 @@
   background: var(--color-info-bg);
   border-left: 3px solid var(--color-info);
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  line-height: 1.5;
   color: var(--color-text-secondary);
-  line-height: var(--line-height-normal);
 }
 
 /* --- Controls row (shared by all tabs) ------------------------------------ */
@@ -142,10 +158,11 @@
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
-  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  padding: var(--cs-panel-pad);
   background: var(--color-surface-secondary);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
 }
 
 .controlGroup {
@@ -156,28 +173,34 @@
 }
 
 .controlLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
 }
 
-/* --- Toggle button group -------------------------------------------------- */
+/* --- Solid segmented method/mode toggle (radiogroup) ---------------------- */
 
 .toggleGroup {
   display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--color-surface-primary);
   border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  overflow: hidden;
+  border-radius: 7px;
 }
 
 .toggleButton {
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
-  font-family: inherit;
+  padding: 4px 10px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-btn);
   border: none;
-  background: var(--color-surface-primary);
+  border-radius: 5px;
+  background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
   transition:
@@ -185,18 +208,13 @@
     color var(--transition-fast);
 }
 
-.toggleButton:not(:last-child) {
-  border-right: 1px solid var(--color-border-default);
-}
-
-.toggleButton:hover {
-  background: var(--color-surface-tertiary);
+.toggleButton:hover:not(.toggleButtonActive) {
+  color: var(--color-text-primary);
 }
 
 .toggleButton:focus-visible {
   outline: 2px solid var(--color-focus-ring);
-  outline-offset: -2px;
-  z-index: 1;
+  outline-offset: 1px;
 }
 
 .toggleButtonActive {
@@ -204,16 +222,12 @@
   color: var(--color-text-inverse);
 }
 
-.toggleButtonActive:hover {
-  background: var(--color-primary-hover);
-}
-
 /* --- Result card ---------------------------------------------------------- */
 
 .resultCard {
-  padding: var(--space-6);
-  background: var(--color-surface-primary);
-  border: 1px solid var(--color-border-default);
+  padding: var(--space-5);
+  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
 }
 
@@ -233,24 +247,26 @@
 }
 
 .resultLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
 }
 
 .resultValue {
-  font-size: var(--font-size-xl);
+  font-family: var(--font-family-mono);
+  font-size: 18px;
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
-  font-family: var(--font-family-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .resultSmall {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
   font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  color: var(--color-text-secondary);
 }
 
 .interpretation {
@@ -258,12 +274,13 @@
   background: var(--color-info-bg);
   border-left: 3px solid var(--color-info);
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-primary);
-  line-height: var(--line-height-relaxed);
+  line-height: 1.6;
 }
 
-/* --- Direction indicator -------------------------------------------------- */
+/* --- Direction indicator (chart tokens — colour is redundant to the arrow) -- */
 
 .directionPositive {
   color: var(--color-chart-1);
@@ -281,21 +298,23 @@
 
 .matrixWrapper {
   overflow-x: auto;
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
 }
 
 .matrixTable {
   border-collapse: collapse;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   min-width: 100%;
 }
 
 .matrixTable th {
   padding: var(--space-2) var(--space-3);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--cs-fs-9);
+  font-weight: var(--font-weight-semibold);
   text-align: left;
   white-space: nowrap;
-  color: var(--color-text-secondary);
+  color: var(--color-text-muted);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -322,8 +341,9 @@
   height: 36px;
   border-radius: var(--radius-sm);
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--cs-fs-10-5);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
   cursor: default;
   transition: outline var(--transition-fast);
   border: 2px solid transparent;
@@ -341,22 +361,25 @@
 
 .matrixRowHeader {
   white-space: nowrap;
-  color: var(--color-text-primary);
-  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-semibold);
   border-right: 1px solid var(--color-border-default);
 }
 
 /* --- Significant pairs list ----------------------------------------------- */
 
 .significantSection {
-  margin-top: var(--space-6);
+  margin-top: var(--space-5);
 }
 
 .significantTitle {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
   margin: 0 0 var(--space-3) 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--cs-ls-label);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
 }
 
 .significantList {
@@ -370,10 +393,12 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface-secondary);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-primary);
+  border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
 }
 
 .significantMetric {
@@ -388,11 +413,12 @@
 .significantR {
   font-family: var(--font-family-mono);
   font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
 }
 
 .significantP {
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--cs-fs-9);
   color: var(--color-text-secondary);
 }
 
@@ -423,7 +449,7 @@
 
 .lagLabel {
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--cs-fs-9-5);
   color: var(--color-text-secondary);
   min-width: 40px;
   text-align: right;
@@ -446,7 +472,7 @@
 
 .lagValue {
   font-family: var(--font-family-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--cs-fs-9-5);
   color: var(--color-text-muted);
   min-width: 40px;
 }
@@ -460,8 +486,10 @@
 .noData {
   padding: var(--space-8);
   text-align: center;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  line-height: 1.5;
   color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
 }
 
 /* --- Skeleton rows -------------------------------------------------------- */
@@ -470,16 +498,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-6);
+  padding: var(--space-5);
 }
 
 /* --- Responsive ----------------------------------------------------------- */
 
 @media (max-width: 640px) {
-  .page {
-    padding: var(--space-4);
-  }
-
   .header {
     flex-direction: column;
     align-items: flex-start;

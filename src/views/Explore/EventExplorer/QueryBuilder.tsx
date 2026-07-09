@@ -12,7 +12,12 @@
 import { useMemo, useState } from 'react';
 import type { Event, EventType } from '@/types/events';
 import { EventTypeSwatch } from '@/components/events/EventTypeSwatch';
-import { EVENT_TYPE_META, EVENT_TYPE_ORDER, eventLabel } from '@/components/events/eventTypeMeta';
+import {
+  EVENT_TYPE_META,
+  EVENT_TYPE_ORDER,
+  eventColor,
+  eventLabel,
+} from '@/components/events/eventTypeMeta';
 import { useAppStore } from '@/stores/useAppStore';
 import {
   fieldExtent,
@@ -233,7 +238,8 @@ export function QueryBuilder({
                 <button
                   key={type}
                   type="button"
-                  className={`${styles.chip} ${selected ? styles.chipSelected : ''}`}
+                  className={`${styles.typeChip} ${selected ? styles.typeChipActive : ''}`}
+                  style={{ ['--chip-color' as string]: eventColor(type) }}
                   aria-pressed={selected}
                   onClick={() => toggleType(type)}
                 >

@@ -59,9 +59,6 @@ vi.mock('@/hooks/useWearableSummary', () => ({
 vi.mock('@/hooks/useCorrelationData', () => ({
   useCorrelationData: () => correlationState.value,
 }));
-vi.mock('@/components/domain/DateRangeSelector', () => ({
-  DateRangeSelector: () => null,
-}));
 
 // ---------------------------------------------------------------------------
 // Fixtures

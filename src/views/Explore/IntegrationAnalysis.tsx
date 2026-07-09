@@ -11,7 +11,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge, Select, Skeleton, Tabs, Tooltip } from '@/components/ui';
-import { DateRangeSelector } from '@/components/domain/DateRangeSelector';
 import { useAppStore } from '@/stores/useAppStore';
 import { useCorrelationData } from '@/hooks/useCorrelationData';
 import type { JoinedDayRecord, JoinedWeatherRecord } from '@/hooks/useCorrelationData';
@@ -949,7 +948,6 @@ export default function IntegrationAnalysis() {
           <h2 id="integration-heading" className={styles.heading}>
             Cross-Source Analysis
           </h2>
-          <DateRangeSelector />
         </div>
         <div className={styles.emptyState}>
           <span className={styles.emptyIcon} aria-hidden="true">
@@ -1026,7 +1024,6 @@ export default function IntegrationAnalysis() {
         <h2 id="integration-heading" className={styles.heading}>
           Cross-Source Analysis
         </h2>
-        <DateRangeSelector />
       </div>
 
       {/* Data availability banner */}

@@ -17,8 +17,8 @@
  * @module views/Explore/EventExplorer/EventExplorer
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Tabs } from '@/components/ui';
 import { useExplorerEvents } from './useExplorerEvents';
 import {
@@ -48,6 +48,34 @@ const TABLE_ROW_CAP = 5000;
 
 function isViewId(value: string | null): value is ViewId {
   return value !== null && VIEW_OPTIONS.some((v) => v.value === value);
+}
+
+/**
+ * Command-surface page header: an `Explore / Event Explorer` breadcrumb above
+ * the mono page title, with an optional right-hand slot (export controls). The
+ * `<h1 id="explorer-heading">` is preserved across every view state so the
+ * `getByRole('heading', { name: 'Event Explorer' })` selectors keep resolving.
+ */
+function ExplorerHeader({ children }: { children?: ReactNode }) {
+  return (
+    <div className={styles.topBar}>
+      <div className={styles.titleBlock}>
+        <nav className={styles.breadcrumb} aria-label="Breadcrumb">
+          <Link to="/explore" className={styles.breadcrumbLink}>
+            Explore
+          </Link>
+          <span className={styles.breadcrumbSep} aria-hidden="true">
+            /
+          </span>
+          <span className={styles.breadcrumbCurrent}>Event Explorer</span>
+        </nav>
+        <h1 id="explorer-heading" className={styles.heading}>
+          Event Explorer
+        </h1>
+      </div>
+      {children}
+    </div>
+  );
 }
 
 export function EventExplorer() {
@@ -155,7 +183,7 @@ export function EventExplorer() {
   if (loading) {
     return (
       <div className={styles.page}>
-        <h1 className={styles.heading}>Event Explorer</h1>
+        <ExplorerHeader />
         <div className={styles.spinner} role="status" aria-label="Loading event data">
           Loading event data…
         </div>
@@ -166,7 +194,7 @@ export function EventExplorer() {
   if (error) {
     return (
       <div className={styles.page}>
-        <h1 className={styles.heading}>Event Explorer</h1>
+        <ExplorerHeader />
         <div className={styles.errorBox} role="alert">
           <p>{error}</p>
           <button type="button" className={styles.retryBtn} onClick={refetch}>
@@ -180,7 +208,7 @@ export function EventExplorer() {
   if (events.length === 0) {
     return (
       <div className={styles.page}>
-        <h1 className={styles.heading}>Event Explorer</h1>
+        <ExplorerHeader />
         <div className={styles.emptyState} role="status">
           <h2>No events in this date range</h2>
           <p>
@@ -200,10 +228,7 @@ export function EventExplorer() {
 
   return (
     <div className={styles.page} role="main" aria-labelledby="explorer-heading">
-      <div className={styles.topBar}>
-        <h1 id="explorer-heading" className={styles.heading}>
-          Event Explorer
-        </h1>
+      <ExplorerHeader>
         <div className={styles.exportGroup} role="group" aria-label="Export matched events">
           <button
             type="button"
@@ -222,7 +247,7 @@ export function EventExplorer() {
             Export JSON
           </button>
         </div>
-      </div>
+      </ExplorerHeader>
 
       <div className={styles.layout}>
         <aside className={styles.rail} aria-label="Query builder">
