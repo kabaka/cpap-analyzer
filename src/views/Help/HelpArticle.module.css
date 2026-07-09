@@ -1,4 +1,13 @@
-/* Help article detail view */
+/*
+ * Help article — command-surface CHROME, prose BODY exception.
+ *
+ * Help articles are the deliberate exception to the full-bleed monospace command
+ * surface: the article body (title, summary, section headings, paragraphs) keeps
+ * a readable ~72ch / 64rem column in --font-family-sans at the --font-size-*
+ * scale. Only the CHROME around it — breadcrumb, table-of-contents, bottom nav,
+ * and the 404 state — adopts the dense monospace command surface. The shell
+ * <main> owns the deck padding; all colours are design tokens (both themes).
+ */
 
 .page {
   display: grid;
@@ -6,7 +15,7 @@
   gap: var(--space-8);
   max-width: 64rem;
   margin: 0 auto;
-  padding: var(--space-8) var(--space-6);
+  width: 100%;
 }
 
 @media (max-width: 48rem) {
@@ -15,15 +24,16 @@
   }
 }
 
-/* ─── Navigation ──────────────────────────────────────────────────── */
+/* ─── Breadcrumb (chrome — mono) ──────────────────────────────────────── */
 
 .breadcrumb {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-muted);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-5);
 }
 
 .breadcrumbLink {
@@ -34,10 +44,16 @@
   border: none;
   font: inherit;
   padding: 0;
+  border-radius: var(--radius-sm);
 }
 
 .breadcrumbLink:hover {
   text-decoration: underline;
+}
+
+.breadcrumbLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .breadcrumbSeparator {
@@ -50,20 +66,22 @@
   color: var(--color-text-secondary);
 }
 
-/* ─── Article content ─────────────────────────────────────────────── */
+/* ─── Article content (BODY — the sans prose exception) ───────────────── */
 
 .content {
   min-width: 0;
 }
 
 .title {
+  font-family: var(--font-family-sans);
   font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-bold);
-  color: var(--color-text);
+  color: var(--color-text-primary);
   margin: 0 0 var(--space-2);
 }
 
 .summary {
+  font-family: var(--font-family-sans);
   font-size: var(--font-size-base);
   color: var(--color-text-secondary);
   margin: 0 0 var(--space-6);
@@ -75,14 +93,16 @@
 }
 
 .sectionHeading {
+  font-family: var(--font-family-sans);
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text);
+  color: var(--color-text-primary);
   margin: 0 0 var(--space-3);
   scroll-margin-top: var(--space-4);
 }
 
 .paragraph {
+  font-family: var(--font-family-sans);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
   line-height: var(--line-height-relaxed);
@@ -93,11 +113,11 @@
   margin-bottom: 0;
 }
 
-/* ─── Table of contents sidebar ───────────────────────────────────── */
+/* ─── Table of contents sidebar (chrome — mono) ───────────────────────── */
 
 .sidebar {
   position: sticky;
-  top: var(--space-8);
+  top: var(--space-6);
   align-self: start;
 }
 
@@ -108,11 +128,12 @@
 }
 
 .tocTitle {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: var(--cs-ls-eyebrow);
   margin: 0 0 var(--space-3);
 }
 
@@ -126,17 +147,17 @@
 }
 
 .tocItem {
-  font-size: var(--font-size-xs);
   line-height: var(--line-height-normal);
 }
 
 .tocLink {
   display: block;
   padding: var(--space-1) var(--space-2);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-secondary);
   text-decoration: none;
   border-left: 2px solid transparent;
-  border-radius: 0;
   transition:
     color var(--transition-fast),
     border-color var(--transition-fast);
@@ -145,23 +166,27 @@
   border-top: none;
   border-right: none;
   border-bottom: none;
-  font: inherit;
   text-align: left;
   width: 100%;
 }
 
 .tocLink:hover {
   color: var(--color-primary);
-  border-left-color: var(--color-primary-alpha);
+  border-left-color: var(--color-nav-active-bg);
+}
+
+.tocLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: -2px;
 }
 
 .tocLinkActive {
   color: var(--color-primary);
   border-left-color: var(--color-primary);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
 }
 
-/* ─── Bottom navigation ───────────────────────────────────────────── */
+/* ─── Bottom navigation (chrome — mono) ───────────────────────────────── */
 
 .bottomNav {
   display: flex;
@@ -177,10 +202,11 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--font-size-sm);
+  padding: var(--space-2) 11px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-primary);
-  background: none;
+  background: var(--color-surface-secondary);
   border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -191,15 +217,20 @@
 }
 
 .navButton:hover {
-  background: var(--color-bg-hover);
-  border-color: var(--color-primary-alpha);
+  background: var(--color-surface-tertiary);
+  border-color: var(--color-border-emphasis);
+}
+
+.navButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 .navSpacer {
   flex: 1;
 }
 
-/* ─── 404 state ───────────────────────────────────────────────────── */
+/* ─── 404 state (chrome — mono) ───────────────────────────────────────── */
 
 .notFound {
   max-width: 64rem;
@@ -209,14 +240,16 @@
 }
 
 .notFoundTitle {
+  font-family: var(--font-family-mono);
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
-  color: var(--color-text);
+  color: var(--color-text-primary);
   margin: 0 0 var(--space-3);
 }
 
 .notFoundText {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
   color: var(--color-text-secondary);
   margin: 0 0 var(--space-4);
 }
@@ -226,16 +259,23 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
-  font-size: var(--font-size-sm);
-  color: var(--color-on-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-inverse);
   background: var(--color-primary);
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
   text-decoration: none;
-  transition: opacity var(--transition-fast);
+  transition: background-color var(--transition-fast);
 }
 
 .notFoundLink:hover {
-  opacity: 0.9;
+  background: var(--color-primary-hover);
+}
+
+.notFoundLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
