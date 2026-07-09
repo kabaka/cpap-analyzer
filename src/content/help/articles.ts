@@ -60,7 +60,7 @@ export const helpArticles: readonly HelpArticle[] = [
         paragraphs: [
           '1. Remove the SD card from your CPAP machine (consult your machine manual for the SD card location).',
           '2. Insert the SD card into your computer using an SD card reader.',
-          '3. Click "Import Data" from the sidebar or dashboard, and select the SD card directory.',
+          '3. Click the Import button in the command strip at the top of any screen — it opens the import wizard as a modal — and select the SD card directory.',
           '4. CPAP Analyzer will parse your data files and display a summary of the imported sessions.',
           '5. Explore the Dashboard for an overview, or dive into Sessions for night-by-night detail.',
         ],
@@ -69,6 +69,7 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Finding your way around',
         paragraphs: [
           'The left sidebar is the primary navigation. It groups the views into an "Analysis" section (Dashboard, Sessions, Trends, Explore, and Reports) and a "Data" section (Data, where you import and manage your records), with Help and Settings pinned to the footer.',
+          'Across the top of every screen is a command strip carrying the current section\'s name, the "LOCAL · NO UPLOAD" privacy pill, an Import button, the global time-window control, a ⌘K command-palette button, and the theme menu. The command palette (a keyboard-first launcher opened with ⌘K / Ctrl+K) and the global time window (the single control that scopes the whole app\'s date range) each have their own guide, "The Command Palette & Time Window".',
           'On a wide screen you can collapse the sidebar to a narrow, icon-only "rail" to reclaim horizontal space for charts and the signal viewer — useful when inspecting whole-night waveforms. Use the toggle button pinned in the sidebar footer (labelled "Collapse sidebar" when expanded, "Expand sidebar" when collapsed), or press the `[` key. In the collapsed rail, each item shows only its icon; hover or move keyboard focus to an icon to reveal a tooltip with its label, and the view you are currently on stays marked by an accent bar. Your choice is remembered the next time you open the app — like every preference, it is stored locally in your browser and never leaves your device. The `[` shortcut is desktop-only and is ignored while you are typing in a text field. On narrow (mobile) screens the sidebar instead appears as a slide-in drawer opened from the menu button.',
         ],
       },
@@ -94,6 +95,7 @@ export const helpArticles: readonly HelpArticle[] = [
         heading: 'Overview',
         paragraphs: [
           "CPAP Analyzer reads data directly from your CPAP machine's SD card. ResMed devices store therapy data in a structured directory format with EDF (European Data Format) files containing detailed signal recordings and summary statistics. The app can also import wearable health data from a Google Health (Fitbit) export. Both kinds of import run client-side, in the background, with the same persistent progress indicator described below.",
+          'You launch either import from the Import button in the command strip at the top of every screen, which opens the import wizard as a modal over whatever view you are on — so you can start an import from anywhere without navigating away. The wizard is also reachable at its own `/data/import` route, which the first-run empty-state prompt links to and which deep links and bookmarks continue to work against.',
         ],
       },
       {
@@ -114,7 +116,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Importing with File Picker',
         paragraphs: [
-          'Click "Import Data" and use the file picker dialog to select the root directory of your SD card (the folder containing the DATALOG, SETTINGS, and other directories). CPAP Analyzer will scan the directory structure and identify all available session data.',
+          'Open the import wizard from the Import button in the command strip (or the `/data/import` route) and use the file picker dialog to select the root directory of your SD card (the folder containing the DATALOG, SETTINGS, and other directories). CPAP Analyzer will scan the directory structure and identify all available session data.',
           'The import process reads the following files: Identification.tgt (machine identification), STR.edf (session summary records), and individual EDF files in DATALOG subdirectories (detailed signal data). Settings files in the SETTINGS directory provide machine configuration context.',
         ],
       },
@@ -190,19 +192,85 @@ export const helpArticles: readonly HelpArticle[] = [
     ],
   },
 
+  // ─── NAVIGATION: COMMAND PALETTE & TIME WINDOW ────────────────────
+  {
+    slug: 'command-surface',
+    title: 'The Command Palette & Time Window',
+    summary:
+      'The command strip at the top of every screen: the ⌘K / Ctrl+K command palette for keyboard-first navigation, jumping to a night by date, and quick actions; and the single global time-window control (7D–12M presets plus a custom date range) that scopes the whole app at once. Also how the header Import button opens the import wizard, and why Reports keeps its own export range.',
+    icon: 'getting-started',
+    sections: [
+      {
+        heading: 'The command strip',
+        paragraphs: [
+          "Every screen in CPAP Analyzer sits under a persistent command strip — a slim bar pinned to the top of the window. It is the app's single control surface. From left to right it shows the current section's name; a \"LOCAL · NO UPLOAD\" pill that restates the privacy guarantee (a literal promise — the app makes no network request carrying your data, and the pill's small pulsing dot is purely decorative and stops when your system asks for reduced motion); a coverage string naming the active date span and how many recorded nights fall inside it; an Import button; the global time-window control; the ⌘K command-palette button; and the light / dark / system theme menu. The same strip appears on the Dashboard, Sessions, Trends, Explore, Reports, Data, Settings, and Help, so the controls you use most often never move as you navigate.",
+          'This guide covers the two controls in the strip that are new and that act across the whole application: the command palette and the global time window. The navigation sidebar and its collapse behaviour are described in "Getting Started", the theme menu and privacy model in "Getting Started" and "Settings", and the import indicator in "Importing Data".',
+        ],
+      },
+      {
+        heading: 'Opening the command palette',
+        paragraphs: [
+          'The command palette is a keyboard-first launcher: a single search box that can take you to any section, jump to a specific night, or run a quick action without reaching for the mouse. Open it with ⌘K on macOS or Ctrl+K on Windows and Linux, from anywhere in the app. You can also click the ⌘K / Ctrl K button in the command strip. The same shortcut closes it again, as do Esc and clicking outside the panel.',
+          "The palette is a modal dialog: while it is open it holds keyboard focus, and when you close it focus returns to wherever you were, so you never lose your place. The shortcut is deliberately ignored while you are typing in a text field — including the palette's own search box, where Esc is what closes it — so it never hijacks ordinary typing, and it does not fire when an Alt / Option modifier is also held.",
+        ],
+      },
+      {
+        heading: 'Searching and running commands',
+        paragraphs: [
+          'Start typing and the palette filters its results with a fuzzy match: the characters you type must appear in order in a result\'s label but need not be adjacent, so "evx" finds "Explore" and "setw" finds a "Set time window" action. The matched characters are highlighted in each row, and a politely-announced, screen-reader-only count reports how many results are showing. Results are grouped under headings so you can see at a glance what kind of thing each row is.',
+          'Move the highlight with the Up and Down arrow keys — it wraps around from the last row back to the first — or jump to the ends with Home and End; moving the pointer also highlights whatever row it is over. Press Enter (or click) to run the highlighted row, which then closes the palette. A row that represents the state you are already in — the current theme, or the time-window preset already applied — is tagged "Current", so you are not misled into thinking activating it will change anything.',
+          'Results fall into three groups. Sections jumps to a top-level view: Dashboard, Sessions, Trends, Explore, Reports, Data, Settings, or Help. Actions runs a one-off command: start a data import (which opens the import wizard), switch the theme to light, dark, or system, or set the global time window to one of its presets (last 7 days through last 12 months). The Sessions group appears only when what you have typed looks like a date — see the next section.',
+        ],
+      },
+      {
+        heading: 'Jumping to a night by date',
+        paragraphs: [
+          'Type a date into the palette — for example 2026-07-04 — and a Sessions group appears listing the recorded nights on that date, each labelled with its weekday and machine; press Enter on one to open its session detail. If no session was recorded on that date, the palette says so plainly rather than guessing. Several everyday date spellings are recognised, so you do not have to remember one exact format.',
+          'This lookup reads only the lightweight per-night session index (keyed by date); it never loads any of the underlying 25–50 Hz signal samples, and it is issued only once what you have typed actually parses as a date — so simply typing a section name or an action never touches storage. Like everything else in the app, it runs entirely in your browser and sends nothing anywhere.',
+        ],
+      },
+      {
+        heading: 'The global time window',
+        paragraphs: [
+          'A single time-window control in the command strip sets the analysis date range for the whole application at once. It offers five presets — 7D, 30D, 90D, 6M, and 12M (the last 7 days, 30 days, 90 days, 6 months, and 12 months) — plus a Custom button for an arbitrary range. Choosing a window here re-scopes every view that follows it: the Dashboard\'s panels, the Sessions list and calendar, the Trends charts, and the Explore analyses all recompute against the new range. You set the period you care about in one place instead of re-picking it on each page — replacing the separate per-view date pickers earlier versions carried, whose independent copies of "the range" could drift out of sync with one another.',
+          'The highlighted preset is derived from the range itself, not from which button you last pressed, so the control always reflects the range actually in effect — including a range restored from a shared or bookmarked URL, or one set from the command palette. When the active range corresponds to no preset (an arbitrary custom span), no preset is highlighted and the Custom button reads as active instead. The coverage string beside the control spells out the active span and the count of recorded nights within it.',
+        ],
+      },
+      {
+        heading: 'Choosing a custom range',
+        paragraphs: [
+          'Click Custom to open a small popover with Start and End date fields. The fields are bounded by your own data — you cannot pick a start earlier than your earliest imported night, nor an end later than today — and Apply is accepted only when the range is valid and not inverted (the start on or before the end). The popover also offers one-click quick ranges — Last 14 days, Last 30 days, Last 6 months, and All data, where "All data" spans from your earliest recorded night to today. Cancel dismisses the popover without changing the window.',
+        ],
+      },
+      {
+        heading: 'Where the window applies — and the two exceptions',
+        paragraphs: [
+          "Almost every analysis view follows the global window. There are two deliberate exceptions, both in the name of correctness. First, the Dashboard's 12-month AHI calendar spine and its treatment-emergent central-sleep-apnea (TECSA) trajectory always cover a trailing 12 months regardless of the window you pick, because they exist to show long-horizon structure — seasonal drift, a slow trend — that a 7- or 30-day window would hide. Second, the Reports view keeps its own export date range: it is seeded from the global window when you arrive, but you then set the exact reporting period on the Reports page itself, so you can export a report for one span while browsing the rest of the app at another. Everything the window touches, and both exceptions, is computed locally in your browser; no date range is ever transmitted.",
+        ],
+      },
+      {
+        heading: 'Keyboard shortcuts',
+        paragraphs: [
+          'The command palette is the hub of the app\'s keyboard workflow, but a few global shortcuts stand on their own: ⌘K / Ctrl+K opens the palette; the `[` key collapses or expands the navigation sidebar on desktop; and `?` opens the contextual help panel. The full, always-current list — including the "G then a letter" section jumps and the chart-interaction keys — lives in the keyboard-shortcuts reference, reachable from the "Keyboard shortcuts" quick link on the Help home or directly at `/help/keyboard-shortcuts`.',
+          'None of these controls change what any number means, and none send anything anywhere; they are navigation and presentation only. CPAP Analyzer is an analysis tool, not a medical device, and does not diagnose.',
+        ],
+      },
+    ],
+  },
+
   // ─── DASHBOARD GUIDE ──────────────────────────────────────────────
   {
     slug: 'dashboard',
     title: 'Dashboard Guide',
     summary:
-      'Reading the Signal Deck home dashboard: the good-night rate verdict and how it is defined, the 12-month AHI calendar spine, alert cards, the signal small-multiples rail, distribution plots, wearable correlation lanes, the weather summary card, the TECSA trajectory, the session log, and the 30D/90D analysis window.',
+      'Reading the Signal Deck home dashboard: the good-night rate verdict and how it is defined, the 12-month AHI calendar spine, alert cards, the signal small-multiples rail, distribution plots, wearable correlation lanes, the weather summary card, the TECSA trajectory, the session log, and how the deck follows the global time window set in the header.',
     icon: 'dashboard',
     sections: [
       {
         heading: 'Overview — the Signal Deck',
         paragraphs: [
           'The Dashboard is the app\'s home view: a dense, single-surface therapy overview called the "Signal Deck". It replaces the earlier "Control Room" dashboard (KPI cards plus a sessions table) with a set of purpose-built panels — a headline good-night-rate verdict, a long-horizon AHI calendar, alert cards, a rail of signal small-multiples, distribution plots, wearable correlation lanes, a weather summary card (when the weather integration is enabled), a treatment-emergent central-apnea trajectory, and a session log — laid out so a data-literate reader can take in the shape of their therapy at a glance and then drill into Sessions, Trends, or Explore for detail.',
-          'The deck is theme-aware (light, dark, and custom themes) and, like the rest of the app, is computed entirely in your browser: nothing on this page is uploaded, and the header carries a "LOCAL · NO UPLOAD" badge as a reminder. Two windows are in play at once. Most panels follow the 30D/90D analysis-window toggle in the header (described at the end of this guide); the AHI calendar spine and the TECSA trajectory deliberately ignore the toggle and always cover a trailing 12 months, because they exist to show long-horizon structure that a 30- or 90-day window would hide.',
+          'The deck is theme-aware (light, dark, and custom themes) and, like the rest of the app, is computed entirely in your browser: nothing on this page is uploaded, and the header carries a "LOCAL · NO UPLOAD" badge as a reminder. Two windows are in play at once. Most panels follow the global time window set in the command strip (the 7D / 30D / 90D / 6M / 12M presets and the Custom range, described at the end of this guide); the AHI calendar spine and the TECSA trajectory deliberately ignore it and always cover a trailing 12 months, because they exist to show long-horizon structure that a shorter window would hide.',
         ],
       },
       {
@@ -219,7 +287,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'AHI calendar spine and monthly means',
         paragraphs: [
-          "To the right of the verdict is a 12-month nightly-AHI calendar heatmap — one cell per night, coloured by that night's AHI using the same fixed clinical severity bands as the Sessions calendar and the Trends severity zones (Normal < 5, Mild 5–<15, Moderate 15–<30, Severe ≥ 30 events/h) — with a monthly-mean strip beneath it showing each calendar month's duration-weighted (pooled) AHI. This is the deck's longitudinal spine: it always covers a trailing 12 months regardless of the 30D/90D toggle, so seasonal drift, a stretch of missed nights, or a step change after a settings adjustment stays visible. As with every calendar in the app, missed nights and nights too short to yield an AHI are shown as distinct non-value states rather than being coloured or counted as 0.",
+          "To the right of the verdict is a 12-month nightly-AHI calendar heatmap — one cell per night, coloured by that night's AHI using the same fixed clinical severity bands as the Sessions calendar and the Trends severity zones (Normal < 5, Mild 5–<15, Moderate 15–<30, Severe ≥ 30 events/h) — with a monthly-mean strip beneath it showing each calendar month's duration-weighted (pooled) AHI. This is the deck's longitudinal spine: it always covers a trailing 12 months regardless of the global time window, so seasonal drift, a stretch of missed nights, or a step change after a settings adjustment stays visible. As with every calendar in the app, missed nights and nights too short to yield an AHI are shown as distinct non-value states rather than being coloured or counted as 0.",
         ],
       },
       {
@@ -231,7 +299,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Signal small-multiples rail',
         paragraphs: [
-          'The small-multiples rail is a row of compact sparklines — one small multiple per signal — over the active 30D/90D window, so you can scan the recent trajectory of several signals side by side at the same time scale. It covers your core CPAP metrics and, when a wearable is connected, resting heart rate and heart-rate variability (HRV). Each cell is a quick-read trend, not a precise chart; open Trends for a full-resolution, interactive view with rolling statistics and severity zones. Where a signal has no data (for example the wearable lanes when no wearable is connected), the cell reads "—" rather than drawing a misleading flat line at zero.',
+          'The small-multiples rail is a row of compact sparklines — one small multiple per signal — over the active global time window, so you can scan the recent trajectory of several signals side by side at the same time scale. It covers your core CPAP metrics and, when a wearable is connected, resting heart rate and heart-rate variability (HRV). Each cell is a quick-read trend, not a precise chart; open Trends for a full-resolution, interactive view with rolling statistics and severity zones. Where a signal has no data (for example the wearable lanes when no wearable is connected), the cell reads "—" rather than drawing a misleading flat line at zero.',
         ],
       },
       {
@@ -256,7 +324,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'TECSA trajectory',
         paragraphs: [
-          'TECSA — treatment-emergent central sleep apnea — is the phenomenon in which central apneas appear or persist after obstructive events are controlled by pressure therapy. The TECSA panel plots a long-horizon trajectory of the relevant central-apnea signal over a trailing 12 months (again independent of the 30D/90D toggle, because a treatment-emergent pattern only reveals itself over months), so a rising central component is visible as a trend rather than as the noise of any single night. It is a screening-oriented indicator to help you notice a pattern worth raising with your clinician; it is not a diagnosis of central sleep apnea, and only a sleep physician can make that determination.',
+          'TECSA — treatment-emergent central sleep apnea — is the phenomenon in which central apneas appear or persist after obstructive events are controlled by pressure therapy. The TECSA panel plots a long-horizon trajectory of the relevant central-apnea signal over a trailing 12 months (again independent of the global time window, because a treatment-emergent pattern only reveals itself over months), so a rising central component is visible as a trend rather than as the noise of any single night. It is a screening-oriented indicator to help you notice a pattern worth raising with your clinician; it is not a diagnosis of central sleep apnea, and only a sleep physician can make that determination.',
         ],
       },
       {
@@ -266,9 +334,9 @@ export const helpArticles: readonly HelpArticle[] = [
         ],
       },
       {
-        heading: 'Analysis window (30D / 90D)',
+        heading: 'The analysis window',
         paragraphs: [
-          "The header carries a 30D/90D segmented toggle that sets the analysis window for the deck's window-following panels — the good-night rate, alert cards, small-multiples rail, distribution plots, wearable lanes, and session log all recompute when you switch it. The AHI calendar spine and the TECSA trajectory intentionally do not follow the toggle: they always span a trailing 12 months, as the deck's fixed longitudinal reference. For arbitrary custom ranges, presets beyond 90 days, or an all-time view, use the date range controls in Sessions and Trends.",
+          'The deck follows the global time window set in the command strip at the top of every screen — the 7D / 30D / 90D / 6M / 12M presets and the Custom range, documented in "The Command Palette & Time Window". The window-following panels — the good-night rate, alert cards, small-multiples rail, distribution plots, wearable lanes, and session log — all recompute when you change it. The AHI calendar spine and the TECSA trajectory intentionally do not follow the window: they always span a trailing 12 months, as the deck\'s fixed longitudinal reference. For an arbitrary span or an all-time view, use the window control\'s Custom popover, whose "All data" quick range covers your whole history.',
         ],
       },
     ],
@@ -460,7 +528,7 @@ export const helpArticles: readonly HelpArticle[] = [
       {
         heading: 'Session comparison',
         paragraphs: [
-          'Select two or more sessions to compare side-by-side. The comparison view aligns metrics in a table for easy comparison and overlays trend data. This is useful for evaluating the effect of therapy changes (new mask, pressure adjustment, medication change) by comparing nights before and after the change.',
+          'Open the comparison view from the Compare button in the Sessions toolbar, beside the Table / Calendar switch (it lives at `/sessions/compare`). Select two or more sessions to compare side-by-side. The comparison view aligns metrics in a table for easy comparison and overlays trend data. This is useful for evaluating the effect of therapy changes (new mask, pressure adjustment, medication change) by comparing nights before and after the change.',
         ],
       },
     ],

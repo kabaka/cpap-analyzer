@@ -25,7 +25,10 @@ const shortcutGroups: readonly ShortcutGroup[] = [
   },
   {
     title: 'Interface',
-    shortcuts: [{ keys: ['['], description: 'Collapse / expand the navigation sidebar (desktop)' }],
+    shortcuts: [
+      { keys: ['⌘K'], description: 'Open the command palette (Ctrl+K on Windows / Linux)' },
+      { keys: ['['], description: 'Collapse / expand the navigation sidebar (desktop)' },
+    ],
   },
   {
     title: 'Help',
