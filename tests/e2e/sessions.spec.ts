@@ -383,28 +383,35 @@ test.describe('Session List Pagination', () => {
   }
 
   /**
-   * Switch the global date-range selector to "All time" so all 60 injected
-   * sessions (spanning ~60 days) are loaded, not just those in the default
-   * last-30-days window. Waits until pagination renders to confirm the reload.
+   * Widen the global date window so all 60 injected sessions (spanning the last
+   * 1–60 days) are loaded, not just those in the default last-30-days window.
+   *
+   * The per-view "Date range" combobox was removed in the command-surface
+   * refresh; the single global control is now the shell's "Time window"
+   * radiogroup (WindowToggle). The 60 nights all fall inside the last 90 days,
+   * so the "Last 90 days" preset includes every one of them — functionally "all"
+   * for this dataset. Waits until the wide range has actually loaded all 60.
    */
   async function selectAllTimeRange(page: Page) {
-    // Radix Select trigger is labelled by the "Date range" label.
-    const trigger = page.getByRole('combobox', { name: 'Date range' });
-    await expect(trigger).toBeVisible({ timeout: 10000 });
-    await trigger.click();
-    await page.getByRole('option', { name: 'All time' }).click();
+    await page
+      .getByRole('radiogroup', { name: 'Time window' })
+      .getByRole('radio', { name: 'Last 90 days' })
+      .click();
 
     // Wait until the WIDE range has actually loaded all 60 sessions. The default
-    // 30-day range already yields > 25 sessions (so the pagination nav alone is
-    // not proof the wide range took effect); assert on the total instead.
+    // 30-day range yields only ~30 sessions, so `of 60 sessions` proves the
+    // 90-day window took effect (a stronger signal than the pagination nav).
     await expect(page.getByText(/of 60 sessions/)).toBeVisible({ timeout: 10000 });
 
     // The date-range change is mirrored to the URL by a 300ms-debounced sync
     // (useURLStateSync writes ?start/&end). Wait for that write to land BEFORE
     // we click a page button, otherwise our `page=N` write and the debounced
-    // start/end write race. Once start=2000-01-01 is present the debounce has
-    // settled and subsequent param writes merge cleanly.
-    await expect(page).toHaveURL(/[?&]start=2000-01-01(&|$)/, { timeout: 10000 });
+    // start/end write race. A preset sets a rolling start (today − 90 days);
+    // wait for exactly that value so the debounce has settled with the NEW range
+    // and subsequent param writes merge cleanly.
+    await expect(page).toHaveURL(new RegExp(`[?&]start=${daysAgoStr(90)}(&|$)`), {
+      timeout: 10000,
+    });
   }
 
   test('persists page in URL and restores it after browser Back (regression)', async ({ page }) => {

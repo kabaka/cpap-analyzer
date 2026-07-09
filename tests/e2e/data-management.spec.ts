@@ -123,7 +123,9 @@ test.describe('Data Management View', () => {
     await importWizardButton.click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { name: /import data/i })).toBeVisible();
-    // Opening the modal does NOT navigate — the user stays on /data.
-    await expect(page).toHaveURL(/\/data$/);
+    // Opening the modal does NOT navigate — the user stays on the /data route.
+    // (The shell's global WindowToggle now mirrors the date range to ?start/&end
+    // on every page, so match the /data pathname rather than end-of-string.)
+    await expect(page).toHaveURL(/\/data(\?|$)/);
   });
 });
