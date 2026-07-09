@@ -1,24 +1,21 @@
-/* ── Container ─────────────────────────────────────────────────── */
+/**
+ * Session Detail — command-surface reconcile (#84 → shared foundation).
+ *
+ * Every panel now composes the foundation `.panel` (surface-secondary, 1px
+ * border, NO box-shadow) and mono `.panelTitle`; nested cards (KPI, cluster
+ * rows, the embedded plot) sit on surface-primary per the A3 two-level layering
+ * rule. All sub-12px text is mono + a `--cs-fs-*` step. Composition is ADDITIVE
+ * only — local classes never redeclare a property the composed foundation class
+ * already sets (the built-chunk cascade would drop it); see WAVE2_EDIT_MAP.
+ */
+
+/* ── Container (full-bleed; deck padding/bg come from the shell <main>) ─── */
 
 .container {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  max-width: 1380px;
-  margin: 0 auto;
-  padding: 20px 24px 64px;
-  width: 100%;
-}
-
-/* Shared card surface. */
-.panel,
-.verdictCard,
-.kpiCard,
-.statsCard {
-  background: var(--color-surface-primary);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  gap: var(--cs-deck-gap);
 }
 
 /* Visually-hidden text that remains available to assistive technology. */
@@ -38,29 +35,30 @@
 
 .header {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .headerLeft {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 3px;
   min-width: 0;
 }
 
 .breadcrumb {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-muted);
 }
 
 .breadcrumbLink {
-  color: var(--color-text-link);
+  color: var(--color-primary);
   text-decoration: none;
   transition: color var(--transition-fast);
 }
@@ -69,160 +67,157 @@
   color: var(--color-text-link-hover);
 }
 
-.breadcrumbSep {
-  color: var(--color-text-disabled);
+.breadcrumbLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
-.titleRow {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+.breadcrumbSep {
+  color: var(--color-text-muted);
 }
 
 .title {
-  font-size: var(--font-size-2xl);
+  margin: 0;
+  font-family: var(--font-family-mono);
+  font-size: 22px;
   font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
   line-height: var(--line-height-tight);
-  margin: 0;
-}
-
-.timeRange {
-  font-family: var(--font-family-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-base);
-  color: var(--color-text-secondary);
 }
 
 .headerMeta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-}
-
-.metaDivider {
-  width: 1px;
-  height: 14px;
-  background-color: var(--color-border-emphasis);
-  flex-shrink: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  color: var(--color-text-muted);
 }
 
 .headerActions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   flex-shrink: 0;
   flex-wrap: wrap;
+}
+
+/* Bordered 30px nav buttons + primary export — command-surface mono, matching
+   the prototype's bespoke header controls (generic Button is sans/16px). */
+.navButton {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-surface-primary);
+  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.navButton:hover:not(:disabled) {
+  border-color: var(--color-border-emphasis);
+  color: var(--color-text-primary);
+}
+
+.navButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.navButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 1px;
+}
+
+.primaryButton {
+  height: 30px;
+  padding: 0 13px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.primaryButton:hover {
+  background: var(--color-primary-hover);
+}
+
+.primaryButton:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
 }
 
 /* ── Hero ──────────────────────────────────────────────────────── */
 
 .hero {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: var(--space-4);
-  align-items: stretch;
+  grid-template-columns: 360px 1fr;
+  gap: var(--cs-deck-gap);
+  align-items: start;
 }
 
 /* ── Verdict card ──────────────────────────────────────────────── */
 
 .verdictCard {
+  composes: panel from '../../styles/commandSurface.module.css';
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: 16px;
 }
 
 .verdictHead {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  gap: 16px;
 }
 
-/* Discrete two-gate hero (NON-composite — no continuous ring; see ADR 0031). */
+/* 96px gate rail — verdict word + "N of 2 gates", separated by a right border.
+   Discrete two-gate hero (NON-composite — no continuous ring; see ADR 0031). */
 .gateHero {
+  flex: none;
+  width: 96px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  gap: var(--space-2);
-  width: 108px;
-  flex-shrink: 0;
+  gap: 4px;
+  border-right: 1px solid var(--color-border-subtle);
+  padding-right: 14px;
 }
 
 .verdictWord {
-  font-size: var(--font-size-base);
+  font-size: 22px;
   font-weight: var(--font-weight-bold);
   line-height: 1.1;
 }
 
-.gatePips {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.gatePip {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  width: 44px;
-}
-
-.gatePipGlyph {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-surface-primary);
-  background: var(--color-status-severe);
-  border: 2px solid transparent;
-}
-
-.gatePip[data-state='pass'] .gatePipGlyph {
-  background: var(--color-status-normal);
-}
-
-.gatePip[data-state='unknown'] .gatePipGlyph {
-  background: var(--color-surface-secondary);
-  color: var(--color-text-muted);
-  border-color: var(--color-border-emphasis);
-}
-
-.gatePipLabel {
-  font-size: 10px;
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
-}
-
 .verdictGates {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
   font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-section);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
 }
 
 .verdictText {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  flex: 1;
   min-width: 0;
 }
 
 .verdictEyebrow {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-wide);
+  composes: eyebrow from '../../styles/commandSurface.module.css';
+  margin-bottom: 8px;
 }
 
 .gateList {
@@ -242,15 +237,15 @@
 
 .gateIcon {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-full);
+  border-radius: 5px;
   font-size: 11px;
   font-weight: var(--font-weight-bold);
-  color: var(--color-surface-primary);
+  color: var(--color-text-inverse);
   background: var(--color-status-severe);
 }
 
@@ -267,88 +262,94 @@
 .gateText {
   display: flex;
   flex-direction: column;
-  line-height: 1.2;
+  line-height: 1.25;
   min-width: 0;
 }
 
 .gateName {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11-5);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
 .gateDetail {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-muted);
 }
 
 .gateNote {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   color: var(--color-text-muted);
   font-style: italic;
-  line-height: 1.3;
+  line-height: 1.35;
   margin-top: 2px;
 }
 
 .verdictNarrativeText {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-12);
+  line-height: 1.6;
   color: var(--color-text-secondary);
-  line-height: var(--line-height-normal);
 }
 
 .componentStrip {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
   gap: var(--space-2);
 }
 
 .componentSegmentWrap {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 3px;
-  text-align: center;
+  min-width: 0;
 }
 
 .componentSegment {
   width: 100%;
-  height: 6px;
-  border-radius: var(--radius-full);
+  height: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .componentLabel {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  color: var(--color-text-muted);
 }
 
 .componentSeverity {
-  font-size: 10px;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-muted);
 }
 
 .verdictCaption {
   margin: 0;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-muted);
-  font-style: italic;
 }
 
 .verdictAiRow {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 14px;
+  flex-wrap: wrap;
   border-top: 1px solid var(--color-border-subtle);
   padding-top: var(--space-3);
 }
 
 .verdictAiLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-section);
   text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-wide);
+  color: var(--color-text-muted);
 }
 
 .verdictAiTriggers {
@@ -363,70 +364,49 @@
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-3);
+  gap: 10px;
+  align-content: start;
 }
 
 .kpiCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: 14px;
+  composes: kpiCard from '../../styles/commandSurface.module.css';
 }
 
 .kpiHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  composes: kpiHead from '../../styles/commandSurface.module.css';
 }
 
 .kpiLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-wide);
+  composes: kpiLabel from '../../styles/commandSurface.module.css';
 }
 
 .kpiValueRow {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-1);
+  composes: kpiValueRow from '../../styles/commandSurface.module.css';
 }
 
 .kpiValue {
-  font-family: var(--font-family-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
-  line-height: 1;
+  composes: kpiValue from '../../styles/commandSurface.module.css';
 }
 
 .kpiUnit {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
+  composes: kpiUnit from '../../styles/commandSurface.module.css';
 }
 
 .kpiFoot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: auto;
+  composes: kpiFoot from '../../styles/commandSurface.module.css';
 }
 
 .kpiDelta {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .kpiDeltaMuted {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   color: var(--color-text-muted);
-  font-weight: var(--font-weight-normal);
 }
 
 .kpiSpark {
@@ -436,7 +416,7 @@
   flex-shrink: 0;
 }
 
-/* ── Signals section ───────────────────────────────────────────── */
+/* ── Signals section (wrapper; the CompactSignalViewer owns the panel) ─── */
 
 .signalsSection {
   scroll-margin-top: var(--space-6);
@@ -446,18 +426,18 @@
 
 .eventsRow {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-4);
+  grid-template-columns: 1.1fr 1fr;
+  gap: var(--cs-deck-gap);
   align-items: start;
 }
 
 /* ── Panels (shared) ───────────────────────────────────────────── */
 
 .panel {
+  composes: panel from '../../styles/commandSurface.module.css';
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: 16px;
 }
 
 .panelHead {
@@ -468,31 +448,29 @@
 }
 
 .panelTitle {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-primary);
-  margin: 0;
+  composes: panelTitle from '../../styles/commandSurface.module.css';
 }
 
 .panelCount {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .panelCaption {
   margin: 0;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
   color: var(--color-text-muted);
-  border-top: 1px solid var(--color-border-subtle);
-  padding-top: var(--space-2);
 }
 
 .panelEmpty {
   margin: 0;
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  padding: var(--space-4) 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-11);
+  color: var(--color-text-muted);
+  padding: var(--space-2) 0;
 }
 
 /* ── Respiratory bars ──────────────────────────────────────────── */
@@ -500,26 +478,27 @@
 .respBars {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 7px;
 }
 
 .respRow {
   display: grid;
-  grid-template-columns: minmax(120px, 1.4fr) 2fr auto;
+  grid-template-columns: 92px 1fr 78px;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .respLabel {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   min-width: 0;
 }
 
 .respLabelText {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
+  color: var(--color-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -527,9 +506,9 @@
 
 .respTrack {
   position: relative;
-  height: 8px;
-  border-radius: var(--radius-full);
-  background: var(--color-surface-secondary);
+  height: 7px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-tertiary);
   overflow: hidden;
 }
 
@@ -537,7 +516,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   height: 100%;
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   min-width: 2px;
 }
 
@@ -545,54 +524,59 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 .respRate {
   font-family: var(--font-family-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--cs-fs-11);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
 .respCount {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
   color: var(--color-text-muted);
 }
 
 .miniGrid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-3);
-  border-top: 1px solid var(--color-border-subtle);
-  padding-top: var(--space-3);
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
 }
 
 .miniStat {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  border-left: 2px solid var(--color-border-subtle);
+  padding-left: 9px;
+  min-width: 0;
 }
 
 .miniLabel {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  letter-spacing: var(--cs-ls-label);
   text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-wide);
+  color: var(--color-text-muted);
 }
 
 .miniValue {
   font-family: var(--font-family-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+  font-size: 17px;
+  font-weight: var(--font-weight-bold);
   color: var(--color-text-primary);
+  margin: 2px 0;
 }
 
 .miniSub {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9);
+  color: var(--color-text-muted);
 }
 
 .miniLink {
@@ -612,16 +596,16 @@
 }
 
 .respFooter {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--color-border-subtle);
   display: flex;
   justify-content: flex-end;
 }
 
 .respViewAll {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-link);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  color: var(--color-primary);
   text-decoration: none;
   transition: color var(--transition-fast);
 }
@@ -644,11 +628,12 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 6px;
 }
 
+/* Nested card on the surface-secondary panel → surface-primary (A3 layering). */
 .clusterItem {
-  border: 1px solid var(--color-border-subtle);
+  background: var(--color-surface-primary);
   border-radius: var(--radius-md);
   overflow: hidden;
 }
@@ -659,7 +644,7 @@
   align-items: center;
   gap: var(--space-2) var(--space-3);
   width: 100%;
-  padding: var(--space-2) var(--space-3);
+  padding: 6px 8px;
   background: transparent;
   border: none;
   text-align: left;
@@ -668,7 +653,7 @@
 }
 
 .clusterHeader:hover {
-  background: var(--color-surface-secondary);
+  background: var(--color-surface-tertiary);
 }
 
 .clusterHeader:focus-visible {
@@ -684,12 +669,13 @@
 .clusterWindow {
   font-family: var(--font-family-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-sm);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-primary);
 }
 
 .clusterMeta {
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   color: var(--color-text-muted);
   white-space: nowrap;
 }
@@ -698,7 +684,8 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
   font-weight: var(--font-weight-semibold);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -717,7 +704,6 @@
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3);
   border-top: 1px solid var(--color-border-subtle);
-  background: var(--color-surface-secondary);
 }
 
 .clusterEvents {
@@ -739,7 +725,7 @@
 .clusterEventTime {
   font-family: var(--font-family-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-xs);
+  font-size: var(--cs-fs-9);
   color: var(--color-text-secondary);
 }
 
@@ -747,7 +733,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10-5);
   color: var(--color-text-primary);
   min-width: 0;
 }
@@ -755,71 +742,51 @@
 .clusterEventDuration {
   font-family: var(--font-family-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-xs);
+  font-size: var(--cs-fs-9);
   color: var(--color-text-muted);
 }
 
 /* ── Session statistics ────────────────────────────────────────── */
 
 .statsCard {
+  composes: panel from '../../styles/commandSurface.module.css';
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: 16px;
 }
 
 .statsGrid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-4);
+  gap: 20px;
 }
 
 .statGroup {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  composes: statGroup from '../../styles/commandSurface.module.css';
 }
 
 .statGroupTitle {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: var(--letter-spacing-wide);
-  margin: 0;
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--color-border-subtle);
+  composes: statGroupTitle from '../../styles/commandSurface.module.css';
 }
 
 .statList {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  composes: statList from '../../styles/commandSurface.module.css';
 }
 
 .statRow {
-  display: flex;
+  composes: statRow from '../../styles/commandSurface.module.css';
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
 }
 
 .statLabel {
+  composes: statTerm from '../../styles/commandSurface.module.css';
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
 }
 
 .statValue {
-  margin: 0;
-  font-family: var(--font-family-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-primary);
+  composes: statValue from '../../styles/commandSurface.module.css';
   text-align: right;
 }
 
@@ -833,17 +800,17 @@
 .physiologyRow {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-4);
+  gap: var(--cs-deck-gap);
   align-items: start;
 }
 
 .stageBar {
   display: flex;
   width: 100%;
-  height: 14px;
-  border-radius: var(--radius-full);
+  height: 10px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  background: var(--color-surface-secondary);
+  background: var(--color-surface-tertiary);
 }
 
 .stageSeg {
@@ -864,16 +831,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-3);
   flex-wrap: wrap;
-  border-top: 1px solid var(--color-border-subtle);
-  padding-top: var(--space-4);
-  margin-top: var(--space-2);
+  padding: 4px 2px 0;
 }
 
 .footerDisclaimer {
   margin: 0;
-  font-size: var(--font-size-xs);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-9-5);
   color: var(--color-text-muted);
   max-width: 640px;
 }
@@ -885,9 +851,9 @@
 }
 
 .footerLink {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-link);
+  font-family: var(--font-family-mono);
+  font-size: var(--cs-fs-10);
+  color: var(--color-primary);
   text-decoration: none;
   transition: color var(--transition-fast);
 }
@@ -896,16 +862,19 @@
   color: var(--color-text-link-hover);
 }
 
+.footerLink:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* ── Loading / error states ────────────────────────────────────── */
 
 .loadingContainer {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  max-width: 1380px;
-  margin: 0 auto;
-  padding: 20px 24px 64px;
-  width: 100%;
+  gap: var(--cs-deck-gap);
 }
 
 .skeletonHeader {
@@ -916,8 +885,8 @@
 
 .skeletonHero {
   display: grid;
-  grid-template-columns: 300px 1fr;
-  gap: var(--space-4);
+  grid-template-columns: 360px 1fr;
+  gap: var(--cs-deck-gap);
 }
 
 .errorState {
@@ -964,13 +933,13 @@
   .physiologyRow {
     grid-template-columns: 1fr 1fr;
   }
+
+  .miniGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 760px) {
-  .container {
-    padding: 16px 14px 48px;
-  }
-
   .kpiGrid {
     grid-template-columns: 1fr 1fr;
   }
