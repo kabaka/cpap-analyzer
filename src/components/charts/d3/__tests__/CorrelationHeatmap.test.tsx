@@ -27,6 +27,18 @@ function svgTextContent(): (string | null)[] {
   return Array.from(document.querySelectorAll('svg text')).map((t) => t.textContent);
 }
 
+/**
+ * The cell `<rect>` whose `<title>` contains `coefficient` (e.g. `'NaN'`,
+ * `'1.00'`), or `undefined`. Each cell's `<title>` is `row × col: value`, so
+ * this locates a specific cell without depending on DOM order or the resolved
+ * fill colour (jsdom resolves theme tokens to empty strings).
+ */
+function cellRectByTitle(coefficient: string): SVGRectElement | undefined {
+  return Array.from(document.querySelectorAll<SVGRectElement>('svg rect')).find((rect) =>
+    rect.querySelector('title')?.textContent?.includes(coefficient),
+  );
+}
+
 describe('CorrelationHeatmap', () => {
   it('renders NaN correlation cells without throwing and labels them "NaN"', () => {
     // 3×3 symmetric matrix: finite diagonal (r = 1), NaN off-diagonal — the
@@ -50,6 +62,23 @@ describe('CorrelationHeatmap', () => {
     expect(labels).toContain('NaN');
     // …and the finite diagonal cells still render their coefficient.
     expect(labels).toContain('1.00');
+
+    // The NaN cell's rect must carry an explicit `fill="transparent"` — the
+    // attribute PRESENT and equal to `transparent`, so the panel surface shows
+    // through. Without the `?? 'transparent'` fallback, `colorScale(NaN)` is
+    // `undefined`, React omits the attribute, and the SVG default paints the
+    // cell black (illegible dark-on-black label in the light theme).
+    const nanCell = cellRectByTitle('NaN');
+    expect(nanCell).toBeDefined();
+    expect(nanCell?.getAttribute('fill')).toBe('transparent');
+
+    // In the SAME render, a finite diagonal cell takes the colour scale, never
+    // the transparent fallback — proving the fallback is applied per-cell, not
+    // globally, and that finite rendering is untouched.
+    const finiteCell = cellRectByTitle('1.00');
+    expect(finiteCell).toBeDefined();
+    expect(finiteCell?.getAttribute('fill')).not.toBeNull();
+    expect(finiteCell?.getAttribute('fill')).not.toBe('transparent');
   });
 
   it('renders a fully finite matrix with formatted labels (valid-data rendering unchanged)', () => {
@@ -68,5 +97,15 @@ describe('CorrelationHeatmap', () => {
     expect(labels).toContain('1.00');
     expect(labels).toContain('0.50');
     expect(labels).not.toContain('NaN');
+
+    // Finite cells still get a real colour fill from the diverging scale — never
+    // the transparent NaN fallback. (jsdom resolves theme tokens to '' so the
+    // resolved colour is empty; asserting "present and not transparent" is
+    // exactly what proves the finite path skips the NaN fallback and is
+    // unchanged by this fix.)
+    const diagonalCell = cellRectByTitle('1.00');
+    expect(diagonalCell).toBeDefined();
+    expect(diagonalCell?.getAttribute('fill')).not.toBeNull();
+    expect(diagonalCell?.getAttribute('fill')).not.toBe('transparent');
   });
 });

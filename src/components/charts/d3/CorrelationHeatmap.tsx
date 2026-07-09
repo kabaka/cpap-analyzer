@@ -161,7 +161,11 @@ const CorrelationHeatmap = React.memo(function CorrelationHeatmap({
                   y={ri * cellSize.h}
                   width={cellSize.w}
                   height={cellSize.h}
-                  fill={colorScale(value)}
+                  // NaN cells make d3 return `undefined`; without a fallback React
+                  // omits the attribute and the SVG default paints the cell black.
+                  // Render `transparent` so the panel surface shows through — mirrors
+                  // the `matrixCellColor` convention in IntegrationAnalysis.tsx.
+                  fill={colorScale(value) ?? 'transparent'}
                 >
                   <title>
                     {data.labels[ri]} × {data.labels[ci]}: {value.toFixed(2)}
