@@ -7,7 +7,9 @@ and this project uses [Calendar Versioning](https://calver.org/) with the format
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+
+- **URL state (date range, session selection, Event Explorer filters and session scope) could rarely be lost after navigating.** A background sync that debounces store state into the URL could, in a narrow timing window, overwrite query parameters set by a navigation that had just landed — for example, opening a signal-viewer deep link with a specific time range, or scoping the Event Explorer to a session from Session Detail, could occasionally revert to the prior URL state. Fixed by having that sync always read the true current URL instead of a cached snapshot.
 
 ## [2026.07.4] — 2026-07-09
 

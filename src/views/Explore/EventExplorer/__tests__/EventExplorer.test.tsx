@@ -51,6 +51,23 @@ function mockDbWith(events: Event[]): void {
   });
 }
 
+/**
+ * DB mock that also supports the session-SCOPED load path
+ * (`db.getSession` + `db.getEventsBySessionId`, see `useExplorerEvents`),
+ * needed for tests where `query.sessionIds` is non-null.
+ */
+function mockDbWithScoped(events: Event[]): void {
+  mockGetDB.mockResolvedValue({
+    getSessionsByDateRange: vi.fn().mockResolvedValue([{ id: 'sess-1' }]),
+    getSession: vi
+      .fn()
+      .mockImplementation((id: string) =>
+        Promise.resolve({ id, startTime: '2025-03-15T02:00:00.000Z' }),
+      ),
+    getEventsBySessionId: vi.fn().mockResolvedValue(events),
+  });
+}
+
 function renderAt(path = '/explore/events') {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -155,6 +172,92 @@ describe('EventExplorer', () => {
       expect(screen.getByText(/of 4 events match/)).toHaveTextContent(
         '1 of 4 events match 1 filter',
       );
+    });
+  });
+
+  describe('session-scope guard (droppedScopeWithoutPop regression)', () => {
+    /**
+     * Defense-in-depth against `useURLStateSync`'s debounced write racing
+     * with (and transiently clobbering) the `sessions=` param — see
+     * `src/hooks/useURLState.ts` and the `droppedScopeWithoutPop` comment in
+     * `EventExplorer.tsx`. A non-POP resync that observes a URL missing
+     * `sessions=` while `query.sessionIds` is still non-empty must NOT clear
+     * the scope; only a genuine back/forward (POP) navigation may.
+     */
+
+    it('does NOT drop an existing session scope on a non-POP (PUSH) navigation that lacks `sessions=`', async () => {
+      mockDbWithScoped([makeEvent({ sessionId: 'sess-1' })]);
+
+      let navigateFn: ((to: string) => void) | null = null;
+      function NavCapture() {
+        const navigate = useNavigate();
+        useEffect(() => {
+          navigateFn = (to: string) => navigate(to);
+        }, [navigate]);
+        return null;
+      }
+
+      render(
+        <MemoryRouter initialEntries={['/explore/events?sessions=sess-1']}>
+          <NavCapture />
+          <EventExplorer />
+        </MemoryRouter>,
+      );
+
+      // Scope chip present after initial hydration from `sessions=sess-1`.
+      expect(
+        await screen.findByRole('group', { name: 'Session scope filter' }),
+      ).toBeInTheDocument();
+
+      // A PUSH navigation to a URL that lacks `sessions=` (e.g. only the
+      // `view` param changed elsewhere, or a transient clobber from the
+      // useURLStateSync race this guards against) — NOT a back/forward.
+      await act(async () => {
+        navigateFn?.('/explore/events?view=table');
+      });
+
+      // The scope chip must still be present — the guard reconciles
+      // `sessionIds` back onto the incoming query instead of silently
+      // dropping it.
+      expect(screen.getByRole('group', { name: 'Session scope filter' })).toBeInTheDocument();
+    });
+
+    it('DOES clear the session scope on a genuine POP (back/forward) navigation to a URL without `sessions=`', async () => {
+      mockDbWithScoped([makeEvent({ sessionId: 'sess-1' })]);
+
+      let navigateFn: ((delta: number) => void) | null = null;
+      function NavCapture() {
+        const navigate = useNavigate();
+        useEffect(() => {
+          navigateFn = (delta: number) => navigate(delta);
+        }, [navigate]);
+        return null;
+      }
+
+      // History: index 0 has no scope, index 1 (current) is scoped. Going
+      // back (POP) to index 0 is the legitimate "navigated to an unscoped
+      // state" case the guard must not break.
+      render(
+        <MemoryRouter
+          initialEntries={['/explore/events', '/explore/events?sessions=sess-1']}
+          initialIndex={1}
+        >
+          <NavCapture />
+          <EventExplorer />
+        </MemoryRouter>,
+      );
+
+      expect(
+        await screen.findByRole('group', { name: 'Session scope filter' }),
+      ).toBeInTheDocument();
+
+      await act(async () => {
+        navigateFn?.(-1);
+      });
+
+      // A real back navigation legitimately clears the scope — the guard
+      // must not suppress this.
+      expect(screen.queryByRole('group', { name: 'Session scope filter' })).not.toBeInTheDocument();
     });
   });
 });

@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { lazy, type ReactElement } from 'react';
 import RootLayout from '@/components/layouts/RootLayout';
 import { SuspenseWrapper } from '@/components/SuspenseWrapper';
+import { registerLiveRouter } from '@/utils/liveRouterLocation';
 
 // Remove trailing slash for React Router's basename format
 const basename = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/';
@@ -254,3 +255,11 @@ export const router = createBrowserRouter(
   ],
   { basename },
 );
+
+// Track the router's live `location.search` synchronously, independent of
+// React Router 7's startTransition-wrapped re-render. See
+// `src/utils/liveRouterLocation.ts` for why this is necessary — in short,
+// `useURLStateSync` (mounted once in `RootLayout`) needs the TRUE current
+// URL when its debounced sync fires, not a possibly-stale React-committed
+// `useLocation()`/`useSearchParams()` value.
+registerLiveRouter(router);
