@@ -55,8 +55,33 @@ test.describe('Help System', () => {
     const gettingStarted = page.getByRole('link', { name: /getting started/i }).first();
     await gettingStarted.click();
 
+    // `history.pushState` (and thus the URL) updates synchronously on
+    // navigate(), so this assertion is safe immediately after the click.
     await expect(page).toHaveURL(/\/help\/getting-started/);
-    await expect(page.getByRole('heading', { name: /getting started/i })).toBeVisible();
+
+    // The DOM swap is NOT synchronous with the URL change, though: react-router
+    // 7's `RouterProvider` unconditionally wraps the location-state update
+    // that feeds routing in `React.startTransition`, and `HelpArticle` is
+    // `React.lazy()`-loaded, so React deliberately keeps the old `HelpHome`
+    // tree mounted until the new one is ready ("no fallback flash" is
+    // intentional v7 behavior). Asserting a bare
+    // `getByRole('heading', { name: /getting started/i })` right after the
+    // URL check can transiently match TWO headings at once — the old
+    // `HelpHome` featured-article `<h2>` ("Getting Started") and, once it
+    // resolves, `HelpArticle`'s own `<h1>` — which is a strict-mode
+    // violation / flaky wait target under Playwright's tight CDP polling.
+    //
+    // Wait for HelpHome-specific content to detach first (its own "All
+    // topics" section heading, which only HelpHome renders), THEN assert
+    // scoped to `HelpArticle`'s `<article>` landmark — unambiguous even
+    // during the brief window both trees are momentarily present, since
+    // HelpHome never renders an `article` role.
+    await expect(page.getByRole('heading', { name: /all topics|search results/i })).toBeHidden();
+
+    const article = page.getByRole('article');
+    await expect(
+      article.getByRole('heading', { level: 1, name: /getting started/i }),
+    ).toBeVisible();
   });
 
   test('should render a help article via direct URL', async ({ page }) => {

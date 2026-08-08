@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigationType, useSearchParams } from 'react-router-dom';
 import { Tabs } from '@/components/ui';
 import { useExplorerEvents } from './useExplorerEvents';
 import {
@@ -80,6 +80,7 @@ function ExplorerHeader({ children }: { children?: ReactNode }) {
 
 export function EventExplorer() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigationType = useNavigationType();
 
   // Query state is derived from the URL on first render, then kept in sync.
   const [query, setQueryState] = useState<EventQuery>(() => searchParamsToQuery(searchParams));
@@ -119,10 +120,35 @@ export function EventExplorer() {
   // Structural comparison (via the canonical URL serialization) is required
   // because `EventQuery.types` is a `Set` — `JSON.stringify` would render it
   // as `"{}"` and silently drop types-only differences.
+  //
+  // Session-scope guard: never let this resync SILENTLY drop an existing
+  // non-empty `query.sessionIds` scope just because the observed URL lacks
+  // `sessions=`, unless the navigation was a genuine back/forward (POP) —
+  // the one case where "the URL now has no `sessions` param" legitimately
+  // means the user navigated to an unscoped state. This is defense-in-depth
+  // against a transient or momentarily-clobbered URL (e.g. a race with
+  // `useURLStateSync`'s debounced write — see `src/hooks/useURLState.ts`)
+  // silently dropping the `role="group" aria-label="Session scope filter"`
+  // chip in `QueryBuilder` even though the intended navigation carried a
+  // scope. A deliberate user-initiated clear (the Reset button, or removing
+  // the last scope chip) already updates `query` directly via
+  // `setQuery`/`writeQueryToUrl`, so by the time this effect observes the
+  // resulting URL, `query.sessionIds` is already empty and there is nothing
+  // to protect — this guard only ever grows/replaces scope from the URL, it
+  // never uses the URL to silently clear one PUSH/REPLACE navigations set.
   useEffect(() => {
     const incoming = searchParamsToQuery(searchParams);
-    if (!queriesEqual(incoming, query)) {
-      setQueryState(incoming);
+    const droppedScopeWithoutPop =
+      navigationType !== 'POP' &&
+      query.sessionIds !== null &&
+      query.sessionIds.size > 0 &&
+      (incoming.sessionIds === null || incoming.sessionIds.size === 0);
+    const reconciled = droppedScopeWithoutPop
+      ? { ...incoming, sessionIds: query.sessionIds }
+      : incoming;
+
+    if (!queriesEqual(reconciled, query)) {
+      setQueryState(reconciled);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
