@@ -40,7 +40,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.54.0",
-    "react-router-dom": "^7.0.0",
+    "react-router-dom": "^7.18.2",
     "recharts": "^2.15.0",
     "zod": "^3.24.0",
     "zustand": "^5.0.0"
@@ -87,5 +87,10 @@
     "*.{json,md,css,html}": [
       "prettier --write"
     ]
+  },
+  "overrides": {
+    "estimo": {
+      "nanoid": "^5.1.16"
+    }
   }
 }
