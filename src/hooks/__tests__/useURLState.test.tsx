@@ -5,6 +5,11 @@ import type { ReactNode } from 'react';
 import { useURLStateSync } from '@/hooks/useURLState';
 import { useAppStore } from '@/stores/useAppStore';
 import { formatDate, parseLocalDate } from '@/utils/formatDate';
+import {
+  registerLiveRouter,
+  __resetLiveRouterForTests,
+  type LiveLocationSource,
+} from '@/utils/liveRouterLocation';
 
 /**
  * Wrapper that renders the hook inside a MemoryRouter (so useSearchParams
@@ -34,6 +39,34 @@ function setStoreRange(start: Date, end: Date) {
   });
 }
 
+/**
+ * Minimal `LiveLocationSource` test double — see `LiveLocationSource` in
+ * `@/utils/liveRouterLocation`. `navigateLiveTo` simulates the router's
+ * `subscribe()` firing synchronously with a new location, independent of
+ * any React re-render — i.e. exactly what a real data router does when
+ * `navigate()` changes the address bar ahead of a deferred
+ * `startTransition` re-render.
+ */
+function createFakeRouter(initialSearch: string) {
+  let listener: ((state: { location: { search: string } }) => void) | null = null;
+  const router: LiveLocationSource = {
+    state: { location: { search: initialSearch } },
+    subscribe(fn) {
+      listener = fn;
+      return () => {
+        listener = null;
+      };
+    },
+  };
+  return {
+    router,
+    navigateLiveTo(search: string) {
+      router.state = { location: { search } };
+      listener?.(router.state);
+    },
+  };
+}
+
 describe('useURLStateSync', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -42,11 +75,13 @@ describe('useURLStateSync', () => {
       dateRange: { start: new Date(2025, 0, 1), end: new Date(2025, 0, 31) },
       selectedSessionId: null,
     });
+    __resetLiveRouterForTests();
   });
 
   afterEach(() => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
+    __resetLiveRouterForTests();
   });
 
   describe('hydrate from URL → store', () => {
@@ -252,6 +287,98 @@ describe('useURLStateSync', () => {
       const search = getSearch();
       expect(search).toContain('start=2025-08-01');
       expect(search).toContain('end=2025-08-10');
+    });
+  });
+
+  describe('stale-closure race (react-router 7 startTransition regression)', () => {
+    /**
+     * React Router 7's `RouterProvider` defers `useLocation()`/
+     * `useSearchParams()` behind `React.startTransition`, while the real
+     * `location.search` (and the router's own internal state) updates
+     * synchronously. If a navigation lands INSIDE the 300ms debounce window
+     * — after `syncToURL`'s timer is scheduled but before it fires — the
+     * React-committed `prev` seen by `setSearchParams(prev => …)` can be
+     * stale relative to the true current URL. `getLiveSearch()` (backed by
+     * `registerLiveRouter`/`router.subscribe()`) exists specifically to give
+     * the debounced write a non-stale merge base. These tests exercise that
+     * path directly via a `LiveLocationSource` test double, since a real
+     * `MemoryRouter` in jsdom doesn't reproduce the startTransition deferral.
+     */
+
+    it('merges the debounced write onto the LIVE router search, not the stale React-committed one', () => {
+      const initialSearch = '?start=2025-05-05&end=2025-05-15&tab=cross-source';
+      const { router: fakeRouter, navigateLiveTo } = createFakeRouter(initialSearch);
+      registerLiveRouter(fakeRouter);
+
+      const { Wrapper, getSearch } = makeWrapper(initialSearch.replace('?', '/?'));
+      renderHook(() => useURLStateSync(), { wrapper: Wrapper });
+
+      // A genuine post-mount store change schedules the 300ms debounce.
+      setStoreRange(new Date(2025, 7, 1), new Date(2025, 7, 10));
+
+      // Simulate a navigation landing INSIDE the debounce window: the real
+      // URL (and the router's internal state) changes — e.g. the user
+      // drilled into a different tab — but this has NOT yet flushed to a
+      // React re-render, so the MemoryRouter-backed `prev` the updater sees
+      // would still report `tab=cross-source` and would be missing `pinned`.
+      navigateLiveTo('?start=2025-05-05&end=2025-05-15&tab=correlations&pinned=abc');
+
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      const search = new URLSearchParams(getSearch());
+      // start/end reflect the debounced store change.
+      expect(search.get('start')).toBe('2025-08-01');
+      expect(search.get('end')).toBe('2025-08-10');
+      // The live navigation's params are preserved/merged onto — NOT
+      // clobbered back to the stale `tab=cross-source`, and `pinned` (which
+      // a `prev`-only merge would never have seen) is not dropped.
+      expect(search.get('tab')).toBe('correlations');
+      expect(search.get('pinned')).toBe('abc');
+    });
+
+    it('falls back to the React-committed `prev` when no live router is registered', () => {
+      // No `registerLiveRouter` call in this test (and `__resetLiveRouterForTests`
+      // ran in `beforeEach`), so `getLiveSearch()` returns null — exactly the
+      // state a hook mounted under a bare `<MemoryRouter>` (e.g. every other
+      // test in this file) is in. The merge must still work using `prev`.
+      const { Wrapper, getSearch } = makeWrapper(
+        '/?start=2025-05-05&end=2025-05-15&tab=cross-source',
+      );
+      renderHook(() => useURLStateSync(), { wrapper: Wrapper });
+
+      setStoreRange(new Date(2025, 7, 1), new Date(2025, 7, 10));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      const search = new URLSearchParams(getSearch());
+      expect(search.get('start')).toBe('2025-08-01');
+      expect(search.get('end')).toBe('2025-08-10');
+      expect(search.get('tab')).toBe('cross-source');
+    });
+
+    it('does NOT clobber a live navigation when the debounce fires with no live router changes pending', () => {
+      // Sanity check on the opposite direction: when the live search hasn't
+      // changed since registration, using it as the merge base must produce
+      // the exact same result as the pre-fix `prev`-only merge would have.
+      const initialSearch = '?start=2025-05-05&end=2025-05-15&tab=cross-source';
+      const { router: fakeRouter } = createFakeRouter(initialSearch);
+      registerLiveRouter(fakeRouter);
+
+      const { Wrapper, getSearch } = makeWrapper(initialSearch.replace('?', '/?'));
+      renderHook(() => useURLStateSync(), { wrapper: Wrapper });
+
+      setStoreRange(new Date(2025, 7, 1), new Date(2025, 7, 10));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      const search = new URLSearchParams(getSearch());
+      expect(search.get('start')).toBe('2025-08-01');
+      expect(search.get('end')).toBe('2025-08-10');
+      expect(search.get('tab')).toBe('cross-source');
     });
   });
 });
